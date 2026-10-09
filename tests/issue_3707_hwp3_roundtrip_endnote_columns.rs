@@ -137,3 +137,39 @@ fn endnote_bodies_land_on_the_same_pages_after_roundtrip() {
         );
     }
 }
+
+/// 첫 공백 문단의 조합 입력은 기존 미주를 다른 쪽·단으로 옮기지 않는다.
+#[test]
+fn first_blank_composition_preserves_endnote_page_items_and_snapshot_restore() {
+    let (_, bytes) = parse_and_roundtrip();
+    let mut core = rhwp::document_core::DocumentCore::from_bytes(&bytes).expect("왕복본 열기");
+    core.convert_to_editable_native().expect("편집 모드 전환");
+    assert_eq!(core.document().sections[0].paragraphs[0].text, "       ");
+    let page_count = core.page_count();
+    let endnote_items = |doc: &rhwp::document_core::DocumentCore| -> Vec<Vec<String>> {
+        (0..doc.page_count())
+            .map(|page| {
+                doc.dump_page_items(Some(page))
+                    .lines()
+                    .filter(|line| line.contains("[미주]"))
+                    .map(str::to_owned)
+                    .collect()
+            })
+            .collect()
+    };
+    let before = endnote_items(&core);
+    assert!(before.iter().any(|page| !page.is_empty()));
+    let undo = core.save_snapshot_native();
+    core.insert_text_native(0, 0, 7, "ㅎ")
+        .expect("첫 조합 입력");
+    assert_eq!(core.page_count(), page_count);
+    assert_eq!(core.document().sections[0].paragraphs[0].text, "       ㅎ");
+    assert_eq!(endnote_items(&core), before);
+    let redo = core.save_snapshot_native();
+    core.restore_snapshot_native(undo).expect("입력 되돌리기");
+    assert_eq!(core.document().sections[0].paragraphs[0].text, "       ");
+    assert_eq!(endnote_items(&core), before);
+    core.restore_snapshot_native(redo).expect("입력 다시 실행");
+    assert_eq!(core.document().sections[0].paragraphs[0].text, "       ㅎ");
+    assert_eq!(endnote_items(&core), before);
+}

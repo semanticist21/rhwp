@@ -371,8 +371,16 @@ impl TypesetEngine {
                                         .unwrap_or(false)
                             })
                             .unwrap_or(false);
-                        let current_head_has_large_tac_picture =
-                            en_ctrl.paragraphs.iter().take(8).any(|head_para| {
+                        visible_large_profile
+                            && !large_rewind_equation_tail_between_notes_boundary
+                            && endnote_has_visible_separator(shape)
+                            && continued_endnote_tail_before_new_note
+                            && previous_tail_is_large_equation_only
+                            && st.col_count > 1
+                            && st.current_column + 1 >= st.col_count
+                            && st.current_height > st.available_height() * 0.45
+                            && st.current_height < st.available_height() * 0.65
+                            && en_ctrl.paragraphs.iter().take(8).any(|head_para| {
                                 let head_comp =
                                     crate::renderer::composer::compose_paragraph_in_context(
                                         head_para, styles,
@@ -384,17 +392,7 @@ impl TypesetEngine {
                                         )
                                         .is_some_and(|height| height >= 80.0)
                                 })
-                            });
-                        visible_large_profile
-                            && !large_rewind_equation_tail_between_notes_boundary
-                            && endnote_has_visible_separator(shape)
-                            && continued_endnote_tail_before_new_note
-                            && previous_tail_is_large_equation_only
-                            && current_head_has_large_tac_picture
-                            && st.col_count > 1
-                            && st.current_column + 1 >= st.col_count
-                            && st.current_height > st.available_height() * 0.45
-                            && st.current_height < st.available_height() * 0.65
+                            })
                     };
                     if std::env::var("RHWP_ENDNOTE_BOUNDARY_DEBUG").is_ok() {
                         eprintln!(
