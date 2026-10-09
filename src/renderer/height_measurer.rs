@@ -2542,8 +2542,8 @@ impl HeightMeasurer {
     /// max 가 "가장 큰 중첩 표 하나"로 축소된다. 그 경우 줄높이 누적합에 이 값을
     /// 가산해야 한컴 배치와 맞는다.
     ///
-    /// 문단의 저장 `line_height` 가 품은 중첩 표 높이를 이미 담고 있으면 가산 대상이
-    /// 아니다 — 더하면 이중 계상이다. 한 셀 안에서도 문단별로 다르다(실측: 같은 셀에서
+    /// 문단의 저장 `line_height`가 표 높이를 품으면 텍스트 성장으로 넘친 높이만 더한다.
+    /// 한 셀 안에서도 문단별로 다르다(실측: 같은 셀에서
     /// `lh 2535 ⊇ 표 1965` 는 흡수, `lh 900` vs `표 30270` 은 미흡수). 0.7.13
     /// `e16a6070` 의 "이미 표 높이를 담은 LINE_SEG 가 있으면 보정 생략" 과 같은 규약.
     fn unabsorbed_nested_tables_height(
@@ -2577,8 +2577,7 @@ impl HeightMeasurer {
                 if crate::renderer::float_placement::nested_table_is_hwpx_overlay(
                     nested,
                     self.hwpx_stored_layout,
-                ) || para_max_lh >= nested.common.height as i32
-                {
+                ) {
                     return None;
                 }
                 let stretch = self.render_normalization.nested_table_width_scale(nested);
@@ -2586,7 +2585,15 @@ impl HeightMeasurer {
                 let declared = hwpunit_to_px(nested.common.height as i32, self.dpi);
                 let om = hwpunit_to_px(nested.outer_margin_top as i32, self.dpi)
                     + hwpunit_to_px(nested.outer_margin_bottom as i32, self.dpi);
-                Some(mt.total_height.max(declared) + om)
+                let height = mt.total_height.max(declared) + om;
+                if para_max_lh >= nested.common.height as i32 {
+                    if !measured_table_has_grown_text_row(&mt, nested, self.dpi) {
+                        return None;
+                    }
+                    // 저장 줄이 품은 높이는 유지하고, 텍스트 성장으로 넘친 몫만 더한다.
+                    return Some((height - hwpunit_to_px(para_max_lh, self.dpi)).max(0.0));
+                }
+                Some(height)
             })
             .sum()
     }

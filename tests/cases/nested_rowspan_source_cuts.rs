@@ -9,7 +9,7 @@ use rhwp::model::document::Section;
 use rhwp::model::page::PageDef;
 use rhwp::model::paragraph::{LineSeg, Paragraph};
 use rhwp::model::shape::{Caption, CaptionDirection, TextWrap, VertRelTo};
-use rhwp::model::style::ParaShape;
+use rhwp::model::style::{CharShape, ParaShape};
 use rhwp::model::table::{Cell, Table, TablePageBreak, VerticalAlign};
 use rhwp::renderer::render_tree::{BoundingBox, RenderNode, RenderNodeType};
 use serde_json::Value;
@@ -124,6 +124,10 @@ fn fixture(
     parent.rebuild_grid();
     let mut core = DocumentCore::new_empty();
     let mut document = core.document().clone();
+    document.doc_info.char_shapes = vec![CharShape {
+        base_size: 1200,
+        ..Default::default()
+    }];
     document.doc_info.para_shapes = vec![ParaShape::default()];
     let mut section = Section::default();
     section.section_def.page_def = PageDef {
@@ -368,6 +372,67 @@ fn spaced_nested_rowspan_with_stored_host_reserves_every_fragment() {
         "0123456789ABFGHIR"
     );
     assert!(actual[&'B'].page > actual[&'A'].page);
+}
+
+#[test]
+fn short_stored_host_preserves_grown_nested_rowspan_and_following_text() {
+    for (parent_rows, reset) in [(1, true), (2, true), (2, false)] {
+        for spacing in [0, 600] {
+            for host_height in [2400, 4800] {
+                let mut core = fixture(reset, None, 4800, spacing);
+                let mut document = core.document().clone();
+                let Control::Table(parent) = &mut document.sections[0].paragraphs[1].controls[0]
+                else {
+                    panic!("본문의 부모 표");
+                };
+                parent.row_count = parent_rows;
+                for cell in &mut parent.cells {
+                    cell.row_span = parent_rows;
+                }
+                parent.rebuild_grid();
+                parent.cells[0].paragraphs[0].line_segs = vec![LineSeg {
+                    // 저장된 32~64px host는 선언 높이만 품고, 커진 글줄은 담지 못한다.
+                    line_height: host_height,
+                    text_height: host_height,
+                    baseline_distance: host_height * 4 / 5,
+                    segment_width: 20_000,
+                    ..Default::default()
+                }];
+                core.set_document(document);
+                let hwp = DocumentCore::from_bytes(&core.export_hwp_native().expect("HWP 저장"))
+                    .expect("HWP 다시 열기");
+                let hwpx = DocumentCore::from_bytes(&core.export_hwpx_native().expect("HWPX 저장"))
+                    .expect("HWPX 다시 열기");
+                let original = glyphs(&core);
+                for current in [&core, &hwp, &hwpx] {
+                    let actual = glyphs(current);
+                    assert_eq!(
+                        actual.keys().copied().collect::<String>(),
+                        "0123456789ABFGHIR"
+                    );
+                    assert_eq!(current.page_count(), core.page_count(), "저장 후 쪽 수");
+                    for (ch, glyph) in &actual {
+                        assert_eq!(glyph.page, original[ch].page, "저장 후 글자의 쪽 위치");
+                        assert!(
+                            glyph.bbox.y >= 7.5 && glyph.bbox.y + glyph.bbox.height <= 72.5,
+                            "글자가 본문 밖에 있다: {ch}, {glyph:?}"
+                        );
+                    }
+                    if reset {
+                        assert!(actual[&'B'].page > actual[&'A'].page);
+                    }
+                    let last = &actual[&'9'];
+                    let following = &actual[&'F'];
+                    assert!(
+                        following.page > last.page
+                            || (following.page == last.page
+                                && following.bbox.y >= last.bbox.y + last.bbox.height - 0.5),
+                        "뒤 문단이 커진 중첩 표와 겹쳤다: parent_rows={parent_rows}, spacing={spacing}, host_height={host_height}, {actual:?}"
+                    );
+                }
+            }
+        }
+    }
 }
 
 #[test]

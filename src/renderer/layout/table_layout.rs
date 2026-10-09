@@ -14251,6 +14251,13 @@ impl LayoutEngine {
             if k > j && u.hard_break_before {
                 return Some((h + extra, k));
             }
+            // 커진 병합 표의 원본 줄 컷은 저장 host 프레임보다 실제 쪽 예산을 따른다.
+            if u.nested_table_fragment
+                .as_ref()
+                .is_some_and(|fragment| fragment.is_block)
+            {
+                return None;
+            }
             extra += u.height;
             if h + extra > avail_height + SLIVER_ABSORB_OVERFLOW_TOLERANCE_PX {
                 return None;
@@ -14274,6 +14281,14 @@ impl LayoutEngine {
         for (k, unit) in units.iter().enumerate().skip(j) {
             if k > j && unit.stored_frame_break_before {
                 return Some((h + extra, k));
+            }
+            // 커진 병합 표의 원본 줄 컷은 저장 host 프레임보다 실제 쪽 예산을 따른다.
+            if unit
+                .nested_table_fragment
+                .as_ref()
+                .is_some_and(|fragment| fragment.is_block)
+            {
+                return None;
             }
             extra += unit.height;
             if h + extra > avail_height + SLIVER_ABSORB_OVERFLOW_TOLERANCE_PX {
@@ -17784,6 +17799,91 @@ impl LayoutEngine {
         }
     }
 
+    /// 병합 블록도 선택한 자식 컷의 물리 공간을 예약한 뒤 내용 컷을 다시 고른다.
+    pub(crate) fn advance_row_block_cut_with_mixed_nested_reserve(
+        &self,
+        table: &crate::model::table::Table,
+        block: (usize, usize),
+        start_cut: &[usize],
+        content_budget: f64,
+        row_offsets: &[f64],
+        styles: &ResolvedStyleSet,
+    ) -> RowCutResult {
+        let (b_start, b_end) = block;
+        let advance = |budget| {
+            if row_offsets.is_empty() {
+                self.advance_row_block_cut(table, b_start, b_end, start_cut, budget, styles)
+            } else {
+                self.advance_row_block_cut_with_row_offsets(
+                    table,
+                    b_start,
+                    b_end,
+                    start_cut,
+                    budget,
+                    row_offsets,
+                    styles,
+                )
+            }
+        };
+        let mut cells = Self::row_block_cells(table, b_start, b_end);
+        cells.sort_by_key(|cell| (cell.row, cell.col));
+        let mut budget = content_budget;
+        let mut cut = advance(budget);
+        loop {
+            let mut physical = 0.0f64;
+            let mut logical = 0.0f64;
+            let mut row_top = 0.0;
+            let mut physical_row_top = 0.0;
+            let mut row_height = 0.0f64;
+            let mut physical_row_height = 0.0f64;
+            let mut previous_row = None;
+            for (i, cell) in cells.iter().enumerate() {
+                if row_offsets.is_empty() && previous_row.is_some_and(|row| row != cell.row) {
+                    let spacing = hwpunit_to_px(table.cell_spacing as i32, self.dpi);
+                    row_top += row_height + spacing;
+                    physical_row_top += physical_row_height + spacing;
+                    row_height = 0.0;
+                    physical_row_height = 0.0;
+                }
+                previous_row = Some(cell.row);
+                let units = self.cell_units(cell, table, styles);
+                let start = start_cut.get(i).copied().unwrap_or(0).min(units.len());
+                let end = cut.end_cut[i].clamp(start, units.len());
+                let height: f64 = units[start..end].iter().map(|unit| unit.height).sum();
+                if height <= 0.0 {
+                    continue;
+                }
+                let extra = self.mixed_nested_flow_extra_from_cut(cell, table, styles, start, end);
+                let offset = (cell.row as usize)
+                    .checked_sub(b_start)
+                    .and_then(|row| row_offsets.get(row))
+                    .copied();
+                logical = logical.max(offset.unwrap_or(row_top) + height);
+                physical = physical.max(offset.unwrap_or(physical_row_top) + height + extra);
+                // 병합 칸의 전체 높이는 아래 행까지 덮으므로 다음 행 원점에 더하지 않는다.
+                if cell.row_span == 1 {
+                    row_height = row_height.max(height);
+                    physical_row_height = physical_row_height.max(height + extra);
+                }
+            }
+            let reserve = (physical - logical).max(0.0);
+            let available = (content_budget - reserve).max(0.0);
+            if cut.consumed_height <= available + ROW_CUT_CAPACITY_FP_EPSILON_PX
+                || available >= budget
+            {
+                cut.consumed_height += reserve;
+                return cut;
+            }
+            budget = available;
+            let next = advance(budget);
+            if next.end_cut == cut.end_cut {
+                cut.consumed_height += reserve;
+                return cut;
+            }
+            cut = next;
+        }
+    }
+
     /// 저장 병합 셀의 쪽 상자가 남긴 빈 높이를 다음 실제 내용 행에 넘긴다.
     /// 앞 행의 유닛을 모두 소비한 경우에만 블록 컷을 행 컷으로 정규화한다.
     pub(crate) fn stored_rowspan_page_frame(
@@ -18520,7 +18620,8 @@ impl LayoutEngine {
                 self.native_saved_reset_cut_trailing_trim(table, cell, &units, su, eu, styles)
             };
             let content: f64 =
-                (units[su..eu].iter().map(|u| u.height).sum::<f64>() - trailing_trim).max(0.0);
+                (units[su..eu].iter().map(|u| u.height).sum::<f64>() - trailing_trim).max(0.0)
+                    + self.mixed_nested_flow_extra_from_cut(cell, table, styles, su, eu);
             let (_, _, pad_top, pad_bottom) = self.resolve_cell_padding(cell, table);
             let h = content + pad_top + pad_bottom;
             // [#2287 진단] start_cut 적용 잔여 평가 분해 — 동작 불변.
@@ -18642,8 +18743,9 @@ impl LayoutEngine {
         let eu = end_unit.clamp(su, units.len());
         let trailing_trim =
             self.native_saved_reset_cut_trailing_trim(table, cell, &units, su, eu, styles);
-        let content: f64 =
-            (units[su..eu].iter().map(|u| u.height).sum::<f64>() - trailing_trim).max(0.0);
+        let content: f64 = (units[su..eu].iter().map(|u| u.height).sum::<f64>() - trailing_trim)
+            .max(0.0)
+            + self.mixed_nested_flow_extra_from_cut(cell, table, styles, su, eu);
         if content <= 0.0 {
             return 0.0;
         }
@@ -18677,7 +18779,8 @@ impl LayoutEngine {
                     hi -= 1;
                 }
             }
-            let content: f64 = units[lo..hi].iter().map(|u| u.height).sum();
+            let content: f64 = units[lo..hi].iter().map(|u| u.height).sum::<f64>()
+                + self.mixed_nested_flow_extra_from_cut(cell, table, styles, lo, hi);
             if content <= 0.0 {
                 continue;
             }
@@ -19755,12 +19858,11 @@ impl LayoutEngine {
             _ => None,
         })?;
         if !crate::renderer::para_has_no_stored_line_segs(para)
-            && !(child.cell_spacing > 0
-                && units[run_start..run_end].iter().any(|unit| {
-                    unit.nested_table_fragment
-                        .as_ref()
-                        .is_some_and(|fragment| fragment.is_block)
-                }))
+            && !units[run_start..run_end].iter().any(|unit| {
+                unit.nested_table_fragment
+                    .as_ref()
+                    .is_some_and(|fragment| fragment.is_block)
+            })
         {
             return None;
         }
