@@ -57,7 +57,8 @@ fn recalculate_cell_paragraph_vpos(
     // 제외한다 (로드가 합성한 중간-셀 문단에서 가짜 정지 → 꼬리 미갱신 방지).
     let fragment_start = (1..=start_para)
         .rev()
-        .find(|&idx| paragraphs[idx].cell_vpos_reset == Some(true))
+        // 서식 편집 전에는 경계 표시가 없으므로 저장 줄의 원점 재시작도 읽는다.
+        .find(|&idx| cell_vpos_resets(&paragraphs[idx - 1], &paragraphs[idx]))
         .unwrap_or(0);
     let stop_para = paragraphs
         .windows(2)
