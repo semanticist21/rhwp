@@ -57,27 +57,24 @@ fn layer_cells<'a>(node: &'a LayerNode, result: &mut Vec<&'a TableCellNode>) {
     }
 }
 
-fn rendered_paragraphs(node: &RenderNode, result: &mut BTreeMap<usize, String>) {
+fn rendered_paragraphs(
+    node: &RenderNode,
+    inherited_paragraph: Option<usize>,
+    result: &mut BTreeMap<usize, String>,
+) {
+    let paragraph = match &node.node_type {
+        RenderNodeType::TextLine(line) => line.para_index.or(inherited_paragraph),
+        _ => inherited_paragraph,
+    };
     if let RenderNodeType::TextRun(run) = &node.node_type {
-        if let Some(context) = &run.cell_context {
-            if context.parent_para_index == 674
-                && context.path.len() == 2
-                && context.path[0].control_index == 0
-                && context.path[0].cell_index == 2
-                && context.path[1].control_index == 1
-                && context.path[1].cell_index == 39
-                && !run.is_para_end
-                && !run.is_line_break_end
-            {
-                result
-                    .entry(context.path[1].cell_para_index)
-                    .or_default()
-                    .push_str(&run.text);
-            }
+        // is_para_end는 이 run이 문단 끝임을 뜻하며 실제 텍스트도 포함한다.
+        // 대상 셀 subtree의 TextLine 번호로 묶어 스타일별 run 전체를 보존한다.
+        if let Some(paragraph) = paragraph.or(run.para_index) {
+            result.entry(paragraph).or_default().push_str(&run.text);
         }
     }
     for child in &node.children {
-        rendered_paragraphs(child, result);
+        rendered_paragraphs(child, paragraph, result);
     }
 }
 
@@ -135,7 +132,7 @@ fn stored_rowspan_fragments_preserve_source_paragraph_ranges_and_contents() {
 
         // 스타일별로 나뉜 run을 합쳐 복제된 문단의 텍스트를 원본 slice와 대조한다.
         let mut actual = BTreeMap::new();
-        rendered_paragraphs(cell_node, &mut actual);
+        rendered_paragraphs(cell_node, None, &mut actual);
         actual.retain(|_, text| !text.is_empty());
         let expected: BTreeMap<_, _> = paragraphs[start..end]
             .iter()
