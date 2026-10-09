@@ -5,10 +5,10 @@ use crate::renderer::typeset::notes::endnotes::profile::EnSsotLevel;
 use crate::renderer::typeset::{
     endnote_last_column_tail_overflows_frame, hwpunit_to_px, line_has_visible_text_or_tac_equation,
     page_item_para_index, para_has_non_tac_picture_or_shape, para_has_visible_text_or_equation,
-    para_is_treat_as_char_picture_only, paragraph_by_global_index, ComposedParagraph, Control,
-    EndnoteRef, FormattedParagraph, MeasuredTable, PageItem, Paragraph, ResolvedStyleSet,
-    TypesetEngine, TypesetState, ENDNOTE_COLUMN_BOTTOM_BLEED_TOLERANCE_PX,
-    ENDNOTE_LAST_COLUMN_SPLIT_BLEED_PX, ENDNOTE_PAGE_OFFCANVAS_GUARD_PX,
+    paragraph_by_global_index, ComposedParagraph, Control, EndnoteRef, FormattedParagraph,
+    MeasuredTable, PageItem, Paragraph, ResolvedStyleSet, TypesetEngine, TypesetState,
+    ENDNOTE_COLUMN_BOTTOM_BLEED_TOLERANCE_PX, ENDNOTE_LAST_COLUMN_SPLIT_BLEED_PX,
+    ENDNOTE_PAGE_OFFCANVAS_GUARD_PX,
 };
 
 /// 호출 시점의 관측값. 페이지 상태를 변경할 수 없는 Query 입력이다.
@@ -211,7 +211,9 @@ impl TypesetEngine {
                 <= available
                     + ENDNOTE_COLUMN_BOTTOM_BLEED_TOLERANCE_PX
                     + no_separator_tail_extra_bleed;
-        let next_endnote_title_fit_height = if ep_idx + 1 == en_ctrl.paragraphs.len() {
+        // 다음 미주의 높이와 한 줄 제목 여부는 같은 조판 결과에서 읽는다.
+        // 다음다음 미주 높이는 그 값을 쓰는 분할 조건 안에서만 조판한다.
+        let next_endnote_fit = if ep_idx + 1 == en_ctrl.paragraphs.len() {
             endnote_refs.get(en_ref_idx + 1).and_then(|next_ref| {
                 let next_ctrl = next_ref.resolve(paragraphs)?;
                 let mut next_para = next_ctrl.paragraphs.first()?.clone();
@@ -225,76 +227,18 @@ impl TypesetEngine {
                     &styles,
                     Some(en_col_w),
                 );
-                (next_fmt.line_heights.len() == 1
-                    && line_has_visible_text_or_tac_equation(&next_para, &next_comp, 0))
-                .then_some(next_fmt.height_for_fit)
+                Some((
+                    next_fmt.height_for_fit,
+                    next_fmt.line_heights.len() == 1
+                        && line_has_visible_text_or_tac_equation(&next_para, &next_comp, 0),
+                ))
             })
         } else {
             None
         };
-        let next_endnote_first_para_fit_height = if ep_idx + 1 == en_ctrl.paragraphs.len() {
-            endnote_refs.get(en_ref_idx + 1).and_then(|next_ref| {
-                let next_ctrl = next_ref.resolve(paragraphs)?;
-                let mut next_para = next_ctrl.paragraphs.first()?.clone();
-                prepend_endnote_marker_text(&mut next_para, next_ctrl);
-
-                let next_comp =
-                    crate::renderer::composer::compose_paragraph_in_context(&next_para, styles);
-                let next_fmt = self.format_endnote_paragraph(
-                    &next_para,
-                    Some(&next_comp),
-                    &styles,
-                    Some(en_col_w),
-                );
-                Some(next_fmt.height_for_fit)
-            })
-        } else {
-            None
-        };
-        let next_next_endnote_first_para_fit_height = if ep_idx + 1 == en_ctrl.paragraphs.len() {
-            endnote_refs.get(en_ref_idx + 2).and_then(|next_ref| {
-                let next_ctrl = next_ref.resolve(paragraphs)?;
-                let mut next_para = next_ctrl.paragraphs.first()?.clone();
-                prepend_endnote_marker_text(&mut next_para, next_ctrl);
-
-                let next_comp =
-                    crate::renderer::composer::compose_paragraph_in_context(&next_para, styles);
-                let next_fmt = self.format_endnote_paragraph(
-                    &next_para,
-                    Some(&next_comp),
-                    &styles,
-                    Some(en_col_w),
-                );
-                Some(next_fmt.height_for_fit)
-            })
-        } else {
-            None
-        };
-        let next_endnote_head_has_large_tac_picture = if ep_idx + 1 == en_ctrl.paragraphs.len() {
-            endnote_refs
-                .get(en_ref_idx + 1)
-                .and_then(|next_ref| {
-                    let next_ctrl = next_ref.resolve(paragraphs)?;
-                    Some(next_ctrl.paragraphs.iter().take(8).any(|next_para| {
-                        if !para_is_treat_as_char_picture_only(next_para) {
-                            return false;
-                        }
-                        let next_comp = crate::renderer::composer::compose_paragraph_in_context(
-                            next_para, styles,
-                        );
-                        let next_fmt = self.format_endnote_paragraph(
-                            next_para,
-                            Some(&next_comp),
-                            &styles,
-                            Some(en_col_w),
-                        );
-                        next_fmt.height_for_fit > 80.0
-                    }))
-                })
-                .unwrap_or(false)
-        } else {
-            false
-        };
+        let next_endnote_title_fit_height =
+            next_endnote_fit.and_then(|(height, title)| title.then_some(height));
+        let next_endnote_first_para_fit_height = next_endnote_fit.map(|(height, _)| height);
         let compact_endnote_own_vpos_span_fits = self.judge_compact_endnote_own_vpos_span_fits(
             dpi,
             this_content_bottom_offset,
@@ -559,7 +503,26 @@ impl TypesetEngine {
             && para_has_visible_text_or_equation(en_para)
             && st.current_height > available - 70.0
             && next_endnote_first_para_fit_height.is_some_and(|next_h| next_h <= 18.0)
-            && next_next_endnote_first_para_fit_height.is_some_and(|next_h| next_h <= 18.0)
+            && ep_idx + 1 == en_ctrl.paragraphs.len()
+            && endnote_refs
+                .get(en_ref_idx + 2)
+                .and_then(|next_ref| {
+                    let next_ctrl = next_ref.resolve(paragraphs)?;
+                    let mut next_para = next_ctrl.paragraphs.first()?.clone();
+                    prepend_endnote_marker_text(&mut next_para, next_ctrl);
+                    let next_comp =
+                        crate::renderer::composer::compose_paragraph_in_context(&next_para, styles);
+                    Some(
+                        self.format_endnote_paragraph(
+                            &next_para,
+                            Some(&next_comp),
+                            styles,
+                            Some(en_col_w),
+                        )
+                        .height_for_fit,
+                    )
+                })
+                .is_some_and(|next_h| next_h <= 18.0)
         {
             // 마지막 단 하단에서 2줄 풀이 뒤에 짧은 한 줄 풀이들이
             // 이어지는 비가시 구분선 미주는, 한컴처럼 2줄 풀이의 첫 줄만
