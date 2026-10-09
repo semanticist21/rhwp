@@ -267,6 +267,10 @@ pub fn serialize_hwpx_with_report(doc: &Document) -> Result<SerializedDocument, 
     if let Some(marker) = doc.hwpx_aux_entry(HWP5_ORIGIN_HWPX_MARKER_PATH) {
         z.write_deflated(HWP5_ORIGIN_HWPX_MARKER_PATH, marker)?;
     }
+    // 문단 축 마커와 조판 계보는 별개다. 변환 HWP의 HWPX 조판 계약도 이어 준다.
+    if doc.provenance.hwpx_lineage {
+        z.write_deflated(crate::model::document::HWPX_ORIGIN_HWPX_MARKER_PATH, b"1")?;
+    }
     // HWP3-origin 마커 — 재열람 시 hwp3_lineage 복원(왕복 레이아웃 등식).
     if let Some(marker) = doc.hwpx_aux_entry(crate::model::document::HWP3_ORIGIN_HWPX_MARKER_PATH) {
         z.write_deflated(crate::model::document::HWP3_ORIGIN_HWPX_MARKER_PATH, marker)?;

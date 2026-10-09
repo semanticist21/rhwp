@@ -2557,6 +2557,7 @@ pub fn convert_if_hwpx_source(doc: &mut Document, source_format: FileFormat) -> 
         0
     };
     if matches!(source_format, FileFormat::Hwpx)
+        && !doc.layout_profile().hwp5_origin_hwpx()
         && !doc
             .extra_streams
             .iter()

@@ -763,7 +763,10 @@ pub(crate) fn uses_hwp3_origin_flow_spacing_before(document: &Document) -> bool 
     let profile = document.layout_profile();
     profile.hwp3_layout()
         && !profile.hwp3_native_layout()
-        && (!profile.hwpx_container() || profile.hwp5_origin_hwpx())
+        && (!profile.hwpx_container()
+            || document
+                .hwpx_aux_entry(crate::model::document::HWP5_ORIGIN_HWPX_MARKER_PATH)
+                .is_some())
 }
 
 fn should_insert_hwp3_title_filler_page(

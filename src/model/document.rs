@@ -19,6 +19,9 @@ pub const HWP5_ORIGIN_HWPX_MARKER_PATH: &str = "META-INF/rhwp-hwp5-origin";
 /// 이전 `1` 산출물의 축 해석은 읽기 호환 경로에서 유지한다.
 pub const HWP5_ORIGIN_HWPX_PARAGRAPH_AXIS: &[u8] = b"2:paragraph-utf16";
 
+/// HWPX에서 변환한 HWP의 저장 조판 계보를 HWPX 재저장에서도 보존한다.
+pub const HWPX_ORIGIN_HWPX_MARKER_PATH: &str = "META-INF/rhwp-hwpx-origin";
+
 /// HWP3 원본에서 HWPX 로 export 한 산출물 마커 — 재열람 시 hwp3_lineage 를
 /// 복원해 직파싱 HWP3 와 같은 레이아웃 계약(저장-스텝 등)을 밟게 한다.
 /// 없으면 render-diff 왕복이 프로파일 차이만큼 갈라진다(hwp3-sample p7 14.9px).
@@ -380,7 +383,8 @@ impl Document {
     /// 없음) || rhwp HWPX→HWP 변환본. HWP5→HWPX 마커는 세션 중 부착될 수
     /// 있어 저장 값이 아닌 현재 문서 상태에서 파생한다. `native_hwp5_layout`은
     /// 변환 계보가 없는 원본 HWP5 컨테이너에만 true다. HWP5-origin HWPX는
-    /// `hwp5_stored_pagination_layout`으로 별도 호환 계약을 적용한다.
+    /// `hwp5_stored_pagination_layout`으로 별도 호환 계약을 적용하되,
+    /// HWPX에서 변환한 HWP의 재저장본은 원래 HWPX 조판 계보를 유지한다.
     pub fn layout_profile(&self) -> crate::model::provenance::LayoutCompatibilityProfile {
         use crate::model::provenance::SourceFormat;
         let hwp5_origin_hwpx = self.hwpx_aux_entry(HWP5_ORIGIN_HWPX_MARKER_PATH).is_some();
@@ -401,7 +405,7 @@ impl Document {
                 && !native_hwp3_hwpx)
                 || self.provenance.hwpx_lineage,
             self.provenance.format == SourceFormat::Hwpx && !native_hwp3_hwpx,
-            hwp5_origin_hwpx,
+            hwp5_origin_hwpx && !self.provenance.hwpx_lineage,
             self.provenance.format == SourceFormat::Hwp5
                 && !self.provenance.hwp3_lineage
                 && !self.provenance.hwpx_lineage,

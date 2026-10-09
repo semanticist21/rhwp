@@ -403,6 +403,7 @@ pub fn parse_hwpx(data: &[u8]) -> Result<Document, HwpxError> {
         "Preview/PrvText.txt",
         "Preview/PrvImage.png",
         crate::model::document::HWP5_ORIGIN_HWPX_MARKER_PATH,
+        crate::model::document::HWPX_ORIGIN_HWPX_MARKER_PATH,
         crate::model::document::HWP3_ORIGIN_HWPX_MARKER_PATH,
     ];
     let mut hwpx_aux_entries: Vec<(String, Vec<u8>)> = Vec::new();
@@ -518,6 +519,9 @@ pub fn parse_hwpx(data: &[u8]) -> Result<Document, HwpxError> {
     let has_hwp3_origin = hwpx_aux_entries
         .iter()
         .any(|(path, _)| path == crate::model::document::HWP3_ORIGIN_HWPX_MARKER_PATH);
+    let has_hwpx_origin = hwpx_aux_entries
+        .iter()
+        .any(|(path, _)| path == crate::model::document::HWPX_ORIGIN_HWPX_MARKER_PATH);
     let paragraph_axis = hwpx_aux_entries.iter().any(|(path, value)| {
         path == crate::model::document::HWP5_ORIGIN_HWPX_MARKER_PATH
             && value == crate::model::document::HWP5_ORIGIN_HWPX_PARAGRAPH_AXIS
@@ -688,11 +692,11 @@ pub fn parse_hwpx(data: &[u8]) -> Result<Document, HwpxError> {
         extra_streams: contract.streams,
         hwpx_aux_entries,
         is_hwp3_variant: false,
-        is_hwpx_variant: false,
+        is_hwpx_variant: has_hwpx_origin,
         provenance: crate::model::provenance::SourceProvenance {
             format: crate::model::provenance::SourceFormat::Hwpx,
             hwp3_lineage: false,
-            hwpx_lineage: false,
+            hwpx_lineage: has_hwpx_origin,
             hft_ascii_halfwidth_witnessed: false,
         },
     };

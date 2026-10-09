@@ -33,8 +33,8 @@ pub struct SourceProvenance {
     pub format: SourceFormat,
     /// 한컴 HWP3→HWP5 변환본 (휴리스틱 식별, Task #1001) — `is_hwp3_variant` 동치.
     pub hwp3_lineage: bool,
-    /// rhwp HWPX→HWP 변환본 (`/RhwpHwpxOrigin` 마커, Issue #1770) —
-    /// `is_hwpx_variant` 동치.
+    /// rhwp HWPX→HWP 변환 계보(`/RhwpHwpxOrigin`)와 그 HWPX 재저장본
+    /// (`META-INF/rhwp-hwpx-origin`) — `is_hwpx_variant` 동치.
     pub hwpx_lineage: bool,
     /// [#7051] 저장 줄 사다리가 HFT 한글 전용 face 의 ASCII 반각 조판을 증언한다.
     /// 계보 신호(`hwp3_lineage`)가 없는 저장본 — HWP3 변환 HWP5 를 한컴이 HWPX 로 다시
