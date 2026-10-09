@@ -50,7 +50,12 @@ fn cell(row: u16, col: u16, paragraphs: Vec<Paragraph>) -> Cell {
     }
 }
 
-fn fixture(reset: bool, caption: Option<CaptionDirection>, body_height: u32) -> DocumentCore {
+fn fixture(
+    reset: bool,
+    caption: Option<CaptionDirection>,
+    body_height: u32,
+    cell_spacing: i16,
+) -> DocumentCore {
     let mut merged = cell(
         0,
         0,
@@ -58,6 +63,7 @@ fn fixture(reset: bool, caption: Option<CaptionDirection>, body_height: u32) -> 
     );
     merged.row_span = 2;
     let mut child = Table {
+        cell_spacing,
         row_count: 2,
         col_count: 2,
         page_break: TablePageBreak::RowBreak,
@@ -236,7 +242,7 @@ fn glyphs(core: &DocumentCore) -> BTreeMap<char, Glyph> {
 
 #[test]
 fn late_row_driver_preserves_merged_source_paragraph_reset() {
-    let core = fixture(true, None, 4800);
+    let core = fixture(true, None, 4800, 0);
     let actual = glyphs(&core);
     assert_eq!(
         actual.keys().copied().collect::<String>(),
@@ -252,7 +258,7 @@ fn late_row_driver_preserves_merged_source_paragraph_reset() {
 #[test]
 fn nested_microfragments_reserve_top_and_bottom_caption_once() {
     for direction in [CaptionDirection::Top, CaptionDirection::Bottom] {
-        let core = fixture(false, Some(direction), 4800);
+        let core = fixture(false, Some(direction), 4800, 0);
         let actual = glyphs(&core);
         assert_eq!(
             actual.keys().copied().collect::<String>(),
@@ -289,7 +295,7 @@ fn nested_microfragments_reserve_top_and_bottom_caption_once() {
 
 #[test]
 fn single_atom_late_driver_keeps_the_whole_block_on_one_page() {
-    let mut core = fixture(false, None, 14_400);
+    let mut core = fixture(false, None, 14_400, 0);
     let mut document = core.document().clone();
     let Control::Table(parent) = &mut document.sections[0].paragraphs[1].controls[0] else {
         panic!("본문의 부모 표");
@@ -320,5 +326,83 @@ fn single_atom_late_driver_keeps_the_whole_block_on_one_page() {
     assert!(
         actual[&'F'].bbox.y >= actual[&'L'].bbox.y + actual[&'L'].bbox.height - 0.5,
         "큰 원자 유닛 뒤 문단이 겹쳤다: {actual:?}"
+    );
+}
+
+#[test]
+fn spaced_nested_rowspan_keeps_source_cuts_and_parent_bounds() {
+    for spacing in [150, 600] {
+        let core = fixture(true, None, 4800, spacing);
+        let actual = glyphs(&core);
+        assert_eq!(
+            actual.keys().copied().collect::<String>(),
+            "0123456789ABFGHIR"
+        );
+        assert_eq!(actual[&'A'].page, 0, "첫 문단은 첫 조각 소유다");
+        assert!(
+            actual[&'B'].page > actual[&'A'].page,
+            "셀 간격 {spacing}이 원본 문단의 쪽 경계를 삼켰다: {actual:?}"
+        );
+    }
+}
+
+#[test]
+fn spaced_nested_rowspan_with_stored_host_reserves_every_fragment() {
+    let mut core = fixture(true, None, 4800, 600);
+    let mut document = core.document().clone();
+    let Control::Table(parent) = &mut document.sections[0].paragraphs[1].controls[0] else {
+        panic!("본문의 부모 표");
+    };
+    parent.cells[0].paragraphs[0].line_segs = vec![LineSeg {
+        // 저장 host는 자식의 원본 전체 높이(192px + 셀 간격 8px)를 보존한다.
+        line_height: 15_000,
+        text_height: 15_000,
+        baseline_distance: 12_000,
+        segment_width: 20_000,
+        ..Default::default()
+    }];
+    core.set_document(document);
+    let actual = glyphs(&core);
+    assert_eq!(
+        actual.keys().copied().collect::<String>(),
+        "0123456789ABFGHIR"
+    );
+    assert!(actual[&'B'].page > actual[&'A'].page);
+}
+
+#[test]
+fn spaced_rowspan_continuation_reserves_gaps_between_empty_rows() {
+    let mut core = fixture(false, None, 4800, 0);
+    let mut document = core.document().clone();
+    let Control::Table(table) = &mut document.sections[0].paragraphs[1].controls[0] else {
+        panic!("본문 표");
+    };
+    let mut merged = cell(0, 0, vec![paragraph("abcdefghijklmnop", 16, None)]);
+    merged.row_span = 2;
+    merged.height = 2400;
+    table.row_count = 2;
+    table.col_count = 2;
+    table.common.width = 20_000;
+    table.cell_spacing = 600;
+    table.cells = vec![
+        merged,
+        cell(0, 1, vec![paragraph("R", 1, None)]),
+        cell(1, 1, vec![paragraph("S", 1, None)]),
+    ];
+    table.rebuild_grid();
+    document.sections[0]
+        .paragraphs
+        .push(paragraph("Z", 1, None));
+    core.set_document(document);
+    let actual = glyphs(&core);
+    assert_eq!(
+        actual.keys().copied().collect::<String>(),
+        "IRSZabcdefghijklmnop"
+    );
+    let last = &actual[&'p'];
+    let following = &actual[&'Z'];
+    assert!(
+        following.page > last.page || following.bbox.y >= last.bbox.y + last.bbox.height - 0.5,
+        "뒤 본문이 표 마지막 줄과 겹쳤다: {actual:?}"
     );
 }
