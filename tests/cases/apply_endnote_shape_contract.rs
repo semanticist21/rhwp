@@ -3,8 +3,11 @@
 
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use rhwp::wasm_api::HwpDocument;
+
+static TEMP_SERIAL: AtomicU64 = AtomicU64::new(0);
 
 fn rhwp_bin() -> String {
     std::env::var("CARGO_BIN_EXE_rhwp").unwrap_or_else(|_| env!("CARGO_BIN_EXE_rhwp").to_string())
@@ -12,13 +15,41 @@ fn rhwp_bin() -> String {
 
 fn temp(tag: &str) -> PathBuf {
     std::env::temp_dir().join(format!(
-        "rhwp-enshape-{tag}-{}-{}.hwp",
+        "rhwp-enshape-{tag}-{}-{}-{}.hwp",
         std::process::id(),
         std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
-            .as_nanos()
+            .as_nanos(),
+        TEMP_SERIAL.fetch_add(1, Ordering::Relaxed),
     ))
+}
+
+#[test]
+fn concurrent_fixture_paths_are_unique() {
+    let barrier = std::sync::Barrier::new(16);
+    let paths = std::thread::scope(|scope| {
+        let handles: Vec<_> = (0..16)
+            .map(|_| {
+                scope.spawn(|| {
+                    barrier.wait();
+                    (0..64).map(|_| temp("fx")).collect::<Vec<_>>()
+                })
+            })
+            .collect();
+        handles
+            .into_iter()
+            .flat_map(|handle| handle.join().unwrap())
+            .collect::<Vec<_>>()
+    });
+    let count = paths.len();
+    assert_eq!(
+        paths
+            .into_iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len(),
+        count
+    );
 }
 
 fn fixture_with_endnote() -> PathBuf {
