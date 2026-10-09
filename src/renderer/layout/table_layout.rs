@@ -12614,9 +12614,7 @@ impl LayoutEngine {
                         if matches!(nt.page_break, TablePageBreak::RowBreak) {
                             let block = super::table_partial::rowspan_block_range(nt, ri);
                             // 내용이 선언 높이를 넘긴 병합 칸도 원본 유닛 컷을 부모에 전달한다.
-                            // shortcut: 셀 간격이 있는 블록은 조각마다 간격을 예약한 뒤 분할한다.
-                            let split_block = ncs == 0.0
-                                && block.0 == ri
+                            let split_block = block.0 == ri
                                 && nt.cells.iter().any(|child| {
                                     child.row_span > 1
                                         && child.row as usize >= block.0
@@ -19752,13 +19750,20 @@ impl LayoutEngine {
     ) -> Option<f64> {
         let pi = units[run_start].para_idx;
         let para = cell.paragraphs.get(pi)?;
-        if !crate::renderer::para_has_no_stored_line_segs(para) {
-            return None;
-        }
         let child = para.controls.iter().find_map(|control| match control {
             Control::Table(child) => Some(child.as_ref()),
             _ => None,
         })?;
+        if !crate::renderer::para_has_no_stored_line_segs(para)
+            && !(child.cell_spacing > 0
+                && units[run_start..run_end].iter().any(|unit| {
+                    unit.nested_table_fragment
+                        .as_ref()
+                        .is_some_and(|fragment| fragment.is_block)
+                }))
+        {
+            return None;
+        }
         let start = lo.max(run_start);
         let end = hi.min(run_end);
         if start >= end {
@@ -19857,18 +19862,21 @@ impl LayoutEngine {
                 } else {
                     &[]
                 };
-                let rows = (row..block.1.min(cut.end_row))
+                let painted_end = block.1.min(cut.end_row);
+                let rows = (row..painted_end)
                     .map(|block_row| {
                         self.row_block_cut_row_content_height(
                             child, block.0, block.1, block_row, start_cut, end_cut, styles,
                         )
                     })
                     .sum::<f64>();
+                // 실제 조각은 빈 행 사이 간격도 그리므로 블록 범위에서 한 번 예약한다.
                 physical +=
                     rows.max(self.row_block_content_height(
                         child, block.0, block.1, start_cut, end_cut, styles,
-                    ));
-                row = block.1.min(cut.end_row);
+                    )) + hwpunit_to_px(child.cell_spacing as i32, self.dpi)
+                        * painted_end.saturating_sub(row + 1) as f64;
+                row = painted_end;
                 if row < cut.end_row {
                     physical += hwpunit_to_px(child.cell_spacing as i32, self.dpi);
                 }
@@ -19998,11 +20006,12 @@ impl LayoutEngine {
         while u < units.len() {
             // Reflow recursive runs use their actual child RowCut even on the
             // first fragment. Group once so the parent scan remains O(U).
-            if cell
-                .paragraphs
-                .get(units[u].para_idx)
-                .is_some_and(crate::renderer::para_has_no_stored_line_segs)
-                && (units[u].mixed_nested_fragment || units[u].nested_row.is_some())
+            if units[u].nested_row.is_some()
+                || (units[u].mixed_nested_fragment
+                    && cell
+                        .paragraphs
+                        .get(units[u].para_idx)
+                        .is_some_and(crate::renderer::para_has_no_stored_line_segs))
             {
                 let run_start = u;
                 let pi = units[u].para_idx;
