@@ -49,7 +49,7 @@ impl Server {
             .arg("mcp-serve")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
+            .stderr(Stdio::inherit())
             .spawn()
             .expect("rhwp mcp-serve 실행 실패");
         let stdin = child.stdin.take().expect("stdin");
