@@ -2,6 +2,8 @@
 
 use super::parser::{parse_formula, BinOpKind, FormulaNode};
 use super::tokenizer::{DirectionKind, WILDCARD_ROW};
+use crate::model::table::MAX_TABLE_GRID_CELLS;
+use std::collections::BTreeSet;
 
 /// 셀 값 조회 함수 타입
 /// (col_index: 0-based, row_index: 0-based) → Option<f64>
@@ -29,8 +31,63 @@ pub fn evaluate_formula(
     ctx: &TableContext,
     get_cell: CellValueFn,
 ) -> Result<f64, String> {
+    evaluate_formula_with_cells(formula, ctx, get_cell).map(|(result, _)| result)
+}
+
+/// 같은 AST에서 모든 분기의 참조를 확인하고 결과와 0-based (열, 행) 목록을 반환한다.
+pub(crate) fn evaluate_formula_with_cells(
+    formula: &str,
+    ctx: &TableContext,
+    get_cell: CellValueFn,
+) -> Result<(f64, Vec<(usize, usize)>), String> {
+    if ctx.current_row >= ctx.row_count || ctx.current_col >= ctx.col_count {
+        return Err("결과 셀이 표 범위 밖에 있습니다".into());
+    }
     let ast = parse_formula(formula).ok_or_else(|| "수식 파싱 실패".to_string())?;
-    eval_node(&ast, ctx, get_cell)
+    let mut cells = BTreeSet::new();
+    let mut count = 0;
+    collect_references(&ast, ctx, &mut cells, &mut count)?;
+    let result = eval_node(&ast, ctx, get_cell)?;
+    if !result.is_finite() {
+        return Err("계산 결과가 유한한 숫자가 아닙니다".into());
+    }
+    Ok((
+        result,
+        cells.into_iter().map(|(row, col)| (col, row)).collect(),
+    ))
+}
+
+fn collect_references(
+    node: &FormulaNode,
+    ctx: &TableContext,
+    cells: &mut BTreeSet<(usize, usize)>,
+    count: &mut usize,
+) -> Result<(), String> {
+    match node {
+        FormulaNode::CellRef { .. } | FormulaNode::Range { .. } | FormulaNode::Direction(_) => {
+            let refs = collect_cells(node, ctx)?;
+            // 중복 범위를 반복한 식도 기존 그리드 상한보다 많은 좌표를 순회하지 않는다.
+            *count = count
+                .checked_add(refs.len())
+                .filter(|n| *n <= MAX_TABLE_GRID_CELLS)
+                .ok_or_else(|| "계산식의 참조 셀이 너무 많습니다".to_string())?;
+            cells.extend(refs.into_iter().map(|(col, row)| (row, col)));
+        }
+        FormulaNode::BinOp { left, right, .. } => {
+            collect_references(left, ctx, cells, count)?;
+            collect_references(right, ctx, cells, count)?;
+        }
+        FormulaNode::Negate(inner) => collect_references(inner, ctx, cells, count)?,
+        FormulaNode::FuncCall { name, args } => {
+            validate_function_args(name, args.len())?;
+            // IF에서 선택되지 않은 분기도 앱의 셀 보호 검증에 필요한 참조를 반환한다.
+            for arg in args {
+                collect_references(arg, ctx, cells, count)?;
+            }
+        }
+        FormulaNode::Number(_) => {}
+    }
+    Ok(())
 }
 
 fn eval_node(node: &FormulaNode, ctx: &TableContext, get_cell: CellValueFn) -> Result<f64, String> {
@@ -92,6 +149,9 @@ fn resolve_cell_ref(col: &str, row: u32, ctx: &TableContext) -> Result<(usize, u
             .checked_sub(1)
             .ok_or_else(|| "행은 1부터 시작".to_string())?
     };
+    if c >= ctx.col_count || r >= ctx.row_count {
+        return Err(format!("표 범위 밖의 셀 참조: {col}{row}"));
+    }
     Ok((c, r))
 }
 
@@ -109,6 +169,10 @@ fn collect_cells(arg: &FormulaNode, ctx: &TableContext) -> Result<Vec<(usize, us
                 let mut cells = Vec::new();
                 let (min_r, max_r) = (sr.min(er), sr.max(er));
                 let (min_c, max_c) = (sc.min(ec), sc.max(ec));
+                let count = (max_r - min_r + 1).checked_mul(max_c - min_c + 1);
+                if count.is_none_or(|n| n > MAX_TABLE_GRID_CELLS) {
+                    return Err("계산식의 참조 셀이 너무 많습니다".into());
+                }
                 for r in min_r..=max_r {
                     for c in min_c..=max_c {
                         cells.push((c, r));
@@ -120,6 +184,15 @@ fn collect_cells(arg: &FormulaNode, ctx: &TableContext) -> Result<Vec<(usize, us
             }
         }
         FormulaNode::Direction(dir) => {
+            let count = match dir {
+                DirectionKind::Left => ctx.current_col,
+                DirectionKind::Right => ctx.col_count - ctx.current_col - 1,
+                DirectionKind::Above => ctx.current_row,
+                DirectionKind::Below => ctx.row_count - ctx.current_row - 1,
+            };
+            if count > MAX_TABLE_GRID_CELLS {
+                return Err("계산식의 참조 셀이 너무 많습니다".into());
+            }
             let mut cells = Vec::new();
             match dir {
                 DirectionKind::Left => {
@@ -191,6 +264,7 @@ fn eval_function(
     ctx: &TableContext,
     get_cell: CellValueFn,
 ) -> Result<f64, String> {
+    validate_function_args(name, args.len())?;
     match name {
         "SUM" => {
             let vals = collect_values(args, ctx, get_cell)?;
@@ -247,9 +321,6 @@ fn eval_function(
         "ROUND" => unary_fn(args, ctx, get_cell, f64::round),
         "TRUNC" => unary_fn(args, ctx, get_cell, f64::trunc),
         "MOD" => {
-            if args.len() < 2 {
-                return Err("MOD는 2개 인수 필요".into());
-            }
             let a = eval_node(&args[0], ctx, get_cell)?;
             let b = eval_node(&args[1], ctx, get_cell)?;
             if b == 0.0 {
@@ -259,9 +330,6 @@ fn eval_function(
             }
         }
         "IF" => {
-            if args.len() < 3 {
-                return Err("IF는 3개 인수 필요 (조건, 참, 거짓)".into());
-            }
             let cond = eval_node(&args[0], ctx, get_cell)?;
             if cond != 0.0 {
                 eval_node(&args[1], ctx, get_cell)
@@ -273,15 +341,29 @@ fn eval_function(
     }
 }
 
+fn validate_function_args(name: &str, count: usize) -> Result<(), String> {
+    let expected = match name {
+        "SUM" | "AVERAGE" | "AVG" | "PRODUCT" | "MIN" | "MAX" | "COUNT" => None,
+        "ABS" | "SQRT" | "EXP" | "LOG" | "LOG10" | "SIN" | "COS" | "TAN" | "ASIN" | "ACOS"
+        | "ATAN" | "RADIAN" | "SIGN" | "INT" | "CEILING" | "FLOOR" | "ROUND" | "TRUNC" => Some(1),
+        "MOD" => Some(2),
+        "IF" => Some(3),
+        _ => return Err(format!("지원하지 않는 함수: {name}")),
+    };
+    if let Some(expected) = expected {
+        if count != expected {
+            return Err(format!("{name} 함수에는 인수 {expected}개가 필요합니다"));
+        }
+    }
+    Ok(())
+}
+
 fn unary_fn(
     args: &[FormulaNode],
     ctx: &TableContext,
     get_cell: CellValueFn,
     f: impl Fn(f64) -> f64,
 ) -> Result<f64, String> {
-    if args.is_empty() {
-        return Err("함수 인수 필요".into());
-    }
     let v = eval_node(&args[0], ctx, get_cell)?;
     Ok(f(v))
 }

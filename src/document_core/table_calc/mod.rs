@@ -14,5 +14,6 @@ mod evaluator;
 mod parser;
 mod tokenizer;
 
+pub(crate) use evaluator::evaluate_formula_with_cells;
 pub use evaluator::{evaluate_formula, TableContext};
 pub use parser::FormulaNode;

@@ -40,22 +40,25 @@ pub enum BinOpKind {
 }
 
 /// 계산식 문자열을 파싱하여 AST를 반환한다.
-///
-/// 문법 밖 글자, 피연산자 없이 매달린 연산자, 짝이 맞지 않는 괄호, 식 뒤에 남은 토큰은
-/// 잘못된 계산식이라 `None`을 돌려준다.
 pub fn parse_formula(input: &str) -> Option<FormulaNode> {
+    let tokens = tokenize(input);
+    if tokens.is_empty() {
+        return None;
+    }
     let mut parser = Parser {
-        tokens: tokenize(input)?,
+        tokens,
         pos: 0,
+        depth: 0,
     };
     let node = parser.parse_expr()?;
-    // 식 하나를 읽고도 토큰이 남으면(`=SUM(A1:A2)xyz`, `=1+2)`) 잘못된 계산식이다.
+    // 뒤 토큰이나 누락된 피연산자를 부분 계산으로 숨기지 않는다.
     (parser.pos == parser.tokens.len()).then_some(node)
 }
 
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    depth: usize,
 }
 
 impl Parser {
@@ -73,12 +76,12 @@ impl Parser {
         }
     }
 
-    fn expect(&mut self, expected: &Token) -> Option<()> {
+    fn expect(&mut self, expected: &Token) -> bool {
         if self.peek() == Some(expected) {
             self.advance();
-            Some(())
+            true
         } else {
-            None
+            false
         }
     }
 
@@ -142,6 +145,17 @@ impl Parser {
 
     /// factor = NUMBER | cell_ref (':' cell_ref)? | func_call | '(' expr ')' | '-' factor
     fn parse_factor(&mut self) -> Option<FormulaNode> {
+        // 괄호·함수·단항 부호의 중첩이 Native/WASM 스택을 넘지 않게 한다.
+        if self.depth > 128 {
+            return None;
+        }
+        self.depth += 1;
+        let result = self.parse_factor_inner();
+        self.depth -= 1;
+        result
+    }
+
+    fn parse_factor_inner(&mut self) -> Option<FormulaNode> {
         match self.peek().cloned() {
             Some(Token::Number(n)) => {
                 self.advance();
@@ -163,7 +177,7 @@ impl Parser {
                             }),
                         })
                     } else {
-                        None // ':' 뒤에 셀 참조가 없다
+                        None
                     }
                 } else {
                     Some(cell)
@@ -171,10 +185,12 @@ impl Parser {
             }
             Some(Token::Function(name)) => {
                 self.advance();
-                self.expect(&Token::LParen)?;
+                if !self.expect(&Token::LParen) {
+                    return None;
+                }
                 let args = self.parse_arg_list()?;
-                self.expect(&Token::RParen)?;
-                Some(FormulaNode::FuncCall { name, args })
+                self.expect(&Token::RParen)
+                    .then_some(FormulaNode::FuncCall { name, args })
             }
             Some(Token::Direction(dir)) => {
                 self.advance();
@@ -183,15 +199,13 @@ impl Parser {
             Some(Token::LParen) => {
                 self.advance();
                 let inner = self.parse_expr()?;
-                self.expect(&Token::RParen)?;
-                Some(inner)
+                self.expect(&Token::RParen).then_some(inner)
             }
             Some(Token::Minus) => {
                 self.advance();
                 let inner = self.parse_factor()?;
                 Some(FormulaNode::Negate(Box::new(inner)))
             }
-            // 연산자·구분자 자리나 식 끝에는 피연산자가 없다(`=1+`, `=SUM(A1,)`).
             _ => None,
         }
     }
