@@ -365,9 +365,8 @@ pub struct ParaShape {
     /// 이전 버전은 저장값이 이미 공통 IR 단위이므로 직렬화에서도 절반으로 줄이지 않는다.
     pub hwpx_plain_para_margin_physical: bool,
     /// [#1986] HWPX breakSetting@breakLatinWord 원문 보존
-    /// (BREAK_WORD/KEEP_WORD/HYPHENATION). 파서 미수집 시 None → 직렬화 기본값
-    /// KEEP_WORD. 값이 3가지라 attr1 비트 인코딩 대신 원문 보존으로 무손실 방출.
-    /// 꼬리말·표셀 등 재계산 경로에서 줄나눔이 달라져 레이아웃이 갈리는 것을 막는다.
+    /// 알려진 3값은 attr1 bits5-6에도 담고, 알 수 없는 값은 무편집 HWPX 저장에서 보존한다.
+    /// None이면 직렬화기가 attr1의 현재 값을 사용한다. 명시 줄나눔 편집은 원문을 해제한다.
     pub break_latin_word: Option<String>,
 }
 
@@ -1145,6 +1144,8 @@ impl ParaShapeMods {
         }
         if let Some(v) = self.english_break_unit {
             ps.attr1 = (ps.attr1 & !(0x03 << 5)) | ((v as u32 & 0x03) << 5);
+            // 명시 편집은 새 비트가 기준이다. 이전 HWPX 원문이 저장 값을 덮어쓰지 않게 해제한다.
+            ps.break_latin_word = None;
         }
         if let Some(v) = self.korean_break_unit {
             ps.attr1 = (ps.attr1 & !(0x01 << 7)) | ((v as u32 & 0x01) << 7);
