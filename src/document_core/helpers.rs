@@ -407,6 +407,9 @@ pub(crate) fn parse_char_shape_mods(json: &str) -> crate::model::style::CharShap
     if let Some(v) = json_bool(json, "kerning") {
         mods.kerning = Some(v);
     }
+    if let Some(v) = json_bool(json, "useFontSpace") {
+        mods.use_font_space = Some(v);
+    }
     // 언어별 배열
     if let Some(arr) = json_u16_array(json, "fontIds") {
         mods.font_ids = Some(arr);

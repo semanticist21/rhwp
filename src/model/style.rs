@@ -908,6 +908,8 @@ pub struct CharShapeMods {
     pub strike_shape: Option<u8>,
     /// 커닝 여부
     pub kerning: Option<bool>,
+    /// 영문 글꼴 슬롯이 선언한 공백 폭 사용
+    pub use_font_space: Option<bool>,
 }
 
 impl CharShapeMods {
@@ -1027,6 +1029,9 @@ impl CharShapeMods {
         }
         if let Some(v) = self.kerning {
             cs.kerning = v;
+        }
+        if let Some(v) = self.use_font_space {
+            cs.use_font_space = v;
         }
         cs
     }

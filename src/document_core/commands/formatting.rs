@@ -19,6 +19,7 @@ pub(super) fn char_shape_mods_affect_text_flow(mods: &crate::model::style::CharS
         || mods.spacings.is_some()
         || mods.relative_sizes.is_some()
         || mods.char_offsets.is_some()
+        || mods.use_font_space.is_some()
 }
 
 /// [#4324] `ParaShapeMods` 변경이 줄바꿈(LineSeg 재계산)에 영향을 주는지 판정한다.
@@ -440,7 +441,7 @@ impl DocumentCore {
                         "\"outlineType\":{},",
                         "\"subscript\":{},\"superscript\":{},",
                         "\"emboss\":{},\"engrave\":{},",
-                        "\"emphasisDot\":{},\"underlineShape\":{},\"strikeShape\":{},\"kerning\":{},",
+                        "\"emphasisDot\":{},\"underlineShape\":{},\"strikeShape\":{},\"kerning\":{},\"useFontSpace\":{},",
                         "\"charShapeId\":{},",
                         "\"fontFamilies\":{},",
                         "\"ratios\":{},\"spacings\":{},\"relativeSizes\":{},\"charOffsets\":{},",
@@ -456,6 +457,7 @@ impl DocumentCore {
                     subscript, superscript,
                     emboss, engrave,
                     emphasis_dot, underline_shape, strike_shape, kerning,
+                    raw_cs.is_some_and(|s| s.use_font_space),
                     char_shape_id,
                     font_families_json,
                     ratios_json, spacings_json, relative_sizes_json, char_offsets_json,
@@ -473,7 +475,7 @@ impl DocumentCore {
                         "\"outlineType\":0,",
                         "\"subscript\":false,\"superscript\":false,",
                         "\"emboss\":false,\"engrave\":false,",
-                        "\"emphasisDot\":0,\"underlineShape\":0,\"strikeShape\":0,\"kerning\":false,",
+                        "\"emphasisDot\":0,\"underlineShape\":0,\"strikeShape\":0,\"kerning\":false,\"useFontSpace\":false,",
                         "\"charShapeId\":{},",
                         "\"fontFamilies\":[\"sans-serif\",\"sans-serif\",\"sans-serif\",\"sans-serif\",\"sans-serif\",\"sans-serif\",\"sans-serif\"],",
                         "\"ratios\":[100,100,100,100,100,100,100],\"spacings\":[0,0,0,0,0,0,0],",
@@ -614,7 +616,7 @@ impl DocumentCore {
                         "\"outlineType\":{},",
                         "\"subscript\":{},\"superscript\":{},",
                         "\"emboss\":{},\"engrave\":{},",
-                        "\"emphasisDot\":{},\"underlineShape\":{},\"strikeShape\":{},\"kerning\":{},",
+                        "\"emphasisDot\":{},\"underlineShape\":{},\"strikeShape\":{},\"kerning\":{},\"useFontSpace\":{},",
                         "\"charShapeId\":{},",
                         "\"fontFamilies\":{},",
                         "\"ratios\":{},\"spacings\":{},\"relativeSizes\":{},\"charOffsets\":{},",
@@ -630,6 +632,7 @@ impl DocumentCore {
                     subscript, superscript,
                     emboss, engrave,
                     emphasis_dot, underline_shape, strike_shape, kerning,
+                    raw_cs.is_some_and(|s| s.use_font_space),
                     char_shape_id,
                     font_families_json,
                     ratios_json, spacings_json, relative_sizes_json, char_offsets_json,
@@ -647,7 +650,7 @@ impl DocumentCore {
                         "\"outlineType\":0,",
                         "\"subscript\":false,\"superscript\":false,",
                         "\"emboss\":false,\"engrave\":false,",
-                        "\"emphasisDot\":0,\"underlineShape\":0,\"strikeShape\":0,\"kerning\":false,",
+                        "\"emphasisDot\":0,\"underlineShape\":0,\"strikeShape\":0,\"kerning\":false,\"useFontSpace\":false,",
                         "\"charShapeId\":{},",
                         "\"fontFamilies\":[\"sans-serif\",\"sans-serif\",\"sans-serif\",\"sans-serif\",\"sans-serif\",\"sans-serif\",\"sans-serif\"],",
                         "\"ratios\":[100,100,100,100,100,100,100],\"spacings\":[0,0,0,0,0,0,0],",
