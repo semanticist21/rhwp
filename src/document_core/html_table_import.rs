@@ -438,15 +438,9 @@ impl DocumentCore {
                 },
             };
 
-            // 셀 내용 파싱
-            // &nbsp; 등 HTML 엔티티를 디코딩한 후 공백만 남으면 빈 셀로 처리
-            // 그림만 있는 셀(로고 칸 등)은 평문이 비어 있어
-            // 종전에는 '빈 셀'로 처리돼 그림이 통째로 사라졌다.
-            let cell_has_image = pc.content_html.to_ascii_lowercase().contains("<img");
-            let cell_paragraphs = if !cell_has_image
-                && (pc.content_html.trim().is_empty()
-                    || html_to_plain_text(&pc.content_html).is_empty())
-            {
+            // 태그 밖 출력 공백만 있으면 빈 셀이다. 실제 문단 안 공백과
+            // 그림·중첩 표는 평문 추출로 판단하지 않고 파싱 결과를 보존한다.
+            let cell_paragraphs = if pc.content_html.trim().is_empty() {
                 vec![Paragraph::new_empty()]
             } else {
                 let parsed = self.parse_html_to_paragraphs(
@@ -458,7 +452,7 @@ impl DocumentCore {
                 if parsed.is_empty()
                     || parsed
                         .iter()
-                        .all(|p| p.text.trim().is_empty() && p.controls.is_empty())
+                        .all(|p| p.text.is_empty() && p.controls.is_empty())
                 {
                     vec![Paragraph::new_empty()]
                 } else {

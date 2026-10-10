@@ -1515,7 +1515,7 @@ impl DocumentCore {
 
         // 문단 스타일 CSS
         let para_css = self.para_style_to_css(para.para_shape_id);
-        let mut html = format!("<p style=\"margin:0;{}\">\n", para_css);
+        let mut html = format!("<p style=\"margin:0;{}\">", para_css);
 
         // CharShapeRef 경계에서 스타일이 바뀌는 지점을 찾아 span 분할
         let style_ranges = self.get_char_style_ranges(para, start_idx, end_idx);
@@ -1523,7 +1523,7 @@ impl DocumentCore {
         for (range_start, range_end, char_shape_id) in &style_ranges {
             let segment: String = chars[*range_start..*range_end]
                 .iter()
-                .filter(|c| !c.is_control() || **c == '\t')
+                .filter(|c| !c.is_control() || **c == '\t' || **c == '\n')
                 .collect();
 
             if segment.is_empty() {
@@ -1534,7 +1534,8 @@ impl DocumentCore {
             html.push_str(&format!(
                 "<span style=\"{}\">{}</span>",
                 css,
-                clipboard_escape_html(&segment)
+                // 먼저 사용자 태그를 이스케이프한 뒤, 강제 줄바꿈만 HTML로 내보낸다.
+                clipboard_escape_html(&segment).replace('\n', "<br>")
             ));
         }
 
