@@ -7452,15 +7452,26 @@ impl HwpDocument {
 
         // ParaShape 수정
         if !para_mods_json.is_empty() && para_mods_json != "{}" {
-            let para_mods = crate::document_core::helpers::parse_para_shape_mods(para_mods_json);
             if let Some(ps) = self
                 .core
                 .document
                 .doc_info
                 .para_shapes
                 .get(style.para_shape_id as usize)
+                .cloned()
             {
-                let new_ps = para_mods.apply_to(ps);
+                let mut para_mods =
+                    crate::document_core::helpers::parse_para_shape_mods(para_mods_json);
+                // 유효한 문단 모양이 있을 때만 탭 정의를 만들고 스타일에 연결한다.
+                if json_has_tab_keys(para_mods_json) {
+                    let tab_def = build_tab_def_from_json(
+                        para_mods_json,
+                        ps.tab_def_id,
+                        &self.core.document.doc_info.tab_defs,
+                    );
+                    para_mods.tab_def_id = Some(self.core.document.find_or_create_tab_def(tab_def));
+                }
+                let new_ps = para_mods.apply_to(&ps);
                 self.core.document.doc_info.para_shapes.push(new_ps);
                 let new_id = (self.core.document.doc_info.para_shapes.len() - 1) as u16;
                 self.core.document.doc_info.styles[style_id as usize].para_shape_id = new_id;
