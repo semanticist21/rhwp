@@ -15216,7 +15216,12 @@ impl LayoutEngine {
                             }
                         }
 
-                        if !already_registered && !has_full_para_item {
+                        // 저장 줄 없는 빈 TAC 문단은 FullParagraph가 있어도 높이와
+                        // 캐럿만 예약한다. 실제 줄이 없는 경우 그림은 이 기존 개체
+                        // 경로에서 한 번 그리되, 아래 FullParagraph 높이 전진은 유지한다.
+                        let empty_composed_paragraph = comp.is_some_and(|c| c.lines.is_empty());
+                        if !already_registered && (!has_full_para_item || empty_composed_paragraph)
+                        {
                             let bin_data_id = pic.image_attr.bin_data_id;
                             let image_data = find_bin_data_bytes(bin_data_content, bin_data_id);
                             let crop = pic.render_crop_rect();
