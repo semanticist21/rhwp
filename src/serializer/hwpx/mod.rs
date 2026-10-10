@@ -125,13 +125,17 @@ pub fn serialize_hwpx_with_report(doc: &Document) -> Result<SerializedDocument, 
             .unwrap_or_else(|| SETTINGS_XML.as_bytes()),
     )?;
 
-    // 6-1. [#3557] Scripts/* — IR 밖 패키지 스크립트 원본 통과. 파서가 aux 로
-    //      보존한 것을 그대로 되쓴다(content.hpf 참조는 write_content_hpf 의
-    //      원본 splice 가 담당).
+    // HWPX 원본 스크립트는 그대로 보존한다. HWP만 가진 경우에는 길이 필드로
+    // header/source 바이트를 분리하며, 스크립트 내용을 실행하거나 다시 만들지 않는다.
+    let hwp_scripts = hwp_script_parts(doc)?;
     for (path, bytes) in &doc.hwpx_aux_entries {
         if path.starts_with("Scripts/") {
             z.write_deflated(path, bytes)?;
         }
+    }
+    if let Some((header, source)) = &hwp_scripts {
+        z.write_deflated("Scripts/headerScripts", header)?;
+        z.write_deflated("Scripts/sourceScripts", source)?;
     }
 
     if let Some(bytes) = crate::model::hyperlink_format::encode(doc) {
@@ -253,6 +257,7 @@ pub fn serialize_hwpx_with_report(doc: &Document) -> Result<SerializedDocument, 
         &content_bin_entries,
         &master_items,
         doc.hwpx_aux_entry("Contents/content.hpf"),
+        hwp_scripts.is_some(),
     )?;
     z.write_deflated("Contents/content.hpf", &content_hpf)?;
 
@@ -288,6 +293,82 @@ pub fn serialize_hwpx_with_report(doc: &Document) -> Result<SerializedDocument, 
 
     let bytes = z.finish()?;
     Ok(SerializedDocument::new(bytes, ctx.content_loss))
+}
+
+fn hwp_script_parts(doc: &Document) -> Result<Option<(Vec<u8>, Vec<u8>)>, SerializeError> {
+    // HWPX 보조 파일이 있으면 원본이 우선이다. 같은 경로를 ZIP에 두 번 쓰지 않는다.
+    if doc
+        .hwpx_aux_entries
+        .iter()
+        .any(|(path, _)| path.starts_with("Scripts/"))
+    {
+        return Ok(None);
+    }
+    let Some((_, stored)) = doc
+        .extra_streams
+        .iter()
+        .find(|(path, _)| path == "/Scripts/DefaultJScript" || path == "Scripts/DefaultJScript")
+    else {
+        return Ok(None);
+    };
+    if stored.is_empty() {
+        return Ok(None);
+    }
+    // HWPX 파서의 역변환: wchar 길이 두 개 + UTF-16LE 원문 + 12바이트 꼬리.
+    // 문서의 압축 플래그와 스크립트 스트림 압축 여부는 서로 독립적이다.
+    fn split(bytes: &[u8]) -> Option<(&[u8], &[u8])> {
+        let count = |at: usize| {
+            let raw: [u8; 4] = bytes.get(at..at.checked_add(4)?)?.try_into().ok()?;
+            (u32::from_le_bytes(raw) as usize).checked_mul(2)
+        };
+        let header_end = 4usize.checked_add(count(0)?)?;
+        let source_start = header_end.checked_add(4)?;
+        let source_end = source_start.checked_add(count(header_end)?)?;
+        if source_end.checked_add(12)? != bytes.len()
+            || bytes.get(source_end..)? != [0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255]
+        {
+            return None;
+        }
+        Some((
+            bytes.get(4..header_end)?,
+            bytes.get(source_start..source_end)?,
+        ))
+    }
+    let limit = crate::parser::hwpx::reader::MAX_BINDATA_SIZE;
+    if stored.len() > limit {
+        return Err(SerializeError::UnsupportedInput(
+            "HWP 스크립트가 HWPX 엔트리 크기 상한을 초과했습니다".into(),
+        ));
+    }
+    let decoded;
+    let (header, source) = if let Some(parts) = split(stored) {
+        parts
+    } else {
+        // 배포 문서의 스크립트도 ViewText와 같은 256바이트 배포 레코드로 암호화된다.
+        // 문서 속성과 정확한 레코드 헤더가 모두 맞을 때만 기존 제한 크기 복호화를 쓴다.
+        let distribute_header =
+            u32::from(crate::parser::tags::HWPTAG_DISTRIBUTE_DOC_DATA) | (256 << 20);
+        decoded = if doc.header.distribution
+            && stored.get(..4) == Some(distribute_header.to_le_bytes().as_slice())
+        {
+            crate::parser::crypto::decrypt_viewtext_section_limited(stored, true, limit).map_err(
+                |error| {
+                    SerializeError::UnsupportedInput(format!("HWP 배포 스크립트 읽기: {error}"))
+                },
+            )?
+        } else {
+            crate::parser::cfb_reader::decode_stream_limited(stored.clone(), true, limit).map_err(
+                |error| SerializeError::UnsupportedInput(format!("HWP 스크립트 읽기: {error}")),
+            )?
+        };
+        split(&decoded).ok_or_else(|| {
+            SerializeError::UnsupportedInput(
+                "HWP 스크립트의 header/source 길이 정보가 올바르지 않습니다".into(),
+            )
+        })?
+    };
+    // 기본 빈 스크립트는 HWPX 파서가 동일하게 복원하므로 패키지에 빈 파트를 추가하지 않는다.
+    Ok((!header.is_empty() || !source.is_empty()).then(|| (header.to_vec(), source.to_vec())))
 }
 
 /// Document IR을 한컴 ODF AES-256-CBC 비밀번호 보호 HWPX로 직렬화한다.

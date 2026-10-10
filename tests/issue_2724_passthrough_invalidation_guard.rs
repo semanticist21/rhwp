@@ -87,6 +87,12 @@ enum Exempt {
 /// 파일 경로는 [`SCAN_ROOT`] 기준 상대 경로다. 병합 `devel` 기준 46건(2026-08-30 동결).
 const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     (
+        "commands/formatting.rs",
+        "reflow_body_paragraph_range_native",
+        Exempt::DelegatesTo("refresh_section_native"),
+        "검증한 본문 범위를 다시 접은 뒤 공통 구역 갱신에 위임한다. refresh_section_native가 구역 raw_stream과 렌더 캐시를 무효화하며 빈 범위는 무변경이다.",
+    ),
+    (
         "font_environment.rs",
         "set_font_environment",
         Exempt::SessionState,

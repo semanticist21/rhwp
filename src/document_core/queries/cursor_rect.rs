@@ -4437,10 +4437,20 @@ impl DocumentCore {
                             let positions = if text_run.char_overlap.is_some() && char_count == 1 {
                                 vec![0.0, node.bbox.width]
                             } else {
-                                text_run.replay_positions_for(&text_run.text).into_owned()
+                                text_run
+                                    .replay_positions_for(text_run.display_or_text())
+                                    .into_owned()
                             };
-                            let x_in_run = if local_offset < positions.len() {
-                                positions[local_offset]
+                            // 이름 표시 길이가 바뀌어도 캐럿은 필드의 모델 오프셋을 따른다.
+                            let display_len = positions.len().saturating_sub(1);
+                            let display_offset = if char_count == 0 || display_len == char_count {
+                                local_offset.min(display_len)
+                            } else {
+                                ((local_offset * display_len + char_count / 2) / char_count)
+                                    .min(display_len)
+                            };
+                            let x_in_run = if display_offset < positions.len() {
+                                positions[display_offset]
                             } else if !positions.is_empty() {
                                 *positions.last().unwrap()
                             } else {
@@ -4823,11 +4833,11 @@ impl DocumentCore {
                 } else {
                     let mid = (positions[i - 1] + px) / 2.0;
                     if local_x < mid {
-                        return i;
+                        return i - 1;
                     }
                 }
             }
-            positions.len()
+            positions.len().saturating_sub(1)
         }
 
         /// 표시 인덱스를 모델 인덱스로 옮긴다.

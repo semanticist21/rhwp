@@ -1816,12 +1816,19 @@ impl DocumentCore {
         // [#7114] 어댑터 없는 경로도 같은 저장 프레임을 낸다 — 두 진입점이 다른 조판을
         // 저장하면 «저장본을 다시 열면 배치가 달라진다» 가 경로마다 갈린다.
         // 재래핑된 표가 없으면 복제 없이 live IR 을 그대로 쓴다.
-        if self.render_normalization.text_reflowed_tables.is_empty() {
+        if self.render_normalization.text_reflowed_tables.is_empty()
+            && (self.file_name.is_empty()
+                || !super::header_footer_ops::has_header_footer_file_name_fields(&self.document))
+        {
             return crate::serializer::serialize_document(&self.document)
                 .map_err(|e| HwpError::RenderError(e.to_string()));
         }
         let mut snapshot = self.document.clone();
         self.writeback_reflowed_table_frames(&mut snapshot);
+        super::header_footer_ops::refresh_header_footer_file_name_fields(
+            &mut snapshot,
+            &self.file_name,
+        );
         crate::serializer::serialize_document(&snapshot)
             .map_err(|e| HwpError::RenderError(e.to_string()))
     }
@@ -2032,6 +2039,10 @@ impl DocumentCore {
         let mut snapshot = self.document.clone();
         self.writeback_reflowed_table_frames(&mut snapshot);
         let _report = convert_if_hwpx_source(&mut snapshot, self.source_format);
+        super::header_footer_ops::refresh_header_footer_file_name_fields(
+            &mut snapshot,
+            &self.file_name,
+        );
         super::header_footer_ops::lower_header_footer_field_markers(
             &mut snapshot,
             &self.file_name,
@@ -2191,6 +2202,7 @@ impl DocumentCore {
         let hwp3_origin = matches!(self.source_format, crate::parser::FileFormat::Hwp3)
             || self.document.provenance.hwp3_lineage;
         let lower_markers = |doc: &mut Document| {
+            super::header_footer_ops::refresh_header_footer_file_name_fields(doc, &self.file_name);
             super::header_footer_ops::lower_header_footer_field_markers(doc, &self.file_name, true)
         };
         let serialized = if matches!(self.source_format, crate::parser::FileFormat::Hwp) {
@@ -2220,6 +2232,8 @@ impl DocumentCore {
                 .hwpx_aux_entry(crate::model::document::HWP5_ORIGIN_HWPX_MARKER_PATH)
                 .is_some()
             || super::header_footer_ops::has_header_footer_field_markers(&self.document)
+            || (!self.file_name.is_empty()
+                && super::header_footer_ops::has_header_footer_file_name_fields(&self.document))
         {
             let mut doc = self.document.clone();
             if let Some((_, value)) = doc

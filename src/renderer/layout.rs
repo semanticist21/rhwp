@@ -5227,6 +5227,7 @@ impl LayoutEngine {
     ) -> ComposedParagraph {
         let mut comp = crate::renderer::composer::compose_paragraph_in_context(para, styles);
         self.substitute_hf_field_markers(&mut comp, page_number);
+        self.substitute_hf_file_name_fields(para, &mut comp);
         if para.controls.iter().any(|ctrl| {
             matches!(ctrl, Control::AutoNumber(an)
                 if an.number_type == crate::model::control::AutoNumberType::Page)
@@ -5244,6 +5245,71 @@ impl LayoutEngine {
             );
         }
         comp
+    }
+
+    /// 저장본의 파일 이름 필드도 현재 이름을 표시한다. 모델 글자와 필드 범위는 유지한다.
+    fn substitute_hf_file_name_fields(&self, para: &Paragraph, comp: &mut ComposedParagraph) {
+        let file_name = self.file_name.borrow();
+        if file_name.is_empty() {
+            return;
+        }
+        let text_len = para.text.chars().count();
+        let fields: Vec<_> = para.field_ranges.iter().filter(|range| {
+            range.start_char_idx < range.end_char_idx
+                && range.end_char_idx <= text_len
+                && matches!(para.controls.get(range.control_idx), Some(Control::Field(field)) if field.is_file_name())
+        }).collect();
+        if fields.is_empty() {
+            return;
+        }
+        let name: Vec<_> = file_name.chars().collect();
+        for line in &mut comp.lines {
+            let mut offset = line.char_start;
+            let mut runs = Vec::new();
+            for run in &line.runs {
+                let chars: Vec<_> = run.text.chars().collect();
+                let end = offset + chars.len();
+                let overlapping: Vec<_> = fields
+                    .iter()
+                    .filter(|range| range.start_char_idx < end && offset < range.end_char_idx)
+                    .collect();
+                if overlapping.is_empty() {
+                    runs.push(run.clone());
+                    offset = end;
+                    continue;
+                }
+                let mut cuts = vec![offset, end];
+                for range in &overlapping {
+                    cuts.push(offset.max(range.start_char_idx));
+                    cuts.push(end.min(range.end_char_idx));
+                }
+                cuts.sort_unstable();
+                cuts.dedup();
+                // 필드 앞뒤를 분리해야 표시 이름 길이가 달라도 캐럿이 원문 좌표를 쓴다.
+                for bounds in cuts.windows(2) {
+                    let mut piece = run.clone();
+                    piece.text = chars[bounds[0] - offset..bounds[1] - offset]
+                        .iter()
+                        .collect();
+                    piece.display_text = Self::pua_display_for(&piece.text);
+                    if let Some(range) = overlapping.iter().find(|range| {
+                        range.start_char_idx <= bounds[0] && bounds[1] <= range.end_char_idx
+                    }) {
+                        let count = range.end_char_idx - range.start_char_idx;
+                        let start = (bounds[0] - range.start_char_idx) * name.len() / count;
+                        let end = (bounds[1] - range.start_char_idx) * name.len() / count;
+                        piece.display_text = Some(name[start..end].iter().collect());
+                        if let Some(ch) = name.get(start) {
+                            piece.lang_index =
+                                crate::renderer::style_resolver::detect_lang_category(*ch);
+                        }
+                    }
+                    runs.push(piece);
+                }
+                offset = end;
+            }
+            line.runs = runs;
+        }
     }
 
     /// 머리말/꼬리말 ComposedParagraph의 필드 마커를 실제 값으로 치환한다.

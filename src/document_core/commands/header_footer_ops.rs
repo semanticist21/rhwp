@@ -1474,6 +1474,132 @@ pub(crate) fn has_header_footer_field_markers(document: &crate::model::document:
         .any(|para| para.text.chars().any(is_hf_field_marker))
 }
 
+pub(crate) fn has_header_footer_file_name_fields(
+    document: &crate::model::document::Document,
+) -> bool {
+    document
+        .sections
+        .iter()
+        .flat_map(|section| &section.paragraphs)
+        .flat_map(|para| &para.controls)
+        .flat_map(|ctrl| match ctrl {
+            Control::Header(header) => header.paragraphs.as_slice(),
+            Control::Footer(footer) => footer.paragraphs.as_slice(),
+            _ => &[],
+        })
+        .flat_map(|para| &para.controls)
+        .any(|ctrl| matches!(ctrl, Control::Field(field) if field.is_file_name()))
+}
+
+/// 저장 사본만 현재 파일 이름으로 갱신한다. 편집 중 필드와 되돌리기 좌표는 보존한다.
+pub(crate) fn refresh_header_footer_file_name_fields(
+    document: &mut crate::model::document::Document,
+    file_name: &str,
+) {
+    if file_name.is_empty() {
+        return;
+    }
+    let new_len = file_name.chars().count();
+    for section in &mut document.sections {
+        let mut changed = false;
+        for parent in &mut section.paragraphs {
+            for ctrl in &mut parent.controls {
+                let paragraphs = match ctrl {
+                    Control::Header(header) => &mut header.paragraphs,
+                    Control::Footer(footer) => &mut footer.paragraphs,
+                    _ => continue,
+                };
+                for para in paragraphs {
+                    let text_len = para.text.chars().count();
+                    let mut fields: Vec<_> = para.field_ranges.iter()
+                        .filter(|range| range.start_char_idx <= range.end_char_idx
+                            && range.end_char_idx <= text_len
+                            && matches!(para.controls.get(range.control_idx), Some(Control::Field(field)) if field.is_file_name()))
+                        .map(|range| (range.control_idx, range.start_char_idx))
+                        .collect();
+                    // 뒤 필드부터 바꿔야 앞 필드의 원문 인덱스가 그대로다.
+                    fields.sort_unstable_by_key(|(_, start)| std::cmp::Reverse(*start));
+                    for (control, _) in fields {
+                        let Some(index) = para
+                            .field_ranges
+                            .iter()
+                            .position(|range| range.control_idx == control)
+                        else {
+                            continue;
+                        };
+                        let range = para.field_ranges[index].clone();
+                        if range.start_char_idx > range.end_char_idx
+                            || range.end_char_idx > para.text.chars().count()
+                        {
+                            continue;
+                        }
+                        let old_len = range.end_char_idx - range.start_char_idx;
+                        let old_text: String = para
+                            .text
+                            .chars()
+                            .skip(range.start_char_idx)
+                            .take(old_len)
+                            .collect();
+                        if old_text == file_name {
+                            continue;
+                        }
+                        let styles: Vec<_> = (0..new_len)
+                            .map(|offset| {
+                                let old_offset = offset.saturating_mul(old_len) / new_len;
+                                para.char_shape_id_at(range.start_char_idx + old_offset)
+                                    .unwrap_or(0)
+                            })
+                            .collect();
+                        let ranges = para.field_ranges.clone();
+                        // 필드 밖 자동 번호의 8유닛 자리표와 원래 컨트롤 갭을 유지한다.
+                        // 새 글자를 먼저 넣으면 빈 필드가 되어도 끝 슬롯 앞에 붙는다.
+                        para.insert_text_at(range.start_char_idx, file_name);
+                        para.delete_text_at(range.start_char_idx + new_len, old_len);
+                        let remap = |position: usize| {
+                            if position <= range.start_char_idx {
+                                position
+                            } else if position >= range.end_char_idx {
+                                position - old_len + new_len
+                            } else {
+                                range.start_char_idx
+                                    + (position - range.start_char_idx) * new_len / old_len
+                            }
+                        };
+                        para.field_ranges = ranges
+                            .into_iter()
+                            .map(|mut original| {
+                                original.start_char_idx = remap(original.start_char_idx);
+                                original.end_char_idx = remap(original.end_char_idx);
+                                original
+                            })
+                            .collect();
+                        para.field_ranges[index].end_char_idx = range.start_char_idx + new_len;
+                        para.replace_line_segs(Vec::new());
+                        let mut start = 0;
+                        while start < styles.len() {
+                            let id = styles[start];
+                            let mut end = start + 1;
+                            while end < styles.len() && styles[end] == id {
+                                end += 1;
+                            }
+                            para.apply_char_shape_range(
+                                range.start_char_idx + start,
+                                range.start_char_idx + end,
+                                id,
+                            );
+                            start = end;
+                        }
+                        changed = true;
+                    }
+                }
+            }
+        }
+        if changed {
+            section.raw_stream = None;
+        }
+    }
+}
+
 /// 저장 사본의 머리말/꼬리말 필드 마커를 한컴이 만든 머리말과 같은 컨트롤로 바꾼다.
 ///
 /// 편집 중에는 필드가 마커 한 글자다 — 되돌리기(#3212)·캐럿(#3216)·파일 이름 갱신(#1144)이
@@ -1605,12 +1731,15 @@ fn insert_auto_number_placeholder(para: &mut Paragraph, idx: usize) {
 /// 지우면 바로 뒤 파일 이름 필드의 시작 슬롯이 그 자리에 붙어 글자가 그 필드 안으로
 /// 들어간다.
 fn insert_field_text(para: &mut Paragraph, idx: usize, text: &str) -> usize {
+    let marker_style = para.char_shape_id_at(idx).unwrap_or(0);
     let at = para.insert_text_at(idx, text);
     let end = at + text.chars().count();
     para.shift_for_control_slot_insert(end);
     para.shift_for_control_slot_insert(at);
     para.char_count += 16;
     para.delete_text_at(end, 1);
+    // 마커 앞에 넣은 이름이 앞글의 서식을 상속하지 않게 원래 필드 모양을 복원한다.
+    para.apply_char_shape_range(at, end, marker_style);
     end
 }
 
