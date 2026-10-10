@@ -32,3 +32,77 @@ pub(crate) fn underline_multi_lines(shape: u8) -> Option<&'static [(f64, f64)]> 
         _ => None,
     }
 }
+
+/// 가로 위 밑줄의 실제 잉크 범위다. 글자·글줄 상자는 바꾸지 않고 본문 clip만 넓힌다.
+/// 아래 밑줄의 em 표와 달리 위 밑줄은 기존 draw_line_shape의 고정 획 기하를 쓴다.
+/// 물결·회전·세로쓰기·글자겹침은 이 가로선 계약에 포함하지 않는다.
+pub(crate) fn top_underline_ink_bbox(
+    bbox: super::render_tree::BoundingBox,
+    run: &super::render_tree::TextRunNode,
+) -> Option<super::render_tree::BoundingBox> {
+    use super::render_tree::BoundingBox;
+    use crate::model::style::UnderlineType;
+
+    if run.style.underline != UnderlineType::Top
+        || run.style.underline_shape > 10
+        || run.char_overlap.is_some()
+        || run.rotation != 0.0
+        || run.is_vertical
+        || !run.display_or_text().chars().any(|ch| ch != '\u{FFFC}')
+        || bbox.width <= 0.0
+        || bbox.height < 0.0
+        || ![
+            bbox.x,
+            bbox.y,
+            bbox.width,
+            bbox.height,
+            run.baseline,
+            run.style.font_size,
+        ]
+        .iter()
+        .all(|value| value.is_finite())
+    {
+        return None;
+    }
+    let base_size = if run.style.font_size > 0.0 {
+        run.style.font_size
+    } else {
+        12.0
+    };
+    let (font_size, baseline) = run
+        .style
+        .script_draw_metrics(base_size, bbox.y + run.baseline);
+    // SVG/Skia의 기존 위 밑줄 위치다. 장평 축소 Canvas 선은 이보다 아래에 있어
+    // 원래 글줄 상자와 이 범위의 합집합 안에 들어간다.
+    let y = baseline - font_size + 1.0;
+    let (top, bottom) = match run.style.underline_shape {
+        7 => (-1.35, 1.35),
+        8 => (-1.45, 1.4),
+        9 => (-1.4, 1.45),
+        10 => (-1.75, 1.75),
+        _ => (-0.5, 0.5),
+    };
+    // 원형 점선만 round cap으로 선의 양 끝이 획 반만큼 번진다.
+    let end_pad = if run.style.underline_shape == 6 {
+        0.5
+    } else {
+        0.0
+    };
+    let ink = BoundingBox::new(
+        bbox.x - end_pad,
+        y + top,
+        bbox.width + 2.0 * end_pad,
+        bottom - top,
+    );
+    [
+        ink.x,
+        ink.y,
+        ink.width,
+        ink.height,
+        ink.x + ink.width,
+        ink.y + ink.height,
+    ]
+    .iter()
+    .all(|value| value.is_finite())
+    .then_some(ink)
+}
