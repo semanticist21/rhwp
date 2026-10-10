@@ -151,17 +151,20 @@ fn replace_secpr_scalars(xml: &str, sd: &SectionDef) -> String {
         1,
     );
 
-    // 기본 탭 폭. HWPX 파서는 secPr 의 tabStop 속성을 default_tab_spacing 으로 읽는다
-    // (parser/hwpx/section.rs). 치환하지 않으면 열었던 값과 무관하게 늘 템플릿 상수
-    // 8000 으로 저장돼, 탭 정렬이 원본과 어긋난다.
+    // 기본 탭 폭은 2배 HWPUNIT인 tabStop과 실제 HWPUNIT인 tabStopVal을 함께 쓴다.
+    // 원본 raw 값은 유지하고 표시 단위만 절반으로 바꿔 두 속성이 모순되지 않게 한다.
     //
     // 다만 SectionDef 는 derive(Default) 라 파싱을 거치지 않은 문서(신규 작성 등)에서는
     // 0 이다. 0 을 그대로 내보내면 탭 폭이 0 이 되어 지금보다 나빠지므로, 값이 있을 때만
     // 치환하고 없으면 템플릿 기본값을 유지한다.
     let out = if sd.default_tab_spacing != 0 {
         out.replacen(
-            r#"tabStop="8000""#,
-            &format!(r#"tabStop="{}""#, sd.default_tab_spacing),
+            r#"tabStop="8000" tabStopVal="4000" tabStopUnit="HWPUNIT""#,
+            &format!(
+                r#"tabStop="{}" tabStopVal="{}" tabStopUnit="HWPUNIT""#,
+                sd.default_tab_spacing,
+                sd.default_tab_spacing / 2,
+            ),
             1,
         )
     } else {
@@ -4950,6 +4953,7 @@ mod tests {
             xml.contains(r#"tabStop="4000""#),
             "기본 탭 폭이 IR 값이어야 함: {xml:.600}"
         );
+        assert!(xml.contains(r#"tabStopVal="2000" tabStopUnit="HWPUNIT""#));
         assert!(
             xml.contains(r#"<hp:grid lineGrid="1200" charGrid="900" wonggojiFormat="0"/>"#),
             "구역 그리드가 IR 값이어야 함: {xml:.600}"
@@ -4976,7 +4980,7 @@ mod tests {
         let mut ctx = SerializeContext::collect_from_document(&doc);
         let xml = String::from_utf8(write_section(&section, &doc, 0, &mut ctx).unwrap()).unwrap();
         assert!(
-            xml.contains(r#"tabStop="8000""#),
+            xml.contains(r#"tabStop="8000" tabStopVal="4000" tabStopUnit="HWPUNIT""#),
             "IR 미설정 시 템플릿 상수 유지: {xml:.600}"
         );
     }

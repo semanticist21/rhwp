@@ -274,3 +274,99 @@ fn section_def_all_multi_section_with_journal_converges_byte_exact() {
     let diff = first_diff(&before, &after);
     assert!(diff.is_none(), "다구역 all 왕복 수렴 — 첫 불일치 @{diff:?}");
 }
+
+#[test]
+fn default_tab_spacing_setter_keeps_raw_units_and_synchronizes_hwpx_attributes() {
+    use std::io::{Cursor, Read};
+
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().expect("빈 문서");
+    core.insert_text_native(0, 0, 0, "탭\t본문").expect("본문");
+    let mut model = core.document().clone();
+    model.sections.push(model.sections[0].clone());
+    core.set_document(model);
+    core.set_section_def_native(1, r#"{"defaultTabSpacing":8000}"#)
+        .expect("이웃 구역 기본값");
+    let original_info = format!("{:?}", core.document().doc_info);
+    let original_spacing = core.document().sections[0].section_def.default_tab_spacing;
+    let before = core.save_snapshot_native();
+
+    // tabStop은 2배 저장 단위다. raw 0은 새 문서의 미설정값이라 HWPX 기본값으로 쓴다.
+    for raw in [0u32, 8000, 16000, 16001] {
+        core.set_section_def_native(0, &format!(r#"{{"defaultTabSpacing":{raw}}}"#))
+            .expect("공개 구역 setter");
+        let props: serde_json::Value =
+            serde_json::from_str(&core.get_section_def_native(0).expect("공개 구역 getter"))
+                .unwrap();
+        assert_eq!(props["defaultTabSpacing"], raw);
+        assert_eq!(format!("{:?}", core.document().doc_info), original_info);
+
+        let bytes = core.export_hwpx_native().expect("HWPX 저장");
+        let mut zip = zip::ZipArchive::new(Cursor::new(&bytes)).expect("HWPX ZIP");
+        for (section, expected_raw) in [(0, if raw == 0 { 8000 } else { raw }), (1, 8000)] {
+            let mut xml = String::new();
+            zip.by_name(&format!("Contents/section{section}.xml"))
+                .expect("구역 XML")
+                .read_to_string(&mut xml)
+                .expect("XML 읽기");
+            let mut reader = quick_xml::Reader::from_str(&xml);
+            let attrs = loop {
+                match reader.read_event().expect("XML 파싱") {
+                    quick_xml::events::Event::Start(tag) if tag.name().as_ref() == "hp:secPr" => {
+                        break tag
+                            .attributes()
+                            .map(|attr| {
+                                let attr = attr.expect("속성");
+                                (
+                                    attr.key.as_ref().to_string(),
+                                    attr.normalized_value(quick_xml::XmlVersion::Implicit1_0)
+                                        .unwrap()
+                                        .into_owned(),
+                                )
+                            })
+                            .collect::<std::collections::BTreeMap<_, _>>();
+                    }
+                    quick_xml::events::Event::Eof => panic!("secPr 없음"),
+                    _ => {}
+                }
+            };
+            assert_eq!(attrs.get("tabStop"), Some(&expected_raw.to_string()));
+            assert_eq!(
+                attrs.get("tabStopVal"),
+                Some(&(expected_raw / 2).to_string())
+            );
+            assert_eq!(
+                attrs.get("tabStopUnit").map(String::as_str),
+                Some("HWPUNIT")
+            );
+        }
+        for (data, expected_raw) in [
+            (core.export_hwp_native().expect("HWP 저장"), raw),
+            (bytes, if raw == 0 { 8000 } else { raw }),
+        ] {
+            let saved = DocumentCore::from_bytes(&data).expect("저장 재열기");
+            let props: serde_json::Value =
+                serde_json::from_str(&saved.get_section_def_native(0).expect("재열기 getter"))
+                    .unwrap();
+            assert_eq!(props["defaultTabSpacing"], expected_raw);
+            assert_eq!(
+                saved.document().sections[1].section_def.default_tab_spacing,
+                8000
+            );
+            assert!(saved
+                .document()
+                .sections
+                .iter()
+                .all(|section| section.paragraphs[0].text == "탭\t본문"));
+        }
+    }
+    core.restore_snapshot_native(before).expect("설정 전 복원");
+    assert_eq!(
+        core.document().sections[0].section_def.default_tab_spacing,
+        original_spacing
+    );
+    assert_eq!(
+        core.document().sections[1].section_def.default_tab_spacing,
+        8000
+    );
+}
