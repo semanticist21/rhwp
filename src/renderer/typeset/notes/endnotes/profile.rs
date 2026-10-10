@@ -1,6 +1,10 @@
-//! 기존 미주 간격·구분선·SSOT 정책 관측. 정책과 상수는 변경하지 않는다.
+//! 미주 간격·구분선의 실제 잉크 높이와 SSOT 흐름 정책.
 
 use crate::renderer::typeset::{border_width_to_px, hwpunit_to_px, FootnoteShape};
+use crate::{
+    model::style::{BorderLine, BorderLineType},
+    renderer::layout::border_line_visual_span,
+};
 
 /// [Task #1363] 미주 높이 모델 SSOT 마이그레이션 단계 플래그(`RHWP_EN_SSOT`).
 ///
@@ -73,6 +77,7 @@ pub(in crate::renderer::typeset) struct EndnoteFlowProfile {
     pub(in crate::renderer::typeset) absorbed_between_notes_gap: bool,
     pub(in crate::renderer::typeset) compact_separator_below: bool,
     pub(in crate::renderer::typeset) separator_line_width: u8,
+    pub(in crate::renderer::typeset) separator_line_type: u8,
 }
 
 impl EndnoteFlowProfile {
@@ -93,6 +98,7 @@ impl EndnoteFlowProfile {
             absorbed_between_notes_gap,
             compact_separator_below,
             separator_line_width: shape.separator_line_width,
+            separator_line_type: shape.separator_line_type,
         }
     }
 
@@ -174,7 +180,16 @@ impl EndnoteFlowProfile {
 
     pub(in crate::renderer::typeset) fn separator_height_px(self, dpi: f64) -> f64 {
         let line_height = if self.visible_separator {
-            border_width_to_px(self.separator_line_width).max(0.5)
+            if self.separator_line_type == 8 {
+                // 실제 두 선을 만드는 테두리 helper와 같은 최소 높이를 예약한다.
+                border_line_visual_span(&BorderLine {
+                    line_type: BorderLineType::Double,
+                    width: self.separator_line_width,
+                    ..Default::default()
+                })
+            } else {
+                border_width_to_px(self.separator_line_width).max(0.5)
+            }
         } else {
             0.0
         };
@@ -229,12 +244,5 @@ pub(in crate::renderer::typeset) fn endnote_separator_height_px(
     shape: &FootnoteShape,
     dpi: f64,
 ) -> f64 {
-    let line_height = if endnote_has_visible_separator(shape) {
-        border_width_to_px(shape.separator_line_width).max(0.5)
-    } else {
-        0.0
-    };
-    hwpunit_to_px(shape.separator_above_margin_hu() as i32, dpi)
-        + line_height
-        + hwpunit_to_px(endnote_separator_below_margin(shape) as i32, dpi)
+    EndnoteFlowProfile::from_shape(shape).separator_height_px(dpi)
 }

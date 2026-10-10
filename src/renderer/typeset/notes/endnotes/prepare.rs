@@ -55,7 +55,10 @@ impl TypesetEngine {
                         color: shape.separator_color,
                     });
                     st.mark_endnote_flow();
-                    if !profile.compact_separator_below {
+                    // 이중 구분선은 얇은 선도 최소 3px다. 실제 선 묶음의 예약을 생략하지 않는다.
+                    if !profile.compact_separator_below
+                        || (profile.visible_separator && shape.separator_line_type == 8)
+                    {
                         st.advance_flow_by(sep_height);
                         st.record_column_flow_origin(st.current_height);
                     }

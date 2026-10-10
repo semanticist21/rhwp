@@ -11391,6 +11391,26 @@ impl LayoutEngine {
     ) -> f64 {
         y_offset += hwpunit_to_px(margin_above as i32, self.dpi);
         let has_separator = line_type != 0 && line_width_raw != 0;
+        if has_separator && line_type == 8 {
+            let border = BorderLine {
+                line_type: BorderLineType::Double,
+                width: line_width_raw,
+                color,
+            };
+            let span = border_line_visual_span(&border);
+            // 두 선의 잉크를 예약 높이 안에 두어 여백이 0이어도 앞뒤 글을 가리지 않는다.
+            let center_y = y_offset + span / 2.0;
+            let length = note_separator_length_px(separator_length, col_area.width, self.dpi);
+            col_node.children.extend(create_border_line_nodes(
+                tree,
+                &border,
+                col_area.x,
+                center_y,
+                col_area.x + length,
+                center_y,
+            ));
+            return y_offset + span + hwpunit_to_px(margin_below as i32, self.dpi);
+        }
         let line_width = if has_separator {
             let line_width = border_width_to_px(line_width_raw).max(0.5);
             let sep_length = note_separator_length_px(separator_length, col_area.width, self.dpi);
