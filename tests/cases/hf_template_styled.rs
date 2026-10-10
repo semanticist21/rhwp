@@ -46,6 +46,16 @@ fn assert_style(doc: &HwpDocument, header: bool, scope: u8, styled: bool) {
     }
 }
 
+fn assert_body_style(doc: &HwpDocument) {
+    for offset in 0..4 {
+        let actual: Value =
+            serde_json::from_str(&doc.get_char_properties_at_native(0, 0, offset).unwrap())
+                .unwrap();
+        assert_eq!(actual["italic"], true, "본문 글자 {offset} 기울임");
+        assert_eq!(actual["textColor"], "#803090", "본문 글자 {offset} 색");
+    }
+}
+
 fn reopened(doc: &HwpDocument, hwpx: bool) -> HwpDocument {
     let bytes = if hwpx {
         doc.export_hwpx().expect("HWPX 저장")
@@ -109,6 +119,10 @@ fn styled_template_replacement_preserves_body_sibling_direct_format_and_fields()
         .unwrap();
     let body_shapes =
         serde_json::to_value(&doc.document().sections[0].paragraphs[0].char_shapes).unwrap();
+    assert_body_style(&doc);
+    for hwpx in [false, true] {
+        assert_body_style(&reopened(&doc, hwpx));
+    }
     doc.create_header_footer_native(0, true, 2).unwrap();
     doc.insert_text_in_header_footer_native(0, true, 2, 0, 0, "홀수 보호")
         .unwrap();
@@ -187,9 +201,7 @@ fn styled_template_replacement_preserves_body_sibling_direct_format_and_fields()
                 "{hwpx}/{page} 파일 이름: {drawn:?}"
             );
         }
-        let body = &saved.document().sections[0].paragraphs[0];
-        let shape =
-            &saved.document().doc_info.char_shapes[body.char_shapes[0].char_shape_id as usize];
-        assert!(shape.italic, "본문 직접 모양 보존");
+        // 저장 시 문단 앞 제어문자에도 모양 ref가 생기므로 실제 본문 글자 범위를 확인한다.
+        assert_body_style(&saved);
     }
 }
