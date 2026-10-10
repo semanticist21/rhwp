@@ -3098,6 +3098,7 @@ fn stroke_dash_str(value: StrokeDash) -> &'static str {
     match value {
         StrokeDash::Solid => "solid",
         StrokeDash::Dash => "dash",
+        StrokeDash::LongDash => "longDash",
         StrokeDash::Dot => "dot",
         StrokeDash::DashDot => "dashDot",
         StrokeDash::DashDotDot => "dashDotDot",

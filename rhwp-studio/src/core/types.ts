@@ -1206,7 +1206,7 @@ export interface LayerFootnoteMarkerOp {
   color?: string;
 }
 
-export type LayerStrokeDash = 'solid' | 'dash' | 'dot' | 'dashDot' | 'dashDotDot';
+export type LayerStrokeDash = 'solid' | 'dash' | 'longDash' | 'dot' | 'dashDot' | 'dashDotDot';
 
 export interface LayerShadowStyle {
   shadowType?: number;

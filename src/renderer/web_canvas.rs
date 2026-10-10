@@ -1289,7 +1289,7 @@ impl WebCanvasRenderer {
         if ph.kind == crate::renderer::render_tree::PlaceholderKind::MissingPicture {
             // 한글 편집 화면의 테두리는 굵은 파선이 아니라 잔 점선이다 — 오라클 화면
             // 실측(2px on / 2px off)에 맞춘다. `svg.rs` 의 stroke-dasharray 와 같은 값.
-            self.set_line_dash(&StrokeDash::Dot);
+            self.set_line_dash(&StrokeDash::Dot, 1.0);
             self.ctx.set_stroke_style_str("#999999");
             self.ctx.set_line_width(1.0);
             self.ctx
@@ -1334,7 +1334,7 @@ impl WebCanvasRenderer {
         }
         self.ctx.set_fill_style_str(&color_to_css(ph.fill_color));
         self.ctx.fill_rect(bbox.x, bbox.y, bbox.width, bbox.height);
-        self.set_line_dash(&StrokeDash::Dash);
+        self.set_line_dash(&StrokeDash::Dash, 1.0);
         self.ctx
             .set_stroke_style_str(&color_to_css(ph.stroke_color));
         self.ctx.set_line_width(1.0);
@@ -1533,9 +1533,18 @@ impl WebCanvasRenderer {
     }
 
     /// 선 대시 패턴 설정
-    fn set_line_dash(&self, dash: &StrokeDash) {
+    fn set_line_dash(&self, dash: &StrokeDash, width: f64) {
         let pattern: js_sys::Array = match dash {
             StrokeDash::Solid => js_sys::Array::new(),
+            StrokeDash::LongDash => {
+                let arr = js_sys::Array::new();
+                if let Some(intervals) = super::long_dash_intervals(width) {
+                    for value in intervals {
+                        arr.push(&JsValue::from_f64(value));
+                    }
+                }
+                arr
+            }
             StrokeDash::Dash => {
                 let arr = js_sys::Array::new();
                 arr.push(&JsValue::from_f64(6.0));
@@ -1792,7 +1801,7 @@ impl WebCanvasRenderer {
             if let Some(stroke) = style.stroke_color {
                 self.ctx.set_stroke_style_str(&color_to_css(stroke));
                 self.ctx.set_line_width(style.stroke_width.max(0.5));
-                self.set_line_dash(&style.stroke_dash);
+                self.set_line_dash(&style.stroke_dash, style.stroke_width);
                 self.ctx.stroke();
                 let _ = self.ctx.set_line_dash(&js_sys::Array::new());
             }
@@ -1817,7 +1826,7 @@ impl WebCanvasRenderer {
             if let Some(stroke) = style.stroke_color {
                 self.ctx.set_stroke_style_str(&color_to_css(stroke));
                 self.ctx.set_line_width(style.stroke_width.max(0.5));
-                self.set_line_dash(&style.stroke_dash);
+                self.set_line_dash(&style.stroke_dash, style.stroke_width);
                 self.ctx.stroke_rect(x, y, w, h);
                 let _ = self.ctx.set_line_dash(&js_sys::Array::new());
             }
@@ -1868,7 +1877,7 @@ impl WebCanvasRenderer {
         if let Some(stroke) = style.stroke_color {
             self.ctx.set_stroke_style_str(&color_to_css(stroke));
             self.ctx.set_line_width(style.stroke_width.max(0.5));
-            self.set_line_dash(&style.stroke_dash);
+            self.set_line_dash(&style.stroke_dash, style.stroke_width);
             self.ctx.stroke();
             let _ = self.ctx.set_line_dash(&js_sys::Array::new());
         }
@@ -1989,7 +1998,7 @@ impl WebCanvasRenderer {
         if let Some(stroke) = style.stroke_color {
             self.ctx.set_stroke_style_str(&color_to_css(stroke));
             self.ctx.set_line_width(style.stroke_width.max(0.5));
-            self.set_line_dash(&style.stroke_dash);
+            self.set_line_dash(&style.stroke_dash, style.stroke_width);
             self.ctx.stroke();
             let _ = self.ctx.set_line_dash(&js_sys::Array::new());
         }
@@ -2636,7 +2645,7 @@ impl Renderer for WebCanvasRenderer {
         }
 
         self.ctx.set_stroke_style_str(&color);
-        self.set_line_dash(&style.dash);
+        self.set_line_dash(&style.dash, style.width);
 
         // 이중선/삼중선: SVG draw_multi_line과 동일한 오프셋 비율 방식
         // (width_ratio, offset_ratio) — offset은 선 중심으로부터의 거리 비율

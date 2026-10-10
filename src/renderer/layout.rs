@@ -7158,7 +7158,7 @@ impl LayoutEngine {
             3 => StrokeDash::Dot,
             4 => StrokeDash::DashDot,
             5 => StrokeDash::DashDotDot,
-            6 => StrokeDash::Dash,
+            6 => StrokeDash::LongDash,
             7 => StrokeDash::Dot,
             _ => StrokeDash::Solid,
         };

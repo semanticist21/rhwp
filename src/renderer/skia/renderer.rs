@@ -686,10 +686,25 @@ impl SkiaLayerRenderer {
     ) -> LayerRenderResult<()> {
         let active_layer = node.layer.or(inherited_layer);
         let clip_enabled = output_options.clip_enabled;
-        let apply_dash = |paint: &mut Paint, dash: StrokeDash| {
+        let apply_dash = |paint: &mut Paint, dash: StrokeDash, width: f64| {
+            // 긴 파선은 max(width, 1)로 재확대하지 않고 원래 획 굵기를 한 번만 반영한다.
+            if dash == StrokeDash::LongDash {
+                if let Some(intervals) = super::super::long_dash_intervals(width) {
+                    let intervals = intervals.map(|value| value as f32);
+                    if intervals
+                        .iter()
+                        .all(|value| value.is_finite() && *value > 0.0)
+                    {
+                        if let Some(effect) = PathEffect::dash(&intervals, 0.0) {
+                            paint.set_path_effect(effect);
+                        }
+                    }
+                }
+                return;
+            }
             let base_width = paint.stroke_width().max(1.0);
             let intervals: Option<[f32; 6]> = match dash {
-                StrokeDash::Solid => None,
+                StrokeDash::Solid | StrokeDash::LongDash => None,
                 StrokeDash::Dash => Some([6.0, 3.0, 0.0, 0.0, 0.0, 0.0]),
                 StrokeDash::Dot => Some([2.0, 2.0, 0.0, 0.0, 0.0, 0.0]),
                 StrokeDash::DashDot => Some([6.0, 3.0, 2.0, 3.0, 0.0, 0.0]),
@@ -727,7 +742,7 @@ impl SkiaLayerRenderer {
                 1.0
             });
             paint.set_color(colorref_to_skia(style.stroke_color?, style.opacity as f32));
-            apply_dash(&mut paint, style.stroke_dash);
+            apply_dash(&mut paint, style.stroke_dash, style.stroke_width);
             Some(paint)
         };
         let make_line_paint = |style: &LineStyle| {
@@ -740,7 +755,7 @@ impl SkiaLayerRenderer {
                 1.0
             });
             paint.set_color(colorref_to_skia(style.color, 1.0));
-            apply_dash(&mut paint, style.dash);
+            apply_dash(&mut paint, style.dash, style.width);
             paint
         };
         let draw_placeholder = |bbox: crate::renderer::render_tree::BoundingBox, label: &str| {

@@ -59,6 +59,7 @@ import {
   type CanvasKitSurfaceRequest,
 } from './render-backend';
 import { imageCropSelectionIsEmpty } from './image-crop-scale.ts';
+import { strokeDashIntervals } from './stroke-dash.ts';
 import {
   boundedCanvasKitSourceImageKey,
   canvasKitImageCacheKey,
@@ -3805,7 +3806,7 @@ export class CanvasKitLayerRenderer {
       if (style?.strokeColor && (style.strokeWidth ?? 0) > 0) {
         const shadowStroke = this.makeStrokePaint(shadow.color, style.strokeWidth ?? 1, shadow.opacity);
         try {
-          this.drawStrokeWithDash(style.strokeDash, shadowStroke, () => draw(shadowStroke));
+          this.drawStrokeWithDash(style.strokeDash, style.strokeWidth ?? 1, shadowStroke, () => draw(shadowStroke));
         } finally {
           shadowStroke.delete?.();
         }
@@ -3832,7 +3833,7 @@ export class CanvasKitLayerRenderer {
     if (style?.strokeColor && (style.strokeWidth ?? 0) > 0) {
       const paint = this.makeStrokePaint(style.strokeColor, style.strokeWidth ?? 1, style.opacity);
       try {
-        this.drawStrokeWithDash(style.strokeDash, paint, () => draw(paint));
+        this.drawStrokeWithDash(style.strokeDash, style.strokeWidth ?? 1, paint, () => draw(paint));
       } finally {
         paint.delete?.();
       }
@@ -4011,7 +4012,7 @@ export class CanvasKitLayerRenderer {
       const ox = nx * width * offsetRatio;
       const oy = ny * width * offsetRatio;
       try {
-        this.drawStrokeWithDash(style.dash, paint, () => {
+        this.drawStrokeWithDash(style.dash, width, paint, () => {
           canvas.drawLine(x1 + ox, y1 + oy, x2 + ox, y2 + oy, paint);
         });
       } finally {
@@ -4146,20 +4147,11 @@ export class CanvasKitLayerRenderer {
 
   private drawStrokeWithDash(
     dash: LayerStrokeDash | undefined,
+    width: number,
     paint: SkPaint,
     draw: () => void,
   ): void {
-    const intervals = dash === undefined || dash === 'solid'
-      ? null
-      : dash === 'dash'
-        ? [6, 3]
-        : dash === 'dot'
-          ? [2, 2]
-          : dash === 'dashDot'
-            ? [6, 3, 2, 3]
-            : dash === 'dashDotDot'
-              ? [6, 3, 2, 3, 2, 3]
-              : undefined;
+    const intervals = strokeDashIntervals(dash, width);
     if (intervals === undefined) {
       this.unsupportedOps.add(`strokeDash:${String(dash)}`);
       return;

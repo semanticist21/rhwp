@@ -1377,7 +1377,8 @@ fn border_line_type_to_dash(lt: BorderLineType) -> Option<StrokeDash> {
     match lt {
         BorderLineType::None => None,
         BorderLineType::Solid => Some(StrokeDash::Solid),
-        BorderLineType::Dash | BorderLineType::LongDash => Some(StrokeDash::Dash),
+        BorderLineType::Dash => Some(StrokeDash::Dash),
+        BorderLineType::LongDash => Some(StrokeDash::LongDash),
         BorderLineType::Dot | BorderLineType::Circle => Some(StrokeDash::Dot),
         BorderLineType::DashDot => Some(StrokeDash::DashDot),
         BorderLineType::DashDotDot => Some(StrokeDash::DashDotDot),

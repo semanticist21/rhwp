@@ -862,9 +862,22 @@ pub enum StrokeDash {
     #[default]
     Solid,
     Dash,
+    LongDash,
     Dot,
     DashDot,
     DashDotDot,
+}
+
+/// 긴 파선의 dash/gap은 실제 획 굵기에 비례한다.
+/// 저장소 issue-124의 한컴 웹기안기 분석은 24/8 배수를 기록한다.
+/// 일반 Dash의 기존 고정 픽셀/백엔드별 굵기 계약은 바꾸지 않는다.
+pub fn long_dash_intervals(width: f64) -> Option<[f64; 2]> {
+    let intervals = [width * 24.0, width * 8.0];
+    (width > 0.0
+        && intervals
+            .iter()
+            .all(|value| value.is_finite() && *value > 0.0))
+    .then_some(intervals)
 }
 
 /// 선 렌더링 종류 (이중선/삼중선)

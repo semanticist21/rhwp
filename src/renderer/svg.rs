@@ -1664,6 +1664,11 @@ impl SvgRenderer {
                 style.stroke_width
             ));
             match style.stroke_dash {
+                StrokeDash::LongDash => {
+                    if let Some([dash, gap]) = super::long_dash_intervals(style.stroke_width) {
+                        attrs.push_str(&format!(" stroke-dasharray=\"{dash} {gap}\""));
+                    }
+                }
                 StrokeDash::Dash => attrs.push_str(" stroke-dasharray=\"6 3\""),
                 StrokeDash::Dot => attrs.push_str(" stroke-dasharray=\"2 2\""),
                 StrokeDash::DashDot => attrs.push_str(" stroke-dasharray=\"6 3 2 3\""),
@@ -1703,6 +1708,11 @@ impl SvgRenderer {
                 color_to_svg(stroke),
                 style.stroke_width
             ));
+            if style.stroke_dash == StrokeDash::LongDash {
+                if let Some([dash, gap]) = super::long_dash_intervals(style.stroke_width) {
+                    attrs.push_str(&format!(" stroke-dasharray=\"{dash} {gap}\""));
+                }
+            }
         }
 
         if style.opacity < 1.0 {
@@ -1754,6 +1764,11 @@ impl SvgRenderer {
                 style.stroke_width
             ));
             match style.stroke_dash {
+                StrokeDash::LongDash => {
+                    if let Some([dash, gap]) = super::long_dash_intervals(style.stroke_width) {
+                        attrs.push_str(&format!(" stroke-dasharray=\"{dash} {gap}\""));
+                    }
+                }
                 StrokeDash::Dash => attrs.push_str(" stroke-dasharray=\"6 3\""),
                 StrokeDash::Dot => attrs.push_str(" stroke-dasharray=\"2 2\""),
                 StrokeDash::DashDot => attrs.push_str(" stroke-dasharray=\"6 3 2 3\""),
@@ -3896,6 +3911,11 @@ impl Renderer for SvgRenderer {
             lx1, ly1, lx2, ly2, color, width,
         );
         match style.dash {
+            super::StrokeDash::LongDash => {
+                if let Some([dash, gap]) = super::long_dash_intervals(style.width) {
+                    attrs.push_str(&format!(" stroke-dasharray=\"{dash} {gap}\""));
+                }
+            }
             super::StrokeDash::Dash => attrs.push_str(" stroke-dasharray=\"6 3\""),
             super::StrokeDash::Dot => attrs.push_str(" stroke-dasharray=\"2 2\""),
             super::StrokeDash::DashDot => attrs.push_str(" stroke-dasharray=\"6 3 2 3\""),
