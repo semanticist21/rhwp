@@ -5892,7 +5892,14 @@ impl DocumentCore {
                         HwpError::RenderError("미주 렌더 위치를 찾을 수 없습니다".to_string())
                     })?;
                 let render_char_offset = if note_para_idx == 0 {
-                    char_offset
+                    // 렌더 사본이 번호 앞에서 제거한 공백만 원문 주소에서 뺀다.
+                    let leading_spaces = endnote.paragraphs.first().map_or(0, |para| {
+                        para.text
+                            .chars()
+                            .take_while(|ch| matches!(*ch, ' ' | '\u{00A0}' | '\u{2007}'))
+                            .count()
+                    });
+                    char_offset.saturating_sub(leading_spaces)
                         + note_marker_text(
                             endnote.number,
                             endnote.number_shape,
