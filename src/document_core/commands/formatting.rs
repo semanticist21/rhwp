@@ -2136,7 +2136,18 @@ impl DocumentCore {
                 dpi,
             );
         }
-        self.document.sections[sec_idx].raw_stream = None;
+        self.refresh_section_native(sec_idx)
+    }
+
+    /// 저장 줄을 보존하며 직접 수정한 구역의 스타일·조판·렌더 캐시를 갱신한다.
+    /// 단 구분선처럼 줄바꿈 폭이 그대로인 변경에 쓰며 배치 중에는 쪽 나눔을 미룬다.
+    pub fn refresh_section_native(&mut self, sec_idx: usize) -> Result<(), HwpError> {
+        let section = self
+            .document
+            .sections
+            .get_mut(sec_idx)
+            .ok_or_else(|| HwpError::RenderError(format!("구역 {} 범위 초과", sec_idx)))?;
+        section.raw_stream = None;
         // 기존 rebuild_section과 같은 순서로 파생 상태를 갱신하되 배치는 존중한다.
         self.rebuild_resolved_styles();
         self.flush_cell_format_vpos();
