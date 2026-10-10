@@ -7754,7 +7754,6 @@ impl HwpDocument {
     /// 삭제된 스타일을 사용 중인 문단은 바탕글(ID 0)로 변경된다.
     #[wasm_bindgen(js_name = deleteStyle)]
     pub fn delete_style(&mut self, style_id: u32) -> bool {
-        use crate::model::document::RawRecord;
         use crate::model::identity::walk::{walk, Node};
 
         if style_id == 0 {
@@ -7765,51 +7764,80 @@ impl HwpDocument {
             return false;
         }
         let sid = style_id as u8;
-        // 스타일 표는 인덱스 기반이다. 지운 스타일을 가리키던 번호는 바탕글(0)로, 그 뒤 번호는
-        // 한 칸씩 당긴다.
-        let remap = |id: u8| match id.cmp(&sid) {
-            std::cmp::Ordering::Less => id,
-            std::cmp::Ordering::Equal => 0,
-            std::cmp::Ordering::Greater => id - 1,
+        let remap = |id: u16| {
+            if id == u16::from(sid) {
+                0
+            } else if id > u16::from(sid) {
+                id - 1
+            } else {
+                id
+            }
         };
-        // HWP 원본 바탕쪽은 구역 정의의 원시 레코드로 그대로 저장된다. 그 안 문단 머리의
-        // 스타일 번호(PARA_HEADER 10번째 바이트)도 옮겨야 저장본이 모델과 같다.
-        let remap_raw = |records: &mut [RawRecord]| {
-            for record in records {
+        let remap_section_def = |section_def: &mut crate::model::document::SectionDef| {
+            // 저장된 바탕쪽은 원본 레코드를 다시 쓴다. 문단·덧말의 스타일 슬롯만 함께 보정한다.
+            for record in &mut section_def.extra_child_records {
                 if record.tag_id == crate::parser::tags::HWPTAG_PARA_HEADER {
                     if let Some(id) = record.data.get_mut(10) {
-                        *id = remap(*id);
+                        *id = remap(u16::from(*id)) as u8;
                     }
+                } else if record.tag_id == crate::parser::tags::HWPTAG_CTRL_HEADER {
+                    let mut reader = crate::parser::byte_reader::ByteReader::new(&record.data);
+                    // tdut의 두 문자열과 위치·크기·옵션 뒤에 스타일 UINT32가 온다.
+                    // 잘린 원본·다른 제어·범위 밖 참조는 추측하지 않고 그대로 보존한다.
+                    if reader.read_u32().ok() != Some(crate::parser::tags::CTRL_CHAR_OVERLAP)
+                        || reader.read_hwp_string().is_err()
+                        || reader.read_hwp_string().is_err()
+                        || reader.skip(12).is_err()
+                    {
+                        continue;
+                    }
+                    let offset = reader.position();
+                    let Some(id) = reader.read_u32().ok().and_then(|id| u16::try_from(id).ok())
+                    else {
+                        continue;
+                    };
+                    if reader.read_u32().is_err() {
+                        continue;
+                    }
+                    record.data[offset..offset + 4]
+                        .copy_from_slice(&u32::from(remap(id)).to_le_bytes());
                 }
             }
         };
-        self.core.document.doc_info.styles.remove(style_id as usize);
-        // 본문뿐 아니라 표 셀·글상자·머리말/꼬리말·각주/미주·캡션·메모·바탕쪽 문단과 덧말도
-        // 같은 스타일 표를 가리킨다. 하나라도 빠지면 그 문단이 다른 스타일을 가리킨 채 저장된다.
-        let mut visit = |node: &mut Node<'_>| -> Result<(), HwpError> {
-            match node {
-                Node::Paragraph(para) => para.style_id = remap(para.style_id),
-                Node::Control(Control::Ruby(ruby)) => {
-                    if let Ok(id) = u8::try_from(ruby.style_id_ref) {
-                        ruby.style_id_ref = remap(id).into();
+        let remap_paragraphs = |paragraphs: &mut [Paragraph]| {
+            walk(paragraphs, |node| {
+                match node {
+                    Node::Paragraph(para) => para.style_id = remap(u16::from(para.style_id)) as u8,
+                    Node::Control(Control::Ruby(ruby)) => {
+                        ruby.style_id_ref = remap(ruby.style_id_ref);
                     }
+                    Node::Control(Control::SectionDef(section_def)) => {
+                        remap_section_def(section_def);
+                    }
+                    _ => {}
                 }
-                Node::Control(Control::SectionDef(def)) => remap_raw(&mut def.extra_child_records),
-                _ => {}
-            }
-            Ok(())
+                Ok(())
+            })
+            .expect("style reference traversal is infallible");
         };
+        // 표·글상자·머리말·주석도 같은 스타일 풀을 참조한다. 모양과 원문은 바꾸지 않는다.
         for section in &mut self.core.document.sections {
-            walk(&mut section.paragraphs, &mut visit).expect("스타일 번호 순회는 실패하지 않는다");
-            // 렌더와 HWPX 저장은 구역의 구역 정의 사본에서 바탕쪽을 읽는다.
+            remap_paragraphs(&mut section.paragraphs);
+            remap_section_def(&mut section.section_def);
             for master in &mut section.section_def.master_pages {
-                walk(&mut master.paragraphs, &mut visit)
-                    .expect("스타일 번호 순회는 실패하지 않는다");
+                remap_paragraphs(&mut master.paragraphs);
             }
-            remap_raw(&mut section.section_def.extra_child_records);
         }
+        // 스타일 삭제 (인덱스 기반이므로 뒤의 ID가 변경됨에 주의)
+        self.core.document.doc_info.styles.remove(style_id as usize);
+        // next_style_id 보정
         for s in &mut self.core.document.doc_info.styles {
-            s.next_style_id = remap(s.next_style_id);
+            let next = remap(u16::from(s.next_style_id)) as u8;
+            if next != s.next_style_id {
+                s.next_style_id = next;
+                // 원본 레코드 봉인이 없는 기본 문서에서도 이전 연결을 다시 쓰지 않는다.
+                s.raw_data = None;
+            }
         }
         // 스타일 캐시 갱신
         self.core.rebuild_resolved_styles();
