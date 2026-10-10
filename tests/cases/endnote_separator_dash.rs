@@ -161,7 +161,7 @@ fn assert_dash(doc: &HwpDocument, expected: bool) {
 #[test]
 fn dashed_endnote_separator_preserves_all_text_layout_carets_and_selection() {
     // 얇은 선·기본선·굵은 선에서도 파선 연결이 예약 높이나 획 굵기를 바꾸지 않는다.
-    for width in [1, 5, 15] {
+    for width in [0, 1, 5, 15] {
         let (mut doc, control) = fixture(width);
         assert_dash(&doc, false);
         let before_layout = layout(&doc);
@@ -241,10 +241,9 @@ fn dashed_endnote_separator_roundtrips_both_formats_without_mutating_source() {
 }
 
 #[test]
-fn disabled_and_zero_width_endnote_separators_remain_absent() {
+fn disabled_and_none_endnote_separators_remain_absent() {
     for props in [
         r#"{"separatorEnabled":false}"#,
-        r#"{"separatorLineWidth":0}"#,
         r#"{"separatorLineType":0}"#,
     ] {
         let (mut doc, control) = fixture(5);

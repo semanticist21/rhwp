@@ -11390,7 +11390,7 @@ impl LayoutEngine {
         color: crate::model::ColorRef,
     ) -> f64 {
         y_offset += hwpunit_to_px(margin_above as i32, self.dpi);
-        let has_separator = line_type != 0 && line_width_raw != 0;
+        let has_separator = line_type != 0;
         if has_separator && line_type == 8 {
             let border = BorderLine {
                 line_type: BorderLineType::Double,
@@ -11412,7 +11412,13 @@ impl LayoutEngine {
             return y_offset + span + hwpunit_to_px(margin_below as i32, self.dpi);
         }
         let line_width = if has_separator {
-            let line_width = border_width_to_px(line_width_raw).max(0.5);
+            // 굵기 0은 숨김이 아니라 0.1mm다. 다른 굵기의 기존 최소 획은 유지한다.
+            let raw_width = border_width_to_px(line_width_raw);
+            let line_width = if line_width_raw == 0 {
+                raw_width
+            } else {
+                raw_width.max(0.5)
+            };
             let sep_length = note_separator_length_px(separator_length, col_area.width, self.dpi);
             let line_id = tree.next_id();
             let sep_line = LineNode::new(

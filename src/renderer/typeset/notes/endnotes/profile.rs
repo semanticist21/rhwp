@@ -188,7 +188,12 @@ impl EndnoteFlowProfile {
                     ..Default::default()
                 })
             } else {
-                border_width_to_px(self.separator_line_width).max(0.5)
+                let raw_width = border_width_to_px(self.separator_line_width);
+                if self.separator_line_width == 0 {
+                    raw_width
+                } else {
+                    raw_width.max(0.5)
+                }
             }
         } else {
             0.0
@@ -237,7 +242,7 @@ pub(in crate::renderer::typeset) fn endnote_has_compact_separator_below(
 }
 
 pub(in crate::renderer::typeset) fn endnote_has_visible_separator(shape: &FootnoteShape) -> bool {
-    shape.separator_line_type != 0 && shape.separator_line_width != 0
+    shape.separator_line_type != 0
 }
 
 pub(in crate::renderer::typeset) fn endnote_separator_height_px(
