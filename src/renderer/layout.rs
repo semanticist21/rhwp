@@ -11403,7 +11403,12 @@ impl LayoutEngine {
                 LineStyle {
                     color,
                     width: line_width,
-                    dash: StrokeDash::Solid,
+                    // 미주 파선은 공통 replay의 파선을 쓰며 선 위치와 예약 높이는 유지한다.
+                    dash: if line_type == 2 {
+                        StrokeDash::Dash
+                    } else {
+                        StrokeDash::Solid
+                    },
                     ..Default::default()
                 },
             );
