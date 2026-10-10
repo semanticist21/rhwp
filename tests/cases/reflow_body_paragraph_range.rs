@@ -5,6 +5,7 @@
 use rhwp::document_core::DocumentCore;
 use rhwp::model::control::Control;
 use rhwp::model::page::ColumnDef;
+use rhwp::model::paragraph::ColumnBreakType;
 use rhwp::renderer::page_layout::PageLayoutInfo;
 use serde_json::Value;
 
@@ -139,6 +140,51 @@ fn equal_columns_match_canonical_reflow_and_refresh_cached_render_and_carets() {
 }
 
 #[test]
+fn separator_refresh_preserves_stored_lines_text_coordinates_and_invalid_section_state() {
+    let mut original = DocumentCore::from_bytes(&source()).unwrap();
+    original.set_column_def_native(0, 2, 0, true, 2268).unwrap();
+    let mut core = DocumentCore::from_bytes(&original.export_hwpx_native().unwrap()).unwrap();
+    let lines: Vec<_> = core.document().sections[0]
+        .paragraphs
+        .iter()
+        .map(|paragraph| paragraph.line_segs.clone())
+        .collect();
+    let before = layout(&core);
+    let carets: Vec<_> = (0..PARAGRAPHS)
+        .map(|paragraph| caret(&core, paragraph))
+        .collect();
+    let svg = core.render_page_svg_native(0).unwrap();
+    let events = core.serialize_event_log();
+    let properties = format!("{:?}", core.document().doc_properties);
+    let model = format!("{:?}", core.document());
+    assert!(core.refresh_section_native(1).is_err());
+    assert_eq!(format!("{:?}", core.document()), model);
+    assert_eq!(layout(&core), before);
+    assert_eq!(core.render_page_svg_native(0).unwrap(), svg);
+    assert_eq!(core.serialize_event_log(), events);
+
+    let definition = first_definition(&mut core);
+    definition.separator_type = 1;
+    definition.separator_width = 5;
+    definition.separator_color = 0x0000ff;
+    core.refresh_section_native(0).unwrap();
+    assert_eq!(layout(&core), before, "구분선은 글자 좌표를 바꾸지 않는다");
+    assert_eq!(core.page_count(), before.len() as u32);
+    for (paragraph, (expected_lines, expected_caret)) in lines.iter().zip(carets).enumerate() {
+        assert_eq!(
+            core.document().sections[0].paragraphs[paragraph].line_segs,
+            *expected_lines
+        );
+        assert_eq!(caret(&core, paragraph), expected_caret);
+    }
+    let refreshed_svg = core.render_page_svg_native(0).unwrap();
+    assert_ne!(refreshed_svg, svg, "구분선이 옛 렌더 캐시를 갱신해야 한다");
+    assert!(refreshed_svg.contains("stroke=\"#ff0000\""));
+    assert_eq!(core.serialize_event_log(), events);
+    assert_eq!(format!("{:?}", core.document().doc_properties), properties);
+}
+
+#[test]
 fn unequal_columns_use_the_paragraphs_current_column_and_preserve_outside_lines() {
     let mut core = DocumentCore::from_bytes(&source()).unwrap();
     core.set_column_def_native(0, 2, 0, true, 2268).unwrap();
@@ -168,15 +214,32 @@ fn a_definition_inside_the_range_supplies_its_own_width_and_batch_defers_paginat
     let mut core = DocumentCore::from_bytes(&source()).unwrap();
     let before = layout(&core);
     let outside = core.document().sections[0].paragraphs[39].line_segs.clone();
-    // 줄의 물리 폭을 다르게 하는 모델 단 정의다. 텍스트·기존 단 정의는 그대로 둔다.
-    core.document_mut().sections[0].paragraphs[40]
-        .controls
-        .push(Control::ColumnDef(ColumnDef {
+    // 실제 다단 나누기처럼 경계 표시와 앞의 8유닛 단 정의 슬롯을 함께 넣는다.
+    let paragraph = &mut core.document_mut().sections[0].paragraphs[40];
+    paragraph.column_type = ColumnBreakType::MultiColumn;
+    paragraph.raw_break_type = 0x02;
+    paragraph.align_ctrl_data_records();
+    paragraph.controls.insert(
+        0,
+        Control::ColumnDef(ColumnDef {
             column_count: 3,
             same_width: true,
             spacing: 2268,
             ..Default::default()
-        }));
+        }),
+    );
+    paragraph.ctrl_data_records.insert(0, None);
+    for offset in &mut paragraph.char_offsets {
+        *offset += 8;
+    }
+    for shape in paragraph
+        .char_shapes
+        .iter_mut()
+        .filter(|shape| shape.start_pos > 0)
+    {
+        shape.start_pos += 8;
+    }
+    paragraph.char_count += 8;
     core.begin_batch_native().unwrap();
     core.reflow_body_paragraph_range_native(0, 40..PARAGRAPHS)
         .unwrap();
@@ -192,7 +255,10 @@ fn a_definition_inside_the_range_supplies_its_own_width_and_batch_defers_paginat
         .iter()
         .all(|paragraph| paragraph.line_segs[0].segment_width == width));
     core.end_batch_native().unwrap();
-    assert_ne!(layout(&core), before);
+    assert!(
+        layout(&core) != before,
+        "실제 다단 경계의 배치가 바뀌어야 한다"
+    );
 }
 
 #[test]
