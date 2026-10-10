@@ -1,7 +1,7 @@
 //! 줄 나눔 엔진 (Line Breaking Engine)
 //!
 //! 문단 텍스트를 토큰화하고 줄 나눔을 수행한다.
-//! 한글 어절/글자, 영어 단어/하이픈, CJK 개별 분할을 지원한다.
+//! 한글 어절/글자, 영어 단어/하이픈/글자, CJK 개별 분할을 지원한다.
 
 use super::picture_anchor_projection::{self, FramePurpose};
 use super::supplemental_clusters::ParagraphMetricScope;
@@ -20,6 +20,7 @@ use crate::renderer::style_resolver::{
 };
 use crate::renderer::{hwpunit_to_px, px_to_hwpunit};
 use std::ops::Range;
+use unicode_segmentation::UnicodeSegmentation;
 
 mod inline_frame_input;
 mod list_marker_metrics;
@@ -301,6 +302,10 @@ fn stays_in_latin_word(ch: char) -> bool {
     is_lang_neutral(ch) || matches!(ch, '\u{00B0}' | '\u{00B7}')
 }
 
+fn is_nonbreaking_glue(ch: char) -> bool {
+    matches!(ch, '\u{00a0}' | '\u{202f}' | '\u{2011}')
+}
+
 /// CJK 문자 여부 (한자/일본어 — 개별 분할 대상)
 fn is_cjk_ideograph(ch: char) -> bool {
     let lang = detect_lang_category(ch);
@@ -415,6 +420,18 @@ fn tokenize_paragraph_with_regenerated_space_metric(
     let metric_scope =
         ParagraphMetricScope::new(text_chars, styles).with_space_metric(space_metric);
     let mut current_lang: usize = 0;
+    // 글자 단위도 결합 문자 안에서는 끊지 않는다. 기존 의존성으로 논리 글자 끝만 구한다.
+    let grapheme_ends = (english_break_unit == 2).then(|| {
+        let text: String = text_chars.iter().collect();
+        let mut end = 0;
+        text.graphemes(true)
+            .flat_map(|grapheme| {
+                let len = grapheme.chars().count();
+                end += len;
+                std::iter::repeat_n(end, len)
+            })
+            .collect::<Vec<_>>()
+    });
 
     while i < text_len {
         let ch = text_chars[i];
@@ -677,7 +694,7 @@ fn tokenize_paragraph_with_regenerated_space_metric(
         }
 
         // 라틴 단어 또는 글자
-        if is_latin(ch) {
+        if is_latin(ch) || (english_break_unit == 2 && is_nonbreaking_glue(ch)) {
             if english_break_unit == 0 || english_break_unit == 1 {
                 // 단어/하이픈 모드: 연속 라틴 문자를 하나의 토큰으로
                 let start = i;
@@ -769,6 +786,48 @@ fn tokenize_paragraph_with_regenerated_space_metric(
                         char_widths: cw,
                     });
                 }
+                continue;
+            } else if english_break_unit == 2 {
+                let start = i;
+                let grapheme_ends = grapheme_ends.as_ref().expect("글자 단위 경계");
+                i = grapheme_ends[i];
+                // 닫는 문장부호는 앞 글자에 붙이고, NBSP 등은 양옆 글자를 함께 옮긴다.
+                while i < text_len
+                    && !matches!(text_chars[i], ' ' | '\n' | '\t')
+                    && (is_line_start_forbidden(text_chars[i])
+                        || text_chars[i] == '-'
+                        || is_nonbreaking_glue(text_chars[i])
+                        || is_nonbreaking_glue(text_chars[i - 1]))
+                {
+                    i = grapheme_ends[i];
+                }
+                current_lang = 1;
+                let text: String = text_chars[start..i].iter().collect();
+                let (width, char_widths) = measure_token_char_widths(
+                    &metric_scope,
+                    &text,
+                    start,
+                    char_offsets,
+                    char_shapes,
+                    styles,
+                    current_lang,
+                    inline_controls,
+                );
+                let max_font_size = (start..i)
+                    .map(|index| {
+                        let utf16 = char_offsets.get(index).copied().unwrap_or(index as u32);
+                        token_line_font_size(styles, find_active_char_shape(char_shapes, utf16))
+                    })
+                    .fold(0.0f64, f64::max);
+                tokens.push(BreakToken::Text {
+                    start_idx: start,
+                    end_idx: i,
+                    base_width: width,
+                    width,
+                    max_font_size,
+                    base_char_widths: char_widths.clone(),
+                    char_widths,
+                });
                 continue;
             } else {
                 // 글자 모드
@@ -1774,6 +1833,7 @@ fn fill_lines(
     available_width_px: f64,
     indent_px: f64,
     tabs: TabFill<'_>,
+    english_break_unit: u8,
     korean_break_unit: u8,
     condense_min_space: u8,
     letter_spacing_px: &[f64],
@@ -1790,6 +1850,7 @@ fn fill_lines(
         available_width_px,
         indent_px,
         tabs,
+        english_break_unit,
         korean_break_unit,
         condense_min_space,
         letter_spacing_px,
@@ -1809,6 +1870,7 @@ fn fill_one_interval(
     available_width_px: f64,
     indent_px: f64,
     tabs: TabFill<'_>,
+    english_break_unit: u8,
     korean_break_unit: u8,
     condense_min_space: u8,
     letter_spacing_px: &[f64],
@@ -2080,6 +2142,9 @@ fn fill_one_interval(
                 base_char_widths,
                 ..
             } => {
+                let english_character = english_break_unit == 2
+                    && (is_latin(text_chars[*start_idx])
+                        || is_nonbreaking_glue(text_chars[*start_idx]));
                 // [#7418] 바로 앞이 이 줄의 공백이었으면 이 토큰이 새 낱말을 시작한다.
                 let new_word_natural = cursor
                     .word_gap_natural_hwp
@@ -2150,6 +2215,7 @@ fn fill_one_interval(
                     cursor.space_savings_at_last_break = cursor.line_space_savings;
                     cursor.fs_at_last_break = cursor.line_max_fs;
                 }
+                let previous_max_font_size = cursor.line_max_fs;
                 if *max_font_size > cursor.line_max_fs {
                     cursor.line_max_fs = *max_font_size;
                 }
@@ -2203,7 +2269,12 @@ fn fill_one_interval(
                 let tail_all_line_start_forbidden = text_chars[*start_idx + 1..*end_idx]
                     .iter()
                     .all(|c| is_line_start_forbidden(*c));
-                if tail_all_line_start_forbidden && *start_idx > cursor.line_start_idx && token_fits
+                if token_fits
+                    && ((english_character && *end_idx > cursor.line_start_idx)
+                        || (tail_all_line_start_forbidden && *start_idx > cursor.line_start_idx))
+                    // 한글·한자 토큰 뒤의 비분리 문자도 같은 원자 묶음이다.
+                    && (english_break_unit != 2
+                        || !text_chars.get(*end_idx).is_some_and(|ch| is_nonbreaking_glue(*ch)))
                 {
                     // 글자 모드의 후행 금칙 흡수분도 같은 "줄 끝 자리"로 본다.
                     //
@@ -2214,7 +2285,9 @@ fn fill_one_interval(
                     // `…상호 협력·` 로 끝내는 자리에서 우리는 `…상호 협` 으로 끝나 두 글자를 잃었다.
                     // 1글자 토큰은 아래 슬라이스가 비어 `all()` 이 참이라 종전 동작 그대로다.
                     let c = text_chars[*start_idx];
-                    let allow_break = if is_hangul(c) {
+                    let allow_break = if english_character {
+                        true
+                    } else if is_hangul(c) {
                         // [#2185] bit7=1 = 글자 단위 break 허용 (위 주석 참조)
                         korean_break_unit == 1
                     } else {
@@ -2300,13 +2373,49 @@ fn fill_one_interval(
 
                             cursor.line_space_savings = 0;
                             cursor.last_break_token_idx = None;
-                            cursor.fallback_char_idx = Some(*start_idx);
+                            if english_character {
+                                // 상자보다 큰 논리 글자도 결합 문자·NBSP·금칙을 쪼개지 않는다.
+                                cursor.lw += w_hwp;
+                                cursor.token_index += 1;
+                            } else {
+                                cursor.fallback_char_idx = Some(*start_idx);
+                            }
                             cursor.emitted_any = true;
                             return Some(FilledInterval {
                                 line: result,
                                 termination: FillTermination::IntervalFull,
                             });
                         }
+                    }
+
+                    if english_character {
+                        if *start_idx > cursor.line_start_idx
+                            && !is_nonbreaking_glue(text_chars[*start_idx])
+                            && !is_line_end_forbidden(text_chars[*start_idx - 1])
+                            && !is_nonbreaking_glue(text_chars[*start_idx - 1])
+                        {
+                            let result = LineBreakResult {
+                                start_idx: cursor.line_start_idx,
+                                end_idx: *start_idx,
+                                max_font_size: previous_max_font_size,
+                                has_line_break: false,
+                            };
+                            cursor.line_start_idx = *start_idx;
+                            cursor.lw = w_hwp;
+                            cursor.line_space_savings = 0;
+                            cursor.line_max_fs = *max_font_size;
+                            cursor.is_first_line = false;
+                            cursor.last_break_token_idx = None;
+                            cursor.token_index += 1;
+                            cursor.emitted_any = true;
+                            return Some(FilledInterval {
+                                line: result,
+                                termination: FillTermination::IntervalFull,
+                            });
+                        }
+                        cursor.lw += w_hwp;
+                        cursor.token_index += 1;
+                        continue;
                     }
 
                     // 토큰에 저장된 개별 글자 폭을 HWPUNIT로 변환
@@ -3813,6 +3922,7 @@ fn layout_paragraph_in_frame_impl(
                             available_width_px,
                             interval_indent_px,
                             tab_fill,
+                            english_break_unit,
                             korean_break_unit,
                             condense_min_space,
                             &letter_spacing_px,
@@ -3837,6 +3947,7 @@ fn layout_paragraph_in_frame_impl(
                             available_width_px,
                             interval_indent_px,
                             tab_fill,
+                            english_break_unit,
                             korean_break_unit,
                             condense_min_space,
                             &letter_spacing_px,
@@ -4917,6 +5028,7 @@ fn reflow_line_segs_impl(
         available_width_px,
         indent_px,
         TabFill::for_paragraph(para_style, indent_px, available_width_px),
+        english_break_unit,
         korean_break_unit,
         condense_min_space,
         &resolved_paragraph_letter_spacing(para, &text_chars, styles),
@@ -4937,6 +5049,7 @@ fn reflow_line_segs_impl(
             available_width_px,
             indent_px,
             TabFill::for_paragraph(para_style, indent_px, available_width_px),
+            english_break_unit,
             korean_break_unit,
             condense_min_space,
             &resolved_paragraph_letter_spacing(para, &text_chars, styles),
@@ -5417,6 +5530,7 @@ mod fill_cursor_tests {
             available_width_px,
             indent_px,
             TabFill::default_only(default_tab_width),
+            0,
             korean_break_unit,
             condense_min_space,
             &[],
@@ -5456,6 +5570,7 @@ mod fill_cursor_tests {
             available_width_px,
             indent_px,
             TabFill::default_only(default_tab_width),
+            0,
             korean_break_unit,
             condense_min_space,
             &[],

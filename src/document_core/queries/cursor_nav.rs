@@ -2077,6 +2077,75 @@ impl DocumentCore {
             visit(node, sec, para, line_idx, page)
         }
 
+        fn collect_rendered_line_starts(
+            node: &RenderNode,
+            sec: usize,
+            para: usize,
+            target: Option<SelectionCellTarget<'_>>,
+            starts: &mut Vec<usize>,
+        ) {
+            // 본문 선택에 머리말·꼬리말·주석·캡션의 같은 문단 번호를 섞지 않는다.
+            if matches!(
+                node.node_type,
+                RenderNodeType::Header
+                    | RenderNodeType::Footer
+                    | RenderNodeType::MasterPage
+                    | RenderNodeType::FootnoteArea
+            ) {
+                return;
+            }
+            if let RenderNodeType::TextLine(line) = &node.node_type {
+                if line.caption_owner.is_some() {
+                    return;
+                }
+                let start = node
+                    .children
+                    .iter()
+                    .filter_map(|child| {
+                        let RenderNodeType::TextRun(run) = &child.node_type else {
+                            return None;
+                        };
+                        let owned = match target {
+                            None => {
+                                run.section_index == Some(sec)
+                                    && run.para_index == Some(para)
+                                    && run.cell_context.is_none()
+                            }
+                            Some(target) => {
+                                run.section_index == Some(sec)
+                                    && run.cell_context.as_ref().is_some_and(|ctx| match target {
+                                        SelectionCellTarget::Flat {
+                                            parent_para_idx,
+                                            control_idx,
+                                            cell_idx,
+                                        } => flat_cell_ctx_matches(
+                                            ctx,
+                                            parent_para_idx,
+                                            control_idx,
+                                            cell_idx,
+                                            para,
+                                        ),
+                                        SelectionCellTarget::Path {
+                                            parent_para_idx,
+                                            path,
+                                        } => {
+                                            path_cell_ctx_matches(ctx, parent_para_idx, path, para)
+                                        }
+                                    })
+                            }
+                        };
+                        owned.then_some(run.char_start).flatten()
+                    })
+                    .min();
+                if let Some(start) = start {
+                    starts.push(start);
+                }
+            }
+            for child in &node.children {
+                collect_rendered_line_starts(child, sec, para, target, starts);
+            }
+        }
+
         // ── 후보 페이지별 렌더 트리 캐시 ──
         let mut tree_cache: Vec<(u32, crate::renderer::render_tree::PageRenderTree)> = Vec::new();
 
@@ -2223,7 +2292,6 @@ impl DocumentCore {
             };
 
             let char_count = navigable_text_len(para);
-            let line_count = Self::build_line_char_starts(para).len().max(1);
 
             let sel_start = if para_idx == start_para_idx {
                 start_char_offset
@@ -2250,8 +2318,40 @@ impl DocumentCore {
                 }
             }
 
+            // 편집한 HWPX는 저장 줄을 생략할 수 있다. 캐럿과 같은 렌더 트리의
+            // 실제 TextLine 소유·글자 경계만 사용하며 좌표로 줄을 추정하지 않는다.
+            let mut rendered_starts = Vec::new();
+            if para.line_segs.is_empty() {
+                for (_, tree) in &tree_cache {
+                    collect_rendered_line_starts(
+                        &tree.root,
+                        section_idx,
+                        para_idx,
+                        cell_target,
+                        &mut rendered_starts,
+                    );
+                }
+                rendered_starts.sort_unstable();
+                rendered_starts.dedup();
+            }
+            let line_count = if rendered_starts.is_empty() {
+                Self::build_line_char_starts(para).len().max(1)
+            } else {
+                rendered_starts.len()
+            };
+
             for line_idx in 0..line_count {
-                let (line_char_start, line_char_end) = Self::get_line_char_range(para, line_idx);
+                let (line_char_start, line_char_end) = if rendered_starts.is_empty() {
+                    Self::get_line_char_range(para, line_idx)
+                } else {
+                    (
+                        rendered_starts[line_idx],
+                        rendered_starts
+                            .get(line_idx + 1)
+                            .copied()
+                            .unwrap_or(char_count),
+                    )
+                };
                 let range_start = sel_start.max(line_char_start);
                 let range_end = sel_end.min(line_char_end);
                 if range_start >= range_end {
