@@ -12062,7 +12062,7 @@ impl LayoutEngine {
         let geometry = super::note_separator::NoteSeparatorGeometry::new(
             margin_above as i32,
             margin_below as i32,
-            line_type != 0 && line_width_raw != 0,
+            line_type != 0,
             line_width_raw,
             self.dpi,
         );

@@ -38,7 +38,10 @@ pub(crate) struct NoteSeparatorGeometry {
 
 impl NoteSeparatorGeometry {
     pub(crate) fn new(above_hu: i32, below_hu: i32, visible: bool, width: u8, dpi: f64) -> Self {
-        let width = if visible {
+        // 굵기 0은 숨김이 아니라 0.1mm다. 다른 굵기의 기존 최소 획은 유지한다.
+        let width = if visible && width == 0 {
+            border_width_to_px(width)
+        } else if visible {
             border_width_to_px(width).max(0.5)
         } else {
             0.0

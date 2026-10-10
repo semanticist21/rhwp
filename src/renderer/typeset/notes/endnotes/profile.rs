@@ -217,7 +217,8 @@ pub(in crate::renderer::typeset) fn endnote_has_compact_separator_below(
 }
 
 pub(in crate::renderer::typeset) fn endnote_has_visible_separator(shape: &FootnoteShape) -> bool {
-    shape.separator_line_type != 0 && shape.separator_line_width != 0
+    // 굵기 0은 숨김이 아니라 0.1mm다.
+    shape.separator_line_type != 0
 }
 
 /// 구분선 영역의 흐름 높이(위 여백 + 아래 여백). 선 굵기는 더하지 않는다 —

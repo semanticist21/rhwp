@@ -179,6 +179,7 @@ fn attribute(tag: &str, name: &str) -> f64 {
 fn assert_double(doc: &HwpDocument, width: u8) -> Vec<LineNode> {
     // HWP 굵기표의 600dpi 양자화 값으로 계산한다. 내부 helper를 기대값에 사용하지 않는다.
     let raw_width: f64 = match width {
+        0 => 0.32,
         1 => 0.48,
         5 => 1.12,
         15 => 18.88,
@@ -274,7 +275,7 @@ fn assert_double(doc: &HwpDocument, width: u8) -> Vec<LineNode> {
 
 #[test]
 fn double_endnote_separator_reserves_exact_visual_span_with_zero_margins() {
-    for width in [1, 5, 15] {
+    for width in [0, 1, 5, 15] {
         let (mut doc, control) = fixture(width);
         let original = model_content(&doc, control);
         let body = body_interaction(&doc);
@@ -282,6 +283,10 @@ fn double_endnote_separator_reserves_exact_visual_span_with_zero_margins() {
         let old_carets = note_carets(&doc, control);
         let single = lines(&doc);
         assert_eq!(single.len(), 1);
+        if width == 0 {
+            close(single[0].style.width, 0.32, "0.1mm 단일선의 실제 획");
+            close(single[0].ink_bbox().height, 0.32, "0.1mm 단일선 잉크 높이");
+        }
         doc.apply_endnote_shape_native(0, r#"{"separatorLineType":8}"#)
             .unwrap();
         let double = assert_double(&doc, width);
@@ -351,50 +356,52 @@ fn double_endnote_separator_history_recovers_existing_single_dash_and_hidden_geo
     let original = model_content(&doc, control);
     doc.apply_endnote_shape_native(0, r#"{"separatorLineType":8,"separatorLineWidth":0}"#)
         .unwrap();
-    assert!(lines(&doc).is_empty(), "폭0의 기존 숨김 유지");
+    assert_double(&doc, 0);
     assert_eq!(model_content(&doc, control), original);
 }
 
 #[test]
 fn double_endnote_separator_height_is_included_in_the_page_budget() {
-    let (mut doc, control) = fixture(1);
-    // glyph 높이와 줄 전진 높이를 같게 하여 기존 160% 줄간격의 다음 줄 예약과
-    // 이중선 때문에 필요한 높이를 독립적으로 구분한다.
-    doc.apply_para_format_native(0, 0, r#"{"lineSpacing":100}"#)
-        .unwrap();
-    doc.apply_para_format_in_footnote_native(0, 0, control, 0, r#"{"lineSpacing":100}"#)
-        .unwrap();
-    let original = model_content(&doc, control);
-    let note = first_line(&doc, NOTE);
-    // 단일선의 실제 마지막 줄 바로 아래에 본문 끝을 둔다. 이중선의 추가 2.5px는
-    // 이 쪽에 들어갈 수 없으므로 다음 쪽으로 보내야 하며, 용지 아래로 그리면 안 된다.
-    let height_hu = ((note.y + note.height + 10.0) * 75.0).ceil() as u32;
-    doc.set_page_def_native(0, &json!({"height":height_hu}).to_string())
-        .unwrap();
-    assert_eq!(doc.page_count(), 1, "단일선과 한 줄 미주는 한 쪽에 맞는다");
-    let before = first_line(&doc, NOTE);
-    assert!(before.y + before.height <= f64::from(height_hu) / 75.0 - 10.0 + 0.002);
-    doc.apply_endnote_shape_native(0, r#"{"separatorLineType":8}"#)
-        .unwrap();
-    assert_eq!(doc.page_count(), 2, "추가 잉크 높이도 페이지 예산에 포함");
-    assert_eq!(model_content(&doc, control), original);
-    for page in 0..doc.page_count() {
-        fn check(node: &RenderNode, bottom: f64) {
-            if let RenderNodeType::TextLine(_) = &node.node_type {
-                assert!(
-                    node.bbox.y + node.bbox.height <= bottom + 0.002,
-                    "실제 줄이 본문 아래로 넘지 않는다: {:?}",
-                    node.bbox
-                );
+    for width in [0, 1] {
+        let (mut doc, control) = fixture(width);
+        // glyph 높이와 줄 전진 높이를 같게 하여 기존 160% 줄간격의 다음 줄 예약과
+        // 이중선 때문에 필요한 높이를 독립적으로 구분한다.
+        doc.apply_para_format_native(0, 0, r#"{"lineSpacing":100}"#)
+            .unwrap();
+        doc.apply_para_format_in_footnote_native(0, 0, control, 0, r#"{"lineSpacing":100}"#)
+            .unwrap();
+        let original = model_content(&doc, control);
+        let note = first_line(&doc, NOTE);
+        // 단일선의 실제 마지막 줄 바로 아래에 본문 끝을 둔다. 이중선의 추가 높이는
+        // 이 쪽에 들어갈 수 없으므로 다음 쪽으로 보내야 하며, 용지 아래로 그리면 안 된다.
+        let height_hu = ((note.y + note.height + 10.0) * 75.0).ceil() as u32;
+        doc.set_page_def_native(0, &json!({"height":height_hu}).to_string())
+            .unwrap();
+        assert_eq!(doc.page_count(), 1, "단일선과 한 줄 미주는 한 쪽에 맞는다");
+        let before = first_line(&doc, NOTE);
+        assert!(before.y + before.height <= f64::from(height_hu) / 75.0 - 10.0 + 0.002);
+        doc.apply_endnote_shape_native(0, r#"{"separatorLineType":8}"#)
+            .unwrap();
+        assert_eq!(doc.page_count(), 2, "추가 잉크 높이도 페이지 예산에 포함");
+        assert_eq!(model_content(&doc, control), original);
+        for page in 0..doc.page_count() {
+            fn check(node: &RenderNode, bottom: f64) {
+                if let RenderNodeType::TextLine(_) = &node.node_type {
+                    assert!(
+                        node.bbox.y + node.bbox.height <= bottom + 0.002,
+                        "실제 줄이 본문 아래로 넘지 않는다: {:?}",
+                        node.bbox
+                    );
+                }
+                for child in &node.children {
+                    check(child, bottom);
+                }
             }
-            for child in &node.children {
-                check(child, bottom);
-            }
+            check(
+                &doc.build_page_render_tree(page).unwrap().root,
+                f64::from(height_hu) / 75.0 - 10.0,
+            );
         }
-        check(
-            &doc.build_page_render_tree(page).unwrap().root,
-            f64::from(height_hu) / 75.0 - 10.0,
-        );
     }
 }
 
@@ -454,6 +461,139 @@ fn double_endnote_separator_roundtrips_both_formats_without_mutating_content_or_
             );
             assert_eq!(new["height"], old["height"]);
             assert_eq!(new["pageIndex"], old["pageIndex"]);
+        }
+    }
+}
+
+fn assert_thin(doc: &HwpDocument, kind: u8) {
+    if kind == 8 {
+        assert_double(doc, 0);
+        return;
+    }
+    let rendered = lines(doc);
+    assert_eq!(rendered.len(), 1, "굵기0은 가시 단일선/파선");
+    let line = &rendered[0];
+    assert_eq!(line.style.line_type, LineRenderType::Single);
+    assert_eq!(line.style.color, COLOR);
+    assert_eq!(
+        line.style.dash,
+        if kind == 2 {
+            StrokeDash::Dash
+        } else {
+            StrokeDash::Solid
+        }
+    );
+    close(line.style.width, 0.32, "규격0.1mm의 600dpi 양자화 획");
+    close(line.ink_bbox().height, 0.32, "실제 잉크 높이");
+    close(line.x2 - line.x1, 80.0, "구분선 길이 유지");
+    let ink = line.ink_bbox();
+    assert!(
+        first_line(doc, NOTE).y + 0.002 >= ink.y + ink.height,
+        "0여백에서도 미주와 겹치지 않는다"
+    );
+    for profile in [RenderProfile::Screen, RenderProfile::Print] {
+        let svg = doc
+            .render_page_svg_layer_with_profile_native(0, profile)
+            .unwrap();
+        let tags = svg
+            .split('<')
+            .filter(|tag| tag.contains(&format!("stroke=\"{CSS_COLOR}\"")))
+            .collect::<Vec<_>>();
+        assert_eq!(tags.len(), 1);
+        close(attribute(tags[0], "stroke-width"), 0.32, "SVG 실제 획 굵기");
+        assert_eq!(tags[0].contains("stroke-dasharray=\"6 3\""), kind == 2);
+    }
+}
+
+#[test]
+fn thin_endnote_single_and_dash_preserve_geometry_content_and_edit_coordinates() {
+    let (mut doc, control) = fixture(0);
+    assert_thin(&doc, 1);
+    let original = model_content(&doc, control);
+    let single_geometry = geometry(&doc);
+    let body = body_interaction(&doc);
+    let note = note_carets(&doc, control);
+    doc.apply_endnote_shape_native(0, r#"{"separatorLineType":2}"#)
+        .unwrap();
+    assert_thin(&doc, 2);
+    assert_eq!(model_content(&doc, control), original);
+    assert_eq!(body_interaction(&doc), body);
+    assert_eq!(note_carets(&doc, control), note);
+    doc.apply_endnote_shape_native(0, r#"{"separatorLineType":1}"#)
+        .unwrap();
+    assert_eq!(
+        geometry(&doc),
+        single_geometry,
+        "종류 왕복은 기존 얇은 선 좌표를 복원"
+    );
+    assert_eq!(
+        value(&doc.get_endnote_shape_native(0).unwrap())["separatorLineWidth"],
+        0
+    );
+}
+
+#[test]
+fn thin_endnote_width_and_all_three_line_kinds_survive_history_and_both_formats() {
+    for kind in [1, 2, 8] {
+        let (mut doc, control) = fixture(0);
+        let original = model_content(&doc, control);
+        let before = doc.save_snapshot_native();
+        let before_geometry = geometry(&doc);
+        let baseline_hwp = doc.export_hwp_with_adapter_snapshot().unwrap();
+        let baseline_hwpx = doc.export_hwpx_native().unwrap();
+        doc.apply_endnote_shape_native(0, &json!({"separatorLineType":kind}).to_string())
+            .unwrap();
+        assert_thin(&doc, kind);
+        let after = doc.save_snapshot_native();
+        let after_geometry = geometry(&doc);
+        let after_body = body_interaction(&doc);
+        let after_note = note_carets(&doc, control);
+        doc.restore_snapshot_native(before).unwrap();
+        assert_thin(&doc, 1);
+        assert_eq!(geometry(&doc), before_geometry);
+        doc.restore_snapshot_native(after).unwrap();
+        assert_thin(&doc, kind);
+        assert_eq!(geometry(&doc), after_geometry);
+        assert_eq!(body_interaction(&doc), after_body);
+        assert_eq!(note_carets(&doc, control), after_note);
+        assert_eq!(model_content(&doc, control), original);
+        let live = format!("{:?}", doc.document());
+        let saved_hwp = doc.export_hwp_with_adapter_snapshot().unwrap();
+        let saved_hwpx = doc.export_hwpx_native().unwrap();
+        assert_eq!(format!("{:?}", doc.document()), live, "저장은 사본만 변경");
+        for (format, baseline, saved) in [
+            ("HWP", baseline_hwp, saved_hwp),
+            ("HWPX", baseline_hwpx, saved_hwpx),
+        ] {
+            let baseline = HwpDocument::from_bytes(&baseline).unwrap();
+            let reopened = HwpDocument::from_bytes(&saved).unwrap();
+            let props = value(&reopened.get_endnote_shape_native(0).unwrap());
+            assert_eq!(props["separatorLineWidth"], 0, "{format}: 0.1mm raw 코드");
+            assert_eq!(props["separatorLineType"], kind);
+            assert_eq!(props["separatorEnabled"], true);
+            assert_thin(&reopened, kind);
+            assert_eq!(
+                model_content(&reopened, control),
+                model_content(&baseline, control)
+            );
+            assert_eq!(body_interaction(&reopened), body_interaction(&baseline));
+            let delta = first_line(&reopened, NOTE).y - first_line(&baseline, NOTE).y;
+            for (old, new) in note_carets(&baseline, control)
+                .iter()
+                .zip(note_carets(&reopened, control))
+            {
+                close(
+                    new["x"].as_f64().unwrap(),
+                    old["x"].as_f64().unwrap(),
+                    "저장 후 미주 x",
+                );
+                caret_delta(
+                    new["y"].as_f64().unwrap() - old["y"].as_f64().unwrap(),
+                    delta,
+                );
+                assert_eq!(new["height"], old["height"]);
+                assert_eq!(new["pageIndex"], old["pageIndex"]);
+            }
         }
     }
 }
