@@ -75,6 +75,16 @@ fn text_after_a_format_does_not_inherit_it() {
 }
 
 #[test]
+fn paragraph_styles_are_inherited_and_inner_styles_override_them() {
+    assert_eq!(
+        pasted(
+            r#"<p style="font-weight:bold">가<span style="font-weight:normal">나</span>다</p><p style="font-style:italic">라<span style="font-style:normal">마</span>바</p><p>사</p>"#
+        ),
+        lines(&[("가나다", "B.B"), ("라마바", "I.I"), ("사", ".")]),
+    );
+}
+
+#[test]
 fn google_docs_normal_weight_wrapper_stays_normal() {
     let html = r#"<meta charset="utf-8"><b style="font-weight:normal;" id="docs-internal-guid-0"><span style="font-weight:400;">구글</span></b>"#;
     assert_eq!(pasted(html), one("구글", ".."));

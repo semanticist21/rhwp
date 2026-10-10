@@ -7,13 +7,12 @@ use crate::model::paragraph::Paragraph;
 use crate::model::shape::common_obj_offsets;
 
 impl DocumentCore {
-    /// `container_width` 는 표가 놓일 폭(HWPUNIT)이다. 폭을 적지 않은 열은 이 폭을 나눠 갖는다.
     pub(crate) fn parse_table_html(
         &mut self,
         paragraphs: &mut Vec<Paragraph>,
         table_html: &str,
-        container_width: u32,
-    ) {
+        width: u32,
+    ) -> Result<(), crate::error::HwpError> {
         use crate::model::control::Control;
         use crate::model::table::{Cell, Table, TablePageBreak};
 
@@ -171,7 +170,7 @@ impl DocumentCore {
         }
 
         if parsed_rows.is_empty() {
-            return;
+            return Ok(());
         }
 
         // --- 2. 그리드 정규화: 실제 col 인덱스 계산 ---
@@ -241,14 +240,29 @@ impl DocumentCore {
 
         let col_count = actual_col_count.max(1);
 
+        // 표 문단은 기본 문단 모양(0)을 쓴다. 그 여백만큼 표 폭을 줄인다.
+        let table_para_shape_id = 0u16;
+
         // --- 3. 셀 크기 계산 ---
-        // 폭을 적지 않은 열은 놓일 폭에서 표 바깥 좌우 여백을 뺀 폭을 고루 나눈다.
-        // 표 만들기(create_table)·쪽 폭에 맞추기(fit_table_to_page_native)와 같은 기준이다.
-        let outer_margin: i16 = 283; // 바깥 여백 ~1mm
-        let table_width = container_width
-            .saturating_sub(2 * outer_margin as u32)
-            .max(1);
-        let default_col_width = table_width / col_count as u32;
+        let outer_margin: i16 = 283;
+        let paragraph_margin = self
+            .document
+            .doc_info
+            .para_shapes
+            .get(table_para_shape_id as usize)
+            .map(|shape| {
+                (shape.margin_left as i64 + shape.margin_right as i64 + shape.indent.max(0) as i64)
+                    / 2
+            })
+            .unwrap_or(0);
+        let available_width = width as i64 - paragraph_margin - i64::from(outer_margin) * 2;
+        if available_width < i64::from(col_count) {
+            return Err(crate::error::HwpError::RenderError(
+                "표를 넣을 가로 공간이 부족합니다. 문단이나 셀의 여백을 줄여 주세요".to_string(),
+            ));
+        }
+        let available_width = available_width as u32;
+        let default_col_width = available_width / col_count as u32;
         let default_row_height: u32 = 1000;
 
         // 열별 폭 (CSS 지정 우선, 없으면 균등 분할)
@@ -267,6 +281,36 @@ impl DocumentCore {
         for w in col_widths.iter_mut() {
             if *w == 0 {
                 *w = default_col_width;
+            }
+        }
+
+        let tag = &table_html[..table_html.find('>').map_or(0, |end| end + 1)];
+        let css = parse_inline_style(tag).to_lowercase();
+        let requested_width = parse_css_value(&css, "width")
+            .and_then(|value| {
+                value
+                    .strip_suffix('%')
+                    .and_then(|n| n.trim().parse::<f64>().ok())
+            })
+            .map(|percent| available_width as f64 * percent / 100.0)
+            .unwrap_or_else(|| parse_css_dimension_pt(&css, "width") * 100.0);
+        let total: u64 = col_widths.iter().map(|&width| u64::from(width)).sum();
+        let target = if requested_width.is_finite() && requested_width > 0.0 {
+            (requested_width.round() as u32).min(available_width)
+        } else {
+            total.min(u64::from(available_width)) as u32
+        }
+        .max(u32::from(col_count));
+        // 최종 폭으로 셀·저장 바이트·줄 폭을 함께 만들어 저장 후에도 같은 너비를 쓴다.
+        if total != u64::from(target) {
+            let mut consumed = 0;
+            let mut assigned = 0;
+            for width in &mut col_widths {
+                consumed += u64::from(*width);
+                let end = (u128::from(consumed) * u128::from(target - u32::from(col_count))
+                    / u128::from(total)) as u64;
+                *width = (end - assigned) as u32 + 1;
+                assigned = end;
             }
         }
 
@@ -291,7 +335,7 @@ impl DocumentCore {
 
         // HTML <table> CSS에서 표 패딩 파싱
         let table_style =
-            parse_inline_style(&table_html[..table_html.find('>').unwrap_or(table_html.len()) + 1])
+            parse_inline_style(&table_html[..table_html.find('>').map_or(0, |end| end + 1)])
                 .to_lowercase();
         let table_padding_pt = parse_css_padding_pt(&table_style);
         // 기본값: L:510 R:510 T:141 B:141 (정상 HWP 파일 패턴)
@@ -387,11 +431,12 @@ impl DocumentCore {
             {
                 vec![Paragraph::new_empty()]
             } else {
-                // 셀 안 표는 이 셀 안쪽 폭에 맞춘다.
-                let inner_width = cell_width.saturating_sub(
-                    table_padding.left.max(0) as u32 + table_padding.right.max(0) as u32,
-                );
-                let parsed = self.parse_html_to_paragraphs(&pc.content_html, inner_width);
+                let parsed = self.parse_html_to_paragraphs(
+                    &pc.content_html,
+                    cell_width.saturating_sub(
+                        table_padding.left.max(0) as u32 + table_padding.right.max(0) as u32,
+                    ),
+                )?;
                 if parsed.is_empty()
                     || parsed
                         .iter()
@@ -464,9 +509,9 @@ impl DocumentCore {
                 let baseline = (font_size as f64 * 0.85) as i32;
                 let spacing = (font_size as f64 * 0.6) as i32;
                 // seg_width: 셀 폭에서 좌우 패딩을 뺀 텍스트 영역 폭
-                let seg_w = (cell_width as i32)
-                    - (table_padding.left as i32)
-                    - (table_padding.right as i32);
+                let seg_w = cell_width.saturating_sub(
+                    table_padding.left.max(0) as u32 + table_padding.right.max(0) as u32,
+                ) as i32;
                 // tag(flags): bit 17(first segment) + bit 18(last segment).
                 let line_tag: u32 = crate::model::paragraph::LineSeg::TAG_SINGLE_SEGMENT_LINE;
 
@@ -713,6 +758,7 @@ impl DocumentCore {
         };
 
         paragraphs.push(table_para);
+        Ok(())
     }
 
     /// CSS 테두리/배경 정보로 BorderFill을 생성하고 DocInfo에 등록한다.
@@ -1186,7 +1232,8 @@ mod nested_table_cell_boundary_tests {
         let html =
             r#"<table><tr><td>OUTER<table><tr><td>INNER</td></tr></table></td></tr></table>"#;
         let mut paragraphs: Vec<Paragraph> = Vec::new();
-        core.parse_table_html(&mut paragraphs, html, 42520);
+        core.parse_table_html(&mut paragraphs, html, 42520)
+            .expect("table");
 
         assert_eq!(paragraphs.len(), 1, "표 문단 1개가 나와야 함");
         let outer_table = match &paragraphs[0].controls.first() {

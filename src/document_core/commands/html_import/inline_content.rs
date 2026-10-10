@@ -264,10 +264,9 @@ impl DocumentCore {
         cs.bold = parse_css_value(&css_lower, "font-weight")
             .is_some_and(|w| w.starts_with("bold") || w.parse::<u16>().is_ok_and(|n| n >= 600));
 
-        // font-style — 굵기처럼 처음 찾은 값을 따른다. 그래야 기울인 블록 안
-        // `<span style="font-style:normal">` 이 기울지 않는다.
-        cs.italic =
-            parse_css_value(&css_lower, "font-style").is_some_and(|s| s.starts_with("italic"));
+        // font-style
+        cs.italic = parse_css_value(&css_lower, "font-style")
+            .is_some_and(|style| style == "italic" || style == "oblique");
 
         // color
         if let Some(color_str) = parse_css_value(&css_lower, "color") {
