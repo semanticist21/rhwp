@@ -2634,11 +2634,14 @@ impl DocumentCore {
         section_idx: usize,
         props_json: &str,
     ) -> Result<String, HwpError> {
-        {
+        use crate::model::footnote::FootnotePlacement;
+
+        let updates_document_end = {
             let section = self.document.sections.get_mut(section_idx).ok_or_else(|| {
                 HwpError::RenderError(format!("구역 인덱스 {} 범위 초과", section_idx))
             })?;
             let shape = &mut section.section_def.endnote_shape;
+            let was_document_end = matches!(shape.placement, FootnotePlacement::EachColumn);
 
             if let Some(v) = crate::document_core::helpers::json_str(props_json, "numberFormat") {
                 shape.number_format =
@@ -2712,6 +2715,7 @@ impl DocumentCore {
             let number_format_code = Self::footnote_shape_number_format_code(shape.number_format);
             let prefix_char = shape.prefix_char;
             let suffix_char = shape.suffix_char;
+            let is_document_end = matches!(shape.placement, FootnotePlacement::EachColumn);
             let mut next_number = start_number;
             Self::renumber_paragraph_endnotes_with_shape(
                 &mut section.paragraphs,
@@ -2721,10 +2725,18 @@ impl DocumentCore {
                 suffix_char,
             );
             section.raw_stream = None;
-        }
+            was_document_end || is_document_end
+        };
         self.sync_section_def_controls_from_section(section_idx);
 
         self.recompose_section(section_idx);
+        if updates_document_end {
+            let last_section = self.document.sections.len() - 1;
+            if section_idx != last_section {
+                // 전후 어느 배치가 문서 끝이면 마지막 구역의 미주 사본도 다시 만든다.
+                self.mark_section_dirty(last_section);
+            }
+        }
         self.paginate_if_needed();
         self.invalidate_page_tree_cache();
 
