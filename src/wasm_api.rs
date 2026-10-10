@@ -5901,9 +5901,40 @@ impl HwpDocument {
         name: &str,
         editable: bool,
     ) -> String {
-        use crate::model::control::{Control, Field, FieldType};
+        use crate::model::control::{Control, Field, FieldType, Parameter, ParameterList};
 
         let new_props_bit = if editable { 1u32 } else { 0u32 };
+
+        fn update_parameters(
+            params: &mut ParameterList,
+            command: &str,
+            guide: &str,
+            memo: &str,
+        ) -> bool {
+            let mut found = false;
+            for item in &mut params.items {
+                match item {
+                    Parameter::String {
+                        name: Some(name),
+                        value,
+                        ..
+                    } => match name.as_str() {
+                        "Command" => {
+                            *value = command.to_string();
+                            found = true;
+                        }
+                        "Direction" => *value = guide.to_string(),
+                        "HelpState" => *value = memo.to_string(),
+                        _ => {}
+                    },
+                    Parameter::List(list) => {
+                        found |= update_parameters(list, command, guide, memo);
+                    }
+                    _ => {}
+                }
+            }
+            found
+        }
 
         // 필드를 찾아 수정하고, ctrl_data_records 바이너리도 갱신
         fn update_field_in_para(
@@ -5925,7 +5956,36 @@ impl HwpDocument {
                         if guide != orig_guide || memo != orig_memo {
                             // guide 또는 memo가 변경되었으므로 command 재구축
                             let new_command = Field::build_clickhere_command(guide, memo);
+                            // HWPX 원문 캐시와 파싱된 안내문·메모 매개변수도 같은 값으로 갱신한다.
+                            f.raw_parameters_xml = None;
+                            if !update_parameters(&mut f.parameters, &new_command, guide, memo)
+                                && !f.parameters.is_empty()
+                            {
+                                f.parameters.items.push(Parameter::String {
+                                    name: Some("Command".into()),
+                                    value: new_command.clone(),
+                                    preserve_space: false,
+                                });
+                            }
                             f.command = new_command;
+                            // 미기입 안내문은 저장할 때 본문 run으로 복원된다. 서식과 뒤 공백은 유지한다.
+                            if guide != orig_guide {
+                                // 새 안내문이 기존 입력값과 같아져도 재적재에서 안내문 잔재로 지우지 않는다.
+                                if para.field_ranges.iter().any(|r| {
+                                    r.control_idx == ci && r.start_char_idx < r.end_char_idx
+                                }) {
+                                    f.properties |= 1 << 15;
+                                }
+                                if let Some(residue) = f.guide_residue.as_mut() {
+                                    if let Some(suffix) = residue
+                                        .text
+                                        .strip_prefix(&orig_guide)
+                                        .filter(|suffix| suffix.chars().all(char::is_whitespace))
+                                    {
+                                        residue.text = format!("{guide}{suffix}");
+                                    }
+                                }
+                            }
                         }
                         // command가 변경되지 않았으면 원본 보존
 
