@@ -4,7 +4,12 @@ use super::*;
 
 impl DocumentCore {
     /// <p> 태그 내부의 인라인 콘텐츠를 파싱하여 Paragraph에 채운다.
-    pub(crate) fn parse_inline_content(&mut self, para: &mut Paragraph, html: &str) {
+    pub(crate) fn parse_inline_content(
+        &mut self,
+        para: &mut Paragraph,
+        html: &str,
+        base_css: &str,
+    ) {
         let mut full_text = String::new();
         // (char_start, char_end, char_shape_id) 형태의 스타일 범위
         let mut style_runs: Vec<(usize, usize, u32)> = Vec::new();
@@ -17,6 +22,9 @@ impl DocumentCore {
 
         // 열린 서식 요소(span·b·i·u 등)의 이름과 style. 서식은 닫힐 때까지 안쪽 글에 이어진다.
         let mut open_styles: Vec<(String, String)> = Vec::new();
+        if !base_css.is_empty() {
+            open_styles.push(("p".to_string(), base_css.to_string()));
+        }
 
         while pos < len {
             if chars[pos] == '<' {
@@ -255,9 +263,8 @@ impl DocumentCore {
             .is_some_and(|w| w.starts_with("bold") || w.parse::<u16>().is_ok_and(|n| n >= 600));
 
         // font-style
-        let is_italic =
-            css_lower.contains("font-style:italic") || css_lower.contains("font-style: italic");
-        cs.italic = is_italic;
+        cs.italic = parse_css_value(&css_lower, "font-style")
+            .is_some_and(|style| style == "italic" || style == "oblique");
 
         // color
         if let Some(color_str) = parse_css_value(&css_lower, "color") {
