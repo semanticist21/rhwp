@@ -1441,10 +1441,8 @@ impl DocumentCore {
                 .find_or_create_char_shape(base_char_id, &char_mods);
 
             let hf_para = self.get_hf_paragraph_mut(section_idx, is_header, apply_to, 0)?;
-            // 전체 텍스트에 새 CharShape 적용
-            for cs in &mut hf_para.char_shapes {
-                cs.char_shape_id = new_char_id;
-            }
+            // 새 머리말의 빈 모양 목록도 기본 ID 0에서 시작하는 범위 적용으로 채운다.
+            hf_para.apply_char_shape_range(0, hf_para.text.chars().count(), new_char_id);
         }
 
         // 10) 리플로우 + 스타일 재해소 + 재페이지네이션
