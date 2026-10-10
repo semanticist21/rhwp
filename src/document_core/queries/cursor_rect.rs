@@ -4427,12 +4427,16 @@ impl DocumentCore {
             marker_para: usize,
             offset: usize,
             page_index: u32,
+            include_end: bool,
         ) -> Option<CursorHit> {
             if let RenderNodeType::TextRun(ref text_run) = node.node_type {
                 if let Some(char_start) = text_run.char_start {
                     if text_run.para_index == Some(marker_para) && text_run.cell_context.is_none() {
                         let char_count = effective_char_count(text_run);
-                        if offset >= char_start && offset <= char_start + char_count {
+                        let char_end = char_start + char_count;
+                        if offset >= char_start
+                            && (offset < char_end || (include_end && offset == char_end))
+                        {
                             let local_offset = offset - char_start;
                             let positions = if text_run.char_overlap.is_some() && char_count == 1 {
                                 vec![0.0, node.bbox.width]
@@ -4470,7 +4474,8 @@ impl DocumentCore {
                 }
             }
             for child in &node.children {
-                if let Some(hit) = find_cursor_in_hf_subtree(child, marker_para, offset, page_index)
+                if let Some(hit) =
+                    find_cursor_in_hf_subtree(child, marker_para, offset, page_index, include_end)
                 {
                     return Some(hit);
                 }
@@ -4536,9 +4541,23 @@ impl DocumentCore {
             // 루트의 자식에서 Header/Footer 노드 찾기
             for child in &tree.root.children {
                 if is_target_node(&child.node_type) {
-                    if let Some(hit) =
-                        find_cursor_in_hf_subtree(child, marker_para_idx, char_offset, page_num)
-                    {
+                    // 줄·서식 경계는 다음 글자에 속한다. 다음 글자가 없는 문단 끝·빈 런만 끝을 포함한다.
+                    if let Some(hit) = find_cursor_in_hf_subtree(
+                        child,
+                        marker_para_idx,
+                        char_offset,
+                        page_num,
+                        false,
+                    )
+                    .or_else(|| {
+                        find_cursor_in_hf_subtree(
+                            child,
+                            marker_para_idx,
+                            char_offset,
+                            page_num,
+                            true,
+                        )
+                    }) {
                         return Ok(format!(
                             "{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"height\":{:.1}}}",
                             hit.page_index, hit.x, hit.y, hit.height
