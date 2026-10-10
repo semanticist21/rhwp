@@ -64,6 +64,7 @@ pub fn write_content_hpf(
     // `(소속 구역 인덱스, id, href)` — 매니페스트 순서가 바탕쪽의 구역 소속이다 (#6907).
     master_items: &[(usize, String, String)],
     original_content_hpf: Option<&[u8]>,
+    hwp_scripts: bool,
 ) -> Result<Vec<u8>, SerializeError> {
     // 원본 metadata 블록(있으면) — 본문과 무관한 저작자/일자/주제 보존용.
     let original_str = original_content_hpf.and_then(|b| std::str::from_utf8(b).ok());
@@ -210,8 +211,32 @@ pub fn write_content_hpf(
     )?;
 
     // [#3557] Scripts/* 항목 — 원본 태그 원문 splice(id·media-type 보존).
-    let script_items: Vec<(String, String)> =
+    let mut script_items: Vec<(String, String)> =
         original_str.map(extract_script_items).unwrap_or_default();
+    if hwp_scripts {
+        for (base_id, href) in [
+            ("headersc", "Scripts/headerScripts"),
+            ("sourcesc", "Scripts/sourceScripts"),
+        ] {
+            // 이미 있던 참조의 id와 원문은 보존하고, 새 파트만 한 번 등록한다.
+            if script_items
+                .iter()
+                .any(|(_, tag)| tag.contains(&format!("href=\"{href}\"")))
+            {
+                continue;
+            }
+            let mut id = base_id.to_string();
+            let mut suffix = 1;
+            while script_items.iter().any(|(existing, _)| existing == &id)
+                || bin_data.iter().any(|entry| entry.id == id)
+                || master_items.iter().any(|(_, existing, _)| existing == &id)
+            {
+                id = format!("{base_id}{suffix}");
+                suffix += 1;
+            }
+            script_items.push((id.clone(), format!("<opf:item id=\"{id}\" href=\"{href}\" media-type=\"application/x-javascript ;charset=utf-16\"/>")));
+        }
+    }
     for (_, tag) in &script_items {
         w.get_mut()
             .write_all(tag.as_bytes())
@@ -280,6 +305,7 @@ mod tests {
             &[],
             &[],
             Some(original.as_bytes()),
+            false,
         )
         .expect("serialize");
         let s = String::from_utf8(out).expect("utf8");
@@ -315,8 +341,14 @@ mod tests {
     /// 원본이 없으면(HWP5 등) 하드코딩 metadata 로 폴백한다.
     #[test]
     fn metadata_falls_back_when_no_original() {
-        let out = write_content_hpf(&["Contents/section0.xml".to_string()], &[], &[], None)
-            .expect("serialize");
+        let out = write_content_hpf(
+            &["Contents/section0.xml".to_string()],
+            &[],
+            &[],
+            None,
+            false,
+        )
+        .expect("serialize");
         let s = String::from_utf8(out).expect("utf8");
         assert!(s.contains(r#"<opf:meta name="creator" content="text">rhwp</opf:meta>"#));
         assert!(s.contains(r#"<opf:itemref idref="section0" linear="yes"/>"#));

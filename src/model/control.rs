@@ -914,6 +914,11 @@ pub struct Field {
 }
 
 impl Field {
+    /// 현재 파일 이름만 표시하는 경로 필드다. 다른 경로 형식은 저장된 값을 유지한다.
+    pub(crate) fn is_file_name(&self) -> bool {
+        self.field_type == FieldType::Path && self.command == "$F"
+    }
+
     /// 누름틀(ClickHere) command에서 안내문(Direction) 텍스트를 추출한다.
     ///
     /// command 형식: "Clickhere:set:{len}:Direction:wstring:{n}:{text} HelpState:..."
