@@ -6,6 +6,8 @@ pub const WILDCARD_ROW: u32 = u32::MAX;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Token {
+    /// 읽을 수 없는 숫자·문자 또는 자원 상한 초과
+    Invalid,
     /// 숫자 리터럴
     Number(f64),
     /// 셀 참조 (column_name, row_num) — 예: ("A", 1), ("AA", 3), ("?", 3)
@@ -37,6 +39,10 @@ pub enum DirectionKind {
 /// 계산식 문자열을 토큰 스트림으로 변환한다.
 /// 선행 '=' 또는 '@'는 제거한다.
 pub fn tokenize(input: &str) -> Vec<Token> {
+    // 자유 입력은 WASM에서도 길이·토큰 수를 제한해 큰 할당과 깊은 AST를 막는다.
+    if input.len() > 64 * 1024 {
+        return vec![Token::Invalid];
+    }
     let s = input.trim();
     let s = if s.starts_with('=') || s.starts_with('@') {
         &s[1..]
@@ -57,6 +63,9 @@ pub fn tokenize(input: &str) -> Vec<Token> {
             i += 1;
             continue;
         }
+        if tokens.len() >= 1024 {
+            return vec![Token::Invalid];
+        }
 
         // 숫자 (정수 또는 소수)
         if ch.is_ascii_digit() || (ch == '.' && i + 1 < len && chars[i + 1].is_ascii_digit()) {
@@ -65,8 +74,9 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                 i += 1;
             }
             let num_str: String = chars[start..i].iter().collect();
-            if let Ok(n) = num_str.parse::<f64>() {
-                tokens.push(Token::Number(n));
+            match num_str.parse::<f64>() {
+                Ok(n) if n.is_finite() => tokens.push(Token::Number(n)),
+                _ => return vec![Token::Invalid],
             }
             continue;
         }
@@ -105,7 +115,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
 
             // 셀 참조: 한 글자 이상 열(A-Z, AA...) 또는 와일드카드 `?` + 행 숫자/`?`.
             // 뒤에 `(`가 오면 LOG10(...) 같은 함수 이름이므로 셀 참조로 오인하지 않는다.
-            if i >= len || chars[i] != '(' {
+            if chars[i..].iter().find(|ch| !ch.is_whitespace()) != Some(&'(') {
                 let col_len = if upper.starts_with('?') {
                     1
                 } else {
@@ -125,7 +135,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
                             Some(WILDCARD_ROW)
                         } else {
                             match rest.parse::<u32>() {
-                                Ok(0) => None,
+                                Ok(0 | WILDCARD_ROW) => None,
                                 Ok(n) => Some(n),
                                 Err(_) => None,
                             }
@@ -156,7 +166,7 @@ pub fn tokenize(input: &str) -> Vec<Token> {
             ')' => tokens.push(Token::RParen),
             ',' => tokens.push(Token::Comma),
             ':' => tokens.push(Token::Colon),
-            _ => {} // 알 수 없는 문자 무시
+            _ => return vec![Token::Invalid],
         }
         i += 1;
     }

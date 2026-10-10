@@ -45,14 +45,20 @@ pub fn parse_formula(input: &str) -> Option<FormulaNode> {
     if tokens.is_empty() {
         return None;
     }
-    let mut parser = Parser { tokens, pos: 0 };
-    let node = parser.parse_expr();
-    Some(node)
+    let mut parser = Parser {
+        tokens,
+        pos: 0,
+        depth: 0,
+    };
+    let node = parser.parse_expr()?;
+    // 뒤 토큰이나 누락된 피연산자를 부분 계산으로 숨기지 않는다.
+    (parser.pos == parser.tokens.len()).then_some(node)
 }
 
 struct Parser {
     tokens: Vec<Token>,
     pos: usize,
+    depth: usize,
 }
 
 impl Parser {
@@ -80,13 +86,13 @@ impl Parser {
     }
 
     /// expr = term (('+' | '-') term)*
-    fn parse_expr(&mut self) -> FormulaNode {
-        let mut left = self.parse_term();
+    fn parse_expr(&mut self) -> Option<FormulaNode> {
+        let mut left = self.parse_term()?;
         while let Some(tok) = self.peek() {
             match tok {
                 Token::Plus => {
                     self.advance();
-                    let right = self.parse_term();
+                    let right = self.parse_term()?;
                     left = FormulaNode::BinOp {
                         op: BinOpKind::Add,
                         left: Box::new(left),
@@ -95,7 +101,7 @@ impl Parser {
                 }
                 Token::Minus => {
                     self.advance();
-                    let right = self.parse_term();
+                    let right = self.parse_term()?;
                     left = FormulaNode::BinOp {
                         op: BinOpKind::Sub,
                         left: Box::new(left),
@@ -105,17 +111,17 @@ impl Parser {
                 _ => break,
             }
         }
-        left
+        Some(left)
     }
 
     /// term = factor (('*' | '/') factor)*
-    fn parse_term(&mut self) -> FormulaNode {
-        let mut left = self.parse_factor();
+    fn parse_term(&mut self) -> Option<FormulaNode> {
+        let mut left = self.parse_factor()?;
         while let Some(tok) = self.peek() {
             match tok {
                 Token::Star => {
                     self.advance();
-                    let right = self.parse_factor();
+                    let right = self.parse_factor()?;
                     left = FormulaNode::BinOp {
                         op: BinOpKind::Mul,
                         left: Box::new(left),
@@ -124,7 +130,7 @@ impl Parser {
                 }
                 Token::Slash => {
                     self.advance();
-                    let right = self.parse_factor();
+                    let right = self.parse_factor()?;
                     left = FormulaNode::BinOp {
                         op: BinOpKind::Div,
                         left: Box::new(left),
@@ -134,15 +140,26 @@ impl Parser {
                 _ => break,
             }
         }
-        left
+        Some(left)
     }
 
     /// factor = NUMBER | cell_ref (':' cell_ref)? | func_call | '(' expr ')' | '-' factor
-    fn parse_factor(&mut self) -> FormulaNode {
+    fn parse_factor(&mut self) -> Option<FormulaNode> {
+        // 괄호·함수·단항 부호의 중첩이 Native/WASM 스택을 넘지 않게 한다.
+        if self.depth > 128 {
+            return None;
+        }
+        self.depth += 1;
+        let result = self.parse_factor_inner();
+        self.depth -= 1;
+        result
+    }
+
+    fn parse_factor_inner(&mut self) -> Option<FormulaNode> {
         match self.peek().cloned() {
             Some(Token::Number(n)) => {
                 self.advance();
-                FormulaNode::Number(n)
+                Some(FormulaNode::Number(n))
             }
             Some(Token::CellRef(col, row)) => {
                 self.advance();
@@ -152,62 +169,59 @@ impl Parser {
                     self.advance();
                     if let Some(Token::CellRef(col2, row2)) = self.peek().cloned() {
                         self.advance();
-                        FormulaNode::Range {
+                        Some(FormulaNode::Range {
                             start: Box::new(cell),
                             end: Box::new(FormulaNode::CellRef {
                                 col: col2,
                                 row: row2,
                             }),
-                        }
+                        })
                     } else {
-                        cell // ':' 뒤에 셀 참조가 없으면 단일 셀
+                        None
                     }
                 } else {
-                    cell
+                    Some(cell)
                 }
             }
             Some(Token::Function(name)) => {
                 self.advance();
-                self.expect(&Token::LParen);
-                let args = self.parse_arg_list();
-                self.expect(&Token::RParen);
-                FormulaNode::FuncCall { name, args }
+                if !self.expect(&Token::LParen) {
+                    return None;
+                }
+                let args = self.parse_arg_list()?;
+                self.expect(&Token::RParen)
+                    .then_some(FormulaNode::FuncCall { name, args })
             }
             Some(Token::Direction(dir)) => {
                 self.advance();
-                FormulaNode::Direction(dir)
+                Some(FormulaNode::Direction(dir))
             }
             Some(Token::LParen) => {
                 self.advance();
-                let inner = self.parse_expr();
-                self.expect(&Token::RParen);
-                inner
+                let inner = self.parse_expr()?;
+                self.expect(&Token::RParen).then_some(inner)
             }
             Some(Token::Minus) => {
                 self.advance();
-                let inner = self.parse_factor();
-                FormulaNode::Negate(Box::new(inner))
+                let inner = self.parse_factor()?;
+                Some(FormulaNode::Negate(Box::new(inner)))
             }
-            _ => {
-                // 파싱 실패: 0으로 대체
-                self.advance();
-                FormulaNode::Number(0.0)
-            }
+            _ => None,
         }
     }
 
     /// arg_list = arg (',' arg)*
-    fn parse_arg_list(&mut self) -> Vec<FormulaNode> {
+    fn parse_arg_list(&mut self) -> Option<Vec<FormulaNode>> {
         let mut args = Vec::new();
         if self.peek() == Some(&Token::RParen) {
-            return args; // 빈 인수
+            return Some(args); // 빈 인수
         }
-        args.push(self.parse_expr());
+        args.push(self.parse_expr()?);
         while self.peek() == Some(&Token::Comma) {
             self.advance();
-            args.push(self.parse_expr());
+            args.push(self.parse_expr()?);
         }
-        args
+        Some(args)
     }
 }
 

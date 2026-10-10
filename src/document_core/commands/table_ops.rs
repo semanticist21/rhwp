@@ -3601,8 +3601,9 @@ impl DocumentCore {
             current_col: target_col,
         };
 
-        let result = crate::document_core::table_calc::evaluate_formula(formula, &ctx, &get_cell)
-            .map_err(|e| HwpError::RenderError(format!("계산식 오류: {}", e)))?;
+        let (result, references) =
+            crate::document_core::table_calc::evaluate_formula_with_cells(formula, &ctx, &get_cell)
+                .map_err(|e| HwpError::RenderError(format!("계산식 오류: {}", e)))?;
 
         // 결과를 셀에 기록
         if write_result {
@@ -3638,11 +3639,15 @@ impl DocumentCore {
             )?;
         }
 
-        Ok(format!(
-            "{{\"ok\":true,\"result\":{},\"formula\":{}}}",
-            result,
-            json_escape(formula)
-        ))
+        // 자유 입력식의 참조를 앱에서 재파싱하지 않고 같은 셀 보호 검사에 전달한다.
+        let cells: Vec<_> = references
+            .into_iter()
+            .map(|(col, row)| serde_json::json!({"row": row, "col": col}))
+            .collect();
+        Ok(
+            serde_json::json!({"ok":true,"result":result,"formula":formula,"cells":cells})
+                .to_string(),
+        )
     }
 
     /// 표의 칸 크기를 한 걸음 바꾼다 — 웹한글컨트롤 `Run("TableResize*")` 계열 열둘.
