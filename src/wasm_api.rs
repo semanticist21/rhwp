@@ -7619,6 +7619,8 @@ impl HwpDocument {
     /// 삭제된 스타일을 사용 중인 문단은 바탕글(ID 0)로 변경된다.
     #[wasm_bindgen(js_name = deleteStyle)]
     pub fn delete_style(&mut self, style_id: u32) -> bool {
+        use crate::model::identity::walk::{walk, Node};
+
         if style_id == 0 {
             return false; // 바탕글은 삭제 불가
         }
@@ -7627,30 +7629,79 @@ impl HwpDocument {
             return false;
         }
         let sid = style_id as u8;
-        // 해당 스타일을 사용 중인 문단을 바탕글(0)로 변경
-        for section in &mut self.core.document.sections {
-            for para in &mut section.paragraphs {
-                if para.style_id == sid {
-                    para.style_id = 0;
+        let remap = |id: u16| {
+            if id == u16::from(sid) {
+                0
+            } else if id > u16::from(sid) {
+                id - 1
+            } else {
+                id
+            }
+        };
+        let remap_section_def = |section_def: &mut crate::model::document::SectionDef| {
+            // 저장된 바탕쪽은 원본 레코드를 다시 쓴다. 문단·덧말의 스타일 슬롯만 함께 보정한다.
+            for record in &mut section_def.extra_child_records {
+                if record.tag_id == crate::parser::tags::HWPTAG_PARA_HEADER {
+                    if let Some(id) = record.data.get_mut(10) {
+                        *id = remap(u16::from(*id)) as u8;
+                    }
+                } else if record.tag_id == crate::parser::tags::HWPTAG_CTRL_HEADER {
+                    let mut reader = crate::parser::byte_reader::ByteReader::new(&record.data);
+                    // tdut의 두 문자열과 위치·크기·옵션 뒤에 스타일 UINT32가 온다.
+                    // 잘린 원본·다른 제어·범위 밖 참조는 추측하지 않고 그대로 보존한다.
+                    if reader.read_u32().ok() != Some(crate::parser::tags::CTRL_CHAR_OVERLAP)
+                        || reader.read_hwp_string().is_err()
+                        || reader.read_hwp_string().is_err()
+                        || reader.skip(12).is_err()
+                    {
+                        continue;
+                    }
+                    let offset = reader.position();
+                    let Some(id) = reader.read_u32().ok().and_then(|id| u16::try_from(id).ok())
+                    else {
+                        continue;
+                    };
+                    if reader.read_u32().is_err() {
+                        continue;
+                    }
+                    record.data[offset..offset + 4]
+                        .copy_from_slice(&u32::from(remap(id)).to_le_bytes());
                 }
+            }
+        };
+        let remap_paragraphs = |paragraphs: &mut [Paragraph]| {
+            walk(paragraphs, |node| {
+                match node {
+                    Node::Paragraph(para) => para.style_id = remap(u16::from(para.style_id)) as u8,
+                    Node::Control(Control::Ruby(ruby)) => {
+                        ruby.style_id_ref = remap(ruby.style_id_ref);
+                    }
+                    Node::Control(Control::SectionDef(section_def)) => {
+                        remap_section_def(section_def);
+                    }
+                    _ => {}
+                }
+                Ok(())
+            })
+            .expect("style reference traversal is infallible");
+        };
+        // 표·글상자·머리말·주석도 같은 스타일 풀을 참조한다. 모양과 원문은 바꾸지 않는다.
+        for section in &mut self.core.document.sections {
+            remap_paragraphs(&mut section.paragraphs);
+            remap_section_def(&mut section.section_def);
+            for master in &mut section.section_def.master_pages {
+                remap_paragraphs(&mut master.paragraphs);
             }
         }
         // 스타일 삭제 (인덱스 기반이므로 뒤의 ID가 변경됨에 주의)
         self.core.document.doc_info.styles.remove(style_id as usize);
-        // 삭제된 ID보다 큰 style_id를 가진 문단들 보정
-        for section in &mut self.core.document.sections {
-            for para in &mut section.paragraphs {
-                if para.style_id > sid {
-                    para.style_id -= 1;
-                }
-            }
-        }
         // next_style_id 보정
         for s in &mut self.core.document.doc_info.styles {
-            if s.next_style_id == sid {
-                s.next_style_id = 0;
-            } else if s.next_style_id > sid {
-                s.next_style_id -= 1;
+            let next = remap(u16::from(s.next_style_id)) as u8;
+            if next != s.next_style_id {
+                s.next_style_id = next;
+                // 원본 레코드 봉인이 없는 기본 문서에서도 이전 연결을 다시 쓰지 않는다.
+                s.raw_data = None;
             }
         }
         // 스타일 캐시 갱신
