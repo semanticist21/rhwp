@@ -64,6 +64,19 @@ impl TypesetEngine {
         let safety = fit::layout_drift_safety_px(paragraphs);
         let available = (st.available_height() - safety).max(0.0);
         let fresh_available = (st.base_available_height() - safety).max(0.0);
+        let stored_page_origin = st.vpos_page_base.filter(|_| st.vpos_page_base_stored);
+        let stored_origin = stored_page_origin.unwrap_or(0);
+        let stored_available = if stored_page_origin.is_some() {
+            st.available_height() - st.vpos_col_anchor
+        } else {
+            st.available_height()
+        };
+        let stored_bottom = stored_origin.saturating_add(crate::renderer::px_to_hwpunit(
+            stored_available.max(0.0),
+            self.dpi,
+        ));
+        let mut stored_chain_end =
+            (st.col_count == 1 && !st.vpos_ladder_dirty).then_some(stored_origin);
         let mut required = 0.0;
         let mut index = para_idx;
         loop {
@@ -83,7 +96,31 @@ impl TypesetEngine {
                         .get(next.para_shape_id as usize)
                         .is_some_and(|style| style.page_break_before)
             });
-            if !linked(index) || !follows {
+            let continues = linked(index) && follows;
+            let protected_lines = if continues {
+                para.line_segs.as_slice()
+            } else {
+                para.line_segs.get(..1).unwrap_or_default()
+            };
+            stored_chain_end = stored_chain_end.and_then(|mut end| {
+                if protected_lines.is_empty() || para.stored_text_partition_is_dirty() {
+                    return None;
+                }
+                for line in protected_lines {
+                    if super::super::is_synthetic_line_seg(line)
+                        || line.vertical_pos < end
+                        || line.line_height < 0
+                    {
+                        return None;
+                    }
+                    end = line.vertical_pos.saturating_add(line.line_height);
+                    if end > stored_bottom {
+                        return None;
+                    }
+                }
+                Some(end)
+            });
+            if !continues {
                 // 마지막 문단의 첫 줄만 예약한다. 문단 보호까지 강제하지 않는다.
                 required += fmt.spacing_before
                     + fmt
@@ -114,6 +151,26 @@ impl TypesetEngine {
                 return;
             }
             index += 1;
+        }
+        // 저장된 연결이 같은 쪽에 들어가면 높이 보정 전의 누적값으로 옮기지 않는다.
+        let stored_chain_fits = stored_chain_end.is_some()
+            && (stored_page_origin.is_some()
+                || (super::super::saved_flow_marks_page_last(paragraphs, index)
+                    && super::super::single_line_visible_bounds_px(
+                        &paragraphs[index],
+                        stored_origin,
+                        self.dpi,
+                    )
+                    .is_some_and(|bounds| {
+                        super::super::saved_bounds_fit_at_flow_tail(
+                            bounds,
+                            st.current_height,
+                            st.available_height(),
+                            0.0,
+                        )
+                    })));
+        if stored_chain_fits {
+            return;
         }
         if index > para_idx
             && required <= fresh_available
