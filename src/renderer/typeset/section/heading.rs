@@ -5,6 +5,38 @@ use crate::renderer::typeset::{
     TypesetState,
 };
 impl TypesetEngine {
+    pub(in crate::renderer::typeset) fn keeps_with_previous(
+        &self,
+        st: &TypesetState,
+        para_idx: usize,
+        paragraphs: &[Paragraph],
+        styles: &ResolvedStyleSet,
+    ) -> bool {
+        let Some(previous_idx) = para_idx.checked_sub(1) else {
+            return false;
+        };
+        let previous = &paragraphs[previous_idx];
+        let para = &paragraphs[para_idx];
+        st.wrap_around_cs < 0
+            && !self.paragraph_has_table(previous)
+            && !self.paragraph_has_table(para)
+            && para.column_type == ColumnBreakType::None
+            && !styles
+                .para_styles
+                .get(para.para_shape_id as usize)
+                .is_some_and(|style| style.page_break_before)
+            && styles
+                .para_styles
+                .get(previous.para_shape_id as usize)
+                .is_some_and(|style| style.keep_with_next)
+            && st.current_items.iter().any(|item| {
+                matches!(item,
+                    PageItem::FullParagraph { para_index }
+                    | PageItem::PartialParagraph { para_index, .. }
+                    if *para_index == previous_idx)
+            })
+    }
+
     pub(super) fn keep_with_next(
         &self,
         st: &mut TypesetState,

@@ -441,6 +441,7 @@ pub(super) fn place_after_failed_fit(
     layout_drift_safety_px: f64,
     stored_vpos_rewind_break: bool,
     stored_vpos_rewind_overflow_break: bool,
+    keep_with_previous: bool,
     forced_page_break_line: Option<usize>,
     native_hwp5_existing_footnote_reset_line: Option<usize>,
     current_page_vpos_base: Option<i32>,
@@ -531,6 +532,7 @@ pub(super) fn place_after_failed_fit(
         available,
         stored_vpos_rewind_break,
         stored_vpos_rewind_overflow_break,
+        keep_with_previous,
         &st.paragraph_split_entry_page(),
         dpi,
     ) {

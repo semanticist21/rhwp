@@ -84,6 +84,43 @@ fn moves_boundary_pair_and_preserves_caret_hit_and_roundtrips() {
 }
 
 #[test]
+fn long_successor_keeps_first_line_and_splits_the_rest() {
+    let mut core = source();
+    let next = boundary(&core);
+    let text = "긴 본문 ".repeat(2000);
+    core.insert_text_native(0, next, 0, &text).unwrap();
+    keep(&mut core, next - 1);
+    for bytes in [
+        core.export_hwp_native().unwrap(),
+        core.export_hwpx_native().unwrap(),
+    ] {
+        let reopened = DocumentCore::from_bytes(&bytes).unwrap();
+        assert_eq!(
+            caret(&reopened, next - 1)["pageIndex"],
+            caret(&reopened, next)["pageIndex"]
+        );
+        let end: Value = serde_json::from_str(
+            &reopened
+                .get_cursor_rect_native(0, next, text.chars().count())
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(end["pageIndex"].as_u64() > caret(&reopened, next)["pageIndex"].as_u64());
+        assert_eq!(
+            reopened.document().sections[0].paragraphs[next].text,
+            format!("{text}연결 문단 {next:02}")
+        );
+        for page in 0..reopened.page_count() {
+            assert!(!reopened.page_text(page as usize).unwrap().trim().is_empty());
+        }
+    }
+    assert_eq!(
+        caret(&core, next - 1)["pageIndex"],
+        caret(&core, next)["pageIndex"]
+    );
+}
+
+#[test]
 fn consecutive_links_move_together_and_last_link_is_noop() {
     let mut core = source();
     let next = boundary(&core);
@@ -126,7 +163,7 @@ fn explicit_boundaries_override_links() {
         let mut core = source();
         let next = boundary(&core);
         core.document_mut().sections[0].paragraphs[next].column_type = kind;
-        core.refresh_section_native(0).unwrap();
+        core.set_document(core.document().clone());
         keep(&mut core, next - 1);
         assert_ne!(
             caret(&core, next - 1)["pageIndex"],
@@ -135,4 +172,14 @@ fn explicit_boundaries_override_links() {
         );
         assert_text_and_pages(&core);
     }
+    let mut core = source();
+    let next = boundary(&core);
+    core.apply_para_format_native(0, next, r#"{"pageBreakBefore":true}"#)
+        .unwrap();
+    keep(&mut core, next - 1);
+    assert_ne!(
+        caret(&core, next - 1)["pageIndex"],
+        caret(&core, next)["pageIndex"]
+    );
+    assert_text_and_pages(&core);
 }

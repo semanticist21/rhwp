@@ -293,19 +293,22 @@ impl TypesetEngine {
                 continue;
             };
 
-            self.apply_stored_paragraph_boundary(
-                &mut st,
-                para_idx,
-                para,
-                paragraphs,
-                styles,
-                has_table,
-                hwp3_origin_page_tolerance,
-                profile,
-                body_height_hu_for_variant,
-                measured_tables,
-                &boundary,
-            );
+            // 연결한 앞 문단이 현재 단에 있으면 저장된 옛 쪽 경계보다 실제 흐름을 따른다.
+            if !self.keeps_with_previous(&st, para_idx, paragraphs, styles) {
+                self.apply_stored_paragraph_boundary(
+                    &mut st,
+                    para_idx,
+                    para,
+                    paragraphs,
+                    styles,
+                    has_table,
+                    hwp3_origin_page_tolerance,
+                    profile,
+                    body_height_hu_for_variant,
+                    measured_tables,
+                    &boundary,
+                );
+            }
 
             if self.absorb_section_tail(
                 &mut st,

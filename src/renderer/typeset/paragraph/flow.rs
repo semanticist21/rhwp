@@ -15,6 +15,7 @@ pub(in crate::renderer::typeset) struct ParagraphFlowInput<'a> {
     pub paragraphs: &'a [Paragraph],
     pub styles: &'a ResolvedStyleSet,
     pub is_last_in_section: bool,
+    pub keep_with_previous: bool,
 }
 
 pub(in crate::renderer::typeset) fn place(
@@ -30,6 +31,7 @@ pub(in crate::renderer::typeset) fn place(
         paragraphs,
         styles,
         is_last_in_section,
+        keep_with_previous,
     } = input;
     let stored_frame_shared_spacing =
         crate::renderer::float_placement::stored_frame_successor_shared_spacing_px(
@@ -137,7 +139,11 @@ pub(in crate::renderer::typeset) fn place(
         available,
         dpi,
     );
-    if fits {
+    if fits
+        || (keep_with_previous
+            && forced_page_break_line.is_none()
+            && st.current_height + fmt.height_for_fit <= available)
+    {
         paragraph::place_fitted_paragraph(
             st,
             para_idx,
@@ -183,6 +189,7 @@ pub(in crate::renderer::typeset) fn place(
         layout_drift_safety_px,
         stored_vpos_rewind_break,
         stored_vpos_rewind_overflow_break,
+        keep_with_previous,
         forced_page_break_line,
         native_hwp5_existing_footnote_reset_line,
         current_page_vpos_base,
