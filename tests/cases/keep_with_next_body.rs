@@ -183,3 +183,24 @@ fn explicit_boundaries_override_links() {
     );
     assert_text_and_pages(&core);
 }
+
+#[test]
+fn enabling_keep_after_reopen_moves_a_stored_boundary() {
+    let original = source();
+    for bytes in [
+        original.export_hwp_native().unwrap(),
+        original.export_hwpx_native().unwrap(),
+    ] {
+        let mut core = DocumentCore::from_bytes(&bytes).unwrap();
+        let next = boundary(&core);
+        let before = caret(&core, next - 1);
+        keep(&mut core, next - 1);
+        assert_eq!(
+            caret(&core, next - 1)["pageIndex"],
+            caret(&core, next)["pageIndex"]
+        );
+        assert_ne!(caret(&core, next - 1)["pageIndex"], before["pageIndex"]);
+        assert_eq!(core.page_count(), 2);
+        assert_text_and_pages(&core);
+    }
+}
