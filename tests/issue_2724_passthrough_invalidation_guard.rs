@@ -554,6 +554,18 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     ),
     (
         "commands/text_editing.rs",
+        "delete_range_native",
+        Exempt::DelegatesTo("delete_range_with_boundaries"),
+        "원문·셀 삭제 경계를 공통 함수로 넘긴다. 공통 함수가 대상 구역의 raw_stream을 비운 뒤 삭제를 적용한다.",
+    ),
+    (
+        "commands/text_editing.rs",
+        "delete_range_logical_native",
+        Exempt::DelegatesTo("delete_range_with_boundaries"),
+        "논리 캐럿을 원문·개체 경계로 변환한 뒤 공통 삭제 함수에 위임한다. 공통 함수가 대상 구역의 raw_stream을 무효화한다.",
+    ),
+    (
+        "commands/text_editing.rs",
         "insert_text_native",
         Exempt::DelegatesTo("insert_text_at_caret_native"),
         "[#7444] 얇은 래퍼 — 개체 뒤 여부만 false 로 넘기고 삽입·무효화는 위임 대상이 한다.",
@@ -1322,6 +1334,28 @@ fn delegation_targets_actually_invalidate() {
                 "  ? {key} → {target}() — 위임 대상이 {SCAN_ROOT} 안에 없다(rename/이동?)"
             ));
             continue;
+        }
+        if file == "commands/text_editing.rs"
+            && matches!(name, "delete_range_native" | "delete_range_logical_native")
+        {
+            let wrapper = all
+                .iter()
+                .find(|f| f.file == file && f.name == name && f.in_document_core)
+                .expect("범위 삭제 래퍼가 있어야 한다");
+            assert!(
+                called_names(&wrapper.body).contains(target),
+                "{key}가 선언한 {target}()을 직접 호출하지 않는다"
+            );
+            let target_fn = all
+                .iter()
+                .find(|f| f.file == file && f.name == target && f.in_document_core)
+                .expect("범위 삭제 공통 함수가 같은 파일에 있어야 한다");
+            assert!(
+                target_fn
+                    .body
+                    .contains("self.document.sections[section_idx].raw_stream = None"),
+                "{key}의 위임 대상 {target}()이 대상 구역의 원본 스트림을 무효화하지 않는다"
+            );
         }
         let mut seen = BTreeSet::new();
         if !reaches_invalidation(&index, &all, target, 4, &mut seen) {
