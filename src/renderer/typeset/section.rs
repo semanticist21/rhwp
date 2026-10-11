@@ -344,6 +344,7 @@ impl TypesetEngine {
             st.ensure_page();
 
             self.keep_heading_with_following_block(&mut st, para_idx, para, paragraphs);
+            self.keep_with_next(&mut st, para_idx, paragraphs, composed, styles);
 
             let picture_host_origin = (st.pages.len(), st.current_column, st.current_height);
             let native_hwp5_footnote_break = self.place_paragraph_flow(
