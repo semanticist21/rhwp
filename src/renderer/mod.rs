@@ -317,6 +317,9 @@ pub struct TextStyle {
     /// 원본 언어 슬롯의 글자 위치(%). 0은 기존 직렬화와 같이 생략한다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub font_position: Option<i8>,
+    /// run 상자를 만들 때 한 번 소비하는 기준 크기 기준 세로 이동량(px).
+    #[serde(skip)]
+    pub char_offset: f64,
     /// 글자 색상
     pub color: ColorRef,
     /// 진하게
@@ -637,6 +640,7 @@ impl Default for TextStyle {
             source_font_is_hft: false,
             resolved_font_size: false,
             font_position: None,
+            char_offset: 0.0,
             color: 0,
             bold: false,
             italic: false,

@@ -877,8 +877,10 @@ pub(crate) fn resolved_to_text_style(
             hft_fullwidth_dot: cs.hft_fullwidth_dot_for_lang(lang_index),
             font_size: cs.font_size_for_lang(lang_index),
             resolved_font_size: true,
-            font_position: (cs.font_position_for_lang(lang_index) != 0)
-                .then(|| cs.font_position_for_lang(lang_index)),
+            // 글자 위치는 run 상자(char_offset)에서 한 번 옮긴다. 캐럿·선택도 같은 상자를
+            // 쓰므로 그리기 기준선에서 다시 옮기지 않는다.
+            font_position: None,
+            char_offset: cs.font_size * f64::from(cs.font_position_for_lang(lang_index)) / 100.0,
             color: cs.text_color,
             bold: cs.bold,
             italic: cs.italic,
