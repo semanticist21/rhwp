@@ -1,8 +1,11 @@
 //! 텍스트 삽입/삭제/문단 분리·병합/범위 삭제/문단 쿼리 관련 native 메서드
 
-use super::super::helpers::get_textbox_from_shape;
+use super::super::helpers::{
+    get_textbox_from_shape, logical_paragraph_length, logical_to_text_offset,
+};
 use super::super::queries::field_query::rebuild_char_offsets;
 use super::super::queries::rendering::FocusedPageTreePatch;
+use super::clipboard::text_to_split_logical_offset;
 use super::formatting::restore_para_meta;
 use crate::document_core::{
     ActiveFieldInfo, DeferredPaginationDescriptor, DeferredPaginationTargetStatus, DocumentCore,
@@ -23,6 +26,55 @@ use crate::renderer::pagination::PageItem;
 use crate::renderer::style_resolver::ResolvedStyleSet;
 
 pub(crate) type CellReflowMetrics = (i32, i16, i16);
+
+/// 복사와 같은 경계로 지울 개체를 먼저 검증하여 실패 시 원문을 지킨다.
+fn boundary_controls_to_delete(
+    para: &Paragraph,
+    start: (usize, bool),
+    end: (usize, bool),
+) -> Result<Vec<usize>, HwpError> {
+    let positions = para.control_text_positions();
+    let selected: Vec<usize> = para
+        .controls
+        .iter()
+        .enumerate()
+        .filter_map(|(index, control)| {
+            let at = positions.get(index).copied()?;
+            (Paragraph::is_split_movable_control(control)
+                && (at > start.0 || (at == start.0 && !start.1))
+                && (at < end.0 || (at == end.0 && end.1)))
+                .then_some(index)
+        })
+        .collect();
+    if !selected.is_empty()
+        && (!para.field_ranges.is_empty()
+            || !para.orphan_field_ends.is_empty()
+            || para
+                .controls
+                .iter()
+                .any(|control| matches!(control, Control::Field(_)))
+            || selected.iter().any(|&index| {
+                !matches!(
+                    para.controls[index],
+                    Control::Table(_)
+                        | Control::Picture(_)
+                        | Control::Shape(_)
+                        | Control::Equation(_)
+                        | Control::Footnote(_)
+                        | Control::Endnote(_)
+                ) || para.controls.iter().enumerate().any(|(other, control)| {
+                    other != index
+                        && Paragraph::is_split_movable_control(control)
+                        && positions.get(other) == positions.get(index)
+                })
+            }))
+    {
+        return Err(HwpError::RenderError(
+            "필드나 같은 자리의 여러 개체를 포함한 경계 삭제는 아직 지원하지 않습니다".into(),
+        ));
+    }
+    Ok(selected)
+}
 
 fn cell_vpos_resets(previous: &Paragraph, current: &Paragraph) -> bool {
     if let Some(reset) = current.cell_vpos_reset {
@@ -3279,6 +3331,119 @@ impl DocumentCore {
         end_offset: usize,
         cell_ctx: Option<(usize, usize, usize)>,
     ) -> Result<String, HwpError> {
+        let end_after = cell_ctx.is_none()
+            && self
+                .document
+                .sections
+                .get(section_idx)
+                .and_then(|section| section.paragraphs.get(end_para))
+                .is_some_and(|para| end_offset >= para.text.chars().count());
+        self.delete_range_with_boundaries(
+            section_idx,
+            start_para,
+            (start_offset, false),
+            end_para,
+            (end_offset, end_after),
+            cell_ctx,
+        )
+    }
+
+    /// 본문 선택을 복사와 같은 캐럿 축으로 지운다. 셀의 경계 개체는 이 API의 범위 밖이다.
+    pub fn delete_range_logical_native(
+        &mut self,
+        section_idx: usize,
+        start_para: usize,
+        start_logical: usize,
+        end_para: usize,
+        end_logical: usize,
+    ) -> Result<String, HwpError> {
+        if start_para == end_para && start_logical > end_logical {
+            return Err(HwpError::RenderError(
+                "시작 위치가 끝 위치보다 뒤에 있음".into(),
+            ));
+        }
+        let para = |index| {
+            self.document
+                .sections
+                .get(section_idx)
+                .and_then(|section| section.paragraphs.get(index))
+        };
+        for (index, logical) in [(start_para, start_logical), (end_para, end_logical)] {
+            if let Some(p) = para(index) {
+                let positions = p.control_text_positions();
+                if logical < logical_paragraph_length(p)
+                    && p.controls.iter().enumerate().any(|(ci, control)| {
+                        Paragraph::is_split_movable_control(control)
+                            && logical > text_to_split_logical_offset(p, positions[ci], false)
+                            && p.controls.iter().enumerate().any(|(other, control)| {
+                                other != ci
+                                    && Paragraph::is_split_movable_control(control)
+                                    && positions[other] == positions[ci]
+                            })
+                    })
+                {
+                    return Err(HwpError::RenderError(
+                        "같은 자리의 여러 개체 사이 경계는 아직 지원하지 않습니다".into(),
+                    ));
+                }
+            }
+        }
+        let start = para(start_para).map_or((start_logical, false), |p| {
+            logical_to_text_offset(p, start_logical)
+        });
+        let mut end = para(end_para).map_or((end_logical, false), |p| {
+            logical_to_text_offset(p, end_logical)
+        });
+        end.1 |= para(end_para).is_some_and(|p| end_logical >= logical_paragraph_length(p));
+        self.delete_range_with_boundaries(section_idx, start_para, start, end_para, end, None)?;
+        Ok(super::super::helpers::json_ok_with(&format!(
+            "\"paraIdx\":{},\"charOffset\":{}",
+            start_para, start_logical
+        )))
+    }
+
+    fn delete_body_paragraph_range(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        start: (usize, bool),
+        end: (usize, bool),
+        selected: &[usize],
+    ) -> Result<(), HwpError> {
+        if selected.is_empty() {
+            self.document.sections[section_idx].paragraphs[para_idx]
+                .delete_text_at(start.0, end.0.saturating_sub(start.0));
+            return Ok(());
+        }
+        let reflowed = self.text_reflowed_table_control_indices_at(section_idx, para_idx);
+        self.forget_text_reflowed_tables_in_paragraph_at(section_idx, para_idx);
+        let para = &mut self.document.sections[section_idx].paragraphs[para_idx];
+        let from = text_to_split_logical_offset(para, start.0, start.1);
+        let to = text_to_split_logical_offset(para, end.0, end.1);
+        // 문단 끝의 떠 있는 개체는 캐럿 칸이 없으므로 뒤 조각으로 남기지 않는다.
+        let suffix = (!(end.1 && end.0 >= para.text.chars().count())).then(|| para.split_at(to));
+        let _ = para.split_at(from);
+        if let Some(suffix) = suffix {
+            para.merge_from(&suffix);
+        }
+        let kept: Vec<usize> = reflowed
+            .into_iter()
+            .filter(|index| !selected.contains(index))
+            .map(|index| index - selected.iter().filter(|&&removed| removed < index).count())
+            .collect();
+        self.inherit_text_reflowed_table_controls(section_idx, para_idx, 0, &kept)
+    }
+
+    fn delete_range_with_boundaries(
+        &mut self,
+        section_idx: usize,
+        start_para: usize,
+        start: (usize, bool),
+        end_para: usize,
+        end: (usize, bool),
+        cell_ctx: Option<(usize, usize, usize)>,
+    ) -> Result<String, HwpError> {
+        let (start_offset, end_offset) = (start.0, end.0);
         // 인덱스/범위 검증 — section_idx 범위, start/end para 범위, 뒤집힌 오프셋(start > end)
         if section_idx >= self.document.sections.len() {
             return Err(HwpError::RenderError(format!(
@@ -3309,6 +3474,22 @@ impl DocumentCore {
             }
         }
 
+        let mut first_controls = Vec::new();
+        let mut last_controls = Vec::new();
+        if cell_ctx.is_none() {
+            let paragraphs = &self.document.sections[section_idx].paragraphs;
+            let first_end = if start_para == end_para {
+                end
+            } else {
+                (paragraphs[start_para].text.chars().count(), true)
+            };
+            first_controls =
+                boundary_controls_to_delete(&paragraphs[start_para], start, first_end)?;
+            if start_para != end_para {
+                last_controls =
+                    boundary_controls_to_delete(&paragraphs[end_para], (0, false), end)?;
+            }
+        }
         // Section raw 스트림 무효화 (재직렬화 유도)
         self.document.sections[section_idx].raw_stream = None;
         // DocInfo raw_stream은 유지 (전체 재직렬화 시 FIX-4 문제 발생)
@@ -3376,9 +3557,14 @@ impl DocumentCore {
             if start_para == end_para {
                 // 같은 문단 내 삭제
                 let count = end_offset - start_offset;
-                if count > 0 {
-                    self.document.sections[section_idx].paragraphs[start_para]
-                        .delete_text_at(start_offset, count);
+                if count > 0 || !first_controls.is_empty() {
+                    self.delete_body_paragraph_range(
+                        section_idx,
+                        start_para,
+                        start,
+                        end,
+                        &first_controls,
+                    )?;
                     // [Task #2299] 리셋 판별용 — reflow 이전 저장 흐름 end 캡처.
                     let stored_end_for_reset = crate::renderer::composer::paragraph_flow_end(
                         &self.document.sections[section_idx].paragraphs[start_para],
@@ -3399,10 +3585,13 @@ impl DocumentCore {
                 self.recompose_paragraph(section_idx, start_para);
             } else {
                 // 1) 마지막 문단 앞부분 삭제
-                if end_offset > 0 {
-                    self.document.sections[section_idx].paragraphs[end_para]
-                        .delete_text_at(0, end_offset);
-                }
+                self.delete_body_paragraph_range(
+                    section_idx,
+                    end_para,
+                    (0, false),
+                    end,
+                    &last_controls,
+                )?;
                 // 2) 중간 문단 역순 제거 (composed도 동기)
                 for mid_para in (start_para + 1..end_para).rev() {
                     self.forget_text_reflowed_tables_in_paragraph_at(section_idx, mid_para);
@@ -3417,10 +3606,13 @@ impl DocumentCore {
                         .text
                         .chars()
                         .count();
-                    if start_offset < para_len {
-                        self.document.sections[section_idx].paragraphs[start_para]
-                            .delete_text_at(start_offset, para_len - start_offset);
-                    }
+                    self.delete_body_paragraph_range(
+                        section_idx,
+                        start_para,
+                        start,
+                        (para_len, true),
+                        &first_controls,
+                    )?;
                 }
                 // 4) 첫-마지막 문단 병합 (마지막 문단이 이제 start_para+1에 위치)
                 if start_para + 1 < self.document.sections[section_idx].paragraphs.len() {
