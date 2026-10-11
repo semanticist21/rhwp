@@ -6806,6 +6806,26 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 본문 선택을 개체·각주 칸을 포함한 캐럿 위치로 지운다.
+    #[wasm_bindgen(js_name = deleteRangeLogical)]
+    pub fn delete_range_logical(
+        &mut self,
+        section_idx: u32,
+        start_para_idx: u32,
+        start_logical: u32,
+        end_para_idx: u32,
+        end_logical: u32,
+    ) -> Result<String, JsValue> {
+        self.delete_range_logical_native(
+            section_idx as usize,
+            start_para_idx as usize,
+            start_logical as usize,
+            end_para_idx as usize,
+            end_logical as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// 셀 내 선택 영역을 삭제한다.
     ///
     /// 반환: JSON `{"ok":true,"paraIdx":N,"charOffset":N}`
