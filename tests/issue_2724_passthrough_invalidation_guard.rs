@@ -682,6 +682,28 @@ fn delegation_targets_actually_invalidate() {
             ));
             continue;
         }
+        if file == "commands/text_editing.rs"
+            && matches!(name, "delete_range_native" | "delete_range_logical_native")
+        {
+            let wrapper = all
+                .iter()
+                .find(|f| f.file == file && f.name == name && f.in_document_core)
+                .expect("범위 삭제 래퍼가 있어야 한다");
+            assert!(
+                called_names(&wrapper.body).contains(target),
+                "{key}가 선언한 {target}()을 직접 호출하지 않는다"
+            );
+            let target_fn = all
+                .iter()
+                .find(|f| f.file == file && f.name == target && f.in_document_core)
+                .expect("범위 삭제 공통 함수가 같은 파일에 있어야 한다");
+            assert!(
+                target_fn
+                    .body
+                    .contains("self.document.sections[section_idx].raw_stream = None"),
+                "{key}의 위임 대상 {target}()이 대상 구역의 원본 스트림을 무효화하지 않는다"
+            );
+        }
         let mut seen = BTreeSet::new();
         if !reaches_invalidation(&index, &all, target, 4, &mut seen) {
             violations.push(format!(
