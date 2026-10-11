@@ -1,6 +1,128 @@
 //! 구역 문단 처리의 keep_heading_with_following_block 단계. 조건·예약·발행 순서를 유지한다.
-use crate::renderer::typeset::{PageItem, Paragraph, TypesetEngine, TypesetState};
+use crate::renderer::typeset::{
+    paragraph::{fit, metrics, stored_lines},
+    ColumnBreakType, ComposedParagraph, PageItem, Paragraph, ResolvedStyleSet, TypesetEngine,
+    TypesetState,
+};
 impl TypesetEngine {
+    pub(in crate::renderer::typeset) fn keeps_with_previous(
+        &self,
+        st: &TypesetState,
+        para_idx: usize,
+        paragraphs: &[Paragraph],
+        styles: &ResolvedStyleSet,
+    ) -> bool {
+        let Some(previous_idx) = para_idx.checked_sub(1) else {
+            return false;
+        };
+        let previous = &paragraphs[previous_idx];
+        let para = &paragraphs[para_idx];
+        st.wrap_around_cs < 0
+            && !self.paragraph_has_table(previous)
+            && !self.paragraph_has_table(para)
+            && para.column_type == ColumnBreakType::None
+            && !styles
+                .para_styles
+                .get(para.para_shape_id as usize)
+                .is_some_and(|style| style.page_break_before)
+            && styles
+                .para_styles
+                .get(previous.para_shape_id as usize)
+                .is_some_and(|style| style.keep_with_next)
+            && st.current_items.iter().any(|item| {
+                matches!(item,
+                    PageItem::FullParagraph { para_index }
+                    | PageItem::PartialParagraph { para_index, .. }
+                    if *para_index == previous_idx)
+            })
+    }
+
+    pub(super) fn keep_with_next(
+        &self,
+        st: &mut TypesetState,
+        para_idx: usize,
+        paragraphs: &[Paragraph],
+        composed: &[ComposedParagraph],
+        styles: &ResolvedStyleSet,
+    ) {
+        let linked = |index: usize| {
+            paragraphs.get(index).is_some_and(|para| {
+                styles
+                    .para_styles
+                    .get(para.para_shape_id as usize)
+                    .is_some_and(|style| style.keep_with_next)
+            })
+        };
+        if !linked(para_idx) || st.current_items.is_empty() || st.wrap_around_cs >= 0 {
+            return;
+        }
+        let width = st
+            .layout
+            .column_areas
+            .get(st.current_column as usize)
+            .map_or(st.layout.body_area.width, |area| area.width);
+        let safety = fit::layout_drift_safety_px(paragraphs);
+        let available = (st.available_height() - safety).max(0.0);
+        let fresh_available = (st.base_available_height() - safety).max(0.0);
+        let mut required = 0.0;
+        let mut index = para_idx;
+        loop {
+            let Some(para) = paragraphs.get(index) else {
+                return;
+            };
+            if self.paragraph_has_table(para) {
+                return;
+            }
+            let fmt = self.format_paragraph(para, composed.get(index), styles, Some(width));
+            // 명시적 쪽·단 경계와 표의 분할은 해당 배치 경로가 소유한다.
+            let follows = paragraphs.get(index + 1).is_some_and(|next| {
+                next.column_type == ColumnBreakType::None
+                    && !self.paragraph_has_table(next)
+                    && !styles
+                        .para_styles
+                        .get(next.para_shape_id as usize)
+                        .is_some_and(|style| style.page_break_before)
+            });
+            if !linked(index) || !follows {
+                // 마지막 문단의 첫 줄만 예약한다. 문단 보호까지 강제하지 않는다.
+                required += fmt.spacing_before
+                    + fmt
+                        .line_heights
+                        .first()
+                        .copied()
+                        .unwrap_or(fmt.height_for_fit);
+                break;
+            }
+            let hints = metrics::flow_hints(para, &fmt, paragraphs, index, st.profile, self.dpi);
+            required += fmt.flow_advance_height(
+                para,
+                st.col_count,
+                hints.trim_spacing_before_for_flow,
+                st.vpos_ladder_dirty
+                    || !stored_lines::spacing_trim_restorable(paragraphs, index)
+                    || stored_lines::next_boundary_reverts_spacing_trim(
+                        st.profile.hwpx_stored_layout() && !st.profile.hwp3_layout(),
+                        paragraphs,
+                        styles,
+                        index,
+                        self.dpi,
+                    ),
+                st.vpos_page_base.is_none() && st.vpos_lazy_base.is_some(),
+            );
+            // 한 쪽보다 큰 연결은 기존 줄 분할로 전진한다. 빈 쪽을 재시도하지 않는다.
+            if required > fresh_available {
+                return;
+            }
+            index += 1;
+        }
+        if index > para_idx
+            && required <= fresh_available
+            && st.current_height + required > available
+        {
+            st.advance_column_or_new_page();
+        }
+    }
+
     #[allow(clippy::too_many_arguments)]
     pub(super) fn keep_heading_with_following_block(
         &self,

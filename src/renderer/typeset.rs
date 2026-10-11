@@ -3890,6 +3890,7 @@ impl TypesetEngine {
         styles: &ResolvedStyleSet,
         is_last_in_section: bool,
     ) {
+        let keep_with_previous = self.keeps_with_previous(st, para_idx, paragraphs, styles);
         paragraph::flow::place(
             st,
             paragraph::flow::ParagraphFlowInput {
@@ -3899,6 +3900,7 @@ impl TypesetEngine {
                 paragraphs,
                 styles,
                 is_last_in_section,
+                keep_with_previous,
             },
             self.dpi,
             || self.profile.get().session_edited(),

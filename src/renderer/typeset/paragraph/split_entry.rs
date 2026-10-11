@@ -140,6 +140,7 @@ pub(in crate::renderer::typeset) fn should_advance(
     available: f64,
     stored_vpos_rewind_break: bool,
     stored_vpos_rewind_overflow_break: bool,
+    keep_with_previous: bool,
     page: &SplitEntryPage<'_>,
     dpi: f64,
 ) -> bool {
@@ -182,11 +183,11 @@ pub(in crate::renderer::typeset) fn should_advance(
         .unwrap_or(false);
     (page.current_height >= available
         || remaining < first_line_h
-        || stored_first_line_bottom_outside_body
-        || (stored_whole_para_reset && !hangul2024_split_refit)
+        || (!keep_with_previous && stored_first_line_bottom_outside_body)
+        || (!keep_with_previous && stored_whole_para_reset && !hangul2024_split_refit)
         // [#5755] 저장 되감김 + 전체 fit 실패 = 한글이 이 문단을 통째로 다음 쪽에
         // 둔 배치 — split 로 현재 쪽에 걸치지 말고 먼저 쪽을 넘긴다.
-        || stored_vpos_rewind_overflow_break
+        || (!keep_with_previous && stored_vpos_rewind_overflow_break)
         // [#6761] 되감김 판정(`stored_vpos_rewind_break`)이 서면 전체 배치 분기는
         // 이미 건너뛴다. 그런데 분할 경로가 그 값을 안 봐서, 남은 여백에 첫 줄이
         // 들어가면 같은 쪽에 얹고 만다 — 되감김이 말한 쪽 경계가 무시된다.
@@ -196,7 +197,9 @@ pub(in crate::renderer::typeset) fn should_advance(
         // 쪽 경계의 되감김은 사다리가 **쪽 위쪽 띠에서 다시 시작**한다는 뜻이므로,
         // 이 분기는 `cl > 5000` 의 거울인 `nv <= 5000` 까지 요구한다
         // (1130000 pi=41 53956 -> pi=42 500 이 그 형상이다).
-        || (stored_vpos_rewind_break && stored_vpos_restarts_near_body_top(para)))
+        || (!keep_with_previous
+            && stored_vpos_rewind_break
+            && stored_vpos_restarts_near_body_top(para)))
         && !page.current_items.is_empty()
         && !hwp_first_line_before_reset_fits
 }
