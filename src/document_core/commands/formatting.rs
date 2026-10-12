@@ -8,7 +8,10 @@ use super::super::helpers::{
 use crate::document_core::DocumentCore;
 use crate::error::HwpError;
 use crate::model::event::DocumentEvent;
-use crate::renderer::composer::{reflow_line_segs, restamp_indentation, ParagraphBox};
+use crate::renderer::composer::{
+    paragraph_flow_end, recalculate_section_vpos, reflow_line_segs, restamp_indentation,
+    ParagraphBox,
+};
 use crate::renderer::page_layout::PageLayoutInfo;
 use crate::renderer::style_resolver::ResolvedStyleSet;
 
@@ -1066,6 +1069,7 @@ impl DocumentCore {
             let bf_id = self.create_border_fill_from_json(props_json);
             mods.border_fill_id = Some(bf_id);
         }
+        let stored_end = paragraph_flow_end(&self.document.sections[sec_idx].paragraphs[para_idx]);
         self.apply_char_mods_to_paragraph(sec_idx, para_idx, start_offset, end_offset, &mods)?;
 
         // 텍스트 폭/높이에 영향을 주는 글자 모양 변경 시 LineSeg 재계산.
@@ -1085,15 +1089,22 @@ impl DocumentCore {
             let para_style = styles.para_styles.get(para_shape_id as usize);
             // 본문: 열 상자.
             let paragraph_box = ParagraphBox::body_for_style(col_width, para_style, self.dpi);
-            // 원본 LineSeg 무효화 → reflow가 max_font_size에서 새로 계산
-            self.document.sections[sec_idx].paragraphs[para_idx]
-                .line_segs
-                .clear();
+            // 저장된 첫 줄의 시작 위치를 유지하며 조판한 줄을 교체한다.
             reflow_line_segs(
                 &mut self.document.sections[sec_idx].paragraphs[para_idx],
                 paragraph_box,
                 &styles,
                 self.dpi,
+            );
+            let hwp3 = self.document.layout_profile().hwp3_layout();
+            recalculate_section_vpos(
+                &mut self.document.sections[sec_idx].paragraphs,
+                para_idx,
+                None,
+                stored_end,
+                &styles,
+                self.dpi,
+                hwp3,
             );
         }
 
@@ -1138,6 +1149,7 @@ impl DocumentCore {
             )));
         }
 
+        let stored_end = paragraph_flow_end(&self.document.sections[sec_idx].paragraphs[para_idx]);
         let styles = self.resolve_render_styles();
         let available_box = {
             let section = &self.document.sections[sec_idx];
@@ -1160,6 +1172,16 @@ impl DocumentCore {
             para.apply_char_shape_range(start_offset, end_offset, char_shape_id);
             reflow_line_segs(para, available_box, &styles, self.dpi);
         }
+        let hwp3 = self.document.layout_profile().hwp3_layout();
+        recalculate_section_vpos(
+            &mut self.document.sections[sec_idx].paragraphs,
+            para_idx,
+            None,
+            stored_end,
+            &styles,
+            self.dpi,
+            hwp3,
+        );
 
         self.document.sections[sec_idx].raw_stream = None;
         self.rebuild_paragraph_deferred_in_batch(sec_idx, para_idx);
