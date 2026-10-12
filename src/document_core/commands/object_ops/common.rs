@@ -4,7 +4,7 @@ use crate::document_core::DocumentCore;
 use crate::error::HwpError;
 use crate::model::control::Control;
 use crate::model::paragraph::Paragraph;
-use crate::model::shape::ShapeObject;
+use crate::model::shape::{ShapeObject, TextWrap};
 
 /// [#6740] 변환 파생 상태(`raw_rendering`)의 무효화 판정용 지문.
 ///
@@ -98,12 +98,21 @@ impl DocumentCore {
         let max_remaining_ctrl_height = para
             .controls
             .iter()
-            .map(|ctrl| match ctrl {
-                Control::Picture(pic) => pic.common.height as i32,
-                Control::Shape(shape) => shape.common().height as i32,
-                Control::Equation(eq) => eq.common.height as i32,
-                _ => 0,
+            .filter_map(|ctrl| match ctrl {
+                Control::Picture(pic) => Some(&pic.common),
+                Control::Shape(shape) => Some(shape.common()),
+                Control::Equation(eq) => Some(&eq.common),
+                _ => None,
             })
+            // 본문 앞/뒤에 떠 있는 개체는 글줄의 높이를 점유하지 않는다.
+            .filter(|common| {
+                common.treat_as_char
+                    || !matches!(
+                        common.text_wrap,
+                        TextWrap::InFrontOfText | TextWrap::BehindText
+                    )
+            })
+            .map(|common| common.height as i32)
             .max()
             .unwrap_or(0);
 
