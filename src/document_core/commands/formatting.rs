@@ -1091,7 +1091,7 @@ impl DocumentCore {
             let para_style = styles.para_styles.get(para_shape_id as usize);
             // 본문: 열 상자.
             let paragraph_box = ParagraphBox::body_for_style(col_width, para_style, self.dpi);
-            // Preserve the saved first-row origin while replacing the composed rows.
+            // 저장된 첫 줄의 시작 위치를 유지하며 조판한 줄을 교체한다.
             reflow_line_segs(
                 &mut self.document.sections[sec_idx].paragraphs[para_idx],
                 paragraph_box,
