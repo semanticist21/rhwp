@@ -2036,8 +2036,11 @@ impl DocumentCore {
                     && run.cell_context.is_none()
                     && !run.is_textbox
             };
-            let same_line =
-                |run: &&RunInfo| same_paragraph(run) && line_id.is_some() && run.line_id == line_id;
+            // 기존 저장 배치는 TAC 그림을 TextLine 밖의 형제로 둘 수 있다.
+            // 줄 소유가 없으면 일반 캐럿의 논리 stop과 아래 midpoint 판정을 따른다.
+            let same_line = |run: &&RunInfo| {
+                same_paragraph(run) && line_id.map_or(true, |id| run.line_id == Some(id))
+            };
             let end = offset + 1;
             // 일반 캐럿처럼 끝 칸 이하의 마지막 글자 자리를 먼저 찾는다.
             // 그런 자리가 전혀 없을 때만 첫 앵커를 쓰고, 다른 줄이면 폴백한다.
@@ -2051,7 +2054,7 @@ impl DocumentCore {
                         .filter(same_paragraph)
                         .min_by_key(|run| run.char_start)
                 })
-                .filter(|run| line_id.is_some() && run.line_id == line_id)
+                .filter(|run| line_id.map_or(true, |id| run.line_id == Some(id)))
                 .filter(|run| {
                     let mid = run.caret_y + run.caret_h / 2.0;
                     mid >= y && mid <= y + h
