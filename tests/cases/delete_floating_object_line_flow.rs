@@ -10,6 +10,9 @@ use rhwp::model::shape::{
     CommonObjAttr, DrawingObjAttr, HorzRelTo, RectangleShape, ShapeObject, TextBox, TextWrap,
     VertRelTo,
 };
+use rhwp::model::style::{
+    Alignment, BorderFill, BorderLine, BorderLineType, Fill, FillType, SolidFill,
+};
 use rhwp::model::table::{Cell, Table};
 use rhwp::renderer::render_tree::{RenderNode, RenderNodeType};
 use serde_json::Value;
@@ -394,6 +397,297 @@ fn empty_host_keeps_default_line_height_with_floating_neighbor() {
                 (1000, 1000, 850, 600)
             );
             assert_eq!(ls.vertical_pos, 1600);
+        }
+    }
+}
+
+#[test]
+fn empty_overlay_host_keeps_its_saved_body_cursor_row() {
+    let mut failures = Vec::new();
+    for kind in KINDS {
+        for wrap in WRAPS {
+            for rel in [VertRelTo::Para, VertRelTo::Paper] {
+                for right_margin in [0, -1200] {
+                    let mut core =
+                        DocumentCore::from_bytes(include_bytes!("../../saved/blank2010.hwp"))
+                            .unwrap();
+                    let mut doc = core.document().clone();
+                    doc.sections[0].raw_stream = None;
+                    doc.sections[0].paragraphs.truncate(1);
+                    let host = &mut doc.sections[0].paragraphs[0];
+                    assert!(host.text.is_empty());
+                    host.line_segs = vec![row(0, 1000)];
+                    let para_shape = &mut doc.doc_info.para_shapes[host.para_shape_id as usize];
+                    para_shape.alignment = Alignment::Left;
+                    para_shape.margin_right = right_margin;
+                    core.set_document(doc.clone());
+                    // 개체를 추가하기 전 정상 빈 문단의 저장 줄이 독립적인 기준이다.
+                    let expected: Value =
+                        serde_json::from_str(&core.get_cursor_rect_native(0, 0, 0).unwrap())
+                            .unwrap();
+                    let baselines: Vec<_> = [false, true]
+                        .into_iter()
+                        .map(|hwpx| {
+                            let saved = DocumentCore::from_bytes(&export(&core, hwpx)).unwrap();
+                            serde_json::from_str::<Value>(
+                                &saved.get_cursor_rect_native(0, 0, 0).unwrap(),
+                            )
+                            .unwrap()
+                        })
+                        .collect();
+                    let mut overlay = object(kind, 3000, false, wrap);
+                    let common = match &mut overlay {
+                        Control::Picture(pic) => &mut pic.common,
+                        Control::Shape(shape) => shape.common_mut(),
+                        Control::Equation(eq) => &mut eq.common,
+                        _ => unreachable!(),
+                    };
+                    common.vert_rel_to = rel;
+                    common.horz_rel_to = HorzRelTo::Paper;
+                    common.horizontal_offset = 15000;
+                    common.vertical_offset = 15000;
+                    let host = &mut doc.sections[0].paragraphs[0];
+                    host.controls.push(overlay);
+                    host.char_count += 8;
+                    core.set_document(doc);
+                    let cursor = core.get_cursor_rect_native(0, 0, 0);
+                    match cursor {
+                        Ok(cursor) => {
+                            let cursor: Value = serde_json::from_str(&cursor).unwrap();
+                            assert_eq!(cursor, expected, "{kind:?} {wrap:?} {rel:?}");
+                            let x = expected["x"].as_f64().unwrap();
+                            let y = expected["y"].as_f64().unwrap()
+                                + expected["height"].as_f64().unwrap() / 2.0;
+                            let hit: Value =
+                                serde_json::from_str(&core.hit_test_native(0, x, y).unwrap())
+                                    .unwrap();
+                            assert_eq!(hit["sectionIndex"], 0);
+                            assert_eq!(hit["paragraphIndex"], 0);
+                            assert_eq!(hit["charOffset"], 0);
+                        }
+                        Err(error) => failures.push(format!("{kind:?} {wrap:?} {rel:?}: {error}")),
+                    }
+                    for (hwpx, baseline) in [false, true].into_iter().zip(baselines) {
+                        let saved = DocumentCore::from_bytes(&export(&core, hwpx)).unwrap();
+                        let cursor = saved.get_cursor_rect_native(0, 0, 0);
+                        match cursor {
+                            Ok(cursor) => assert_eq!(
+                                serde_json::from_str::<Value>(&cursor).unwrap(),
+                                baseline,
+                                "{kind:?} {wrap:?} {rel:?} hwpx={hwpx}"
+                            ),
+                            Err(error) => failures
+                                .push(format!("{kind:?} {wrap:?} {rel:?} hwpx={hwpx}: {error}")),
+                        }
+                    }
+                }
+            }
+        }
+    }
+    assert!(failures.is_empty(), "{}", failures.join("\n"));
+}
+
+#[test]
+fn empty_tac_host_keeps_distinct_inline_cursor_slots() {
+    for kind in KINDS {
+        for wrap in WRAPS {
+            let mut core =
+                DocumentCore::from_bytes(include_bytes!("../../saved/blank2010.hwp")).unwrap();
+            let mut doc = core.document().clone();
+            doc.sections[0].raw_stream = None;
+            doc.sections[0].paragraphs.truncate(1);
+            let host = &mut doc.sections[0].paragraphs[0];
+            assert!(host.text.is_empty());
+            host.line_segs = vec![row(0, 3000)];
+            host.controls.push(object(kind, 3000, true, wrap));
+            host.char_count += 8;
+            core.set_document(doc);
+            for saved in [None, Some(false), Some(true)] {
+                let loaded;
+                let core = if let Some(hwpx) = saved {
+                    loaded = DocumentCore::from_bytes(&export(&core, hwpx)).unwrap();
+                    &loaded
+                } else {
+                    &core
+                };
+                let before: Value =
+                    serde_json::from_str(&core.get_cursor_rect_native(0, 0, 0).unwrap()).unwrap();
+                let after: Value =
+                    serde_json::from_str(&core.get_cursor_rect_native(0, 0, 1).unwrap()).unwrap();
+                assert_eq!(before["pageIndex"], after["pageIndex"]);
+                assert!(
+                    after["x"].as_f64().unwrap() > before["x"].as_f64().unwrap(),
+                    "{kind:?} {wrap:?} {saved:?}: {before} / {after}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn off_page_saved_overlay_host_does_not_gain_a_body_cursor_row() {
+    for kind in [Kind::Picture, Kind::Shape] {
+        for wrap in WRAPS {
+            let mut core =
+                DocumentCore::from_bytes(include_bytes!("../../saved/blank2010.hwp")).unwrap();
+            let mut doc = core.document().clone();
+            doc.sections[0].raw_stream = None;
+            doc.sections[0].paragraphs.truncate(1);
+            let host = &mut doc.sections[0].paragraphs[0];
+            assert!(host.text.is_empty());
+            // 저장 빈 줄은 쪽 높이보다 아래에 있고 개체 자체는 첫 쪽 안에 있다.
+            host.line_segs = vec![row(100000, 1000)];
+            let mut overlay = object(kind, 3000, false, wrap);
+            let common = match &mut overlay {
+                Control::Picture(pic) => &mut pic.common,
+                Control::Shape(shape) => shape.common_mut(),
+                _ => unreachable!(),
+            };
+            common.vert_rel_to = VertRelTo::Paper;
+            common.horz_rel_to = HorzRelTo::Paper;
+            common.horizontal_offset = 15000;
+            common.vertical_offset = 15000;
+            host.controls.push(overlay);
+            host.char_count += 8;
+            core.set_document(doc);
+            assert!(
+                core.get_cursor_rect_native(0, 0, 0).is_err(),
+                "{kind:?} {wrap:?}: 쪽 밖의 저장 줄을 본문 캐럿으로 만들지 않는다"
+            );
+        }
+    }
+}
+
+#[test]
+fn empty_overlay_cursor_rows_keep_shape_only_paint_and_flow_ownership() {
+    use rhwp::renderer::{
+        composer::compose_paragraph,
+        height_measurer::HeightMeasurer,
+        layout::LayoutEngine,
+        pagination::{PageItem, Paginator},
+        style_resolver::resolve_styles,
+    };
+    fn paint(node: &RenderNode, out: &mut Vec<Value>) {
+        if matches!(&node.node_type, RenderNodeType::TextLine(line) if line.para_index == Some(0)) {
+            return;
+        }
+        if matches!(
+            &node.node_type,
+            RenderNodeType::TextRun(_)
+                | RenderNodeType::TextLine(_)
+                | RenderNodeType::Rectangle(_)
+                | RenderNodeType::Line(_)
+                | RenderNodeType::Image(_)
+                | RenderNodeType::Equation(_)
+                | RenderNodeType::Placeholder(_)
+        ) {
+            out.push(serde_json::json!({ "type": node.node_type, "bbox": node.bbox }));
+        }
+        for child in &node.children {
+            paint(child, out);
+        }
+    }
+    for kind in [Kind::Picture, Kind::Shape] {
+        for wrap in WRAPS {
+            for vpos in [1600, 100000] {
+                let source =
+                    DocumentCore::from_bytes(include_bytes!("../../saved/blank2010.hwp")).unwrap();
+                let mut doc = source.document().clone();
+                doc.sections[0].paragraphs.truncate(1);
+                doc.doc_info.border_fills.push(BorderFill {
+                    borders: [BorderLine {
+                        line_type: BorderLineType::Solid,
+                        width: 3,
+                        color: 0x123456,
+                    }; 4],
+                    fill: Fill {
+                        fill_type: FillType::Solid,
+                        solid: Some(SolidFill {
+                            background_color: 0xFEDCBA,
+                            pattern_color: 0,
+                            pattern_type: 0,
+                        }),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                });
+                let mut style = doc.doc_info.para_shapes[0].clone();
+                style.border_fill_id = doc.doc_info.border_fills.len() as u16;
+                style.margin_right = -1200;
+                style.alignment = Alignment::Left;
+                let style_id = doc.doc_info.para_shapes.len() as u16;
+                doc.doc_info.para_shapes.push(style);
+                let host = &mut doc.sections[0].paragraphs[0];
+                host.para_shape_id = style_id;
+                host.line_segs = vec![row(vpos, 1000)];
+                let mut overlay = object(kind, 3000, false, wrap);
+                let common = match &mut overlay {
+                    Control::Picture(pic) => &mut pic.common,
+                    Control::Shape(shape) => shape.common_mut(),
+                    _ => unreachable!(),
+                };
+                common.vert_rel_to = VertRelTo::Paper;
+                common.horz_rel_to = HorzRelTo::Paper;
+                common.horizontal_offset = 15000;
+                common.vertical_offset = 15000;
+                let ci = host.controls.len();
+                host.controls.push(overlay);
+                host.char_count += 8;
+                doc.sections[0]
+                    .paragraphs
+                    .push(paragraph("이웃 A🦦B", 0, vpos, vec![]));
+                let paragraphs = &doc.sections[0].paragraphs;
+                let styles = resolve_styles(&doc.doc_info, 96.0);
+                let composed = paragraphs.iter().map(compose_paragraph).collect::<Vec<_>>();
+                let measured =
+                    HeightMeasurer::new(96.0).measure_section(paragraphs, &composed, &styles, None);
+                let mut pages = Paginator::new(96.0).paginate_with_measured(
+                    paragraphs,
+                    &measured,
+                    &Default::default(),
+                    &Default::default(),
+                    0,
+                    &styles.para_styles,
+                );
+                let page = &mut pages.pages[0];
+                let engine = LayoutEngine::new(96.0);
+                let mut outputs = Vec::new();
+                for include_cursor_host in [false, true] {
+                    page.column_contents[0].items = vec![
+                        PageItem::Shape {
+                            para_index: 0,
+                            control_index: ci,
+                        },
+                        PageItem::FullParagraph { para_index: 1 },
+                    ];
+                    if include_cursor_host {
+                        page.column_contents[0]
+                            .items
+                            .insert(0, PageItem::FullParagraph { para_index: 0 });
+                    }
+                    // 저장 사다리 델타가 0인 부동 host의 기존 Shape-only paint/flow가 기준이다.
+                    let tree = engine.build_render_tree(
+                        page,
+                        paragraphs,
+                        &[],
+                        &[],
+                        &composed,
+                        &styles,
+                        &Default::default(),
+                        &[],
+                        None,
+                        &measured.tables,
+                        None,
+                        0,
+                        &[],
+                    );
+                    let mut nodes = Vec::new();
+                    paint(&tree.root, &mut nodes);
+                    let overflows = format!("{:?}", engine.take_overflows());
+                    outputs.push((nodes, overflows));
+                }
+                assert_eq!(outputs[1], outputs[0], "{kind:?} {wrap:?} vpos={vpos}");
+            }
         }
     }
 }

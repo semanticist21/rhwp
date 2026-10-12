@@ -4685,6 +4685,7 @@ impl LayoutEngine {
     ) -> f64 {
         let mut y = y_start;
         let end = end_line.min(composed.lines.len());
+        let cursor_row_only = self.empty_overlay_cursor_row.get();
         // [#4968 R4D-1] 한 문단의 모든 최종 emitted run이 같은 registry
         // generation과 per-face parse cache를 소비한다.
         let mut kerning_layout_session = self.exact_font_layout_session();
@@ -4826,7 +4827,11 @@ impl LayoutEngine {
             self.keep_continuation_column_top_spacing_before.get();
         // [#5601] 셀 저장-앵커 스냅 문단 — 호출자가 para_y 에서 spacing_before 를
         // 미리 뺐으므로 column-top 트림과 무관하게 전량 재가산해야 vpos 와 맞는다.
-        let reapply_snap_spacing_before = self.reapply_snap_anchored_spacing_before.replace(false);
+        let reapply_snap_spacing_before = if cursor_row_only {
+            self.reapply_snap_anchored_spacing_before.get()
+        } else {
+            self.reapply_snap_anchored_spacing_before.replace(false)
+        };
         if let Some(spacing) = vertical_spacing {
             // 같은 선택 문단에서 확정한 앞 간격을 한 번만 소비한다.
             y += spacing.before;
@@ -5854,7 +5859,8 @@ impl LayoutEngine {
                 col_bottom,
                 equation_only_endnote_tail_line,
             );
-            if is_body_flow_col_area
+            if !cursor_row_only
+                && is_body_flow_col_area
                 && cell_ctx.is_none()
                 && line_visual_bottom > col_bottom + 0.5
                 && !blank_spacer_line
@@ -7075,7 +7081,7 @@ impl LayoutEngine {
             // 바닥, trailing 줄간격/spacing_after 제외) 기록. overflow 검출이 페이지 바닥
             // 후행 줄간격을 콘텐츠 초과로 오판하지 않도록 한다(페이지네이터의 마지막 줄
             // trailing_ls 허용 #359/#404 와 정합). 매 줄 갱신 → 마지막 렌더 줄 값이 남는다.
-            if cell_ctx.is_none() && !skip_advance_empty_line {
+            if !cursor_row_only && cell_ctx.is_none() && !skip_advance_empty_line {
                 let content_bottom = if blank_spacer_line {
                     y
                 } else {
@@ -7140,7 +7146,7 @@ impl LayoutEngine {
 
         // 실제 흐름 전진에 사용한 줄 상자 결과를 지연 기준 소비자에 전달한다.
         // 셀 내부 줄은 본문 항목의 결과를 덮어쓰지 않는다.
-        if cell_ctx.is_none() {
+        if !cursor_row_only && cell_ctx.is_none() {
             if let Some(bottom) = last_line_box_bottom {
                 self.last_item_flow_line_bottom.set(bottom);
             }
@@ -7151,7 +7157,10 @@ impl LayoutEngine {
         // Task #463: 셀 안 단락은 본문 큐에 leakage 하지 않도록 cell_ctx 게이팅.
         // 셀 외곽선은 별도 경로(table_layout/border_rendering)에서 처리되므로
         // 본문 단락의 연속 외곽선 merge 가 셀 단락 좌표/시그니처에 의해 깨지지 않게 한다.
-        if para_border_fill_id > 0 && (cell_ctx.is_none() || self.collect_cell_para_borders.get()) {
+        if !cursor_row_only
+            && para_border_fill_id > 0
+            && (cell_ctx.is_none() || self.collect_cell_para_borders.get())
+        {
             // [#5711] 줄간격이 음수인 문단은 전진값 `y` 가 마지막 줄 상자 아래보다 위에
             // 있다. 그 값을 테두리 아래 변으로 쓰면 테두리가 글자를 가로지른다. 다음 문단
             // 시작 y 는 종전대로 두어 문단 간 간격 계약은 바꾸지 않는다.
@@ -7323,7 +7332,7 @@ impl LayoutEngine {
             line_node.children.push(run_node);
 
             col_node.children.push(line_node);
-            if cell_ctx.is_none() {
+            if !cursor_row_only && cell_ctx.is_none() {
                 self.last_item_flow_line_bottom.set(y + default_height);
             }
             y += default_height + default_spacing;

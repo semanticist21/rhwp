@@ -3536,6 +3536,8 @@ pub struct LayoutEngine {
     last_item_content_bottom: std::cell::Cell<f64>,
     /// 실제 마지막 흐름 줄 상자의 끝. 빈 줄의 점유와 가시 콘텐츠를 구분한다.
     last_item_flow_line_bottom: std::cell::Cell<f64>,
+    /// 빈 부동 개체 문단의 캐럿 줄을 만들 때 기존 흐름·테두리·넘침 원장을 유지한다.
+    empty_overlay_cursor_row: std::cell::Cell<bool>,
     /// 직전 항목의 마지막 미주 줄이 공백 텍스트 + 수식만 가진 tail line-box 인지 여부.
     /// 이런 줄은 실제 ink보다 line box가 훨씬 커져 item overflow 로그만 남을 수 있다.
     last_item_endnote_equation_tail_line_box: std::cell::Cell<bool>,
@@ -3743,6 +3745,7 @@ impl LayoutEngine {
             layout_table_overlaps: std::cell::RefCell::new(Vec::new()),
             last_item_content_bottom: std::cell::Cell::new(f64::NAN),
             last_item_flow_line_bottom: std::cell::Cell::new(f64::NAN),
+            empty_overlay_cursor_row: std::cell::Cell::new(false),
             last_item_endnote_equation_tail_line_box: std::cell::Cell::new(false),
             host_text_content_bottom: std::cell::Cell::new(None),
             table_push_floor: std::cell::Cell::new(None),
@@ -10498,6 +10501,68 @@ impl LayoutEngine {
                         // 개체를 렌더한다. 여기서 layout_paragraph 를 태우면 보이지 않는
                         // 빈 줄이 저장 vpos 기준으로 페이지 밖에 기록되어 overflow 오탐이 난다.
                         para_start_y.entry(*para_index).or_insert(y_offset);
+                        if para.text.is_empty()
+                            && composed
+                                .get(*para_index)
+                                .is_some_and(|comp| !comp.lines.is_empty())
+                            && para.line_segs.iter().all(|seg| {
+                                seg.vertical_pos >= 0
+                                    && seg.line_height > 0
+                                    && hwpunit_to_px(seg.vertical_pos, self.dpi)
+                                        + hwpunit_to_px(seg.line_height, self.dpi)
+                                        <= col_area.height
+                            })
+                            && para.controls.iter().all(|control| {
+                                let common = match control {
+                                    Control::Picture(picture) => &picture.common,
+                                    Control::Shape(shape) => shape.common(),
+                                    marker => {
+                                        return crate::renderer::composer::control_is_width_neutral_marker(marker)
+                                    }
+                                };
+                                !common.treat_as_char
+                                    && matches!(
+                                        common.text_wrap,
+                                        TextWrap::InFrontOfText | TextWrap::BehindText
+                                    )
+                            })
+                        {
+                            // 개체는 따로 그리고, 실제 단 안에 놓인 기존 빈 글줄만 캐럿에 남긴다.
+                            let old_len = col_node.children.len();
+                            let previous = self.empty_overlay_cursor_row.replace(true);
+                            self.layout_paragraph(
+                                tree,
+                                col_node,
+                                para,
+                                composed.get(*para_index),
+                                styles,
+                                col_area,
+                                y_offset,
+                                page_content.section_index,
+                                *para_index,
+                                multi_col_width,
+                                Some(bin_data_content),
+                                ctx.wrap_anchors.get(para_index),
+                            );
+                            self.empty_overlay_cursor_row.set(previous);
+                            let nodes = col_node.children.split_off(old_len);
+                            let page = tree.page_bbox();
+                            col_node.children.extend(nodes.into_iter().filter(|node| {
+                                matches!(
+                                    &node.node_type,
+                                    RenderNodeType::TextLine(line)
+                                        if line.section_index == Some(page_content.section_index)
+                                            && line.para_index == Some(*para_index)
+                                ) && [node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height]
+                                    .into_iter()
+                                    .all(f64::is_finite)
+                                    && node.bbox.width > 0.0
+                                    && node.bbox.height > 0.0
+                                    && node.bbox.y >= col_area.y.max(page.y)
+                                    && node.bbox.y + node.bbox.height
+                                        <= (col_area.y + col_area.height).min(page.y + page.height)
+                            }));
+                        }
                         // 저장 사다리가 그 문서의 진실이다 — 한글이 이 앵커 줄을 예약했는지
                         // 다음 문단 vpos 델타로 먼저 묻고, 판별 불가일 때만 vert_rel_to
                         // 휴리스틱(글앞 도장류 예약·BehindText 비예약)으로 물러난다.
