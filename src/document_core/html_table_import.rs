@@ -202,6 +202,11 @@ impl DocumentCore {
         let table_tag = &table_html[..table_html.find('>').map_or(0, |end| end + 1)];
         let exact_geometry =
             extract_html_attr(table_tag, "data-rhwp-geometry").as_deref() == Some("exact");
+        let floating_common = parse_floating_common(table_tag)?;
+        let floating_outer = floating_common
+            .as_ref()
+            .map(|common| parse_floating_outer_margin(table_tag, common.margin))
+            .transpose()?;
 
         // --- 1. HTML 파싱: 행/셀 구조 추출 ---
         let table_lower = table_html.to_lowercase();
@@ -375,6 +380,17 @@ impl DocumentCore {
         if parsed_rows.iter().all(Vec::is_empty) {
             return Ok(());
         }
+        if floating_common.is_some()
+            && parsed_rows.iter().flatten().any(|cell| {
+                [cell.width_pt, cell.height_pt].into_iter().any(|pt| {
+                    !pt.is_finite() || pt < 0.0 || (pt * 100.0).round() > f64::from(i32::MAX)
+                })
+            })
+        {
+            return Err(crate::error::HwpError::RenderError(
+                "표 셀의 치수가 너무 큽니다".into(),
+            ));
+        }
 
         // --- 2. 그리드 정규화: 실제 col 인덱스 계산 ---
         let invalid_grid =
@@ -452,7 +468,26 @@ impl DocumentCore {
                     / 2
             })
             .unwrap_or(0);
-        let available_width = width as i64 - paragraph_margin - i64::from(outer_margin) * 2;
+        // 떠 있는 표는 글줄 너비를 소비하지 않는다. 유효한 원문 배치 정보에만 적용한다.
+        let available_width = if let Some(common) = &floating_common {
+            let cells_width = parsed_rows
+                .iter()
+                .map(|row| {
+                    row.iter()
+                        .filter_map(|cell| {
+                            let value = (cell.width_pt * 100.0).round();
+                            (value.is_finite() && value > 0.0 && value <= f64::from(i32::MAX))
+                                .then_some(value as u64)
+                        })
+                        .sum::<u64>()
+                })
+                .max()
+                .unwrap_or(0)
+                .min(i32::MAX as u64) as u32;
+            i64::from(width.max(common.width).max(cells_width))
+        } else {
+            width as i64 - paragraph_margin - i64::from(outer_margin) * 2
+        };
         if available_width < i64::from(col_count) {
             return Err(crate::error::HwpError::RenderError(
                 "표를 넣을 가로 공간이 부족합니다. 문단이나 셀의 여백을 줄여 주세요".to_string(),
@@ -501,9 +536,15 @@ impl DocumentCore {
             ));
         }
         let declared_width = dimension(parse_css_dimension_pt(&css, "width"));
-        let source_width = declared_width.map_or(total, u64::from);
+        let source_width = if floating_common.is_some() {
+            total
+        } else {
+            declared_width.map_or(total, u64::from)
+        };
         // 클립보드의 원문 표시만으로 치수를 신뢰하지 않는다. rowspan 칸을 포함한 각 행이 선언 폭 안에 있어야 한다.
-        let exact_width = if exact_geometry {
+        let exact_width = if floating_common.is_some() {
+            true
+        } else if exact_geometry {
             let mut row_widths = vec![0u64; usize::from(row_count)];
             for (cp, &(_, _, own_width)) in cell_positions.iter().zip(&widths) {
                 let cell_width = own_width.map_or_else(
@@ -527,7 +568,15 @@ impl DocumentCore {
         } else {
             false
         };
-        let target = if requested_width.is_finite() && requested_width > 0.0 {
+        let target = if floating_common.is_some() {
+            // 병합 셀이 차지한 공통 열의 합도 글줄 예산으로 줄이지 않는다.
+            u32::try_from(total)
+                .ok()
+                .filter(|&width| width <= i32::MAX as u32)
+                .ok_or_else(|| {
+                    crate::error::HwpError::RenderError("표의 너비가 너무 큽니다".into())
+                })?
+        } else if requested_width.is_finite() && requested_width > 0.0 {
             (requested_width.round() as u32).min(available_width)
         } else {
             total.min(u64::from(available_width)) as u32
@@ -629,7 +678,7 @@ impl DocumentCore {
                 .sum();
             if exact_width {
                 if let Some(own_width) = dimension(pc.width_pt) {
-                    if source_width <= u64::from(available_width) {
+                    if floating_common.is_some() || source_width <= u64::from(available_width) {
                         cell_width = own_width;
                     } else if u64::from(own_width) != base_width {
                         // 공통 열에 맞는 칸은 기존 폭 제한을 쓰고, 행별 다른 칸만 원문 비율로 줄인다.
@@ -846,12 +895,6 @@ impl DocumentCore {
         // --- 5. Table 구조체 조립 ---
         let total_width: u32 = col_widths.iter().sum();
 
-        // table.attr: 기존 문서의 표와 동일한 패턴 사용
-        // 0x082A2311 = treat_as_char | vert_rel_to=Para | horz_rel_to=Column |
-        //              allow_overlap | width_criterion | various layout flags
-        // 정상 HWP 파일의 모든 표에서 사용되는 표준값
-        let table_attr: u32 = 0x082A2311;
-
         // raw_ctrl_data: CommonObjAttr 전체 (attr 포함, parse_common_obj_attr 정합)
         // [0..4] attr, [4..8] vertical_offset, [8..12] horizontal_offset,
         // [12..16] width, [16..20] height, [20..24] z_order,
@@ -859,7 +902,6 @@ impl DocumentCore {
         // [28..30] margin.top, [30..32] margin.bottom,
         // [32..36] instance_id, [36..38] desc_len(=0)
         let mut raw_ctrl_data = vec![0u8; 38]; // 32(base) + 2(desc_len) + 4(extra)
-        raw_ctrl_data[common_obj_offsets::FLAGS].copy_from_slice(&table_attr.to_le_bytes());
         raw_ctrl_data[common_obj_offsets::WIDTH].copy_from_slice(&total_width.to_le_bytes());
         raw_ctrl_data[common_obj_offsets::HEIGHT].copy_from_slice(&total_height.to_le_bytes());
         // 바깥 여백 (left, right, top, bottom)
@@ -911,7 +953,7 @@ impl DocumentCore {
         let tbl_rec_attr: u32 = 0x04000006; // bit 1(셀분리금지) + bit 2 + bit 26
 
         let mut table = Table {
-            attr: table_attr,
+            attr: 0,
             row_count,
             col_count,
             cell_spacing,
@@ -936,6 +978,25 @@ impl DocumentCore {
             raw_table_record_attr: tbl_rec_attr,
             raw_table_record_extra: vec![0u8; 2], // 표준 추가 2바이트
         };
+        // 새 표의 공개 배치 값과 HWP 헤더 비트를 맞춰 두 형식에서 같은 값을 읽는다.
+        let flags = crate::serializer::control::pack_common_attr_bits(&table.common);
+        table.attr = flags;
+        table.common.attr = flags;
+        table.raw_ctrl_data[common_obj_offsets::FLAGS].copy_from_slice(&flags.to_le_bytes());
+        if let Some(mut common) = floating_common {
+            common.ctrl_id = 0x7462_6c20;
+            common.instance_id = instance_id;
+            table.attr = common.attr;
+            let margin = floating_outer.unwrap_or(common.margin);
+            table.outer_margin_left = margin.left;
+            table.outer_margin_right = margin.right;
+            table.outer_margin_top = margin.top;
+            table.outer_margin_bottom = margin.bottom;
+            // 원문 공통 속성에서 현재 직렬화기가 저장 헤더를 합성하게 한다.
+            table.raw_ctrl_data.clear();
+            table.raw_ctrl_seal = None;
+            table.common = common;
+        }
         table.rebuild_grid();
         // 재조판의 공통 행 측정을 저장 크기로 확정한다. 중첩 표의 직접 paint와
         // 상위 표 측정이 같은 행 상자를 소비하도록 HWP/HWPX 크기도 함께 갱신한다.
@@ -1306,18 +1367,7 @@ impl DocumentCore {
         img_tag: &str,
         src: &str,
     ) -> Option<crate::model::image::Picture> {
-        // data:image/png;base64,XXXXX 파싱
-        let after_data = src.strip_prefix("data:")?; // "image/png;base64,XXXXX"
-        let base64_str = &after_data[after_data.find(',')? + 1..];
-
-        use base64::Engine;
-        let decoded = base64::engine::general_purpose::STANDARD
-            .decode(base64_str)
-            .ok()?;
-
-        if decoded.is_empty() {
-            return None;
-        }
+        let decoded = decode_html_data_image(src)?;
 
         // 종전에는 bin_data_content 에만 넣어 DocInfo BinData 레코드가 없었다 —
         // HWPX 로는 나가지만 HWP(5.0) 저장에서 그림이 통째로 사라졌다(클라우드 '웹 저장' 실측).
@@ -1334,8 +1384,16 @@ impl DocumentCore {
         let height = parse_html_attr_f64(img_tag, "height").unwrap_or(150.0);
 
         // px → HWPUNIT
-        let w_hu = crate::renderer::px_to_hwpunit(width, self.dpi) as u32;
-        let h_hu = crate::renderer::px_to_hwpunit(height, self.dpi) as u32;
+        // 상위 HTML 읽기가 메타데이터를 검증한 뒤에만 이 그림 생성 경로를 호출한다.
+        let floating_common = parse_floating_common(img_tag).ok().flatten();
+        let w_hu = floating_common.as_ref().map_or_else(
+            || crate::renderer::px_to_hwpunit(width, self.dpi) as u32,
+            |common| common.width,
+        );
+        let h_hu = floating_common.as_ref().map_or_else(
+            || crate::renderer::px_to_hwpunit(height, self.dpi) as u32,
+            |common| common.height,
+        );
 
         // Picture 컨트롤 — insert_picture_native 와 같은 절대 크기 기준, 인라인(글자처럼 취급).
         let mut pic = crate::model::image::Picture::default();
@@ -1353,6 +1411,10 @@ impl DocumentCore {
         pic.common.vert_rel_to = crate::model::shape::VertRelTo::Para;
         pic.common.horz_rel_to = crate::model::shape::HorzRelTo::Para;
         pic.common.flow_with_text = true;
+        if let Some(mut common) = floating_common {
+            common.ctrl_id = pic.common.ctrl_id;
+            pic.common = common;
+        }
         pic.shape_attr = crate::model::shape::ShapeComponentAttr {
             original_width: w_hu,
             original_height: h_hu,
@@ -1387,6 +1449,208 @@ pub(crate) fn html_img_src(img_tag: &str) -> Option<&str> {
     ['"', '\''].into_iter().find_map(|quote| {
         let after = &img_tag[img_tag.find(&format!("src={quote}"))? + 5..];
         Some(&after[..after.find(quote)?])
+    })
+}
+
+fn decode_html_data_image(src: &str) -> Option<Vec<u8>> {
+    let after_data = src.strip_prefix("data:")?;
+    let base64_str = &after_data[after_data.find(',')? + 1..];
+    let limit = crate::model::bin_data::MAX_BIN_DATA_BYTES;
+    if base64_str.len() > limit.div_ceil(3) * 4 {
+        return None;
+    }
+    use base64::Engine;
+    let decoded = base64::engine::general_purpose::STANDARD
+        .decode(base64_str)
+        .ok()?;
+    (!decoded.is_empty() && decoded.len() <= limit).then_some(decoded)
+}
+
+const FLOATING_COMMON_ATTR: &str = "data-rhwp-common-v1";
+const MAX_FLOATING_COMMON_BYTES: usize = 1_048_576;
+
+fn invalid_floating_common() -> crate::error::HwpError {
+    crate::error::HwpError::RenderError("떠 있는 개체의 배치 정보가 올바르지 않습니다".into())
+}
+
+pub(crate) fn floating_common_html_attr(common: &crate::model::shape::CommonObjAttr) -> String {
+    if common.treat_as_char {
+        return String::new();
+    }
+    use base64::Engine;
+    let mut common = common.clone();
+    // 개체 종류와 번호는 붙이는 문서가 정한다. 배치 값만 복사한다.
+    common.ctrl_id = 0;
+    common.instance_id = 0;
+    let bytes = serde_json::to_vec(&common).expect("개체 배치 정보를 JSON으로 기록한다");
+    format!(
+        " {FLOATING_COMMON_ATTR}=\"{}\"",
+        base64::engine::general_purpose::STANDARD.encode(bytes)
+    )
+}
+
+fn floating_common_attribute(tag: &str) -> Result<Option<&str>, crate::error::HwpError> {
+    if !tag.to_ascii_lowercase().contains("data-rhwp-common-") {
+        return Ok(None);
+    }
+    let mut rest = tag.trim_start_matches('<');
+    let name_end = rest
+        .find(|c: char| c.is_ascii_whitespace() || c == '>')
+        .unwrap_or(rest.len());
+    rest = &rest[name_end..];
+    let mut found = None;
+    loop {
+        rest = rest.trim_start_matches(|c: char| c.is_ascii_whitespace());
+        if rest.is_empty() || rest.starts_with('>') || rest.starts_with("/>") {
+            return Ok(found);
+        }
+        let end = rest
+            .find(|c: char| c.is_ascii_whitespace() || c == '=' || c == '>')
+            .unwrap_or(rest.len());
+        let name = &rest[..end];
+        if name.is_empty() {
+            return Err(invalid_floating_common());
+        }
+        let metadata = name.to_ascii_lowercase().starts_with("data-rhwp-common-");
+        if metadata && (!name.eq_ignore_ascii_case(FLOATING_COMMON_ATTR) || found.is_some()) {
+            return Err(invalid_floating_common());
+        }
+        rest = rest[end..].trim_start_matches(|c: char| c.is_ascii_whitespace());
+        if let Some(value) = rest.strip_prefix('=') {
+            rest = value.trim_start_matches(|c: char| c.is_ascii_whitespace());
+            let quote = rest.chars().next().filter(|c| matches!(c, '\'' | '"'));
+            let value = if let Some(quote) = quote {
+                rest = &rest[1..];
+                let Some(end) = rest.find(quote) else {
+                    return if metadata {
+                        Err(invalid_floating_common())
+                    } else {
+                        Ok(found)
+                    };
+                };
+                let value = &rest[..end];
+                rest = &rest[end + 1..];
+                value
+            } else {
+                let end = rest
+                    .find(|c: char| c.is_ascii_whitespace() || c == '>')
+                    .unwrap_or(rest.len());
+                let value = &rest[..end];
+                rest = &rest[end..];
+                value
+            };
+            if metadata {
+                found = Some(value);
+            }
+        } else if metadata {
+            return Err(invalid_floating_common());
+        }
+    }
+}
+
+pub(crate) fn parse_floating_common(
+    tag: &str,
+) -> Result<Option<crate::model::shape::CommonObjAttr>, crate::error::HwpError> {
+    let Some(encoded) = floating_common_attribute(tag)? else {
+        return Ok(None);
+    };
+    if encoded.len() > MAX_FLOATING_COMMON_BYTES.div_ceil(3) * 4 {
+        return Err(invalid_floating_common());
+    }
+    use base64::Engine;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|_| invalid_floating_common())?;
+    if bytes.len() > MAX_FLOATING_COMMON_BYTES {
+        return Err(invalid_floating_common());
+    }
+    let common: crate::model::shape::CommonObjAttr =
+        serde_json::from_slice(&bytes).map_err(|_| invalid_floating_common())?;
+    if common.treat_as_char
+        || common.ctrl_id != 0
+        || common.instance_id != 0
+        || common.width > i32::MAX as u32
+        || common.height > i32::MAX as u32
+        || common.description.encode_utf16().count() > u16::MAX as usize
+        || matches!(
+            common.height_criterion,
+            crate::model::shape::SizeCriterion::Column | crate::model::shape::SizeCriterion::Para
+        )
+    {
+        return Err(invalid_floating_common());
+    }
+    Ok(Some(common))
+}
+
+pub(crate) fn validate_floating_common_html(html: &str) -> Result<usize, crate::error::HwpError> {
+    let mut floating = 0;
+    let mut rest = html;
+    while let Some(start) = rest.find('<') {
+        rest = &rest[start..];
+        if rest.starts_with("<!--") {
+            let Some(end) = rest.find("-->") else {
+                break;
+            };
+            rest = &rest[end + 3..];
+            continue;
+        }
+        let mut quote = None;
+        let end = rest.char_indices().find_map(|(index, c)| {
+            if quote == Some(c) {
+                quote = None;
+            } else if quote.is_none() && matches!(c, '\'' | '"') {
+                quote = Some(c);
+            } else if quote.is_none() && c == '>' {
+                return Some(index);
+            }
+            None
+        });
+        let Some(end) = end else {
+            // 닫히지 않은 배치 속성을 일반 그림으로 해석해 일부만 붙이지 않는다.
+            if rest.to_ascii_lowercase().contains("data-rhwp-common-") {
+                return Err(invalid_floating_common());
+            }
+            break;
+        };
+        let tag = &rest[..=end];
+        let lower = tag.to_ascii_lowercase();
+        if lower.starts_with("<img") || lower.starts_with("<table") {
+            if let Some(common) = parse_floating_common(tag)? {
+                if lower.starts_with("<table") {
+                    parse_floating_outer_margin(tag, common.margin)?;
+                } else {
+                    html_img_src(tag)
+                        .and_then(decode_html_data_image)
+                        .ok_or_else(invalid_floating_common)?;
+                }
+                floating += 1;
+            }
+        }
+        rest = &rest[end + 1..];
+    }
+    Ok(floating)
+}
+
+fn parse_floating_outer_margin(
+    tag: &str,
+    fallback: crate::model::Padding,
+) -> Result<crate::model::Padding, crate::error::HwpError> {
+    let Some(value) = extract_html_attr(tag, "data-rhwp-outer-margin") else {
+        return Ok(fallback);
+    };
+    let values: Vec<i16> = value
+        .split(',')
+        .map(str::parse)
+        .collect::<Result<_, _>>()
+        .map_err(|_| invalid_floating_common())?;
+    let [left, right, top, bottom] = values.as_slice() else {
+        return Err(invalid_floating_common());
+    };
+    Ok(crate::model::Padding {
+        left: *left,
+        right: *right,
+        top: *top,
+        bottom: *bottom,
     })
 }
 
@@ -1643,7 +1907,12 @@ mod html_table_geometry_tests {
 
     #[test]
     fn exact_css_preserves_original_height_beyond_cell_sum() {
-        let source = fixture(&[], &[], true);
+        let mut source = fixture(&[], &[], true);
+        let (paragraph, control, _) = table(&source);
+        source
+            .set_table_properties_native(0, paragraph, control, r#"{"treatAsChar":true}"#)
+            .unwrap();
+        assert!(table(&source).2.common.treat_as_char);
         let mut expected = geometry(&source);
         assert_eq!(expected.height, 2564);
         assert!(expected.cells.iter().all(|cell| cell.5 == 282));
