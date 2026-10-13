@@ -185,6 +185,17 @@ impl DocumentCore {
         table_html: &str,
         width: u32,
     ) -> Result<(), crate::error::HwpError> {
+        self.parse_table_html_at_depth(paragraphs, table_html, width, 0, None)
+    }
+
+    pub(crate) fn parse_table_html_at_depth(
+        &mut self,
+        paragraphs: &mut Vec<Paragraph>,
+        table_html: &str,
+        width: u32,
+        depth: u32,
+        parent_para_shape_id: Option<u16>,
+    ) -> Result<(), crate::error::HwpError> {
         use crate::model::control::Control;
         use crate::model::table::{Cell, Table, TablePageBreak};
 
@@ -427,7 +438,7 @@ impl DocumentCore {
 
         // 표 문단의 para_shape_id: 기존 문서의 표 문단에서 사용하는 값 탐색
         // 정상 파일에서 표 문단은 ps_id=1 사용 (기본 "본문" 스타일)
-        let table_para_shape_id = {
+        let table_para_shape_id = parent_para_shape_id.unwrap_or_else(|| {
             let mut found_ps = 0u16;
             'outer: for section in &self.document.sections {
                 for para in &section.paragraphs {
@@ -444,7 +455,7 @@ impl DocumentCore {
             } else {
                 found_ps
             }
-        };
+        });
 
         // --- 3. 셀 크기 계산 ---
         let outer_margin: i16 = 283;
@@ -688,8 +699,9 @@ impl DocumentCore {
             let cell_paragraphs = if pc.content_html.trim().is_empty() {
                 vec![Paragraph::new_empty()]
             } else {
-                let parsed = self.parse_html_to_paragraphs(
+                let parsed = self.parse_html_to_paragraphs_at_depth(
                     &pc.content_html,
+                    depth + 1,
                     cell_width.saturating_sub(horizontal_padding),
                 )?;
                 if parsed.is_empty() {
@@ -1388,7 +1400,7 @@ pub(crate) fn html_img_src(img_tag: &str) -> Option<&str> {
 
 /// 태그에서 속성 문자열을 그대로 뽑는다(따옴표 양쪽 지원).
 pub(crate) fn extract_html_attr(tag: &str, attr: &str) -> Option<String> {
-    let lower = tag.to_lowercase();
+    let lower = tag.to_ascii_lowercase();
     for quote in ['"', '\''] {
         let needle = format!("{}={}", attr, quote);
         if let Some(start) = lower.find(&needle) {
