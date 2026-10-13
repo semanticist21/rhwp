@@ -6,6 +6,67 @@ use crate::model::control::Control;
 use crate::model::paragraph::Paragraph;
 use crate::model::shape::common_obj_offsets;
 
+// 명시한 한 칸 치수는 유지하고, 병합 칸의 부족분만 미지정 칸부터 나눈다.
+fn html_table_tracks(
+    count: usize,
+    dimensions: &[(usize, usize, Option<u32>)],
+    default: u32,
+) -> Result<Vec<u32>, crate::error::HwpError> {
+    let invalid =
+        || crate::error::HwpError::RenderError("표의 치수가 올바르지 않습니다".to_string());
+    for &(start, span, _) in dimensions {
+        if span == 0 || start.checked_add(span).is_none_or(|end| end > count) {
+            return Err(invalid());
+        }
+    }
+    let mut tracks = vec![0u32; count];
+    let mut fixed = vec![false; count];
+    let mut covered = vec![false; count];
+    for &(start, span, dimension) in dimensions {
+        if let Some(dimension) = dimension {
+            covered[start..start + span].fill(true);
+            if span == 1 {
+                tracks[start] = tracks[start].max(dimension);
+                fixed[start] = true;
+            }
+        }
+    }
+    for (track, covered) in tracks.iter_mut().zip(covered) {
+        if !covered {
+            *track = default;
+        }
+    }
+    let mut spans: Vec<_> = dimensions
+        .iter()
+        .filter(|(_, span, dimension)| *span > 1 && dimension.is_some())
+        .collect();
+    spans.sort_by_key(|(start, span, _)| (*span, *start));
+    for &&(start, span, dimension) in &spans {
+        let minimum = u64::from(dimension.unwrap());
+        let current: u64 = tracks[start..start + span]
+            .iter()
+            .map(|&h| u64::from(h))
+            .sum();
+        if current >= minimum {
+            continue;
+        }
+        let mut flexible: Vec<_> = (start..start + span).filter(|&i| !fixed[i]).collect();
+        if flexible.is_empty() {
+            flexible.extend(start..start + span);
+        }
+        let remaining = minimum - current;
+        let count = flexible.len() as u64;
+        for (index, track) in flexible.into_iter().enumerate() {
+            let previous = remaining * index as u64 / count;
+            let next = remaining * (index as u64 + 1) / count;
+            tracks[track] = tracks[track]
+                .checked_add((next - previous) as u32)
+                .ok_or_else(invalid)?;
+        }
+    }
+    Ok(tracks)
+}
+
 impl DocumentCore {
     pub(crate) fn parse_table_html(
         &mut self,
@@ -163,31 +224,21 @@ impl DocumentCore {
                 }
             }
 
-            if !row_cells.is_empty() {
-                parsed_rows.push(row_cells);
-            }
+            // rowspan이 덮은 빈 행도 뒤 행의 주소를 차지한다.
+            parsed_rows.push(row_cells);
             pos = tr_end;
         }
 
-        if parsed_rows.is_empty() {
+        if parsed_rows.iter().all(Vec::is_empty) {
             return Ok(());
         }
 
         // --- 2. 그리드 정규화: 실제 col 인덱스 계산 ---
-        let row_count = parsed_rows.len() as u16;
-        // colspan 합산으로 최대 열 수 추정
-        let mut max_cols: usize = 0;
-        for row in &parsed_rows {
-            let sum: usize = row.iter().map(|c| c.col_span as usize).sum();
-            if sum > max_cols {
-                max_cols = sum;
-            }
-        }
-        max_cols = max_cols.max(1);
-        // rowspan 처리를 위한 점유 그리드
-        let grid_rows = row_count as usize + 16;
-        let grid_cols = max_cols + 16;
-        let mut occupied = vec![vec![false; grid_cols]; grid_rows];
+        let invalid_grid =
+            || crate::error::HwpError::RenderError("표의 행이나 열이 너무 많습니다".to_string());
+        let mut row_count = u16::try_from(parsed_rows.len()).map_err(|_| invalid_grid())?;
+        // 행×열 배열 대신 열마다 마지막 점유 행만 보관한다.
+        let mut occupied_until: Vec<usize> = Vec::new();
 
         struct CellPos {
             row: u16,
@@ -204,22 +255,22 @@ impl DocumentCore {
         for (ri, row) in parsed_rows.iter().enumerate() {
             let mut col_cursor: usize = 0;
             for (ci, cell) in row.iter().enumerate() {
-                // 이미 점유된 위치 건너뛰기
-                while col_cursor < grid_cols && occupied[ri][col_cursor] {
-                    col_cursor += 1;
-                }
-                let col = col_cursor as u16;
-
-                // 점유 표시
-                for dr in 0..cell.row_span as usize {
-                    for dc in 0..cell.col_span as usize {
-                        let r = ri + dr;
-                        let c = col_cursor + dc;
-                        if r < grid_rows && c < grid_cols {
-                            occupied[r][c] = true;
-                        }
+                let end_row = ri + usize::from(cell.row_span);
+                row_count = row_count.max(u16::try_from(end_row).map_err(|_| invalid_grid())?);
+                let end_col = loop {
+                    let end = col_cursor + usize::from(cell.col_span);
+                    u16::try_from(end).map_err(|_| invalid_grid())?;
+                    if let Some(occupied) = (col_cursor..end)
+                        .find(|&col| occupied_until.get(col).is_some_and(|&until| until > ri))
+                    {
+                        col_cursor = occupied + 1;
+                    } else {
+                        break end;
                     }
-                }
+                };
+                let col = col_cursor as u16;
+                occupied_until.resize(occupied_until.len().max(end_col), 0);
+                occupied_until[col_cursor..end_col].fill(end_row);
 
                 cell_positions.push(CellPos {
                     row: ri as u16,
@@ -230,15 +281,17 @@ impl DocumentCore {
                     parsed_col: ci,
                 });
 
-                let end_col = col + cell.col_span;
-                if end_col > actual_col_count {
-                    actual_col_count = end_col;
-                }
-                col_cursor += cell.col_span as usize;
+                actual_col_count = actual_col_count.max(end_col as u16);
+                col_cursor = end_col;
             }
         }
 
         let col_count = actual_col_count.max(1);
+        if usize::from(row_count) * usize::from(col_count)
+            > crate::model::table::MAX_TABLE_GRID_CELLS
+        {
+            return Err(invalid_grid());
+        }
 
         // 표 문단의 para_shape_id: 기존 문서의 표 문단에서 사용하는 값 탐색
         // 정상 파일에서 표 문단은 ps_id=1 사용 (기본 "본문" 스타일)
@@ -283,27 +336,32 @@ impl DocumentCore {
         let default_col_width = available_width / col_count as u32;
         let default_row_height: u32 = 1000;
 
-        // 열별 폭 (CSS 지정 우선, 없으면 균등 분할)
-        let mut col_widths = vec![0u32; col_count as usize];
-        for cp in &cell_positions {
-            if cp.col_span == 1 {
+        let dimension = |pt: f64| {
+            let hu = (pt * 100.0).round();
+            (pt.is_finite() && pt > 0.0 && hu.is_finite() && hu <= f64::from(u32::MAX))
+                .then_some((hu as u32).max(1))
+        };
+        // 병합 칸도 미지정 열의 기준 폭을 제공한다. 전체 병합 표에는 한 열짜리 셀이 없다.
+        let widths: Vec<_> = cell_positions
+            .iter()
+            .map(|cp| {
                 let pc = &parsed_rows[cp.parsed_row][cp.parsed_col];
-                if pc.width_pt > 0.0 {
-                    let w = (pc.width_pt * 100.0).round() as u32;
-                    if w > col_widths[cp.col as usize] {
-                        col_widths[cp.col as usize] = w;
-                    }
-                }
-            }
-        }
-        for w in col_widths.iter_mut() {
-            if *w == 0 {
-                *w = default_col_width;
-            }
-        }
+                (
+                    usize::from(cp.col),
+                    usize::from(cp.col_span),
+                    dimension(pc.width_pt),
+                )
+            })
+            .collect();
+        let base_col_widths =
+            html_table_tracks(usize::from(col_count), &widths, default_col_width)?;
+        let mut col_widths = base_col_widths.clone();
 
         let tag = &table_html[..table_html.find('>').map_or(0, |end| end + 1)];
         let css = parse_inline_style(tag).to_lowercase();
+        // 일반 CSS는 최소 치수다. 원문 기하를 명시한 복사 조각만 셀별 저장 치수를 그대로 읽는다.
+        let exact_geometry =
+            extract_html_attr(tag, "data-rhwp-geometry").as_deref() == Some("exact");
         let requested_width = parse_css_value(&css, "width")
             .and_then(|value| {
                 value
@@ -313,6 +371,38 @@ impl DocumentCore {
             .map(|percent| available_width as f64 * percent / 100.0)
             .unwrap_or_else(|| parse_css_dimension_pt(&css, "width") * 100.0);
         let total: u64 = col_widths.iter().map(|&width| u64::from(width)).sum();
+        if total == 0 {
+            return Err(crate::error::HwpError::RenderError(
+                "표의 너비가 올바르지 않습니다".to_string(),
+            ));
+        }
+        let declared_width = dimension(parse_css_dimension_pt(&css, "width"));
+        let source_width = declared_width.map_or(total, u64::from);
+        // 클립보드의 원문 표시만으로 치수를 신뢰하지 않는다. rowspan 칸을 포함한 각 행이 선언 폭 안에 있어야 한다.
+        let exact_width = if exact_geometry {
+            let mut row_widths = vec![0u64; usize::from(row_count)];
+            for (cp, &(_, _, own_width)) in cell_positions.iter().zip(&widths) {
+                let cell_width = own_width.map_or_else(
+                    || {
+                        base_col_widths[usize::from(cp.col)..usize::from(cp.col + cp.col_span)]
+                            .iter()
+                            .map(|&width| u64::from(width))
+                            .sum()
+                    },
+                    u64::from,
+                );
+                for row in cp.row..cp.row + cp.row_span {
+                    row_widths[usize::from(row)] += cell_width;
+                }
+            }
+            declared_width.is_some_and(|width| {
+                row_widths
+                    .into_iter()
+                    .all(|row_width| row_width <= u64::from(width))
+            })
+        } else {
+            false
+        };
         let target = if requested_width.is_finite() && requested_width > 0.0 {
             (requested_width.round() as u32).min(available_width)
         } else {
@@ -332,24 +422,29 @@ impl DocumentCore {
             }
         }
 
-        // 행별 높이
-        let mut row_heights = vec![0u32; row_count as usize];
-        for cp in &cell_positions {
-            if cp.row_span == 1 {
+        let heights: Vec<_> = cell_positions
+            .iter()
+            .map(|cp| {
                 let pc = &parsed_rows[cp.parsed_row][cp.parsed_col];
-                if pc.height_pt > 0.0 {
-                    let h = (pc.height_pt * 100.0).round() as u32;
-                    if h > row_heights[cp.row as usize] {
-                        row_heights[cp.row as usize] = h;
-                    }
-                }
-            }
-        }
-        for h in row_heights.iter_mut() {
-            if *h == 0 {
-                *h = default_row_height;
-            }
-        }
+                (
+                    usize::from(cp.row),
+                    usize::from(cp.row_span),
+                    dimension(pc.height_pt),
+                )
+            })
+            .collect();
+        let row_heights = html_table_tracks(usize::from(row_count), &heights, default_row_height)?;
+        let computed_height: u64 = row_heights.iter().map(|&height| u64::from(height)).sum();
+        // 표 전체 높이에는 셀 합보다 큰 원래 여유가 있을 수 있다. 셀 치수는 늘리지 않는다.
+        let declared_height = dimension(parse_css_dimension_pt(&css, "height"));
+        let total_height = match (exact_geometry, declared_height) {
+            (true, Some(height)) => height,
+            _ => u32::try_from(computed_height)
+                .map_err(|_| {
+                    crate::error::HwpError::RenderError("표의 높이가 너무 큽니다".to_string())
+                })?
+                .max(declared_height.unwrap_or(0)),
+        };
 
         // HTML <table> CSS에서 표 패딩 파싱
         let table_style =
@@ -388,7 +483,7 @@ impl DocumentCore {
             let pc = &parsed_rows[cp.parsed_row][cp.parsed_col];
 
             // 셀 폭/높이 (병합 고려)
-            let cell_width: u32 = (cp.col..cp.col + cp.col_span)
+            let mut cell_width: u32 = (cp.col..cp.col + cp.col_span)
                 .map(|c| {
                     col_widths
                         .get(c as usize)
@@ -396,14 +491,39 @@ impl DocumentCore {
                         .unwrap_or(default_col_width)
                 })
                 .sum();
-            let cell_height: u32 = (cp.row..cp.row + cp.row_span)
+            let base_width: u64 = base_col_widths
+                [usize::from(cp.col)..usize::from(cp.col + cp.col_span)]
+                .iter()
+                .map(|&width| u64::from(width))
+                .sum();
+            if exact_width {
+                if let Some(own_width) = dimension(pc.width_pt) {
+                    if source_width <= u64::from(available_width) {
+                        cell_width = own_width;
+                    } else if u64::from(own_width) != base_width {
+                        // 공통 열에 맞는 칸은 기존 폭 제한을 쓰고, 행별 다른 칸만 원문 비율로 줄인다.
+                        cell_width = ((u128::from(own_width) * u128::from(target)
+                            + u128::from(source_width) / 2)
+                            / u128::from(source_width))
+                        .clamp(1, u128::from(target)) as u32;
+                    }
+                }
+            }
+            let row_height: u64 = (cp.row..cp.row + cp.row_span)
                 .map(|r| {
                     row_heights
                         .get(r as usize)
                         .copied()
-                        .unwrap_or(default_row_height)
+                        .map(u64::from)
+                        .unwrap_or(u64::from(default_row_height))
                 })
                 .sum();
+            let cell_height = match dimension(pc.height_pt).filter(|_| exact_geometry) {
+                Some(height) => height,
+                None => u32::try_from(row_height).map_err(|_| {
+                    crate::error::HwpError::RenderError("셀의 높이가 너무 큽니다".to_string())
+                })?,
+            };
 
             // BorderFill 생성/재사용
             let border_fill_id = self.create_border_fill_from_css(
@@ -601,7 +721,6 @@ impl DocumentCore {
 
         // --- 5. Table 구조체 조립 ---
         let total_width: u32 = col_widths.iter().sum();
-        let total_height: u32 = row_heights.iter().sum();
 
         // table.attr: 기존 문서의 표와 동일한 패턴 사용
         // 0x082A2311 = treat_as_char | vert_rel_to=Para | horz_rel_to=Column |
@@ -1200,6 +1319,383 @@ pub(crate) fn image_pixel_size(data: &[u8]) -> Option<(u32, u32)> {
         }
     }
     None
+}
+
+#[cfg(test)]
+mod html_table_geometry_tests {
+    use super::*;
+    use crate::model::table::Table;
+
+    #[derive(Debug, PartialEq)]
+    struct Geometry {
+        rows: u16,
+        cols: u16,
+        width: u32,
+        height: u32,
+        cells: Vec<(u16, u16, u16, u16, u32, u32, String)>,
+    }
+
+    fn blank() -> DocumentCore {
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().expect("blank document");
+        core
+    }
+
+    fn table(core: &DocumentCore) -> (usize, usize, &Table) {
+        core.document.sections[0]
+            .paragraphs
+            .iter()
+            .enumerate()
+            .find_map(|(paragraph, para)| {
+                para.controls
+                    .iter()
+                    .enumerate()
+                    .find_map(|(control, item)| match item {
+                        Control::Table(table) => Some((paragraph, control, table.as_ref())),
+                        _ => None,
+                    })
+            })
+            .expect("table control")
+    }
+
+    fn geometry(core: &DocumentCore) -> Geometry {
+        let (_, _, table) = table(core);
+        Geometry {
+            rows: table.row_count,
+            cols: table.col_count,
+            width: table.common.width,
+            height: table.common.height,
+            cells: table
+                .cells
+                .iter()
+                .map(|cell| {
+                    (
+                        cell.row,
+                        cell.col,
+                        cell.row_span,
+                        cell.col_span,
+                        cell.width,
+                        cell.height,
+                        cell.paragraphs
+                            .iter()
+                            .map(|para| para.text.as_str())
+                            .collect::<Vec<_>>()
+                            .join("\n"),
+                    )
+                })
+                .collect(),
+        }
+    }
+
+    fn fixture(rows: &[u32], columns: &[u32], ordinary: bool) -> DocumentCore {
+        let mut core = blank();
+        if ordinary {
+            core.create_table_native(0, 0, 0, 2, 2)
+                .expect("ordinary table");
+        } else {
+            core.create_table_ex_native(
+                0,
+                0,
+                0,
+                rows.len() as u16,
+                columns.len() as u16,
+                true,
+                Some(columns),
+                Some(rows),
+            )
+            .expect("sized table");
+        }
+        let (paragraph, control, table) = table(&core);
+        let count = table.cells.len();
+        for cell in 0..count {
+            core.insert_text_in_cell_native(
+                0,
+                paragraph,
+                control,
+                cell,
+                0,
+                0,
+                &format!("칸{cell}"),
+            )
+            .expect("cell text");
+        }
+        core
+    }
+
+    fn merge(core: &mut DocumentCore, row: u16, col: u16, end_row: u16, end_col: u16) {
+        let (paragraph, control, _) = table(core);
+        core.merge_table_cells_native(0, paragraph, control, row, col, end_row, end_col)
+            .expect("merge cells");
+    }
+
+    // 공개 만들기·병합·속성 변경으로 만든 모델 치수를 HTML CSS에 기록한다. 가져오기 계산은 재사용하지 않는다.
+    fn exact_html(core: &DocumentCore) -> String {
+        let (paragraph, control, table) = table(core);
+        let html = core
+            .export_control_html_native(0, paragraph, &[], control)
+            .expect("export HTML")
+            .replacen("<table ", "<table data-rhwp-geometry=\"exact\" ", 1)
+            .replacen(
+                "border-collapse:collapse;",
+                &format!(
+                    "border-collapse:collapse;width:{:.2}pt;height:{:.2}pt;",
+                    f64::from(table.common.width) / 100.0,
+                    f64::from(table.common.height) / 100.0,
+                ),
+                1,
+            );
+        let mut cells: Vec<_> = table.cells.iter().collect();
+        cells.sort_by_key(|cell| (cell.row, cell.col));
+        let mut pieces = html.split("<td style=\"");
+        let mut result = pieces.next().expect("table HTML").to_string();
+        for (index, piece) in pieces.enumerate() {
+            let cell = cells[index];
+            result.push_str(&format!(
+                "<td style=\"width:{:.2}pt;height:{:.2}pt;{piece}",
+                f64::from(cell.width) / 100.0,
+                f64::from(cell.height) / 100.0,
+            ));
+        }
+        result
+    }
+
+    fn import(html: &str) -> DocumentCore {
+        let mut core = blank();
+        let result = core.paste_html_native(0, 0, 0, html).expect("paste HTML");
+        assert!(serde_json::from_str::<serde_json::Value>(&result).unwrap()["ok"] == true);
+        core
+    }
+
+    fn assert_saved_geometry(mut core: DocumentCore, expected: &Geometry) {
+        assert_eq!(&geometry(&core), expected);
+        let (_, _, table) = table(&core);
+        assert_eq!(
+            u32::from_le_bytes(
+                table.raw_ctrl_data[common_obj_offsets::WIDTH]
+                    .try_into()
+                    .unwrap()
+            ),
+            expected.width,
+        );
+        assert_eq!(
+            u32::from_le_bytes(
+                table.raw_ctrl_data[common_obj_offsets::HEIGHT]
+                    .try_into()
+                    .unwrap()
+            ),
+            expected.height,
+        );
+        let saved = [
+            core.export_hwp_with_adapter().expect("save HWP"),
+            core.export_hwpx_native().expect("save HWPX"),
+        ];
+        for bytes in saved {
+            let reopened = DocumentCore::from_bytes(&bytes).expect("reopen saved table");
+            assert_eq!(&geometry(&reopened), expected);
+        }
+    }
+
+    #[test]
+    fn exact_css_restores_created_table_and_partial_or_complete_merges() {
+        for mode in 0..5 {
+            let mut source = fixture(&[3003, 4004], &[6001, 9002], false);
+            match mode {
+                1 => merge(&mut source, 0, 0, 0, 1),
+                2 => merge(&mut source, 0, 0, 1, 0),
+                3 => merge(&mut source, 0, 0, 1, 1),
+                4 => {
+                    merge(&mut source, 0, 0, 1, 0);
+                    merge(&mut source, 0, 1, 1, 1);
+                }
+                _ => {}
+            }
+            let expected = geometry(&source);
+            assert_eq!(
+                (expected.rows, expected.cols, expected.height),
+                (2, 2, 7007)
+            );
+            assert_saved_geometry(import(&exact_html(&source)), &expected);
+        }
+    }
+
+    #[test]
+    fn exact_css_preserves_original_height_beyond_cell_sum() {
+        let source = fixture(&[], &[], true);
+        let mut expected = geometry(&source);
+        assert_eq!(expected.height, 2564);
+        assert!(expected.cells.iter().all(|cell| cell.5 == 282));
+        // 기본 표는 대상 문단 가용 폭을 넘는다. 너비 제한과 원래 세로 여유를 구분한다.
+        expected.width = 40454;
+        for cell in &mut expected.cells {
+            cell.4 = 20227;
+        }
+        assert_saved_geometry(import(&exact_html(&source)), &expected);
+    }
+
+    #[test]
+    fn exact_css_restores_overlapping_rowspans_without_guessing_original_tracks() {
+        let mut source = fixture(&[3003, 4004, 3003, 4004, 3003, 4004], &[6001, 9002], false);
+        for (row, end) in [(0, 1), (2, 3), (4, 5)] {
+            merge(&mut source, row, 0, end, 0);
+        }
+        for (row, end) in [(0, 2), (3, 5)] {
+            merge(&mut source, row, 1, end, 1);
+        }
+        let expected = geometry(&source);
+        assert_eq!(expected.height, 21021);
+        assert_eq!(
+            expected.cells.iter().map(|cell| cell.5).collect::<Vec<_>>(),
+            [7007, 10010, 7007, 11011, 7007],
+        );
+        assert_saved_geometry(import(&exact_html(&source)), &expected);
+    }
+
+    #[test]
+    fn exact_css_preserves_cell_width_set_by_public_api_and_scales_only_for_available_width() {
+        let mut source = fixture(&[3003, 4004], &[6001, 9002], false);
+        let (paragraph, control, _) = table(&source);
+        source
+            .set_cell_properties_native(0, paragraph, control, 2, r#"{"width":7001}"#)
+            .unwrap();
+        source
+            .set_cell_properties_native(0, paragraph, control, 3, r#"{"width":8002}"#)
+            .unwrap();
+        assert_saved_geometry(import(&exact_html(&source)), &geometry(&source));
+
+        let wide = fixture(&[3003, 4004], &[25001, 35002], false);
+        let mut expected = geometry(&wide);
+        expected.width = 40454;
+        for cell in &mut expected.cells {
+            cell.4 = if cell.1 == 0 { 16855 } else { 23599 };
+        }
+        assert_saved_geometry(import(&exact_html(&wide)), &expected);
+
+        let mut wide = fixture(&[3003, 4004], &[25001, 35002], false);
+        let (paragraph, control, _) = table(&wide);
+        wide.set_cell_properties_native(0, paragraph, control, 2, r#"{"width":26001}"#)
+            .unwrap();
+        wide.set_cell_properties_native(0, paragraph, control, 3, r#"{"width":34002}"#)
+            .unwrap();
+        let mut expected = geometry(&wide);
+        assert_eq!(expected.width, 61003);
+        expected.width = 40454;
+        // 선언 폭이 넓은 행별 다른 칸은 비례 축소하고, 공유 열과 같은 칸은 기존 반올림을 쓴다.
+        for (cell, width) in expected.cells.iter_mut().zip([16579, 23212, 17242, 22548]) {
+            cell.4 = width;
+        }
+        assert_saved_geometry(import(&exact_html(&wide)), &expected);
+    }
+
+    #[test]
+    fn ordinary_css_keeps_shared_columns_and_height_as_minimum() {
+        let html = r#"<table style="height:5pt"><tr><td style="width:10pt;height:10pt"></td><td style="width:20pt;height:10pt"></td></tr><tr><td style="width:15pt;height:10pt"></td><td style="width:15pt;height:10pt"></td></tr></table>"#;
+        let target = import(html);
+        let expected = geometry(&target);
+        assert_eq!((expected.width, expected.height), (3500, 2000));
+        assert_eq!(
+            expected.cells.iter().map(|cell| cell.4).collect::<Vec<_>>(),
+            [1500, 2000, 1500, 2000]
+        );
+        assert_saved_geometry(target, &expected);
+    }
+
+    #[test]
+    fn untrusted_exact_width_falls_back_to_shared_columns_without_losing_exact_height() {
+        for html in [
+            r#"<table data-rhwp-geometry="exact" style="width:10pt;height:70.07pt"><tr><td rowspan="2" style="width:1000pt;height:70.07pt">앞</td><td style="width:1000pt;height:30.03pt">위</td></tr><tr><td style="width:1000pt;height:40.04pt">아래</td></tr></table>"#,
+            r#"<table data-rhwp-geometry="exact" style="width:10pt;height:70.07pt"><tr><td rowspan="2" style="width:8pt;height:70.07pt">앞</td><td style="width:2pt;height:30.03pt">위</td></tr><tr><td style="width:8pt;height:40.04pt">아래</td></tr></table>"#,
+        ] {
+            let target = import(html);
+            let expected = geometry(&target);
+            assert_eq!((expected.width, expected.height), (1000, 7007));
+            assert_eq!(
+                expected.cells.iter().map(|cell| cell.4).collect::<Vec<_>>(),
+                [500, 500, 500]
+            );
+            assert_eq!(
+                expected.cells.iter().map(|cell| cell.5).collect::<Vec<_>>(),
+                [7007, 3003, 4004]
+            );
+            assert_eq!(
+                expected
+                    .cells
+                    .iter()
+                    .map(|cell| cell.6.as_str())
+                    .collect::<Vec<_>>(),
+                ["앞", "위", "아래"]
+            );
+            for row in 0..expected.rows {
+                let width: u64 = expected
+                    .cells
+                    .iter()
+                    .filter(|cell| cell.0 <= row && row < cell.0 + cell.2)
+                    .map(|cell| u64::from(cell.4))
+                    .sum();
+                assert!(width <= u64::from(expected.width));
+                assert!(width <= 40454);
+            }
+            assert_saved_geometry(target, &expected);
+        }
+    }
+
+    #[test]
+    fn ordinary_css_uses_minimum_height_for_conflicting_rowspans() {
+        let html = r#"<table style="height:1pt"><tr><td rowspan="2" style="height:70pt"></td><td style="height:50pt"></td></tr><tr><td style="height:30pt"></td></tr></table>"#;
+        let target = import(html);
+        let expected = geometry(&target);
+        assert_eq!(expected.height, 8000);
+        assert_eq!(
+            expected.cells.iter().map(|cell| cell.5).collect::<Vec<_>>(),
+            [8000, 5000, 3000]
+        );
+        assert_saved_geometry(target, &expected);
+    }
+
+    #[test]
+    fn colspan_skips_an_occupied_cell_in_the_middle_of_its_range() {
+        let html = r#"<table><tr><td></td><td rowspan="2"></td></tr><tr><td colspan="2"></td></tr></table>"#;
+        let target = import(html);
+        let expected = geometry(&target);
+        assert_eq!((expected.rows, expected.cols), (2, 4));
+        assert_eq!(
+            expected
+                .cells
+                .iter()
+                .map(|cell| (cell.0, cell.1, cell.2, cell.3))
+                .collect::<Vec<_>>(),
+            [(0, 0, 1, 1), (0, 1, 2, 1), (1, 2, 1, 2)]
+        );
+        assert_saved_geometry(target, &expected);
+    }
+
+    #[test]
+    fn invalid_or_zero_css_dimensions_fall_back_and_oversized_grids_or_heights_fail() {
+        for value in ["0", "-1", "NaN", "inf", "1e308"] {
+            let html = format!(
+                r#"<table data-rhwp-geometry="exact" style="width:{value}pt;height:{value}pt"><tr><td style="width:{value}pt;height:{value}pt"></td></tr></table>"#
+            );
+            let target = import(&html);
+            let shape = geometry(&target);
+            assert_eq!(shape.height, 1000, "invalid size {value}");
+            assert!(shape.width > 0);
+            assert_saved_geometry(target, &shape);
+        }
+        for html in [
+            r#"<table><tr><td rowspan="65535"></td></tr><tr><td rowspan="65535"></td></tr></table>"#,
+            r#"<table><tr><td colspan="65535"></td><td></td></tr></table>"#,
+            r#"<table><tr><td rowspan="64" colspan="65535"></td></tr></table>"#,
+            r#"<table><tr><td style="height:42949672.95pt"></td></tr><tr><td style="height:42949672.95pt"></td></tr></table>"#,
+        ] {
+            let mut target = blank();
+            let mut paragraphs = Vec::new();
+            assert!(target
+                .parse_table_html(&mut paragraphs, html, 42520)
+                .is_err());
+            assert!(paragraphs.is_empty());
+        }
+        assert!(html_table_tracks(1, &[(usize::MAX, 2, Some(1))], 1000).is_err());
+        assert!(html_table_tracks(1, &[(0, 0, Some(1))], 1000).is_err());
+    }
 }
 
 /// #4413: clipboard export가 셀 안 중첩 표를 `<table>`로 내보내도, import 쪽이 셀
