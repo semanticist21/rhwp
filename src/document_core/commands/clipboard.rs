@@ -1,9 +1,9 @@
 //! 내부 클립보드 + HTML 내보내기 관련 native 메서드
 
 use super::super::helpers::{
-    clipboard_color_to_css, clipboard_escape_html, detect_clipboard_image_mime,
-    get_textbox_from_shape, logical_paragraph_length, logical_to_text_offset,
-    utf16_pos_to_char_idx,
+    border_line_type_to_u8_val, clipboard_color_to_css, clipboard_escape_html,
+    detect_clipboard_image_mime, get_textbox_from_shape, logical_paragraph_length,
+    logical_to_text_offset, utf16_pos_to_char_idx,
 };
 use super::super::queries::field_query::rebuild_char_offsets;
 use crate::document_core::{ClipboardData, DocumentCore};
@@ -1745,8 +1745,16 @@ impl DocumentCore {
     /// 처리할 때는 `depth + 1`을 넘겨, 그 컨트롤이 표이면 `control_to_html`이
     /// 상한을 검사한 뒤 그 값으로 재귀한다.
     fn table_to_html_at_depth(&self, table: &crate::model::table::Table, depth: usize) -> String {
-        let mut html = String::from(
-            "<table style=\"border-collapse:collapse;\" cellpadding=\"0\" cellspacing=\"0\">\n",
+        let mut html = format!(
+            "<table style=\"border-collapse:{};border-spacing:{:.2}pt;padding:{:.2}pt {:.2}pt {:.2}pt {:.2}pt;\" data-rhwp-cell-spacing=\"{}\" data-rhwp-table-padding=\"{},{},{},{}\" cellpadding=\"0\" cellspacing=\"0\">\n",
+            if table.cell_spacing > 0 { "separate" } else { "collapse" },
+            f64::from(table.cell_spacing.max(0)) / 100.0,
+            f64::from(table.padding.top.max(0)) / 100.0,
+            f64::from(table.padding.right.max(0)) / 100.0,
+            f64::from(table.padding.bottom.max(0)) / 100.0,
+            f64::from(table.padding.left.max(0)) / 100.0,
+            table.cell_spacing,
+            table.padding.left, table.padding.right, table.padding.top, table.padding.bottom,
         );
 
         // 행별로 그룹화
@@ -1760,6 +1768,7 @@ impl DocumentCore {
             for cell in &row_cells {
                 // 병합된 셀은 첫 번째 셀만 출력 (rowspan/colspan 은 merge 된 셀 정보)
                 let mut td_style = String::new();
+                let mut border_data = String::new();
 
                 // 셀 배경/테두리 (BorderFill) — border_fill_id는 1-based
                 // (styles.border_styles는 0-based). 다른 소비처(예:
@@ -1771,16 +1780,56 @@ impl DocumentCore {
                     let idx = (fill_id as usize).saturating_sub(1);
                     if let Some(bs) = self.styles.border_styles.get(idx) {
                         self.apply_border_fill_css(&mut td_style, bs);
+                        // CSS가 표현하지 못하는 선 종류와 선 없음의 지난 굵기·색도 원문에서 유지한다.
+                        border_data = format!(
+                            " data-rhwp-borders=\"{}\"",
+                            bs.borders
+                                .iter()
+                                .map(|border| {
+                                    format!(
+                                        "{},{},{}",
+                                        border_line_type_to_u8_val(border.line_type),
+                                        border.width,
+                                        border.color
+                                    )
+                                })
+                                .collect::<Vec<_>>()
+                                .join(";")
+                        );
                     }
                 }
 
-                // 셀 패딩
-                td_style.push_str("padding:1px 5px;");
+                // 다른 앱에는 실제 여백을 보여 주고, 엔진에는 미적용 저장 값과 선택 플래그도 보낸다.
+                let padding = |own: i16, inherited: i16| {
+                    f64::from(
+                        if cell.use_cell_padding_axis(own, inherited) {
+                            own
+                        } else {
+                            inherited
+                        }
+                        .max(0),
+                    ) / 100.0
+                };
+                td_style.push_str(&format!(
+                    "padding:{:.2}pt {:.2}pt {:.2}pt {:.2}pt;",
+                    padding(cell.padding.top, table.padding.top),
+                    padding(cell.padding.right, table.padding.right),
+                    padding(cell.padding.bottom, table.padding.bottom),
+                    padding(cell.padding.left, table.padding.left),
+                ));
 
                 // vertical-align
-                td_style.push_str("vertical-align:top;");
+                td_style.push_str(match cell.vertical_align {
+                    crate::model::table::VerticalAlign::Top => "vertical-align:top;",
+                    crate::model::table::VerticalAlign::Center => "vertical-align:middle;",
+                    crate::model::table::VerticalAlign::Bottom => "vertical-align:bottom;",
+                });
 
-                let mut td_attrs = format!("style=\"{}\"", td_style);
+                let mut td_attrs = format!(
+                    "style=\"{}\" data-rhwp-cell-padding=\"{},{},{},{}\" data-rhwp-inner-margin=\"{}\"{}",
+                    td_style, cell.padding.left, cell.padding.right, cell.padding.top,
+                    cell.padding.bottom, u8::from(cell.apply_inner_margin), border_data,
+                );
                 if cell.col_span > 1 {
                     td_attrs.push_str(&format!(" colspan=\"{}\"", cell.col_span));
                 }
@@ -1838,22 +1887,31 @@ impl DocumentCore {
     ) {
         // 배경색
         if let Some(fill_color) = bs.fill_color {
-            if fill_color != 0xFFFFFF && fill_color != 0 {
-                css.push_str(&format!(
-                    "background-color:{};",
-                    clipboard_color_to_css(fill_color)
-                ));
-            }
+            css.push_str(&format!(
+                "background-color:{};",
+                clipboard_color_to_css(fill_color)
+            ));
         }
 
         // 테두리 (좌, 우, 상, 하)
         let sides = ["left", "right", "top", "bottom"];
         for (i, side) in sides.iter().enumerate() {
             let bl = &bs.borders[i];
-            if bl.width > 0 {
+            if bl.line_type != crate::model::style::BorderLineType::None {
                 let color = clipboard_color_to_css(bl.color);
-                let px = (bl.width as f64).max(1.0);
-                css.push_str(&format!("border-{}:{:.1}px solid {};", side, px, color));
+                let style = match bl.line_type {
+                    crate::model::style::BorderLineType::Dash => "dashed",
+                    crate::model::style::BorderLineType::Dot => "dotted",
+                    crate::model::style::BorderLineType::Double => "double",
+                    _ => "solid",
+                };
+                css.push_str(&format!(
+                    "border-{}:{}mm {} {};",
+                    side,
+                    crate::model::style::border_width_mm_str(bl.width),
+                    style,
+                    color,
+                ));
             }
         }
     }
@@ -2314,7 +2372,7 @@ mod clipboard_border_fill_offset_tests {
         let html = core.table_to_html(&table);
 
         assert!(
-            html.contains("border-left:2.0px solid #00ff00"),
+            html.contains("border-left:0.15mm solid #00ff00"),
             "REAL(id=4, index 3)의 테두리색(#00ff00)이 출력되지 않음:\n{html}"
         );
         assert!(
