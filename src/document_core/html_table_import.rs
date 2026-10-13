@@ -67,6 +67,117 @@ fn html_table_tracks(
     Ok(tracks)
 }
 
+// 미지정·잘못된 치수와 명시한 0을 구별하고, HWPUNIT16 범위를 넘는 CSS는 쓰지 않는다.
+fn html_margin_hu(value: &str) -> Option<i16> {
+    let value = value.trim();
+    let number = ["pt", "px", "cm", "mm", "in"]
+        .iter()
+        .find_map(|unit| value.strip_suffix(unit))
+        .unwrap_or(value)
+        .trim()
+        .parse::<f64>()
+        .ok()?;
+    let hu = (parse_single_dimension_pt(value) * 100.0).round();
+    (number.is_finite() && number >= 0.0 && hu.is_finite() && hu <= f64::from(i16::MAX))
+        .then_some(hu as i16)
+}
+
+fn html_padding(css: &str, defaults: [i16; 4]) -> (crate::model::Padding, bool) {
+    let mut values = defaults;
+    let mut explicit = false;
+    if let Some(value) = parse_css_value(css, "padding") {
+        if let Some(parts) = value
+            .split_whitespace()
+            .map(html_margin_hu)
+            .collect::<Option<Vec<_>>>()
+        {
+            let parsed = match parts.as_slice() {
+                [all] => Some([*all; 4]),
+                [vertical, horizontal] => Some([*horizontal, *horizontal, *vertical, *vertical]),
+                [top, horizontal, bottom] => Some([*horizontal, *horizontal, *top, *bottom]),
+                [top, right, bottom, left] => Some([*left, *right, *top, *bottom]),
+                _ => None,
+            };
+            if let Some(parsed) = parsed {
+                values = parsed;
+                explicit = true;
+            }
+        }
+    }
+    for (index, name) in [
+        "padding-left",
+        "padding-right",
+        "padding-top",
+        "padding-bottom",
+    ]
+    .iter()
+    .enumerate()
+    {
+        if let Some(value) = parse_css_value(css, name).and_then(|value| html_margin_hu(&value)) {
+            values[index] = value;
+            explicit = true;
+        }
+    }
+    let [left, right, top, bottom] = values;
+    (
+        crate::model::Padding {
+            left,
+            right,
+            top,
+            bottom,
+        },
+        explicit,
+    )
+}
+
+// 원문 메타데이터도 고정된 네 필드와 저장 타입 범위 안에서만 읽는다.
+fn html_stored_padding(tag: &str, attribute: &str) -> Option<crate::model::Padding> {
+    let value = extract_html_attr(tag, attribute)?;
+    if value.len() > 27 {
+        return None;
+    }
+    let values = value
+        .split(',')
+        .map(str::parse::<i16>)
+        .collect::<Result<Vec<_>, _>>()
+        .ok()?;
+    let [left, right, top, bottom] = <[i16; 4]>::try_from(values).ok()?;
+    Some(crate::model::Padding {
+        left,
+        right,
+        top,
+        bottom,
+    })
+}
+
+fn html_stored_borders(tag: &str) -> Option<[crate::model::style::BorderLine; 4]> {
+    let value = extract_html_attr(tag, "data-rhwp-borders")?;
+    if value.len() > 67 {
+        return None;
+    }
+    value
+        .split(';')
+        .map(|part| {
+            let values = part
+                .split(',')
+                .map(str::parse::<u32>)
+                .collect::<Result<Vec<_>, _>>()
+                .ok()?;
+            let [kind, width, color] = <[u32; 3]>::try_from(values).ok()?;
+            if kind > 17 || width > 15 {
+                return None;
+            }
+            Some(crate::model::style::BorderLine {
+                line_type: u8_to_border_line_type(kind as u8),
+                width: width as u8,
+                color,
+            })
+        })
+        .collect::<Option<Vec<_>>>()?
+        .try_into()
+        .ok()
+}
+
 impl DocumentCore {
     pub(crate) fn parse_table_html(
         &mut self,
@@ -77,6 +188,10 @@ impl DocumentCore {
         use crate::model::control::Control;
         use crate::model::table::{Cell, Table, TablePageBreak};
 
+        let table_tag = &table_html[..table_html.find('>').map_or(0, |end| end + 1)];
+        let exact_geometry =
+            extract_html_attr(table_tag, "data-rhwp-geometry").as_deref() == Some("exact");
+
         // --- 1. HTML 파싱: 행/셀 구조 추출 ---
         let table_lower = table_html.to_lowercase();
 
@@ -85,10 +200,12 @@ impl DocumentCore {
             row_span: u16,
             width_pt: f64,
             height_pt: f64,
-            padding_pt: [f64; 4],          // left, right, top, bottom
-            border_widths_pt: [f64; 4],    // left, right, top, bottom
-            border_colors: [u32; 4],       // BGR
-            border_styles: [u8; 4],        // 0=none, 1=solid, 2=dashed, 3=dotted, 4=double
+            padding: crate::model::Padding,
+            apply_inner_margin: bool,
+            border_widths_pt: [f64; 4], // left, right, top, bottom
+            border_colors: [u32; 4],    // BGR
+            border_styles: [u8; 4],     // 0=none, 1=solid, 2=dashed, 3=dotted, 4=double
+            stored_borders: Option<[crate::model::style::BorderLine; 4]>,
             background_color: Option<u32>, // BGR
             content_html: String,
             is_header: bool,
@@ -145,7 +262,16 @@ impl DocumentCore {
                     let height_pt = parse_css_dimension_pt(&css_lower, "height");
 
                     // 패딩 파싱
-                    let padding_pt = parse_css_padding_pt(&css_lower);
+                    let (mut padding, mut apply_inner_margin) = html_padding(&css_lower, [141; 4]);
+                    if exact_geometry {
+                        let stored = html_stored_padding(tag_str, "data-rhwp-cell-padding");
+                        let flag = extract_html_attr(tag_str, "data-rhwp-inner-margin");
+                        if let (Some(stored), Some(flag @ ("0" | "1"))) = (stored, flag.as_deref())
+                        {
+                            padding = stored;
+                            apply_inner_margin = flag == "1";
+                        }
+                    }
 
                     // 테두리 파싱 (left, right, top, bottom)
                     let mut border_widths_pt = [0.0f64; 4];
@@ -206,10 +332,16 @@ impl DocumentCore {
                         row_span,
                         width_pt,
                         height_pt,
-                        padding_pt,
+                        padding,
+                        apply_inner_margin,
                         border_widths_pt,
                         border_colors,
                         border_styles,
+                        stored_borders: if exact_geometry {
+                            html_stored_borders(tag_str)
+                        } else {
+                            None
+                        },
                         background_color,
                         content_html,
                         is_header: is_th,
@@ -360,8 +492,6 @@ impl DocumentCore {
         let tag = &table_html[..table_html.find('>').map_or(0, |end| end + 1)];
         let css = parse_inline_style(tag).to_lowercase();
         // 일반 CSS는 최소 치수다. 원문 기하를 명시한 복사 조각만 셀별 저장 치수를 그대로 읽는다.
-        let exact_geometry =
-            extract_html_attr(tag, "data-rhwp-geometry").as_deref() == Some("exact");
         let requested_width = parse_css_value(&css, "width")
             .and_then(|value| {
                 value
@@ -450,30 +580,37 @@ impl DocumentCore {
         let table_style =
             parse_inline_style(&table_html[..table_html.find('>').map_or(0, |end| end + 1)])
                 .to_lowercase();
-        let table_padding_pt = parse_css_padding_pt(&table_style);
-        // 기본값: L:510 R:510 T:141 B:141 (정상 HWP 파일 패턴)
-        let table_padding = crate::model::Padding {
-            left: if table_padding_pt[0] > 0.01 {
-                (table_padding_pt[0] * 100.0).round() as i16
+        let table_padding = if exact_geometry {
+            html_stored_padding(table_tag, "data-rhwp-table-padding")
+        } else {
+            None
+        }
+        .unwrap_or_else(|| html_padding(&table_style, [510, 510, 141, 141]).0);
+        let css_spacing =
+            if parse_css_value(&table_style, "border-collapse").as_deref() == Some("collapse") {
+                0
             } else {
-                510
-            },
-            right: if table_padding_pt[1] > 0.01 {
-                (table_padding_pt[1] * 100.0).round() as i16
-            } else {
-                510
-            },
-            top: if table_padding_pt[2] > 0.01 {
-                (table_padding_pt[2] * 100.0).round() as i16
-            } else {
-                141
-            },
-            bottom: if table_padding_pt[3] > 0.01 {
-                (table_padding_pt[3] * 100.0).round() as i16
-            } else {
-                141
-            },
-        };
+                parse_css_value(&table_style, "border-spacing")
+                    .and_then(|value| {
+                        let parts = value
+                            .split_whitespace()
+                            .map(html_margin_hu)
+                            .collect::<Option<Vec<_>>>()?;
+                        match parts.as_slice() {
+                            [one] => Some(*one),
+                            [x, y] if x == y => Some(*x),
+                            _ => None,
+                        }
+                    })
+                    .unwrap_or(0)
+            };
+        let cell_spacing = if exact_geometry {
+            extract_html_attr(table_tag, "data-rhwp-cell-spacing")
+                .and_then(|value| value.parse::<i16>().ok())
+        } else {
+            None
+        }
+        .unwrap_or(css_spacing);
 
         // --- 4. BorderFill 생성 및 Cell 구조체 조립 ---
         let mut cells: Vec<Cell> = Vec::new();
@@ -531,32 +668,20 @@ impl DocumentCore {
                 &pc.border_colors,
                 &pc.border_styles,
                 pc.background_color,
+                pc.stored_borders,
             );
 
             // 패딩 (pt → HWPUNIT16, CSS 미지정 시 기본 1.4mm ≈ 397 HWPUNIT)
-            let default_pad: f64 = 141.0; // ~0.5mm HWPUNIT
-            let padding = crate::model::Padding {
-                left: if pc.padding_pt[0] > 0.01 {
-                    (pc.padding_pt[0] * 100.0).round() as i16
+            let padding = pc.padding.clone();
+            let axis = |own: i16, inherited: i16| {
+                if pc.apply_inner_margin && own >= 0 {
+                    own as u32
                 } else {
-                    default_pad as i16
-                },
-                right: if pc.padding_pt[1] > 0.01 {
-                    (pc.padding_pt[1] * 100.0).round() as i16
-                } else {
-                    default_pad as i16
-                },
-                top: if pc.padding_pt[2] > 0.01 {
-                    (pc.padding_pt[2] * 100.0).round() as i16
-                } else {
-                    default_pad as i16
-                },
-                bottom: if pc.padding_pt[3] > 0.01 {
-                    (pc.padding_pt[3] * 100.0).round() as i16
-                } else {
-                    default_pad as i16
-                },
+                    inherited.max(0) as u32
+                }
             };
+            let horizontal_padding =
+                axis(padding.left, table_padding.left) + axis(padding.right, table_padding.right);
 
             // 태그 밖 출력 공백만 있으면 빈 셀이다. 실제 문단 안 공백과
             // 그림·중첩 표는 평문 추출로 판단하지 않고 파싱 결과를 보존한다.
@@ -565,9 +690,7 @@ impl DocumentCore {
             } else {
                 let parsed = self.parse_html_to_paragraphs(
                     &pc.content_html,
-                    cell_width.saturating_sub(
-                        table_padding.left.max(0) as u32 + table_padding.right.max(0) as u32,
-                    ),
+                    cell_width.saturating_sub(horizontal_padding),
                 )?;
                 if parsed.is_empty()
                     || parsed
@@ -641,9 +764,7 @@ impl DocumentCore {
                 let baseline = (font_size as f64 * 0.85) as i32;
                 let spacing = (font_size as f64 * 0.6) as i32;
                 // seg_width: 셀 폭에서 좌우 패딩을 뺀 텍스트 영역 폭
-                let seg_w = cell_width.saturating_sub(
-                    table_padding.left.max(0) as u32 + table_padding.right.max(0) as u32,
-                ) as i32;
+                let seg_w = cell_width.saturating_sub(horizontal_padding) as i32;
                 // tag(flags): bit 17(first segment) + bit 18(last segment).
                 let line_tag: u32 = crate::model::paragraph::LineSeg::TAG_SINGLE_SEGMENT_LINE;
 
@@ -698,7 +819,7 @@ impl DocumentCore {
             let mut raw_list_extra = vec![0u8; 13];
             raw_list_extra[0..4].copy_from_slice(&cell_width.to_le_bytes());
 
-            cells.push(Cell {
+            let mut cell = Cell {
                 col: cp.col,
                 row: cp.row,
                 col_span: cp.col_span,
@@ -713,7 +834,9 @@ impl DocumentCore {
                 vertical_align: v_align,
                 raw_list_extra,
                 ..Default::default()
-            });
+            };
+            cell.set_apply_inner_margin(pc.apply_inner_margin);
+            cells.push(cell);
         }
 
         // 행 우선 순서로 정렬
@@ -790,7 +913,7 @@ impl DocumentCore {
             attr: table_attr,
             row_count,
             col_count,
-            cell_spacing: 0,
+            cell_spacing,
             padding: table_padding,
             row_sizes,
             border_fill_id: table_border_fill_id,
@@ -893,6 +1016,7 @@ impl DocumentCore {
         border_colors: &[u32; 4],
         border_styles: &[u8; 4],
         background_color: Option<u32>,
+        stored_borders: Option<[crate::model::style::BorderLine; 4]>,
     ) -> u16 {
         use crate::model::style::{
             BorderFill, BorderLine, BorderLineType, CenterLine, DiagonalLine, Fill, FillType,
@@ -922,20 +1046,19 @@ impl DocumentCore {
                 };
             }
         }
+        if let Some(stored) = stored_borders {
+            borders = stored;
+        }
 
         let fill = if let Some(bg) = background_color {
-            if bg != 0xFFFFFF {
-                Fill {
-                    fill_type: FillType::Solid,
-                    solid: Some(SolidFill {
-                        background_color: bg,
-                        pattern_color: 0,
-                        pattern_type: -1_i32, // 무늬 없음
-                    }),
-                    ..Default::default()
-                }
-            } else {
-                Fill::default()
+            Fill {
+                fill_type: FillType::Solid,
+                solid: Some(SolidFill {
+                    background_color: bg,
+                    pattern_color: 0,
+                    pattern_type: -1_i32, // 무늬 없음
+                }),
+                ..Default::default()
             }
         } else {
             Fill::default()
@@ -1436,9 +1559,9 @@ mod html_table_geometry_tests {
             .expect("export HTML")
             .replacen("<table ", "<table data-rhwp-geometry=\"exact\" ", 1)
             .replacen(
-                "border-collapse:collapse;",
+                "style=\"",
                 &format!(
-                    "border-collapse:collapse;width:{:.2}pt;height:{:.2}pt;",
+                    "style=\"width:{:.2}pt;height:{:.2}pt;",
                     f64::from(table.common.width) / 100.0,
                     f64::from(table.common.height) / 100.0,
                 ),
@@ -1695,6 +1818,193 @@ mod html_table_geometry_tests {
         }
         assert!(html_table_tracks(1, &[(usize::MAX, 2, Some(1))], 1000).is_err());
         assert!(html_table_tracks(1, &[(0, 0, Some(1))], 1000).is_err());
+    }
+
+    fn appearance(core: &DocumentCore) -> serde_json::Value {
+        let (paragraph, control, table) = table(core);
+        let props: serde_json::Value = serde_json::from_str(
+            &core
+                .get_table_properties_native(0, paragraph, control)
+                .unwrap(),
+        )
+        .unwrap();
+        let mut table_values = serde_json::Map::new();
+        for key in [
+            "cellSpacing",
+            "paddingLeft",
+            "paddingRight",
+            "paddingTop",
+            "paddingBottom",
+        ] {
+            table_values.insert(key.to_string(), props[key].clone());
+        }
+        let cells: Vec<_> = (0..table.cells.len())
+            .map(|cell| {
+                let props: serde_json::Value = serde_json::from_str(
+                    &core
+                        .get_cell_properties_by_cell_path_native(
+                            0,
+                            paragraph,
+                            &[(control, 0, 0)],
+                            cell,
+                        )
+                        .unwrap(),
+                )
+                .unwrap();
+                let mut values = serde_json::Map::new();
+                for key in [
+                    "paddingLeft",
+                    "paddingRight",
+                    "paddingTop",
+                    "paddingBottom",
+                    "applyInnerMargin",
+                    "verticalAlign",
+                    "borderLeft",
+                    "borderRight",
+                    "borderTop",
+                    "borderBottom",
+                    "fillType",
+                    "fillColor",
+                ] {
+                    values.insert(key.to_string(), props[key].clone());
+                }
+                serde_json::Value::Object(values)
+            })
+            .collect();
+        serde_json::json!({"table": table_values, "cells": cells})
+    }
+
+    #[test]
+    fn exact_html_preserves_table_and_cell_padding_flags_spacing_alignment_and_all_border_widths() {
+        for spacing in [0, 400] {
+            let mut source = fixture(&[3003, 4004], &[6001, 9002], false);
+            let (paragraph, control, _) = table(&source);
+            source.set_table_properties_native(0, paragraph, control, &serde_json::json!({
+                "cellSpacing":spacing,"paddingLeft":1234,"paddingRight":567,"paddingTop":890,"paddingBottom":432
+            }).to_string()).unwrap();
+            for cell in 0..4 {
+                let fill_color = ["#000000", "#ffffff", "#00ff00", "#0000ff"][cell];
+                let mut props = serde_json::json!({
+                    "applyInnerMargin":cell != 1,
+                    "paddingLeft":if cell == 1 { 30000 } else { 0 },
+                    "paddingRight":if cell == 1 { -1 } else { 123 },
+                    "paddingTop":if cell == 1 { 30000 } else { 45 },
+                    "paddingBottom":if cell == 1 { -123 } else { 0 },
+                    "verticalAlign":cell % 3,
+                    "fillType":"solid","fillColor":fill_color
+                });
+                for (index, (side, kind)) in
+                    ["borderLeft", "borderRight", "borderTop", "borderBottom"]
+                        .iter()
+                        .zip([1, 2, 3, 8])
+                        .enumerate()
+                {
+                    props[*side] =
+                        serde_json::json!({"type":kind,"width":cell*4+index,"color":"#12abcd"});
+                }
+                source
+                    .set_cell_properties_native(0, paragraph, control, cell, &props.to_string())
+                    .unwrap();
+            }
+            let expected = appearance(&source);
+            assert_eq!(expected["table"]["cellSpacing"], spacing);
+            assert_eq!(expected["cells"][0]["borderLeft"]["width"], 0);
+            let html = exact_html(&source);
+            assert!(html.contains("border-left:0.1mm solid"));
+            assert!(html.contains("background-color:#000000"));
+            assert!(html.contains("background-color:#ffffff"));
+            assert!(html.contains("padding:0.45pt 1.23pt 0.00pt 0.00pt"));
+            assert!(html.contains(
+                "data-rhwp-cell-padding=\"30000,-1,30000,-123\" data-rhwp-inner-margin=\"0\""
+            ));
+            let mut target = import(&html);
+            assert_eq!(geometry(&target), geometry(&source));
+            assert_eq!(appearance(&target), expected);
+            for bytes in [
+                target.export_hwp_with_adapter().unwrap(),
+                target.export_hwpx_native().unwrap(),
+            ] {
+                assert_eq!(
+                    appearance(&DocumentCore::from_bytes(&bytes).unwrap()),
+                    expected
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn css_padding_and_spacing_keep_explicit_zero_and_ignore_invalid_or_oversized_values() {
+        let html = r#"<table style="padding:0pt;border-spacing:4pt"><tr><td style="padding:0pt">칸</td></tr></table>"#;
+        let target = import(html);
+        let (_, _, parsed_table) = table(&target);
+        assert_eq!(parsed_table.cell_spacing, 400);
+        assert_eq!(
+            (
+                parsed_table.padding.left,
+                parsed_table.padding.right,
+                parsed_table.padding.top,
+                parsed_table.padding.bottom
+            ),
+            (0, 0, 0, 0)
+        );
+        assert!(parsed_table.cells[0].apply_inner_margin);
+        assert_eq!(parsed_table.cells[0].padding.left, 0);
+        assert_eq!(
+            parsed_table.cells[0].paragraphs[0].line_segs[0].segment_width,
+            parsed_table.cells[0].width as i32
+        );
+
+        for invalid in ["-1pt", "NaNpt", "infpt", "1e308pt", "327.68pt", "autopt"] {
+            let html = format!(
+                r#"<table data-rhwp-geometry="exact" data-rhwp-table-padding="1,2,3,9999999" data-rhwp-cell-spacing="9999999" style="padding:{invalid};border-spacing:{invalid}"><tr><td data-rhwp-cell-padding="1,2,3,9999999" data-rhwp-inner-margin="1" style="padding:{invalid}">칸</td></tr></table>"#
+            );
+            let target = import(&html);
+            let (_, _, table) = table(&target);
+            assert_eq!(table.cell_spacing, 0, "{invalid}");
+            assert_eq!(
+                (
+                    table.padding.left,
+                    table.padding.right,
+                    table.padding.top,
+                    table.padding.bottom
+                ),
+                (510, 510, 141, 141),
+                "{invalid}"
+            );
+            assert!(!table.cells[0].apply_inner_margin, "{invalid}");
+        }
+        let (padding, explicit) =
+            html_padding("padding:1pt 2pt 3pt 4pt;padding-right:0pt", [141; 4]);
+        assert!(explicit);
+        assert_eq!(
+            (padding.left, padding.right, padding.top, padding.bottom),
+            (400, 0, 100, 300)
+        );
+    }
+
+    #[test]
+    fn exact_border_metadata_is_bounded_and_unmarked_html_uses_css() {
+        for value in [
+            "1,16,0;1,0,0;1,0,0;1,0,0",
+            "18,0,0;1,0,0;1,0,0;1,0,0",
+            "1,0,4294967296;1,0,0;1,0,0;1,0,0",
+            "1,0,0;1,0,0;1,0,0",
+            "1,0,0;1,0,0;1,0,0;1,0,0;1,0,0",
+        ] {
+            assert!(html_stored_borders(&format!(r#"<td data-rhwp-borders="{value}">"#)).is_none());
+        }
+        let cell = r#"<tr><td data-rhwp-borders="0,15,4294967295;1,0,0;1,0,0;1,0,0" style="border:1px solid #000000">칸</td></tr>"#;
+        let regular = appearance(&import(&format!("<table>{cell}</table>")));
+        assert_eq!(regular["cells"][0]["borderLeft"]["type"], 1);
+        assert_eq!(regular["cells"][0]["borderLeft"]["width"], 4);
+        let exact = appearance(&import(&format!(
+            r#"<table data-rhwp-geometry="exact">{cell}</table>"#
+        )));
+        assert_eq!(exact["cells"][0]["borderLeft"]["type"], 0);
+        assert_eq!(exact["cells"][0]["borderLeft"]["width"], 15);
+        for (index, (mm, _)) in crate::model::style::BORDER_WIDTHS.iter().enumerate() {
+            assert_eq!(css_border_width_to_hwp(mm * 72.0 / 25.4), index as u8);
+        }
     }
 }
 
