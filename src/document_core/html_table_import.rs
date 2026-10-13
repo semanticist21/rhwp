@@ -67,7 +67,7 @@ fn html_table_tracks(
     Ok(tracks)
 }
 
-// 미지정·잘못된 치수와 명시한 0을 구별하고, HWPUNIT16 범위를 넘는 CSS는 쓰지 않는다.
+// 미지정·잘못된 치수와 명시한 0을 구별한다. 큰 여백도 저장 범위까지 살려 공간 부족 검사를 유지한다.
 fn html_margin_hu(value: &str) -> Option<i16> {
     let value = value.trim();
     let number = ["pt", "px", "cm", "mm", "in"]
@@ -78,8 +78,8 @@ fn html_margin_hu(value: &str) -> Option<i16> {
         .parse::<f64>()
         .ok()?;
     let hu = (parse_single_dimension_pt(value) * 100.0).round();
-    (number.is_finite() && number >= 0.0 && hu.is_finite() && hu <= f64::from(i16::MAX))
-        .then_some(hu as i16)
+    (number.is_finite() && number >= 0.0 && hu.is_finite())
+        .then_some(hu.min(f64::from(i16::MAX)) as i16)
 }
 
 fn html_padding(css: &str, defaults: [i16; 4]) -> (crate::model::Padding, bool) {
@@ -1933,7 +1933,7 @@ mod html_table_geometry_tests {
     }
 
     #[test]
-    fn css_padding_and_spacing_keep_explicit_zero_and_ignore_invalid_or_oversized_values() {
+    fn css_padding_and_spacing_keep_zero_clamp_large_values_and_ignore_invalid_values() {
         let html = r#"<table style="padding:0pt;border-spacing:4pt"><tr><td style="padding:0pt">칸</td></tr></table>"#;
         let target = import(html);
         let (_, _, parsed_table) = table(&target);
@@ -1954,7 +1954,7 @@ mod html_table_geometry_tests {
             parsed_table.cells[0].width as i32
         );
 
-        for invalid in ["-1pt", "NaNpt", "infpt", "1e308pt", "327.68pt", "autopt"] {
+        for invalid in ["-1pt", "NaNpt", "infpt", "1e308pt", "autopt"] {
             let html = format!(
                 r#"<table data-rhwp-geometry="exact" data-rhwp-table-padding="1,2,3,9999999" data-rhwp-cell-spacing="9999999" style="padding:{invalid};border-spacing:{invalid}"><tr><td data-rhwp-cell-padding="1,2,3,9999999" data-rhwp-inner-margin="1" style="padding:{invalid}">칸</td></tr></table>"#
             );
@@ -1972,6 +1972,31 @@ mod html_table_geometry_tests {
                 "{invalid}"
             );
             assert!(!table.cells[0].apply_inner_margin, "{invalid}");
+        }
+        for large in ["327.68pt", "500px"] {
+            assert_eq!(html_margin_hu(large), Some(i16::MAX));
+            for target in ["table", "td"] {
+                let html = format!(
+                    r#"<table style="width:200px;{}"><tr><td style="{}"><table><tr><td>안쪽</td></tr></table></td></tr></table>"#,
+                    if target == "table" {
+                        format!("padding:{large}")
+                    } else {
+                        String::new()
+                    },
+                    if target == "td" {
+                        format!("padding:{large}")
+                    } else {
+                        String::new()
+                    },
+                );
+                let error = blank()
+                    .parse_table_html(&mut Vec::new(), &html, 42520)
+                    .expect_err("nested table has no room");
+                assert!(
+                    error.to_string().contains("가로 공간이 부족합니다"),
+                    "{target}: {large}: {error}"
+                );
+            }
         }
         let (padding, explicit) =
             html_padding("padding:1pt 2pt 3pt 4pt;padding-right:0pt", [141; 4]);
