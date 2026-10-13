@@ -1087,19 +1087,31 @@ impl DocumentCore {
 
         let start_idx = fr.start_char_idx;
         let count = fr.end_char_idx.saturating_sub(start_idx);
+        let original_positions = para.control_text_positions();
+        let inserted = value.chars().count();
 
         // 기존 텍스트 삭제 (char_shapes, line_segs, range_tags 등 자동 시프트)
         if count > 0 {
             para.delete_text_at(start_idx, count);
         }
 
-        // 새 값 삽입
-        if !value.is_empty() {
-            para.insert_text_at(start_idx, value);
+        // 끝 경계에 넣는 글 앞에 남아 있던 FIELD_END를 개체 슬롯으로 읽지 않는다.
+        let mut control_positions = if value.is_empty() {
+            para.control_text_positions()
+        } else {
+            insert_text_with_control_positions(para, start_idx, value, false)
+        };
+
+        // 값 교체는 END 뒤의 컨트롤을 필드 안으로 끌어오지 않는다. 일반 캐럿 입력과 달리
+        // 끝 슬롯 소속과 원문 위치를 사용하므로 새 번호처럼 폭 없는 컨트롤도 뒤에 남는다.
+        for (index, position) in original_positions.into_iter().enumerate() {
+            if index > fr.control_idx + fr.inner_slot_count && position >= fr.end_char_idx {
+                control_positions[index] = position.saturating_sub(count) + inserted;
+            }
         }
 
         // field_ranges 갱신: start와 end를 명시적으로 재설정
-        let new_end = start_idx + value.chars().count();
+        let new_end = start_idx + inserted;
         let current_fr = para
             .field_ranges
             .get_mut(field_range_index)
@@ -1121,8 +1133,8 @@ impl DocumentCore {
             }
         }
 
-        // char_offsets 재생성: FIELD_BEGIN/END 갭, 탭 폭, UTF-16 code unit 크기 반영
-        rebuild_char_offsets(para);
+        // FIELD_BEGIN/END만 새 범위로 옮기고 이웃 개체의 자리는 유지한다.
+        rebuild_char_offsets_at_positions(para, &control_positions);
         para.replace_line_segs(Vec::new());
 
         Ok(())
@@ -2754,75 +2766,120 @@ fn raw_slot_gaps(para: &Paragraph) -> Result<Vec<(u32, u32)>, HwpError> {
     Ok(gaps)
 }
 
-/// 문자열을 JSON 이스케이프한다.
-/// 문단의 char_offsets를 컨트롤/필드/텍스트 배치 순서에 맞게 재생성한다.
-///
-/// 원본 char_offsets에서 컨트롤 배치 패턴을 보존하면서,
-/// 텍스트 길이 변경(필드 값 삽입)에 맞게 오프셋을 재계산한다.
-pub(crate) fn rebuild_char_offsets(para: &mut Paragraph) {
-    let text_chars: Vec<char> = para.text.chars().collect();
-    let text_len = text_chars.len();
-
-    // 원본 char_offsets에서 첫 문자 이전 컨트롤 수 추정
-    // (원본 gap / 8 = 컨트롤 수)
-    let ctrls_before_text = if !para.char_offsets.is_empty() {
-        para.char_offsets[0] as usize / 8
-    } else {
-        para.controls.len()
+/// 글을 넣은 뒤에도 삽입 전 FIELD_END의 실제 슬롯을 제외한 개체 자리를 읽는다.
+pub(crate) fn insert_text_with_control_positions(
+    para: &mut Paragraph,
+    char_offset: usize,
+    text: &str,
+    after_inline_control: bool,
+) -> Vec<usize> {
+    if para.field_ranges.is_empty() {
+        para.insert_text_at_caret(char_offset, text, after_inline_control);
+        return Vec::new();
     }
-    .min(para.controls.len());
+    if text.is_empty() {
+        return para.control_text_positions();
+    }
+    let offset = char_offset.min(para.text.chars().count());
+    let inserted = text.chars().count();
+    let ends: Vec<_> = para
+        .field_ranges
+        .iter()
+        .map(|range| {
+            let gap_end = para
+                .char_offsets
+                .get(range.end_char_idx)
+                .copied()
+                .unwrap_or_else(|| para.char_count.saturating_sub(1));
+            (range.end_char_idx, gap_end)
+        })
+        .collect();
+    para.insert_text_at_caret(char_offset, text, after_inline_control);
+    let insert_pos = para.char_offsets[offset];
+    para.control_text_positions_with_field_end_count(|index| {
+        ends.iter()
+            .filter(|&&(end, gap_end)| {
+                // 원시 삽입점이 END 갭 앞이면 슬롯도 새 글 뒤로 밀린다.
+                // 갭 뒤 입력은 FIELD_END를 그대로 두므로 새 범위로 갭을 읽지 않는다.
+                let moved = end
+                    + if end > offset || (end == offset && insert_pos < gap_end) {
+                        inserted
+                    } else {
+                        0
+                    };
+                moved == index
+            })
+            .count()
+    })
+}
 
-    // FIELD_BEGIN: 이미 char_offsets의 첫 갭에 포함된 선행 컨트롤은 보존하고,
-    // 새로 삽입된 시작 위치 필드는 첫 문자 앞에도 갭을 추가해야 한다.
-    let mut field_begin_at: Vec<usize> = vec![0; text_len + 1];
-    for fr in &para.field_ranges {
-        if fr.control_idx >= ctrls_before_text {
-            let idx = fr.start_char_idx.min(text_len);
-            field_begin_at[idx] += 1;
+/// 필드 범위와 원래 컨트롤 위치로 문단의 원시 슬롯을 다시 만든다.
+pub(crate) fn rebuild_char_offsets(para: &mut Paragraph) {
+    let positions = para.control_text_positions();
+    rebuild_char_offsets_at_positions(para, &positions);
+}
+
+/// 경계 입력의 필드 소속을 고치기 전에 확보한 개체 위치를 함께 보존한다.
+///
+/// FIELD_END는 컨트롤이 아니므로 바뀐 필드 범위로 원래 갭을 읽으면 뒤 개체의
+/// 자리를 가로챌 수 있다. 호출부가 범위 보정 전 위치를 넘기고 필드 슬롯만 다시 놓는다.
+pub(crate) fn rebuild_char_offsets_at_positions(para: &mut Paragraph, positions: &[usize]) {
+    let chars: Vec<char> = para.text.chars().collect();
+    let text_len = chars.len();
+    let mut slots = vec![0u32; text_len + 1];
+    let mut number_placeholders = vec![false; text_len];
+    for (control_idx, position) in positions.iter().enumerate() {
+        if !para
+            .field_ranges
+            .iter()
+            .any(|range| range.control_idx == control_idx)
+        {
+            let position = (*position).min(text_len);
+            let number = matches!(
+                para.controls.get(control_idx),
+                Some(Control::AutoNumber(_) | Control::NewNumber(_))
+            );
+            let raw_width = para.char_offsets.get(position).map(|&start| {
+                para.char_offsets
+                    .get(position + 1)
+                    .copied()
+                    .unwrap_or_else(|| para.char_count.saturating_sub(1))
+                    .saturating_sub(start)
+            });
+            // HWP 번호 공백은 그 자체가 슬롯이고, HWPX 새 번호는 별도 갭이다.
+            if number
+                && chars.get(position) == Some(&' ')
+                && raw_width.is_some_and(|width| width >= 8 && width.is_multiple_of(8))
+            {
+                number_placeholders[position] = true;
+            } else {
+                slots[position] += 1;
+            }
         }
     }
-
-    // FIELD_END 수: field_ranges에서 end가 텍스트 범위 내인 것
-    let mut field_end_at: Vec<usize> = vec![0; text_len + 1];
-    for fr in &para.field_ranges {
-        let idx = fr.end_char_idx.min(text_len);
-        field_end_at[idx] += 1;
+    for range in &para.field_ranges {
+        slots[range.start_char_idx.min(text_len)] += 1;
+        slots[range.end_char_idx.min(text_len)] += 1;
     }
-
-    if text_len == 0 {
-        para.char_offsets = Vec::new();
-        para.char_count =
-            ((ctrls_before_text + field_begin_at[0] + field_end_at[0]) * 8 + 1) as u32;
-        return;
+    for end in &para.orphan_field_ends {
+        slots[end.char_idx.min(text_len)] += 1;
     }
-
-    let mut offset: u32 = ctrls_before_text as u32 * 8;
-    let mut new_offsets = Vec::with_capacity(text_len);
-
-    for (i, ch) in text_chars.iter().enumerate() {
-        // 이 문자 앞에 FIELD_BEGIN 컨트롤 갭 삽입
-        offset += field_begin_at[i] as u32 * 8;
-        // 이 문자 앞에 FIELD_END 마커 갭 삽입
-        offset += field_end_at[i] as u32 * 8;
-
-        new_offsets.push(offset);
-
-        let char_size = match *ch {
-            '\t' => 8,
-            '\n' | '\u{00A0}' => 1,
-            c => {
-                let mut buf = [0u16; 2];
-                c.encode_utf16(&mut buf).len() as u32
-            }
+    for mark in &para.title_marks {
+        slots[mark.char_idx.min(text_len)] += 1;
+    }
+    let mut offset = 0;
+    let mut offsets = Vec::with_capacity(text_len);
+    for (index, ch) in chars.into_iter().enumerate() {
+        offset += slots[index] * 8;
+        offsets.push(offset);
+        offset += if number_placeholders[index] {
+            8
+        } else {
+            Paragraph::char_stream_len(ch)
         };
-        offset += char_size;
     }
-
-    // 텍스트 뒤에 위치한 빈 필드/필드 끝 마커와 문단 끝 마커를 char_count에 반영한다.
-    offset += field_begin_at[text_len] as u32 * 8;
-    offset += field_end_at[text_len] as u32 * 8;
-    para.char_count = offset + 1;
-    para.char_offsets = new_offsets;
+    para.char_count = offset + slots[text_len] * 8 + 1;
+    para.char_offsets = offsets;
 }
 
 pub(crate) fn json_escape(s: &str) -> String {
