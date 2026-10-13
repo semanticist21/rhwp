@@ -1499,7 +1499,7 @@ impl DocumentCore {
         html.push_str(&self.control_to_html(control, 0));
         html.push_str("<!--EndFragment-->\n</body></html>");
         // 실제 HTML에 포함한 개체만 검사한다. 누락·상한 초과 그림은 기존대로 생략한다.
-        crate::document_core::html_table_import::validate_floating_common_html(&html)?;
+        crate::document_core::html_table_import::validate_html_common(&html)?;
         Ok(html)
     }
 
@@ -1758,31 +1758,21 @@ impl DocumentCore {
     /// 처리할 때는 `depth + 1`을 넘겨, 그 컨트롤이 표이면 `control_to_html`이
     /// 상한을 검사한 뒤 그 값으로 재귀한다.
     fn table_to_html_at_depth(&self, table: &crate::model::table::Table, depth: usize) -> String {
-        let floating = !table.common.treat_as_char;
-        let geometry = if floating {
-            format!(
-                "width:{}.{:02}pt;height:{}.{:02}pt;",
-                table.common.width / 100,
-                table.common.width % 100,
-                table.common.height / 100,
-                table.common.height % 100
-            )
-        } else {
-            String::new()
-        };
-        let metadata =
-            crate::document_core::html_table_import::floating_common_html_attr(&table.common);
-        let outer = if floating {
-            format!(
-                " data-rhwp-geometry=\"exact\" data-rhwp-outer-margin=\"{},{},{},{}\"",
-                table.outer_margin_left,
-                table.outer_margin_right,
-                table.outer_margin_top,
-                table.outer_margin_bottom
-            )
-        } else {
-            String::new()
-        };
+        let geometry = format!(
+            "width:{}.{:02}pt;height:{}.{:02}pt;",
+            table.common.width / 100,
+            table.common.width % 100,
+            table.common.height / 100,
+            table.common.height % 100
+        );
+        let metadata = crate::document_core::html_table_import::common_html_attr(&table.common);
+        let outer = format!(
+            " data-rhwp-geometry=\"exact\" data-rhwp-outer-margin=\"{},{},{},{}\"",
+            table.outer_margin_left,
+            table.outer_margin_right,
+            table.outer_margin_top,
+            table.outer_margin_bottom
+        );
         let mut html = format!(
             "<table style=\"border-collapse:{};border-spacing:{:.2}pt;padding:{:.2}pt {:.2}pt {:.2}pt {:.2}pt;{geometry}\"{metadata}{outer} data-rhwp-cell-spacing=\"{}\" data-rhwp-table-padding=\"{},{},{},{}\" cellpadding=\"0\" cellspacing=\"0\">\n",
             if table.cell_spacing > 0 { "separate" } else { "collapse" },
@@ -1862,15 +1852,13 @@ impl DocumentCore {
                     crate::model::table::VerticalAlign::Center => "vertical-align:middle;",
                     crate::model::table::VerticalAlign::Bottom => "vertical-align:bottom;",
                 });
-                if floating {
-                    td_style.push_str(&format!(
-                        "width:{}.{:02}pt;height:{}.{:02}pt;",
-                        cell.width / 100,
-                        cell.width % 100,
-                        cell.height / 100,
-                        cell.height % 100
-                    ));
-                }
+                td_style.push_str(&format!(
+                    "width:{}.{:02}pt;height:{}.{:02}pt;",
+                    cell.width / 100,
+                    cell.width % 100,
+                    cell.height / 100,
+                    cell.height % 100
+                ));
 
                 let mut td_attrs = format!(
                     "style=\"{}\" data-rhwp-cell-padding=\"{},{},{},{}\" data-rhwp-inner-margin=\"{}\"{}",
@@ -2051,7 +2039,7 @@ impl DocumentCore {
                 "<img src=\"data:{};base64,{}\"{} width=\"{:.0}\" height=\"{:.0}\" />\n",
                 mime_type,
                 base64_data,
-                crate::document_core::html_table_import::floating_common_html_attr(&pic.common),
+                crate::document_core::html_table_import::common_html_attr(&pic.common),
                 w,
                 h
             )

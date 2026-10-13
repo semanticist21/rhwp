@@ -142,25 +142,6 @@ fn begins_with_inline_paragraph(html: &str) -> bool {
             .is_some_and(|inner| inline_paragraph_runs(inner).is_some())
 }
 
-fn floating_control_count(paragraphs: &[Paragraph]) -> usize {
-    paragraphs
-        .iter()
-        .flat_map(|para| &para.controls)
-        .map(|control| match control {
-            Control::Picture(picture) => usize::from(!picture.common.treat_as_char),
-            Control::Table(table) => {
-                usize::from(!table.common.treat_as_char)
-                    + table
-                        .cells
-                        .iter()
-                        .map(|cell| floating_control_count(&cell.paragraphs))
-                        .sum::<usize>()
-            }
-            _ => 0,
-        })
-        .sum()
-}
-
 impl DocumentCore {
     pub fn paste_html_native(
         &mut self,
@@ -488,6 +469,12 @@ impl DocumentCore {
 
     /// 셀에 붙일 문단. 셀에는 개체를 넣지 않으므로 파싱하며 등록한 그림 데이터도 되돌린다.
     fn parse_html_to_cell_paragraphs(&mut self, html: &str) -> Result<Vec<Paragraph>, HwpError> {
+        // 원문 배치를 보존해야 하는 개체를 글만 남긴 부분 성공으로 처리하지 않는다.
+        if crate::document_core::html_table_import::validate_html_common(html_fragment(html))? > 0 {
+            return Err(HwpError::RenderError(
+                "개체가 있는 HTML은 아직 셀 안에 붙일 수 없습니다".into(),
+            ));
+        }
         let bin_content_len = self.document.bin_data_content.len();
         let bin_list_len = self.document.doc_info.bin_data_list.len();
         let parsed_paras = self.parse_html_to_paragraphs(html, 42520);
@@ -675,21 +662,37 @@ impl DocumentCore {
         html: &str,
         width: u32,
     ) -> Result<Vec<Paragraph>, HwpError> {
-        let floating = crate::document_core::html_table_import::validate_floating_common_html(
-            html_fragment(html),
-        )?;
+        let metadata_count =
+            crate::document_core::html_table_import::validate_html_common(html_fragment(html))?;
         let doc_info = self.document.doc_info.clone();
         let bin_count = self.document.bin_data_content.len();
         let result = self
             .parse_html_to_paragraphs_at_depth(html, 0, width)
             .and_then(|mut paragraphs| {
-                if floating > 0 {
-                    // 원문 개체를 버린 부분 성공은 허용하지 않는다.
-                    if floating_control_count(&paragraphs) != floating {
-                        return Err(HwpError::RenderError(
-                            "떠 있는 개체를 모두 붙이지 못했습니다".into(),
-                        ));
+                let mut parsed_count = 0;
+                crate::model::identity::walk::walk(&mut paragraphs, |node| {
+                    if let crate::model::identity::walk::Node::Control(control) = node {
+                        let (common, kind) = match control {
+                            Control::Table(table) => (&mut table.common, 0x7462_6c20),
+                            Control::Picture(picture) => (&mut picture.common, 0x6773_6f20),
+                            _ => return Ok(()),
+                        };
+                        if common.ctrl_id
+                            == crate::document_core::html_table_import::HTML_COMMON_CTRL_MARKER
+                        {
+                            common.ctrl_id = kind;
+                            parsed_count += 1;
+                        }
                     }
+                    Ok(())
+                })?;
+                // 표시 없는 외부 개체와 구분해 원문 개체의 누락·중복을 확인한다.
+                if parsed_count != metadata_count {
+                    return Err(HwpError::RenderError(
+                        "개체를 모두 붙이지 못했습니다".into(),
+                    ));
+                }
+                if metadata_count > 0 {
                     super::clone_identity::reidentify_clipboard(&self.document, &mut paragraphs)?;
                 }
                 Ok(paragraphs)
@@ -731,7 +734,7 @@ impl DocumentCore {
         {
             if html_fragment(html)
                 .to_ascii_lowercase()
-                .contains("data-rhwp-common-v1")
+                .contains("data-rhwp-common-")
             {
                 return Err(HwpError::RenderError(
                     "개체를 보존하기에는 HTML 조각이 너무 큽니다".into(),
