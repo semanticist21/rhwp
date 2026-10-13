@@ -27,7 +27,8 @@ pub(crate) mod common_obj_offsets {
 }
 
 /// 개체 공통 속성 (모든 개체에 공통)
-#[derive(Debug, Clone, Default, serde::Serialize)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct CommonObjAttr {
     /// 컨트롤 ID
     pub ctrl_id: u32,
@@ -112,7 +113,7 @@ pub struct CommonObjAttr {
 }
 
 /// HWPX 개체 `numberingType` (캡션 번호 범주)
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum ObjectNumberingType {
     #[default]
     None,
@@ -122,7 +123,7 @@ pub enum ObjectNumberingType {
 }
 
 /// HWPX 개체 `dropcapstyle` (드롭캡 표시 방식). OWPML Core 스키마 `DropCapStyleType`.
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum DropCapStyle {
     #[default]
     None,
@@ -132,7 +133,7 @@ pub enum DropCapStyle {
 }
 
 /// 세로 위치 기준
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum VertRelTo {
     #[default]
     Paper,
@@ -141,7 +142,7 @@ pub enum VertRelTo {
 }
 
 /// 세로 정렬 방식
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum VertAlign {
     #[default]
     Top,
@@ -152,7 +153,7 @@ pub enum VertAlign {
 }
 
 /// 가로 위치 기준
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum HorzRelTo {
     #[default]
     Paper,
@@ -162,7 +163,7 @@ pub enum HorzRelTo {
 }
 
 /// 가로 정렬 방식
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum HorzAlign {
     #[default]
     Left,
@@ -173,7 +174,7 @@ pub enum HorzAlign {
 }
 
 /// 크기 기준 (너비/높이)
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum SizeCriterion {
     /// 종이 기준 (퍼센트)
     Paper,
@@ -189,7 +190,7 @@ pub enum SizeCriterion {
 }
 
 /// 텍스트 흐름 방식 (개체 배치 — attr bit 21-23)
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TextWrap {
     #[default]
     Square,
@@ -203,7 +204,7 @@ pub enum TextWrap {
 /// 텍스트가 흐르는 방향 (attr bit 24-25)
 ///
 /// HWPX `textFlow` 속성값과 대응한다.
-#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Default, PartialEq, serde::Serialize, serde::Deserialize)]
 pub enum TextFlow {
     #[default]
     BothSides,
