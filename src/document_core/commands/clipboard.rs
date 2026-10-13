@@ -1519,7 +1519,19 @@ impl DocumentCore {
         let para_css = self.para_style_to_css(para.para_shape_id);
         let mut html = format!("<p style=\"margin:0;{}\">", para_css);
 
-        // CharShapeRef 경계에서 스타일이 바뀌는 지점을 찾아 span 분할
+        self.append_paragraph_text_html(&mut html, para, &chars, start_idx, end_idx);
+        html.push_str("</p>\n");
+        html
+    }
+
+    fn append_paragraph_text_html(
+        &self,
+        html: &mut String,
+        para: &Paragraph,
+        chars: &[char],
+        start_idx: usize,
+        end_idx: usize,
+    ) {
         let style_ranges = self.get_char_style_ranges(para, start_idx, end_idx);
 
         for (range_start, range_end, char_shape_id) in &style_ranges {
@@ -1540,9 +1552,6 @@ impl DocumentCore {
                 clipboard_escape_html(&segment).replace('\n', "<br>")
             ));
         }
-
-        html.push_str("</p>\n");
-        html
     }
 
     /// 문단 내 char 인덱스 범위에서 CharShapeRef 경계를 기준으로 (start, end, char_shape_id) 목록을 반환한다.
@@ -1843,7 +1852,7 @@ impl DocumentCore {
                 // 표·그림 등)도 함께 내보낸다 [#4413]. 이 표 자체는 depth이므로
                 // 그 셀 문단의 컨트롤은 depth+1에서 검사한다.
                 for cpara in &cell.paragraphs {
-                    html.push_str(&self.cell_paragraph_to_html(cpara, None, None, depth + 1));
+                    html.push_str(&self.table_cell_paragraph_to_html(cpara, depth + 1));
                 }
 
                 html.push_str("</td>\n");
@@ -1852,6 +1861,32 @@ impl DocumentCore {
         }
 
         html.push_str("</table>\n");
+        html
+    }
+
+    // 전체 표에서는 빈 문단과 인라인 그림 앞뒤의 글을 한 문단에 담는다.
+    fn table_cell_paragraph_to_html(&self, para: &Paragraph, depth: usize) -> String {
+        if para.controls.iter().any(
+            |control| !matches!(control, Control::Picture(picture) if picture.common.treat_as_char),
+        ) {
+            return self.cell_paragraph_to_html(para, None, None, depth);
+        }
+
+        let chars: Vec<_> = para.text.chars().collect();
+        let mut html = format!(
+            "<p style=\"margin:0;{}\">",
+            self.para_style_to_css(para.para_shape_id)
+        );
+        let positions = para.control_text_positions();
+        let mut cursor = 0;
+        for (control, position) in para.controls.iter().zip(positions) {
+            let position = position.clamp(cursor, chars.len());
+            self.append_paragraph_text_html(&mut html, para, &chars, cursor, position);
+            html.push_str(self.control_to_html(control, depth).trim_end());
+            cursor = position;
+        }
+        self.append_paragraph_text_html(&mut html, para, &chars, cursor, chars.len());
+        html.push_str("</p>\n");
         html
     }
 
