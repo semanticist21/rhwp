@@ -3,7 +3,9 @@
 use super::super::helpers::{
     get_textbox_from_shape, logical_paragraph_length, logical_to_text_offset,
 };
-use super::super::queries::field_query::rebuild_char_offsets;
+use super::super::queries::field_query::{
+    insert_text_with_control_positions, rebuild_char_offsets, rebuild_char_offsets_at_positions,
+};
 use super::super::queries::rendering::FocusedPageTreePatch;
 use super::clipboard::text_to_split_logical_offset;
 use super::formatting::restore_para_meta;
@@ -1462,11 +1464,12 @@ impl DocumentCore {
                 char_offset,
             );
             let para = &mut self.document.sections[section_idx].paragraphs[para_idx];
-            para.insert_text_at(char_offset, text);
+            let control_positions =
+                insert_text_with_control_positions(para, char_offset, text, false);
             keep_inactive_field_start_outside(para, &before_insertions, new_chars_count);
             keep_inactive_field_end_outside(para, &outside_insertions, new_chars_count);
             if has_clickhere_field_range(para) {
-                rebuild_char_offsets(para);
+                rebuild_char_offsets_at_positions(para, &control_positions);
             }
         }
 
@@ -1669,11 +1672,12 @@ impl DocumentCore {
             char_offset,
         );
         let apply_insert = |para: &mut Paragraph| {
-            para.insert_text_at_caret(char_offset, text, after_inline_control);
+            let control_positions =
+                insert_text_with_control_positions(para, char_offset, text, after_inline_control);
             keep_inactive_field_start_outside(para, &before_insertions, new_chars_count);
             keep_inactive_field_end_outside(para, &outside_insertions, new_chars_count);
             if has_clickhere_field_range(para) {
-                rebuild_char_offsets(para);
+                rebuild_char_offsets_at_positions(para, &control_positions);
             }
         };
         let picture_band_applied =
@@ -2112,11 +2116,12 @@ impl DocumentCore {
             char_offset,
         );
         if new_chars_count > 0 {
-            cell_para.insert_text_at(char_offset, text);
+            let control_positions =
+                insert_text_with_control_positions(cell_para, char_offset, text, false);
             keep_inactive_field_start_outside(cell_para, &before_insertions, new_chars_count);
             keep_inactive_field_end_outside(cell_para, &outside_insertions, new_chars_count);
             if has_clickhere_field_range(cell_para) {
-                rebuild_char_offsets(cell_para);
+                rebuild_char_offsets_at_positions(cell_para, &control_positions);
             }
         }
         debug_assert_eq!(deleted_count, delete_count);
@@ -6155,11 +6160,12 @@ impl DocumentCore {
             Some(path),
             char_offset,
         );
-        cell_para.insert_text_at(char_offset, text);
+        let control_positions =
+            insert_text_with_control_positions(cell_para, char_offset, text, false);
         keep_inactive_field_start_outside(cell_para, &before_insertions, new_chars_count);
         keep_inactive_field_end_outside(cell_para, &outside_insertions, new_chars_count);
         if has_clickhere_field_range(cell_para) {
-            rebuild_char_offsets(cell_para);
+            rebuild_char_offsets_at_positions(cell_para, &control_positions);
         }
 
         let inner_cell_para_idx = path.last().map(|entry| entry.2).unwrap_or(0);
