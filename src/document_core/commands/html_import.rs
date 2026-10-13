@@ -126,7 +126,10 @@ fn begins_with_inline_paragraph(html: &str) -> bool {
     };
     let tag = &content[..=end];
     if !tag.to_lowercase().starts_with("<div")
-        || extract_html_attr(tag, "data-rhwp-paragraph").as_deref() != Some("inline")
+        || !matches!(
+            extract_html_attr(tag, "data-rhwp-paragraph").as_deref(),
+            Some("inline" | "objects")
+        )
     {
         return false;
     }
@@ -137,6 +140,25 @@ fn begins_with_inline_paragraph(html: &str) -> bool {
             .checked_sub(6)
             .and_then(|close| div.get(end + 1..close))
             .is_some_and(|inner| inline_paragraph_runs(inner).is_some())
+}
+
+fn floating_control_count(paragraphs: &[Paragraph]) -> usize {
+    paragraphs
+        .iter()
+        .flat_map(|para| &para.controls)
+        .map(|control| match control {
+            Control::Picture(picture) => usize::from(!picture.common.treat_as_char),
+            Control::Table(table) => {
+                usize::from(!table.common.treat_as_char)
+                    + table
+                        .cells
+                        .iter()
+                        .map(|cell| floating_control_count(&cell.paragraphs))
+                        .sum::<usize>()
+            }
+            _ => 0,
+        })
+        .sum()
 }
 
 impl DocumentCore {
@@ -653,12 +675,29 @@ impl DocumentCore {
         html: &str,
         width: u32,
     ) -> Result<Vec<Paragraph>, HwpError> {
+        let floating = crate::document_core::html_table_import::validate_floating_common_html(
+            html_fragment(html),
+        )?;
         let doc_info = self.document.doc_info.clone();
         let bin_count = self.document.bin_data_content.len();
-        let result = self.parse_html_to_paragraphs_at_depth(html, 0, width);
+        let result = self
+            .parse_html_to_paragraphs_at_depth(html, 0, width)
+            .and_then(|mut paragraphs| {
+                if floating > 0 {
+                    // 원문 개체를 버린 부분 성공은 허용하지 않는다.
+                    if floating_control_count(&paragraphs) != floating {
+                        return Err(HwpError::RenderError(
+                            "떠 있는 개체를 모두 붙이지 못했습니다".into(),
+                        ));
+                    }
+                    super::clone_identity::reidentify_clipboard(&self.document, &mut paragraphs)?;
+                }
+                Ok(paragraphs)
+            });
         if result.is_err() {
             self.document.doc_info = doc_info;
             self.document.bin_data_content.truncate(bin_count);
+            self.rebuild_resolved_styles();
         }
         result
     }
@@ -690,6 +729,14 @@ impl DocumentCore {
         if depth >= Self::HTML_PASTE_MAX_RECURSION_DEPTH
             || Self::html_markup_len(html) > Self::HTML_PASTE_MAX_BYTES
         {
+            if html_fragment(html)
+                .to_ascii_lowercase()
+                .contains("data-rhwp-common-v1")
+            {
+                return Err(HwpError::RenderError(
+                    "개체를 보존하기에는 HTML 조각이 너무 큽니다".into(),
+                ));
+            }
             let mut fallback_paragraphs = Vec::new();
             self.flush_text_to_paragraphs(&mut fallback_paragraphs, &html_strip_tags(html));
             return Ok(fallback_paragraphs);
@@ -796,9 +843,10 @@ impl DocumentCore {
                         &div_inner
                     };
 
-                    if extract_html_attr(&tag_str, "data-rhwp-paragraph").as_deref()
-                        == Some("inline")
-                        && div_closed
+                    if matches!(
+                        extract_html_attr(&tag_str, "data-rhwp-paragraph").as_deref(),
+                        Some("inline" | "objects")
+                    ) && div_closed
                     {
                         if let Some(runs) = inline_paragraph_runs(div_inner) {
                             let css = parse_inline_style(&tag_str);

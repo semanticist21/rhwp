@@ -1498,6 +1498,8 @@ impl DocumentCore {
         // export 루트로 취급한다 — depth 0부터 MAX_NEST_DEPTH 예산을 새로 받는다.
         html.push_str(&self.control_to_html(control, 0));
         html.push_str("<!--EndFragment-->\n</body></html>");
+        // 실제 HTML에 포함한 개체만 검사한다. 누락·상한 초과 그림은 기존대로 생략한다.
+        crate::document_core::html_table_import::validate_floating_common_html(&html)?;
         Ok(html)
     }
 
@@ -1756,8 +1758,33 @@ impl DocumentCore {
     /// 처리할 때는 `depth + 1`을 넘겨, 그 컨트롤이 표이면 `control_to_html`이
     /// 상한을 검사한 뒤 그 값으로 재귀한다.
     fn table_to_html_at_depth(&self, table: &crate::model::table::Table, depth: usize) -> String {
+        let floating = !table.common.treat_as_char;
+        let geometry = if floating {
+            format!(
+                "width:{}.{:02}pt;height:{}.{:02}pt;",
+                table.common.width / 100,
+                table.common.width % 100,
+                table.common.height / 100,
+                table.common.height % 100
+            )
+        } else {
+            String::new()
+        };
+        let metadata =
+            crate::document_core::html_table_import::floating_common_html_attr(&table.common);
+        let outer = if floating {
+            format!(
+                " data-rhwp-geometry=\"exact\" data-rhwp-outer-margin=\"{},{},{},{}\"",
+                table.outer_margin_left,
+                table.outer_margin_right,
+                table.outer_margin_top,
+                table.outer_margin_bottom
+            )
+        } else {
+            String::new()
+        };
         let mut html = format!(
-            "<table style=\"border-collapse:{};border-spacing:{:.2}pt;padding:{:.2}pt {:.2}pt {:.2}pt {:.2}pt;\" data-rhwp-cell-spacing=\"{}\" data-rhwp-table-padding=\"{},{},{},{}\" cellpadding=\"0\" cellspacing=\"0\">\n",
+            "<table style=\"border-collapse:{};border-spacing:{:.2}pt;padding:{:.2}pt {:.2}pt {:.2}pt {:.2}pt;{geometry}\"{metadata}{outer} data-rhwp-cell-spacing=\"{}\" data-rhwp-table-padding=\"{},{},{},{}\" cellpadding=\"0\" cellspacing=\"0\">\n",
             if table.cell_spacing > 0 { "separate" } else { "collapse" },
             f64::from(table.cell_spacing.max(0)) / 100.0,
             f64::from(table.padding.top.max(0)) / 100.0,
@@ -1835,6 +1862,15 @@ impl DocumentCore {
                     crate::model::table::VerticalAlign::Center => "vertical-align:middle;",
                     crate::model::table::VerticalAlign::Bottom => "vertical-align:bottom;",
                 });
+                if floating {
+                    td_style.push_str(&format!(
+                        "width:{}.{:02}pt;height:{}.{:02}pt;",
+                        cell.width / 100,
+                        cell.width % 100,
+                        cell.height / 100,
+                        cell.height % 100
+                    ));
+                }
 
                 let mut td_attrs = format!(
                     "style=\"{}\" data-rhwp-cell-padding=\"{},{},{},{}\" data-rhwp-inner-margin=\"{}\"{}",
@@ -1868,21 +1904,28 @@ impl DocumentCore {
 
     // 전체 표에서는 빈 문단과 인라인 개체 앞뒤의 글을 한 문단에 담는다.
     fn table_cell_paragraph_to_html(&self, para: &Paragraph, depth: usize) -> String {
-        if para.controls.iter().any(|control| match control {
-            Control::Picture(picture) => !picture.common.treat_as_char,
-            Control::Table(table) => !table.common.treat_as_char,
-            _ => true,
-        }) {
+        if para
+            .controls
+            .iter()
+            .any(|control| !matches!(control, Control::Picture(_) | Control::Table(_)))
+        {
             return self.cell_paragraph_to_html(para, None, None, depth);
         }
 
         let chars: Vec<_> = para.text.chars().collect();
         // p에는 table을 넣을 수 없다. 브라우저가 문단을 갈라 놓지 않는 div로 표시한다.
-        let inline_table = para
+        let has_table = para
             .controls
             .iter()
             .any(|control| matches!(control, Control::Table(_)));
-        let (tag, marker) = if inline_table {
+        let floating = para.controls.iter().any(|control| match control {
+            Control::Picture(picture) => !picture.common.treat_as_char,
+            Control::Table(table) => !table.common.treat_as_char,
+            _ => false,
+        });
+        let (tag, marker) = if floating {
+            ("div", " data-rhwp-paragraph=\"objects\"")
+        } else if has_table {
             ("div", " data-rhwp-paragraph=\"inline\"")
         } else {
             ("p", "")
@@ -1897,7 +1940,7 @@ impl DocumentCore {
             let position = position.clamp(cursor, chars.len());
             self.append_paragraph_text_html(&mut html, para, &chars, cursor, position);
             let fragment = self.control_to_html(control, depth);
-            if matches!(control, Control::Table(_)) {
+            if matches!(control, Control::Table(table) if table.common.treat_as_char) {
                 html.push_str(
                     fragment
                         .replacen("<table style=\"", "<table style=\"display:inline-table;", 1)
@@ -2005,8 +2048,12 @@ impl DocumentCore {
             let h = crate::renderer::hwpunit_to_px(pic.common.height as i32, self.dpi);
 
             format!(
-                "<img src=\"data:{};base64,{}\" width=\"{:.0}\" height=\"{:.0}\" />\n",
-                mime_type, base64_data, w, h
+                "<img src=\"data:{};base64,{}\"{} width=\"{:.0}\" height=\"{:.0}\" />\n",
+                mime_type,
+                base64_data,
+                crate::document_core::html_table_import::floating_common_html_attr(&pic.common),
+                w,
+                h
             )
         } else {
             String::new()
