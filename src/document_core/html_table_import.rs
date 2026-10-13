@@ -185,6 +185,17 @@ impl DocumentCore {
         table_html: &str,
         width: u32,
     ) -> Result<(), crate::error::HwpError> {
+        self.parse_table_html_at_depth(paragraphs, table_html, width, 0, None)
+    }
+
+    pub(crate) fn parse_table_html_at_depth(
+        &mut self,
+        paragraphs: &mut Vec<Paragraph>,
+        table_html: &str,
+        width: u32,
+        depth: u32,
+        parent_para_shape_id: Option<u16>,
+    ) -> Result<(), crate::error::HwpError> {
         use crate::model::control::Control;
         use crate::model::table::{Cell, Table, TablePageBreak};
 
@@ -425,8 +436,9 @@ impl DocumentCore {
             return Err(invalid_grid());
         }
 
-        // 표 문단은 기본 문단 모양(0)을 쓴다. 그 여백만큼 표 폭을 줄인다.
-        let table_para_shape_id = 0u16;
+        // 표 문단은 바깥 문단 모양이 있으면 그것을, 없으면 기본 문단 모양(0)을 쓴다.
+        // 그 여백만큼 표 폭을 줄인다.
+        let table_para_shape_id = parent_para_shape_id.unwrap_or(0);
 
         // --- 3. 셀 크기 계산 ---
         let outer_margin: i16 = 283;
@@ -670,8 +682,9 @@ impl DocumentCore {
             let cell_paragraphs = if pc.content_html.trim().is_empty() {
                 vec![Paragraph::new_empty()]
             } else {
-                let parsed = self.parse_html_to_paragraphs(
+                let parsed = self.parse_html_to_paragraphs_at_depth(
                     &pc.content_html,
+                    depth + 1,
                     cell_width.saturating_sub(horizontal_padding),
                 )?;
                 if parsed.is_empty() {
@@ -976,7 +989,7 @@ impl DocumentCore {
             // 표 문단은 style 없는 붙인 문단처럼 기본 문단 모양(0)을 쓴다. 다른 문단의 모양을
             // 빌리면(빈 문서의 1번은 왼쪽 여백 15pt 인 "본문") HTML 에 없는 여백만큼 표가 밀려
             // 본문 오른쪽 끝을 넘는다.
-            para_shape_id: 0,
+            para_shape_id: table_para_shape_id,
             style_id: 0,
             controls: vec![Control::Table(Box::new(table))],
             ctrl_data_records: vec![None],
@@ -1379,7 +1392,7 @@ pub(crate) fn html_img_src(img_tag: &str) -> Option<&str> {
 
 /// 태그에서 속성 문자열을 그대로 뽑는다(따옴표 양쪽 지원).
 pub(crate) fn extract_html_attr(tag: &str, attr: &str) -> Option<String> {
-    let lower = tag.to_lowercase();
+    let lower = tag.to_ascii_lowercase();
     for quote in ['"', '\''] {
         let needle = format!("{}={}", attr, quote);
         if let Some(start) = lower.find(&needle) {
