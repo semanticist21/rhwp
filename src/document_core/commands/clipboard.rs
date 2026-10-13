@@ -1542,7 +1542,9 @@ impl DocumentCore {
         let chars: Vec<char> = para.text.chars().collect();
         let start_idx = start_offset.unwrap_or(0).min(chars.len());
         let end_idx = end_offset.unwrap_or(chars.len()).min(chars.len());
-        if start_idx >= end_idx {
+        if start_idx > end_idx
+            || (start_idx == end_idx && (start_offset.is_none() || end_offset.is_none()))
+        {
             return String::new();
         }
 
@@ -1895,17 +1897,29 @@ impl DocumentCore {
         html
     }
 
-    // 전체 표에서는 빈 문단과 인라인 그림 앞뒤의 글을 한 문단에 담는다.
+    // 전체 표에서는 빈 문단과 인라인 개체 앞뒤의 글을 한 문단에 담는다.
     fn table_cell_paragraph_to_html(&self, para: &Paragraph, depth: usize) -> String {
-        if para.controls.iter().any(
-            |control| !matches!(control, Control::Picture(picture) if picture.common.treat_as_char),
-        ) {
+        if para.controls.iter().any(|control| match control {
+            Control::Picture(picture) => !picture.common.treat_as_char,
+            Control::Table(table) => !table.common.treat_as_char,
+            _ => true,
+        }) {
             return self.cell_paragraph_to_html(para, None, None, depth);
         }
 
         let chars: Vec<_> = para.text.chars().collect();
+        // p에는 table을 넣을 수 없다. 브라우저가 문단을 갈라 놓지 않는 div로 표시한다.
+        let inline_table = para
+            .controls
+            .iter()
+            .any(|control| matches!(control, Control::Table(_)));
+        let (tag, marker) = if inline_table {
+            ("div", " data-rhwp-paragraph=\"inline\"")
+        } else {
+            ("p", "")
+        };
         let mut html = format!(
-            "<p style=\"margin:0;{}\">",
+            "<{tag}{marker} style=\"margin:0;{}\">",
             self.para_style_to_css(para.para_shape_id)
         );
         let positions = para.control_text_positions();
@@ -1913,11 +1927,20 @@ impl DocumentCore {
         for (control, position) in para.controls.iter().zip(positions) {
             let position = position.clamp(cursor, chars.len());
             self.append_paragraph_text_html(&mut html, para, &chars, cursor, position);
-            html.push_str(self.control_to_html(control, depth).trim_end());
+            let fragment = self.control_to_html(control, depth);
+            if matches!(control, Control::Table(_)) {
+                html.push_str(
+                    fragment
+                        .replacen("<table style=\"", "<table style=\"display:inline-table;", 1)
+                        .trim_end(),
+                );
+            } else {
+                html.push_str(fragment.trim_end());
+            }
             cursor = position;
         }
         self.append_paragraph_text_html(&mut html, para, &chars, cursor, chars.len());
-        html.push_str("</p>\n");
+        html.push_str(&format!("</{tag}>\n"));
         html
     }
 
