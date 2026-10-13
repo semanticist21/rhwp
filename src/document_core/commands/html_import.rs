@@ -144,6 +144,85 @@ fn begins_with_inline_paragraph(html: &str) -> bool {
             .is_some_and(|inner| inline_paragraph_runs(inner).is_some())
 }
 
+/// 글로 바꾸어 버리는 파서 폴백과 누락된 개체를 순수 글로 오인하지 않는다.
+fn is_text_only_html(html: &str) -> bool {
+    if html.len() > DocumentCore::HTML_PASTE_MAX_BYTES
+        || html
+            .split("<!--")
+            .skip(1)
+            .any(|comment| comment.trim_start().starts_with("[data-hwpjson]"))
+        || (html.contains("<!--sudal-clipboard:") && !html.contains("<!--sudal-text-fragment-->"))
+    {
+        return false;
+    }
+    let mut rest = html_fragment(html);
+    let mut open = Vec::<String>::new();
+    while let Some(start) = rest.find('<') {
+        rest = &rest[start..];
+        if let Some(comment) = rest.strip_prefix("<!--") {
+            let Some((_, after)) = comment.split_once("-->") else {
+                return false;
+            };
+            rest = after;
+            continue;
+        }
+        let Some(end) = rest.find('>') else {
+            return false;
+        };
+        let raw = &rest[1..end];
+        if raw.starts_with(char::is_whitespace) || raw.contains('<') {
+            return false;
+        }
+        let (closing, tag) = match raw.strip_prefix('/') {
+            Some(tag) => (true, tag),
+            None => (false, raw),
+        };
+        let name_end = tag
+            .find(|c: char| c.is_whitespace() || c == '/')
+            .unwrap_or(tag.len());
+        let name = tag[..name_end].to_ascii_lowercase();
+        if !matches!(
+            name.as_str(),
+            "p" | "div" | "span" | "b" | "strong" | "i" | "em" | "u" | "br"
+        ) {
+            return false;
+        }
+        // 인라인 서식이나 p 안의 블록은 파서가 글로 합쳐 문단 경계를 잃는다.
+        if !closing
+            && matches!(name.as_str(), "p" | "div")
+            && open.iter().any(|parent| parent != "div")
+        {
+            return false;
+        }
+        let attrs = &tag[name_end..];
+        let mut quote = None;
+        for character in attrs.chars() {
+            match quote {
+                Some(current) if character == current => quote = None,
+                None if matches!(character, '\'' | '"') => quote = Some(character),
+                _ => {}
+            }
+        }
+        if quote.is_some() {
+            return false;
+        }
+        if closing {
+            if !attrs.trim().is_empty() || open.pop().as_deref() != Some(name.as_str()) {
+                return false;
+            }
+        } else if name != "br" {
+            if attrs.trim_end().ends_with('/')
+                || open.len() + 1 >= DocumentCore::HTML_PASTE_MAX_RECURSION_DEPTH as usize
+            {
+                return false;
+            }
+            open.push(name);
+        }
+        rest = &rest[end + 1..];
+    }
+    open.is_empty()
+}
+
 impl DocumentCore {
     /// HTML 을 파싱해 본문 캐럿 자리에 붙인다.
     ///
@@ -155,6 +234,43 @@ impl DocumentCore {
         para_idx: usize,
         char_offset: usize,
         html: &str,
+    ) -> Result<String, HwpError> {
+        self.paste_html_at_caret_native(section_idx, para_idx, char_offset, html, false)
+    }
+
+    /// 한 문단의 순수 HTML 글은 논리 캐럿과 일반 입력의 필드 소속을 따른다.
+    pub fn paste_html_text_logical_native(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        logical_offset: usize,
+        html: &str,
+    ) -> Result<String, HwpError> {
+        let para = self
+            .document
+            .sections
+            .get(section_idx)
+            .and_then(|section| section.paragraphs.get(para_idx))
+            .ok_or_else(|| HwpError::RenderError("붙일 본문 위치를 확인해 주세요".into()))?;
+        if logical_offset > logical_paragraph_length(para) {
+            return Err(HwpError::RenderError(
+                "붙일 캐럿 위치를 확인해 주세요".into(),
+            ));
+        }
+        if !is_text_only_html(html) {
+            return Ok("{\"ok\":false,\"error\":\"not a text HTML fragment\"}".into());
+        }
+        // 붙이기 경로가 논리 캐럿을 글자 위치와 개체 앞뒤로 바꾼다.
+        self.paste_html_at_caret_native(section_idx, para_idx, logical_offset, html, true)
+    }
+
+    fn paste_html_at_caret_native(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        char_offset: usize,
+        html: &str,
+        text_only: bool,
     ) -> Result<String, HwpError> {
         if section_idx >= self.document.sections.len() {
             return Err(HwpError::RenderError(format!(
@@ -181,7 +297,21 @@ impl DocumentCore {
             .map(|area| area.width)
             .fold(f64::INFINITY, f64::min);
         let width = crate::renderer::px_to_hwpunit(width, self.dpi).max(1) as u32;
+        let before = text_only.then(|| {
+            (
+                self.document.doc_info.clone(),
+                self.document.bin_data_content.len(),
+            )
+        });
         let parsed_paras = self.parse_html_to_paragraphs(html, width)?;
+        if let Some((doc_info, bin_count)) = before {
+            if !super::clipboard::is_single_text_fragment(&parsed_paras) {
+                self.document.doc_info = doc_info;
+                self.document.bin_data_content.truncate(bin_count);
+                self.rebuild_resolved_styles();
+                return Ok("{\"ok\":false,\"error\":\"not a single text fragment\"}".into());
+            }
+        }
         if parsed_paras.is_empty() {
             return Ok("{\"ok\":false,\"error\":\"empty html\"}".to_string());
         }
@@ -202,7 +332,17 @@ impl DocumentCore {
 
             let para = &mut self.document.sections[section_idx].paragraphs[para_idx];
             let (text_offset, after_control) = logical_to_text_offset(para, char_offset);
-            let text_offset = para.insert_text_at_caret(text_offset, &clip_text, after_control);
+            let text_offset = text_offset.min(para.text.chars().count());
+            // 필드 경계에서는 활성 필드만 붙인 글을 품는다.
+            super::text_editing::insert_body_text_with_field_affinity(
+                para,
+                self.active_field.as_ref(),
+                section_idx,
+                para_idx,
+                text_offset,
+                after_control,
+                &clip_text,
+            );
 
             self.apply_clipboard_char_shapes(
                 section_idx,

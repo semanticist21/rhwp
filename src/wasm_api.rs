@@ -8826,6 +8826,24 @@ impl HwpDocument {
         .map_err(|error| error.into())
     }
 
+    /// 순수 HTML 글을 본문 논리 캐럿의 누름틀 안팎 소속으로 붙인다.
+    #[wasm_bindgen(js_name = pasteHtmlTextLogical)]
+    pub fn paste_html_text_logical(
+        &mut self,
+        section_idx: u32,
+        para_idx: u32,
+        logical_offset: u32,
+        html: &str,
+    ) -> Result<String, JsValue> {
+        self.paste_html_text_logical_native(
+            section_idx as usize,
+            para_idx as usize,
+            logical_offset as usize,
+            html,
+        )
+        .map_err(|error| error.into())
+    }
+
     /// 내부 클립보드의 내용을 표 셀 내부에 붙여넣는다.
     ///
     /// 반환값: JSON `{"ok":true,"cellParaIdx":<idx>,"charOffset":<offset>}`

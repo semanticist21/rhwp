@@ -346,6 +346,22 @@ fn clip_paragraph_caret_range_for_clipboard(
     suffix
 }
 
+/// 글자 모양만 옮길 수 있는 실제 한 문단 조각인지 확인한다.
+pub(super) fn is_single_text_fragment(paragraphs: &[Paragraph]) -> bool {
+    let [para] = paragraphs else {
+        return false;
+    };
+    !para.text.is_empty()
+        && para.controls.is_empty()
+        && para.field_ranges.is_empty()
+        && para.orphan_field_ends.is_empty()
+        && para.range_tags.is_empty()
+        && para.title_marks.is_empty()
+        && para.markpen_marks.is_empty()
+        && para.ctrl_data_records.iter().all(Option::is_none)
+        && para.tab_extended.iter().all(tab_ext_is_placeholder)
+}
+
 impl DocumentCore {
     pub fn has_internal_clipboard_native(&self) -> bool {
         self.clipboard.is_some()
@@ -353,20 +369,9 @@ impl DocumentCore {
 
     /// 글자 모양만 옮길 수 있는 실제 한 문단 조각인지 읽는다.
     pub fn clipboard_is_single_text_native(&self) -> bool {
-        self.clipboard.as_ref().is_some_and(|clipboard| {
-            let [para] = clipboard.paragraphs.as_slice() else {
-                return false;
-            };
-            !para.text.is_empty()
-                && para.controls.is_empty()
-                && para.field_ranges.is_empty()
-                && para.orphan_field_ends.is_empty()
-                && para.range_tags.is_empty()
-                && para.title_marks.is_empty()
-                && para.markpen_marks.is_empty()
-                && para.ctrl_data_records.iter().all(Option::is_none)
-                && para.tab_extended.iter().all(tab_ext_is_placeholder)
-        })
+        self.clipboard
+            .as_ref()
+            .is_some_and(|clipboard| is_single_text_fragment(&clipboard.paragraphs))
     }
 
     /// 내부 클립보드의 플레인 텍스트를 반환한다.
