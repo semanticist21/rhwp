@@ -692,11 +692,7 @@ impl DocumentCore {
                     &pc.content_html,
                     cell_width.saturating_sub(horizontal_padding),
                 )?;
-                if parsed.is_empty()
-                    || parsed
-                        .iter()
-                        .all(|p| p.text.is_empty() && p.controls.is_empty())
-                {
+                if parsed.is_empty() {
                     vec![Paragraph::new_empty()]
                 } else {
                     parsed
