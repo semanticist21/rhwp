@@ -1473,27 +1473,9 @@ pub(crate) fn parse_css_border_shorthand(val: &str) -> (f64, u32, u8) {
     (width_pt, color, style)
 }
 
-/// CSS border 두께(pt)를 HWP border width 인덱스로 변환한다.
-/// HWP 스펙: width 값이 선 굵기 인덱스 (0: 0.1mm, 1: 0.12mm, 2: 0.15mm, 3: 0.2mm, 4: 0.25mm, 5: 0.3mm, 6: 0.4mm, 7: 0.5mm)
+/// CSS 테두리 두께를 파서·직렬화기와 같은 16단계 굵기로 맞춘다.
 pub(crate) fn css_border_width_to_hwp(pt: f64) -> u8 {
-    let mm = pt * 0.3528; // 1pt ≈ 0.3528mm
-    if mm < 0.11 {
-        0
-    } else if mm < 0.14 {
-        1
-    } else if mm < 0.18 {
-        2
-    } else if mm < 0.23 {
-        3
-    } else if mm < 0.28 {
-        4
-    } else if mm < 0.35 {
-        5
-    } else if mm < 0.45 {
-        6
-    } else {
-        7
-    }
+    crate::model::style::border_width_index(pt * 25.4 / 72.0)
 }
 
 /// BorderLineType을 u8 값으로 변환한다.
