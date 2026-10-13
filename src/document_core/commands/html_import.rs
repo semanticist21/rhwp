@@ -3,6 +3,7 @@
 use super::super::helpers::*;
 
 mod inline_content;
+use crate::document_core::html_table_import::extract_html_attr;
 use crate::document_core::DocumentCore;
 use crate::error::HwpError;
 use crate::model::control::Control;
@@ -41,6 +42,101 @@ fn open_format_tags(run: &str) -> String {
         }
     }
     open.into_iter().map(|(_, tag)| tag).collect()
+}
+
+// 표시한 문단도 블록을 임의로 합치지 않는다. 표 밖에는 닫힌 인라인 요소만 허용한다.
+fn inline_paragraph_runs(html: &str) -> Option<Vec<(bool, String)>> {
+    let chars: Vec<char> = html.chars().collect();
+    let mut runs = Vec::new();
+    let mut formats: Vec<String> = Vec::new();
+    let mut start = 0;
+    let mut pos = 0;
+    while pos < chars.len() {
+        if chars[pos] != '<' {
+            pos += 1;
+            continue;
+        }
+        let end = find_char(&chars, pos, '>');
+        if end >= chars.len() {
+            return None;
+        }
+        let tag: String = chars[pos..=end].iter().collect();
+        let lower = tag.to_lowercase();
+        let name = lower
+            .trim_start_matches('<')
+            .trim_start_matches('/')
+            .split(|c: char| !c.is_ascii_alphanumeric())
+            .next()?;
+        if name == "table" && !lower.starts_with("</") && formats.is_empty() {
+            let table_end = find_closing_tag_chars(&chars, pos, "table");
+            let table: String = chars[pos..table_end].iter().collect();
+            if !table.to_lowercase().ends_with("</table>") {
+                return None;
+            }
+            runs.push((false, chars[start..pos].iter().collect()));
+            runs.push((true, table));
+            pos = table_end;
+            start = pos;
+            continue;
+        }
+        if let Some((name, closing)) = inline_format_tag(&lower) {
+            if closing {
+                if formats.pop().as_deref() != Some(name) {
+                    return None;
+                }
+            } else {
+                formats.push(name.to_string());
+            }
+        } else if !matches!(name, "br" | "img") || lower.starts_with("</") {
+            return None;
+        }
+        pos = end + 1;
+    }
+    if !formats.is_empty() {
+        return None;
+    }
+    runs.push((false, chars[start..].iter().collect()));
+    Some(runs)
+}
+
+fn html_fragment(html: &str) -> &str {
+    if let Some(start) = html.find("<!--StartFragment-->") {
+        let after = &html[start + 20..];
+        return after.split("<!--EndFragment-->").next().unwrap_or(after);
+    }
+    if let Some(start) = html.find("<body") {
+        if let Some(gt) = html[start..].find('>') {
+            let inner = &html[start + gt + 1..];
+            return inner.split("</body>").next().unwrap_or(inner);
+        }
+    }
+    html
+}
+
+fn begins_with_inline_paragraph(html: &str) -> bool {
+    let mut content = html_fragment(html).trim_start();
+    while let Some(comment) = content.strip_prefix("<!--") {
+        let Some((_, rest)) = comment.split_once("-->") else {
+            return false;
+        };
+        content = rest.trim_start();
+    }
+    let Some(end) = content.find('>') else {
+        return false;
+    };
+    let tag = &content[..=end];
+    if !tag.to_lowercase().starts_with("<div")
+        || extract_html_attr(tag, "data-rhwp-paragraph").as_deref() != Some("inline")
+    {
+        return false;
+    }
+    let div_end = find_closing_tag(content, 0, "div");
+    let div = &content[..div_end];
+    div.to_lowercase().ends_with("</div>")
+        && div_end
+            .checked_sub(6)
+            .and_then(|close| div.get(end + 1..close))
+            .is_some_and(|inner| inline_paragraph_runs(inner).is_some())
 }
 
 impl DocumentCore {
@@ -84,6 +180,8 @@ impl DocumentCore {
         self.document.sections[section_idx].raw_stream = None;
 
         let clip_count = parsed_paras.len();
+        let first_inline_paragraph = Self::html_markup_len(html) <= Self::HTML_PASTE_MAX_BYTES
+            && begins_with_inline_paragraph(html);
 
         if clip_count == 1 && parsed_paras[0].controls.is_empty() {
             // 단일 문단 텍스트 삽입
@@ -137,9 +235,9 @@ impl DocumentCore {
 
         // 글 없이 개체만 든 문단(표·단독 그림)이 있는지 확인한다.
         // 글 사이에 든 그림은 아래 다중 문단 경로가 글과 함께 캐럿 문단에 병합한다.
-        let has_controls = parsed_paras
-            .iter()
-            .any(|p| p.text.is_empty() && !p.controls.is_empty());
+        let has_controls = parsed_paras.iter().enumerate().any(|(index, p)| {
+            p.text.is_empty() && !p.controls.is_empty() && !(index == 0 && first_inline_paragraph)
+        });
 
         if has_controls {
             // 컨트롤 포함 문단은 merge 불가 → 직접 삽입
@@ -239,6 +337,20 @@ impl DocumentCore {
         let right_half =
             self.document.sections[section_idx].paragraphs[para_idx].split_at(char_offset);
 
+        // 인라인 문단 표시가 있는 조각만 빈 본문 호스트의 문단 모양을 따른다.
+        let host = &mut self.document.sections[section_idx].paragraphs[para_idx];
+        if host.text.is_empty()
+            && right_half.text.is_empty()
+            && right_half.controls.is_empty()
+            && host
+                .controls
+                .iter()
+                .all(|control| matches!(control, Control::SectionDef(_) | Control::ColumnDef(_)))
+            && first_inline_paragraph
+        {
+            host.para_shape_id = parsed_paras[0].para_shape_id;
+        }
+
         self.document.sections[section_idx].paragraphs[para_idx].merge_from(&parsed_paras[0]);
 
         let mut insert_idx = para_idx + 1;
@@ -250,6 +362,16 @@ impl DocumentCore {
         }
 
         let last_para_idx = insert_idx - 1;
+        // 표시한 인라인 조각의 끝 문단에 기존 오른쪽 글을 잇는 경우 원문 문단 모양을 유지한다.
+        if first_inline_paragraph
+            && last_para_idx != para_idx
+            && (!right_half.text.is_empty() || !right_half.controls.is_empty())
+        {
+            self.document.sections[section_idx].paragraphs[last_para_idx].para_shape_id =
+                right_half.para_shape_id;
+            self.document.sections[section_idx].paragraphs[last_para_idx].style_id =
+                right_half.style_id;
+        }
         let merge_point =
             self.document.sections[section_idx].paragraphs[last_para_idx].merge_from(&right_half);
 
@@ -559,7 +681,7 @@ impl DocumentCore {
         html.len().saturating_sub(payload)
     }
 
-    fn parse_html_to_paragraphs_at_depth(
+    pub(crate) fn parse_html_to_paragraphs_at_depth(
         &mut self,
         html: &str,
         depth: u32,
@@ -576,31 +698,7 @@ impl DocumentCore {
         let mut paragraphs: Vec<Paragraph> = Vec::new();
 
         // <!--StartFragment-->...<!--EndFragment--> 영역 추출 (없으면 전체 사용)
-        let content = if let Some(start) = html.find("<!--StartFragment-->") {
-            let after = &html[start + 20..];
-            if let Some(end) = after.find("<!--EndFragment-->") {
-                &after[..end]
-            } else {
-                after
-            }
-        } else {
-            // <body>...</body> 영역 추출 시도
-            if let Some(start) = html.find("<body") {
-                let after_tag = &html[start..];
-                if let Some(gt) = after_tag.find('>') {
-                    let inner = &after_tag[gt + 1..];
-                    if let Some(end) = inner.find("</body>") {
-                        &inner[..end]
-                    } else {
-                        inner
-                    }
-                } else {
-                    html
-                }
-            } else {
-                html
-            }
-        };
+        let content = html_fragment(html);
 
         // 최상위 태그 파싱
         let mut pos = 0;
@@ -627,7 +725,17 @@ impl DocumentCore {
                     // 표 전체 추출
                     let table_end = find_closing_tag_chars(&chars, pos, "table");
                     let table_html: String = chars[tag_start..table_end.min(len)].iter().collect();
-                    self.parse_table_html(&mut paragraphs, &table_html, width)?;
+                    if depth == 0 {
+                        self.parse_table_html(&mut paragraphs, &table_html, width)?;
+                    } else {
+                        self.parse_table_html_at_depth(
+                            &mut paragraphs,
+                            &table_html,
+                            width,
+                            depth,
+                            None,
+                        )?;
+                    }
                     pos = table_end;
                     continue;
                 } else if tag_lower.starts_with("<img") {
@@ -674,14 +782,60 @@ impl DocumentCore {
                     // div 내부의 콘텐츠를 재귀적으로 처리
                     let div_content_start = tag_end + 1;
                     let div_end = find_closing_tag_chars(&chars, pos, "div");
-                    let div_inner: String =
-                        chars[div_content_start..div_end.min(len)].iter().collect();
-                    let div_inner = if let Some(idx) = div_inner.rfind("</div>") {
+                    let Some(div_chars) = chars.get(div_content_start..div_end.min(len)) else {
+                        pos = tag_end + 1;
+                        continue;
+                    };
+                    let div_inner: String = div_chars.iter().collect();
+                    let div_closed = div_inner.to_lowercase().ends_with("</div>");
+                    let div_inner = if div_closed {
+                        &div_inner[..div_inner.len() - 6]
+                    } else if let Some(idx) = div_inner.rfind("</div>") {
                         &div_inner[..idx]
                     } else {
                         &div_inner
                     };
 
+                    if extract_html_attr(&tag_str, "data-rhwp-paragraph").as_deref()
+                        == Some("inline")
+                        && div_closed
+                    {
+                        if let Some(runs) = inline_paragraph_runs(div_inner) {
+                            let css = parse_inline_style(&tag_str);
+                            let mut para = Paragraph::default();
+                            para.para_shape_id = self.css_to_para_shape_id(&css);
+                            for (table, run) in runs {
+                                if table {
+                                    // 아직 문서에 넣지 않은 앞선 표도 개체 번호 할당에서 예약한다.
+                                    let parsed_count = paragraphs.len();
+                                    let para_shape_id = para.para_shape_id;
+                                    paragraphs.push(para);
+                                    self.parse_table_html_at_depth(
+                                        &mut paragraphs,
+                                        &run,
+                                        width,
+                                        depth,
+                                        Some(para_shape_id),
+                                    )?;
+                                    if paragraphs.len() != parsed_count + 2 {
+                                        return Err(HwpError::RenderError(
+                                            "문단 안 표의 내용이 올바르지 않습니다".to_string(),
+                                        ));
+                                    }
+                                    let table_para = paragraphs.pop().unwrap();
+                                    para = paragraphs.pop().unwrap();
+                                    para.merge_from(&table_para);
+                                } else {
+                                    let mut inline = Paragraph::default();
+                                    self.parse_inline_content(&mut inline, &run, &css);
+                                    para.merge_from(&inline);
+                                }
+                            }
+                            paragraphs.push(para);
+                            pos = div_end;
+                            continue;
+                        }
+                    }
                     let sub_paras =
                         self.parse_html_to_paragraphs_at_depth(div_inner, depth + 1, width)?;
                     paragraphs.extend(sub_paras);
