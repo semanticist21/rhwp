@@ -334,3 +334,85 @@ fn empty_or_block_formatting_only_external_cells_stay_blank() {
         }
     }
 }
+
+#[test]
+fn copied_table_preserves_empty_cell_paragraphs_and_inline_picture_text_order() {
+    const PNG: &str = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+j0ioAAAAASUVORK5CYII=";
+    let content = |core: &DocumentCore| {
+        let (_, _, table) = top_table(core);
+        table.cells[0]
+            .paragraphs
+            .iter()
+            .map(|para| {
+                let positions = para.control_text_positions();
+                let pictures: Vec<_> = para
+                    .controls
+                    .iter()
+                    .enumerate()
+                    .filter_map(|(index, control)| {
+                        let Control::Picture(picture) = control else {
+                            return None;
+                        };
+                        Some((
+                            positions[index],
+                            picture.common.width,
+                            picture.common.height,
+                        ))
+                    })
+                    .collect();
+                (para.text.clone(), pictures)
+            })
+            .collect::<Vec<_>>()
+    };
+    for (inner, expected) in [
+        (
+            "<p>첫🦦</p><p></p><p>끝<br>줄</p>".to_string(),
+            vec![
+                ("첫🦦".to_string(), vec![]),
+                (String::new(), vec![]),
+                ("끝\n줄".to_string(), vec![]),
+            ],
+        ),
+        (
+            "<p></p><p></p><p></p>".to_string(),
+            vec![(String::new(), vec![]); 3],
+        ),
+        (
+            format!(
+                r#"<p><b>가</b><img src="{PNG}" width="20" height="24"><u>🦦나다</u></p><p></p><p>끝<br>줄</p>"#
+            ),
+            vec![
+                ("가🦦나다".to_string(), vec![(1, 1500, 1800)]),
+                (String::new(), vec![]),
+                ("끝\n줄".to_string(), vec![]),
+            ],
+        ),
+        (
+            format!(r#"<p><img src="{PNG}" width="20" height="24"></p><p></p>"#),
+            vec![
+                (String::new(), vec![(0, 1500, 1800)]),
+                (String::new(), vec![]),
+            ],
+        ),
+    ] {
+        let mut source = DocumentCore::new_empty();
+        source.create_blank_document_native().unwrap();
+        source
+            .paste_html_native(
+                0,
+                0,
+                0,
+                &format!(r#"<table style="width:200pt"><tr><td>{inner}</td></tr></table>"#),
+            )
+            .unwrap();
+        assert_eq!(content(&source), expected);
+        for source in saved_documents(&source) {
+            assert_eq!(content(&source), expected);
+            let target = paste_table(&source);
+            assert_eq!(content(&target), expected);
+            for reopened in saved_documents(&target) {
+                assert_eq!(content(&reopened), expected);
+            }
+        }
+    }
+}
