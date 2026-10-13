@@ -62,7 +62,7 @@ impl Rect {
 }
 
 /// 4방향 여백
-#[derive(Debug, Clone, Copy, Default, serde::Serialize)]
+#[derive(Debug, Clone, Copy, Default, serde::Serialize, serde::Deserialize)]
 pub struct Padding {
     pub left: HwpUnit16,
     pub right: HwpUnit16,
