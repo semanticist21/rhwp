@@ -8612,6 +8612,12 @@ impl HwpDocument {
         self.has_internal_clipboard_native()
     }
 
+    /// 실제 내부 클립보드가 글자 모양만 가진 한 문단 조각인지 읽는다.
+    #[wasm_bindgen(js_name = clipboardIsSingleText)]
+    pub fn clipboard_is_single_text(&self) -> bool {
+        self.clipboard_is_single_text_native()
+    }
+
     /// 내부 클립보드의 플레인 텍스트를 반환한다.
     #[wasm_bindgen(js_name = getClipboardText)]
     pub fn get_clipboard_text(&self) -> String {
@@ -8802,6 +8808,22 @@ impl HwpDocument {
             char_offset as usize,
         )
         .map_err(|e| e.into())
+    }
+
+    /// 순수 서식 글 조각을 본문 논리 캐럿의 누름틀 안팎 소속으로 붙인다.
+    #[wasm_bindgen(js_name = pasteInternalTextLogical)]
+    pub fn paste_internal_text_logical(
+        &mut self,
+        section_idx: u32,
+        para_idx: u32,
+        logical_offset: u32,
+    ) -> Result<String, JsValue> {
+        self.paste_internal_text_logical_native(
+            section_idx as usize,
+            para_idx as usize,
+            logical_offset as usize,
+        )
+        .map_err(|error| error.into())
     }
 
     /// 내부 클립보드의 내용을 표 셀 내부에 붙여넣는다.

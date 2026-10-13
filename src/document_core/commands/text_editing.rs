@@ -1291,6 +1291,21 @@ fn has_clickhere_field_range(para: &Paragraph) -> bool {
     })
 }
 
+/// 본문 입력과 서식 글 붙이기는 같은 필드 경계와 개체 앞뒤 소속을 쓴다.
+pub(super) fn insert_body_text_with_field_affinity(
+    para: &mut Paragraph,
+    active_field: Option<&ActiveFieldInfo>,
+    section_idx: usize,
+    para_idx: usize,
+    char_offset: usize,
+    after_inline_control: bool,
+    text: &str,
+) {
+    // 활성 필드만 경계 입력을 품는다. 다른 필드의 시작·끝과 개체 슬롯은 공통 교체가 지킨다.
+    let active = active_field_control(active_field, section_idx, para_idx, None);
+    replace_paragraph_text(para, char_offset, 0, text, active, after_inline_control);
+}
+
 impl DocumentCore {
     pub fn replace_body_text_local_native(
         &mut self,
