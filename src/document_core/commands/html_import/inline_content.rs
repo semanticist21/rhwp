@@ -63,6 +63,19 @@ impl DocumentCore {
                     pos = tag_end + 1;
                     continue;
                 } else if tag_lower.starts_with("<br") {
+                    // 닫힌 서식의 마지막 글자 모양이 강제 줄바꿈까지 번지지 않게 한다.
+                    if !open_styles.is_empty() || !style_runs.is_empty() {
+                        let css: Vec<&str> = open_styles
+                            .iter()
+                            .rev()
+                            .map(|(_, css)| css.as_str())
+                            .collect();
+                        let shape = self.css_to_char_shape_id(&css.join(";"));
+                        if style_runs.last().is_none_or(|(_, _, last)| *last != shape) {
+                            let start = full_text.chars().count();
+                            style_runs.push((start, start + 1, shape));
+                        }
+                    }
                     full_text.push('\n');
                     pos = tag_end + 1;
                     continue;
@@ -348,8 +361,8 @@ impl DocumentCore {
                 }
             } else if lh.ends_with("px") {
                 if let Ok(px) = lh.trim_end_matches("px").parse::<f64>() {
-                    // px → HWPUNIT (1px ≈ 75 HWPUNIT at 96dpi)
-                    ps.line_spacing = (px * 7200.0 / 25.4 / (self.dpi / 25.4)).round() as i32;
+                    // 고정 줄간격은 여백과 같은 2배 저장 스케일이다.
+                    ps.line_spacing = (px * 7200.0 / self.dpi * 2.0).round() as i32;
                     ps.line_spacing_type = LineSpacingType::Fixed;
                 }
             }
