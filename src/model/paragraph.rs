@@ -2038,6 +2038,20 @@ impl Paragraph {
     /// `positions[i]` = `controls[i]` 가 삽입되어야 할 텍스트 character 인덱스.
     /// 컨트롤이 없으면 빈 벡터.
     pub fn control_text_positions(&self) -> Vec<usize> {
+        self.control_text_positions_with_field_end_count(|char_idx| {
+            self.field_ranges
+                .iter()
+                .filter(|range| range.end_char_idx == char_idx)
+                .count()
+        })
+    }
+
+    /// 필드 경계 입력 직후에는 원시 끝 슬롯과 논리 범위가 잠시 다를 수 있다.
+    /// 기존 슬롯 위치로 개체를 읽고 나서 호출부가 최종 필드 범위를 복원한다.
+    pub(crate) fn control_text_positions_with_field_end_count(
+        &self,
+        field_ends_at: impl Fn(usize) -> usize,
+    ) -> Vec<usize> {
         let offsets = &self.char_offsets;
         let total_controls = self.controls.len();
 
@@ -2074,10 +2088,7 @@ impl Paragraph {
         // 모두 자기 글자 바로 앞 갭에 있다. 그 갭에서 이 수만큼은 컨트롤에 나눠 주지 않는다.
         // 나눠 주면 뒤 컨트롤이 한 갭씩 앞 글자로 당겨진다.
         let hidden_slots_before = |char_idx: usize| {
-            self.field_ranges
-                .iter()
-                .filter(|r| r.end_char_idx == char_idx)
-                .count()
+            field_ends_at(char_idx)
                 + self
                     .orphan_field_ends
                     .iter()
@@ -2107,35 +2118,24 @@ impl Paragraph {
             }
             let current_off = offsets[i] as usize;
             let next_off = offsets[i + 1] as usize;
-            let char_width = if chars.get(i).map_or(false, |&c| c as u32 > 0xFFFF) {
+            let mut char_width = if chars.get(i).is_some_and(|&c| c as u32 > 0xFFFF) {
                 2
             } else {
                 1
             };
-            // [#3466] 자동번호(제어문자 0x12)는 8 코드 유닛을 점유하면서 가시 placeholder 를
-            // **한 글자 남긴다**(파서 두 경로 공통). 그래서 그 글자 뒤에는 8 갭이 남지 않고
-            // (8 − 1 = 7 → 7/8 = 0) 갭 분배에서 누락돼, 뒤따르는 컨트롤이 한 칸씩 앞당겨졌다
-            // — 수식 k 가 수식 k+1 자리로 가고 마지막 수식은 폴백으로 문단 끝에 붙었다.
-            //
-            // 판별자는 셋을 **모두** 요구한다. stride 8 하나로는 부족하다 — 탭도 가시 글자를
-            // 남기며 8 코드 유닛을 점유하지만(HWP5 `0x09`, HWPX `'\t'` 폭 8) `controls[]` 에는
-            // 들어가지 않으므로, stride 만 보면 탭이 컨트롤 자리를 가로채 반대 방향으로 어순이
-            // 깨진다.
-            //   (1) 이 글자의 stride 가 정확히 8 — 일반 글자는 자기 폭 + 8k 라 8 이 될 수 없다
-            //   (2) 그 글자가 자동번호 placeholder 인 공백
-            //   (3) 지금 자리를 기다리는 컨트롤이 번호 컨트롤
-            // (3) 덕분에 HWPX `newNum`(placeholder 없이 순수 8 갭)은 종전 경로를 그대로 탄다.
+            // 번호 placeholder는 공백 자체가 8유닛이다. 뒤 필드 끝·개체 갭이 더 있어도
+            // 일반 공백(1 + 8k)과 구별하고 번호와 뒤 컨트롤을 각각 제자리에 놓는다.
             let pending_is_number_control = matches!(
                 self.controls.get(positions.len()),
                 Some(Control::AutoNumber(_) | Control::NewNumber(_))
             );
             if pending_is_number_control
-                && char_width == 1
                 && chars.get(i) == Some(&' ')
-                && next_off == current_off + 8
+                && next_off > current_off
+                && (next_off - current_off).is_multiple_of(8)
             {
                 positions.push(i);
-                continue;
+                char_width = 8;
             }
             if next_off > current_off + char_width {
                 let gap = next_off - current_off - char_width;
@@ -2146,6 +2146,24 @@ impl Paragraph {
                     }
                     positions.push(i + 1); // 현재 문자 다음에 삽입
                 }
+            }
+        }
+
+        // 마지막 번호 placeholder 뒤에는 다음 글자가 없어 문단 끝 원시 위치를 쓴다.
+        if let Some(last) = offsets.len().checked_sub(1) {
+            let width = self
+                .char_count
+                .saturating_sub(1)
+                .saturating_sub(offsets[last]);
+            if chars.get(last) == Some(&' ')
+                && width >= 8
+                && width.is_multiple_of(8)
+                && matches!(
+                    self.controls.get(positions.len()),
+                    Some(Control::AutoNumber(_) | Control::NewNumber(_))
+                )
+            {
+                positions.push(last);
             }
         }
 
