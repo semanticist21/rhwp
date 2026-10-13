@@ -1390,6 +1390,36 @@ fn has_clickhere_field_range(para: &Paragraph) -> bool {
     })
 }
 
+/// 본문 입력과 서식 글 붙이기는 같은 필드 경계와 개체 앞뒤 소속을 쓴다.
+pub(super) fn insert_body_text_with_field_affinity(
+    para: &mut Paragraph,
+    active_field: Option<&ActiveFieldInfo>,
+    section_idx: usize,
+    para_idx: usize,
+    char_offset: usize,
+    after_inline_control: bool,
+    text: &str,
+) {
+    let count = text.chars().count();
+    let outside =
+        inactive_field_end_insertions(para, active_field, section_idx, para_idx, None, char_offset);
+    let before = inactive_field_start_insertions(
+        para,
+        active_field,
+        section_idx,
+        para_idx,
+        None,
+        char_offset,
+    );
+    let positions =
+        insert_text_with_control_positions(para, char_offset, text, after_inline_control);
+    keep_inactive_field_start_outside(para, &before, count);
+    keep_inactive_field_end_outside(para, &outside, count);
+    if has_clickhere_field_range(para) {
+        rebuild_char_offsets_at_positions(para, &positions);
+    }
+}
+
 impl DocumentCore {
     pub fn replace_body_text_local_native(
         &mut self,
@@ -1655,30 +1685,16 @@ impl DocumentCore {
         // 텍스트 삽입
         let new_chars_count = text.chars().count();
         let active_field = self.active_field.clone();
-        let outside_insertions = inactive_field_end_insertions(
-            &self.document.sections[section_idx].paragraphs[para_idx],
-            active_field.as_ref(),
-            section_idx,
-            para_idx,
-            None,
-            char_offset,
-        );
-        let before_insertions = inactive_field_start_insertions(
-            &self.document.sections[section_idx].paragraphs[para_idx],
-            active_field.as_ref(),
-            section_idx,
-            para_idx,
-            None,
-            char_offset,
-        );
         let apply_insert = |para: &mut Paragraph| {
-            let control_positions =
-                insert_text_with_control_positions(para, char_offset, text, after_inline_control);
-            keep_inactive_field_start_outside(para, &before_insertions, new_chars_count);
-            keep_inactive_field_end_outside(para, &outside_insertions, new_chars_count);
-            if has_clickhere_field_range(para) {
-                rebuild_char_offsets_at_positions(para, &control_positions);
-            }
+            insert_body_text_with_field_affinity(
+                para,
+                active_field.as_ref(),
+                section_idx,
+                para_idx,
+                char_offset,
+                after_inline_control,
+                text,
+            );
         };
         let picture_band_applied =
             self.apply_body_edit_through_picture_band(section_idx, para_idx, &apply_insert)?;
