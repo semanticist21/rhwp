@@ -5272,8 +5272,16 @@ fn test_paste_html_table_as_control() {
         assert!(cell_texts.iter().any(|t| t.contains("셀3")), "셀3 포함");
         assert!(cell_texts.iter().any(|t| t.contains("셀4")), "셀4 포함");
 
-        // 정상 파일 패턴과 일치하는 속성값 검증
-        assert_eq!(tbl.attr, 0x082A2311, "table.attr = 0x082A2311");
+        // 기본 인라인 배치(Page/Para, flowWithText=false)와 저장 헤더의 비트가 일치한다.
+        assert_eq!(tbl.attr, 0x002A0309, "공개 기본 배치의 attr");
+        assert_eq!(tbl.common.attr, 0x002A0309);
+        assert_eq!(tbl.common.vert_rel_to, crate::model::shape::VertRelTo::Page);
+        assert_eq!(tbl.common.horz_rel_to, crate::model::shape::HorzRelTo::Para);
+        assert!(!tbl.common.flow_with_text);
+        assert_eq!(
+            u32::from_le_bytes(tbl.raw_ctrl_data[0..4].try_into().unwrap()),
+            0x002A0309
+        );
         assert_eq!(
             tbl.raw_table_record_attr, 0x04000006,
             "raw_table_record_attr (DIFF-5: 셀분리금지 항상 설정)"
