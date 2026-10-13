@@ -1081,9 +1081,38 @@ impl DocumentCore {
 
         let start_idx = fr.start_char_idx;
         let count = fr.end_char_idx.saturating_sub(start_idx);
-        let control_idx = fr.control_idx;
-        // 값은 이 필드가 품는다 — 빈 필드여도 같은 자리의 다른 필드보다 먼저다.
-        para.replace_text_keeping_slots(start_idx, count, value, Some(control_idx), false);
+        let original_positions = para.control_text_positions();
+        let inserted = value.chars().count();
+
+        // 기존 텍스트 삭제 (char_shapes, line_segs, range_tags 등 자동 시프트)
+        if count > 0 {
+            para.delete_text_at(start_idx, count);
+        }
+
+        // 끝 경계에 넣는 글 앞에 남아 있던 FIELD_END를 개체 슬롯으로 읽지 않는다.
+        let mut control_positions = if value.is_empty() {
+            para.control_text_positions()
+        } else {
+            insert_text_with_control_positions(para, start_idx, value, false)
+        };
+
+        // 값 교체는 END 뒤의 컨트롤을 필드 안으로 끌어오지 않는다. 일반 캐럿 입력과 달리
+        // 끝 슬롯 소속과 원문 위치를 사용하므로 새 번호처럼 폭 없는 컨트롤도 뒤에 남는다.
+        for (index, position) in original_positions.into_iter().enumerate() {
+            if index > fr.control_idx + fr.inner_slot_count && position >= fr.end_char_idx {
+                control_positions[index] = position.saturating_sub(count) + inserted;
+            }
+        }
+
+        // field_ranges 갱신: start와 end를 명시적으로 재설정
+        let new_end = start_idx + inserted;
+        let current_fr = para
+            .field_ranges
+            .get_mut(field_range_index)
+            .ok_or_else(|| HwpError::InvalidField("field_range 인덱스 초과".into()))?;
+        current_fr.start_char_idx = start_idx;
+        current_fr.end_char_idx = new_end;
+        let control_idx = current_fr.control_idx;
 
         // [#3380] 값을 채운 필드는 더 이상 "초기 상태"가 아니다 — properties 비트 15를 세운다.
         //
@@ -1098,6 +1127,8 @@ impl DocumentCore {
             }
         }
 
+        // FIELD_BEGIN/END만 새 범위로 옮기고 이웃 개체의 자리는 유지한다.
+        rebuild_char_offsets_at_positions(para, &control_positions);
         para.replace_line_segs(Vec::new());
 
         Ok(())
@@ -2727,6 +2758,122 @@ fn raw_slot_gaps(para: &Paragraph) -> Result<Vec<(u32, u32)>, HwpError> {
             .ok_or_else(invalid_raw_slots)?;
     }
     Ok(gaps)
+}
+
+/// 글을 넣은 뒤에도 삽입 전 FIELD_END의 실제 슬롯을 제외한 개체 자리를 읽는다.
+pub(crate) fn insert_text_with_control_positions(
+    para: &mut Paragraph,
+    char_offset: usize,
+    text: &str,
+    after_inline_control: bool,
+) -> Vec<usize> {
+    if para.field_ranges.is_empty() {
+        para.insert_text_at_caret(char_offset, text, after_inline_control);
+        return Vec::new();
+    }
+    if text.is_empty() {
+        return para.control_text_positions();
+    }
+    let offset = char_offset.min(para.text.chars().count());
+    let inserted = text.chars().count();
+    let ends: Vec<_> = para
+        .field_ranges
+        .iter()
+        .map(|range| {
+            let gap_end = para
+                .char_offsets
+                .get(range.end_char_idx)
+                .copied()
+                .unwrap_or_else(|| para.char_count.saturating_sub(1));
+            (range.end_char_idx, gap_end)
+        })
+        .collect();
+    para.insert_text_at_caret(char_offset, text, after_inline_control);
+    let insert_pos = para.char_offsets[offset];
+    para.control_text_positions_with_field_end_count(|index| {
+        ends.iter()
+            .filter(|&&(end, gap_end)| {
+                // 원시 삽입점이 END 갭 앞이면 슬롯도 새 글 뒤로 밀린다.
+                // 갭 뒤 입력은 FIELD_END를 그대로 두므로 새 범위로 갭을 읽지 않는다.
+                let moved = end
+                    + if end > offset || (end == offset && insert_pos < gap_end) {
+                        inserted
+                    } else {
+                        0
+                    };
+                moved == index
+            })
+            .count()
+    })
+}
+
+/// 필드 범위와 원래 컨트롤 위치로 문단의 원시 슬롯을 다시 만든다.
+pub(crate) fn rebuild_char_offsets(para: &mut Paragraph) {
+    let positions = para.control_text_positions();
+    rebuild_char_offsets_at_positions(para, &positions);
+}
+
+/// 경계 입력의 필드 소속을 고치기 전에 확보한 개체 위치를 함께 보존한다.
+///
+/// FIELD_END는 컨트롤이 아니므로 바뀐 필드 범위로 원래 갭을 읽으면 뒤 개체의
+/// 자리를 가로챌 수 있다. 호출부가 범위 보정 전 위치를 넘기고 필드 슬롯만 다시 놓는다.
+pub(crate) fn rebuild_char_offsets_at_positions(para: &mut Paragraph, positions: &[usize]) {
+    let chars: Vec<char> = para.text.chars().collect();
+    let text_len = chars.len();
+    let mut slots = vec![0u32; text_len + 1];
+    let mut number_placeholders = vec![false; text_len];
+    for (control_idx, position) in positions.iter().enumerate() {
+        if !para
+            .field_ranges
+            .iter()
+            .any(|range| range.control_idx == control_idx)
+        {
+            let position = (*position).min(text_len);
+            let number = matches!(
+                para.controls.get(control_idx),
+                Some(Control::AutoNumber(_) | Control::NewNumber(_))
+            );
+            let raw_width = para.char_offsets.get(position).map(|&start| {
+                para.char_offsets
+                    .get(position + 1)
+                    .copied()
+                    .unwrap_or_else(|| para.char_count.saturating_sub(1))
+                    .saturating_sub(start)
+            });
+            // HWP 번호 공백은 그 자체가 슬롯이고, HWPX 새 번호는 별도 갭이다.
+            if number
+                && chars.get(position) == Some(&' ')
+                && raw_width.is_some_and(|width| width >= 8 && width.is_multiple_of(8))
+            {
+                number_placeholders[position] = true;
+            } else {
+                slots[position] += 1;
+            }
+        }
+    }
+    for range in &para.field_ranges {
+        slots[range.start_char_idx.min(text_len)] += 1;
+        slots[range.end_char_idx.min(text_len)] += 1;
+    }
+    for end in &para.orphan_field_ends {
+        slots[end.char_idx.min(text_len)] += 1;
+    }
+    for mark in &para.title_marks {
+        slots[mark.char_idx.min(text_len)] += 1;
+    }
+    let mut offset = 0;
+    let mut offsets = Vec::with_capacity(text_len);
+    for (index, ch) in chars.into_iter().enumerate() {
+        offset += slots[index] * 8;
+        offsets.push(offset);
+        offset += if number_placeholders[index] {
+            8
+        } else {
+            Paragraph::char_stream_len(ch)
+        };
+    }
+    para.char_count = offset + slots[text_len] * 8 + 1;
+    para.char_offsets = offsets;
 }
 
 /// 문자열을 JSON 이스케이프한다.
