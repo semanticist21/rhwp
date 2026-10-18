@@ -1043,6 +1043,14 @@ impl WebCanvasRenderer {
         rect: &RectangleNode,
         restore_transform: bool,
     ) {
+        // 칸·문단 배경은 장치 픽셀에 맞춘다 — 맞붙은 칸 사이 AA 틈 방지.
+        let snapped;
+        let bbox = if rect.pixel_aligned {
+            snapped = bbox.snapped_to_device_pixels(self.scale);
+            &snapped
+        } else {
+            bbox
+        };
         self.open_shape_transform(&rect.transform, bbox);
         self.draw_rect_with_gradient(
             bbox.x,
@@ -1369,6 +1377,8 @@ impl WebCanvasRenderer {
                         self.ctx.restore();
                     }
                     ClipKind::TableCell => {
+                        // 픽셀에 맞춘 칸 배경과 같은 경계로 자른다.
+                        let clip = clip.snapped_to_device_pixels(self.scale);
                         self.ctx.save();
                         self.ctx.begin_path();
                         self.ctx.rect(clip.x, clip.y, clip.width, clip.height);

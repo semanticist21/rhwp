@@ -1375,7 +1375,11 @@ impl SkiaLayerRenderer {
                     render_children(canvas, next_text_source_id)?;
                 }
             }
-            LayerNodeKind::ClipRect { clip, child, .. } => {
+            LayerNodeKind::ClipRect {
+                clip,
+                child,
+                clip_kind,
+            } => {
                 if !clip_enabled {
                     return self.render_node(
                         canvas,
@@ -1400,7 +1404,8 @@ impl SkiaLayerRenderer {
                         clip.height as f32,
                     ),
                     None,
-                    Some(antialias),
+                    // 칸 clip 은 픽셀 격자에 맞춘 칸 배경과 같은 경계로 자른다.
+                    Some(antialias && *clip_kind != crate::paint::ClipKind::TableCell),
                 );
                 let result = self.render_node(
                     canvas,
@@ -1834,9 +1839,13 @@ impl SkiaLayerRenderer {
                                 bbox.width as f32,
                                 bbox.height as f32,
                             );
-                            if let Some(fill) =
-                                shape_fill(bbox, &rect.style, rect.gradient.as_deref(), antialias)
-                            {
+                            // 칸·문단 배경은 AA 없이 픽셀 격자에 맞춘다 — 맞붙은 칸 사이 틈 방지.
+                            if let Some(fill) = shape_fill(
+                                bbox,
+                                &rect.style,
+                                rect.gradient.as_deref(),
+                                antialias && !rect.pixel_aligned,
+                            ) {
                                 if rect.corner_radius > 0.0 {
                                     canvas.draw_round_rect(
                                         sk_rect,

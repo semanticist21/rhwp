@@ -741,6 +741,18 @@ impl BoundingBox {
         }
     }
 
+    /// 모서리를 장치 픽셀(`scale` 배) 격자에 맞춘 사본. 맞붙은 상자는 같은 경계로
+    /// 맞춰지므로 안티앨리어싱 틈 없이 이어진다.
+    pub fn snapped_to_device_pixels(&self, scale: f64) -> Self {
+        if !(scale.is_finite() && scale > 0.0) {
+            return *self;
+        }
+        let snap = |v: f64| (v * scale).round() / scale;
+        let (left, top) = (snap(self.x), snap(self.y));
+        let (right, bottom) = (snap(self.x + self.width), snap(self.y + self.height));
+        Self::new(left, top, right - left, bottom - top)
+    }
+
     /// 다른 박스와 겹치는지 확인
     pub fn intersects(&self, other: &BoundingBox) -> bool {
         self.x < other.x + other.width
@@ -1319,6 +1331,10 @@ pub struct RectangleNode {
     /// [Task #1138] 표 셀 내 도형인 경우: outer paragraph 의 표 control 인덱스
     #[serde(default)]
     pub outer_table_control_index: Option<usize>,
+    /// 칸·문단 배경처럼 이웃 채우기와 맞붙어 깔리는 채우기. 래스터 backend 는 장치
+    /// 픽셀에 맞춰 칠한다 — 경계마다 안티앨리어싱 반투명 픽셀이 겹쳐 밝은 틈이 남는다.
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub pixel_aligned: bool,
 }
 
 impl RectangleNode {
@@ -1338,6 +1354,7 @@ impl RectangleNode {
             cell_index: None,
             cell_para_index: None,
             outer_table_control_index: None,
+            pixel_aligned: false,
         }
     }
 }

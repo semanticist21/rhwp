@@ -36,15 +36,18 @@ impl LayoutEngine {
         if fill_color.is_some() || pattern.is_some() || gradient.is_some() {
             nodes.push(RenderNode::new(
                 tree.next_id(),
-                RenderNodeType::Rectangle(RectangleNode::new(
-                    0.0,
-                    ShapeStyle {
-                        fill_color,
-                        pattern,
-                        ..Default::default()
-                    },
-                    gradient,
-                )),
+                RenderNodeType::Rectangle(RectangleNode {
+                    pixel_aligned: true,
+                    ..RectangleNode::new(
+                        0.0,
+                        ShapeStyle {
+                            fill_color,
+                            pattern,
+                            ..Default::default()
+                        },
+                        gradient,
+                    )
+                }),
                 bounds,
             ));
         }
