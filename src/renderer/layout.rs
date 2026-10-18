@@ -9511,6 +9511,7 @@ impl LayoutEngine {
                         }
                     }
                 }
+                if std::env::var("RHWP_FD_DBG").is_ok() { eprintln!("FD7J item_para={} y_offset={:.1} jump_to={:.1} zones={:?}", item_para, y_offset, jump_to, visible_float_exclusions.iter().map(|z| (z.owner_para, z.top, z.bottom)).collect::<Vec<_>>()); }
                 if jump_to > y_offset + 0.5 {
                     let delta = jump_to - y_offset;
                     y_offset = jump_to;
@@ -13464,6 +13465,9 @@ impl LayoutEngine {
                 } else {
                     empty_rowbreak_flow_end.unwrap_or(table_flow_end)
                 };
+                if std::env::var("RHWP_FD_DBG").is_ok() {
+                    eprintln!("FD7 pi={} vis={} y_offset={:.1} tyb={:.1} tys={:.1} tve={:.1} tvh={:.1} pyt={:.1} voff={}", para_index, is_current_visible_para_float, y_offset, table_y_before, table_y_start, table_visual_end, table_visual_height, para_y_for_table, t.common.vertical_offset);
+                }
                 let signed_vertical_offset = signed_hwpunit(t.common.vertical_offset);
                 let zero_offset_has_following_coanchored_float = signed_vertical_offset == 0
                     && para.controls.iter().skip(control_index + 1).any(|control| {
