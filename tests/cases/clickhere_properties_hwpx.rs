@@ -189,7 +189,7 @@ fn form_with_text(text: &str) -> HwpDocument {
         let mut e = input.by_index(i).unwrap();
         let mut bytes = Vec::new();
         e.read_to_end(&mut bytes).unwrap();
-        if e.name() == "Contents/section0.xml" {
+        if e.name().unwrap() == "Contents/section0.xml" {
             let xml = String::from_utf8(bytes).unwrap();
             let old = "<hp:t>여기에 입력</hp:t>";
             assert_eq!(xml.matches(old).count(), 1);
@@ -199,7 +199,7 @@ fn form_with_text(text: &str) -> HwpDocument {
         }
         output
             .start_file(
-                e.name(),
+                e.name().unwrap(),
                 zip::write::SimpleFileOptions::default().compression_method(e.compression()),
             )
             .unwrap();

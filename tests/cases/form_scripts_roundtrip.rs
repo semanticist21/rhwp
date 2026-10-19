@@ -174,7 +174,7 @@ fn assert_manifest_once(bytes: &[u8], expected_ids: Option<[&str; 2]>) {
         }
         let mut zip = zip::ZipArchive::new(Cursor::new(bytes)).unwrap();
         let count = (0..zip.len())
-            .filter(|i| zip.by_index(*i).unwrap().name() == path)
+            .filter(|i| zip.by_index(*i).unwrap().name().unwrap() == path)
             .count();
         assert_eq!(count, 1, "{path} ZIP 엔트리 중복 없음");
     }
