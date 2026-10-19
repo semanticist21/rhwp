@@ -889,13 +889,16 @@ impl DocumentCore {
 
         // 한 셀의 선호 폭보다 자식 표/줄 나눔 토큰이 넓으면 부모 열이 그 점유를
         // 예약한다. 1인치 바닥값으로 자식을 부풀리거나 paint에서 잘라내지 않는다.
-        super::html_table_width::reserve_content_widths(
-            &mut cells,
-            &mut col_widths,
-            &table_padding,
-            &self.resolve_render_styles(),
-            self.dpi,
-        );
+        // 원문 치수를 실은 HTML은 그 치수를 그대로 쓴다.
+        if !exact_geometry {
+            super::html_table_width::reserve_content_widths(
+                &mut cells,
+                &mut col_widths,
+                &table_padding,
+                &self.resolve_render_styles(),
+                self.dpi,
+            );
+        }
 
         // 행 우선 순서로 정렬
         cells.sort_by(|a, b| a.row.cmp(&b.row).then(a.col.cmp(&b.col)));
@@ -1012,11 +1015,13 @@ impl DocumentCore {
         table.rebuild_grid();
         // 재조판의 공통 행 측정을 저장 크기로 확정한다. 중첩 표의 직접 paint와
         // 상위 표 측정이 같은 행 상자를 소비하도록 HWP/HWPX 크기도 함께 갱신한다.
-        super::html_table_width::reserve_content_heights(
-            &mut table,
-            &self.resolve_render_styles(),
-            self.dpi,
-        );
+        if !exact_geometry {
+            super::html_table_width::reserve_content_heights(
+                &mut table,
+                &self.resolve_render_styles(),
+                self.dpi,
+            );
+        }
         let total_height = table.common.height;
 
         // --- 6. Table Control을 포함하는 Paragraph 생성 ---

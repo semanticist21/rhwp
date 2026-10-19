@@ -373,10 +373,15 @@ impl DocumentCore {
             self.recompose_paragraph(section_idx, para_idx);
             self.paginate_if_needed();
 
-            let new_offset = text_to_logical_offset(
-                &self.document.sections[section_idx].paragraphs[para_idx],
-                text_offset + new_chars,
-            );
+            // 공개 붙이기는 논리 캐럿을, 글 조각 붙이기는 기존 계약대로 글자 위치를 돌려준다.
+            let new_offset = if text_only {
+                text_offset + new_chars
+            } else {
+                text_to_logical_offset(
+                    &self.document.sections[section_idx].paragraphs[para_idx],
+                    text_offset + new_chars,
+                )
+            };
             self.event_log.push(DocumentEvent::HtmlImported {
                 section: section_idx,
                 para: para_idx,
