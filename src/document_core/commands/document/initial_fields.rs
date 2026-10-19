@@ -33,7 +33,7 @@ fn process_para(para: &mut Paragraph) {
                 continue;
             } // 이미 수정된 상태
               // 필드 값이 안내문과 동일한지 확인
-            // 빈 안내문도 명시된 Direction일 때만 인정한다. 누락된 안내문은 입력값을 지우지 않는다.
+              // 빈 안내문도 명시된 Direction일 때만 인정한다. 누락된 안내문은 입력값을 지우지 않는다.
             let guide = f.guide_text().or_else(|| {
                 let command = f.command.strip_prefix("Clickhere:set:")?;
                 let (length, params) = command.split_once(':')?;
