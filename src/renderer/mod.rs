@@ -514,12 +514,9 @@ impl TextStyle {
     /// 모은 것이다 (#2771). 레이아웃 advance 는 본문 run 기준을 유지하고 실제
     /// 글리프 크기와 baseline 만 조정한다는 계약은 종전과 같다.
     ///
-    /// 원본의 글자 위치는 줄 기준선에 한 번만 적용한다.
+    /// 원본의 글자 위치는 run 상자(`char_offset`)에서 한 번만 옮긴다. 캐럿·선택도
+    /// 같은 상자를 쓰므로 그리기 기준선에서 다시 옮기지 않는다.
     pub fn script_draw_metrics(&self, base_font_size: f64, baseline_y: f64) -> (f64, f64) {
-        // 줄 기준선과 글리프 위치는 별도 속성이다. 양수는 아래 방향이며
-        // 원본 글꼴 크기의 비율로 이동한다. 모든 paint backend가 같은 값을 쓴다.
-        let baseline_y =
-            baseline_y + base_font_size * f64::from(self.font_position.unwrap_or_default()) / 100.0;
         if self.superscript {
             (
                 base_font_size * SCRIPT_FONT_SCALE,
