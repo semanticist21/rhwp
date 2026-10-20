@@ -1259,7 +1259,7 @@ export interface LayerFootnoteMarkerOp {
   color?: string;
 }
 
-export type LayerStrokeDash = 'solid' | 'dash' | 'dot' | 'dashDot' | 'dashDotDot'
+export type LayerStrokeDash = 'solid' | 'dash' | 'longDash' | 'dot' | 'dashDot' | 'dashDotDot'
   | 'hwpDash' | 'hwpDot' | 'hwpDashDot' | 'hwpDashDotDot' | 'hwpLongDash' | 'hwpCircle'
   | number[];
 

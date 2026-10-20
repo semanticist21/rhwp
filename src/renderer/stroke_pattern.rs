@@ -24,7 +24,7 @@ pub(crate) fn shape_pen_width_to_px(width_hu: i32, line_type: u8) -> f64 {
 
 impl StrokeDash {
     pub(crate) fn is_absolute_pattern(self) -> bool {
-        self.is_hwp_pattern() || matches!(self, Self::Explicit(_))
+        self.is_hwp_pattern() || matches!(self, Self::Explicit(_) | Self::LongDash)
     }
 
     pub(crate) fn is_hwp_pattern(self) -> bool {
@@ -51,8 +51,16 @@ impl StrokeDash {
                 .take_while(|value| *value > 0.0)
                 .collect();
         }
+        if self == Self::LongDash {
+            // 긴 파선은 굵기를 한 번만 곱한다(저장소 issue-124의 한컴 웹기안기 분석 24/8 배수).
+            return if width.is_finite() && width > 0.0 {
+                vec![width * 24.0, width * 8.0]
+            } else {
+                Vec::new()
+            };
+        }
         let values: &[f64] = match self {
-            Self::Explicit(_) => unreachable!(),
+            Self::Explicit(_) | Self::LongDash => unreachable!(),
             Self::Solid => &[],
             Self::Dash => &[6.0, 3.0],
             Self::Dot => &[2.0, 2.0],

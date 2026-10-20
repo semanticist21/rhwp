@@ -29,6 +29,7 @@ fn parse_dash(name: &str) -> StrokeDash {
     match name {
         "solid" => StrokeDash::Solid,
         "dash" => StrokeDash::Dash,
+        "longDash" => StrokeDash::LongDash,
         "dot" => StrokeDash::Dot,
         "dashDot" => StrokeDash::DashDot,
         "dashDotDot" => StrokeDash::DashDotDot,

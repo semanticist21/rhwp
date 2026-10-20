@@ -5251,7 +5251,11 @@ export class CanvasKitLayerRenderer {
     const hwpPattern = typeof dash === 'string' && dash.startsWith('hwp');
     const outline = 96 / 600;
     const scale = hwpPattern ? Math.max(paint.getStrokeWidth() - outline, outline) : 1;
-    const intervals = Array.isArray(dash) ? dash : dash === undefined || dash === 'solid'
+    // 긴 파선은 획 굵기의 24/8배이며 다른 범용 패턴처럼 1px 바닥을 두지 않는다.
+    const width = paint.getStrokeWidth();
+    const intervals = Array.isArray(dash) ? dash : dash === 'longDash'
+      ? (width > 0 ? [width * 24, width * 8] : null)
+      : dash === undefined || dash === 'solid'
       ? null
       : patterns[dash]?.map((value, index) => {
         const edge = hwpPattern && dash !== 'hwpCircle' ? (index % 2 === 0 ? outline : -outline) : 0;

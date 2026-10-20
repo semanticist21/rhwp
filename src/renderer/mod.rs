@@ -986,6 +986,8 @@ pub enum StrokeDash {
     #[default]
     Solid,
     Dash,
+    /// 테두리·단 구분선의 긴 파선. 반복 구간은 실제 획 굵기의 24/8배다.
+    LongDash,
     Dot,
     DashDot,
     DashDotDot,

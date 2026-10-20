@@ -42,7 +42,8 @@ pub(super) fn separator_lines(layout: &PageLayoutInfo, y_start: f64, y_end: f64)
     }
     let width = border_width_to_px(layout.separator_width).max(0.5);
     let dash = match layout.separator_type {
-        2 | 6 => StrokeDash::Dash,
+        2 => StrokeDash::Dash,
+        6 => StrokeDash::LongDash,
         3 | 7 => StrokeDash::Dot,
         4 => StrokeDash::DashDot,
         5 => StrokeDash::DashDotDot,

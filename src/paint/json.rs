@@ -3376,6 +3376,7 @@ fn stroke_dash_json(value: StrokeDash) -> String {
         }
         StrokeDash::Solid => "solid",
         StrokeDash::Dash => "dash",
+        StrokeDash::LongDash => "longDash",
         StrokeDash::Dot => "dot",
         StrokeDash::DashDot => "dashDot",
         StrokeDash::DashDotDot => "dashDotDot",
