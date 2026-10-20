@@ -2671,24 +2671,6 @@ impl Paragraph {
             }
         }
 
-        // 마지막 번호 placeholder 뒤에는 다음 글자가 없어 문단 끝 원시 위치를 쓴다.
-        if let Some(last) = offsets.len().checked_sub(1) {
-            let width = self
-                .char_count
-                .saturating_sub(1)
-                .saturating_sub(offsets[last]);
-            if chars.get(last) == Some(&' ')
-                && width >= 8
-                && width.is_multiple_of(8)
-                && matches!(
-                    self.controls.get(positions.len()),
-                    Some(Control::AutoNumber(_) | Control::NewNumber(_))
-                )
-            {
-                positions.push(last);
-            }
-        }
-
         // 갭 분석으로 발견되지 않은 컨트롤의 위치를 텍스트의 `\u{FFFC}` marker
         // 위치로 매핑한다. HWP3 파서가 char_offsets 에 control gap (8) 을 추가하지
         // 않고 sequential [0,1,2,...] 만 push 하는 경우 갭 분석이 실패하여 control

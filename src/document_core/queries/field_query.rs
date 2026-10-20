@@ -1081,38 +1081,9 @@ impl DocumentCore {
 
         let start_idx = fr.start_char_idx;
         let count = fr.end_char_idx.saturating_sub(start_idx);
-        let original_positions = para.control_text_positions();
-        let inserted = value.chars().count();
-
-        // 기존 텍스트 삭제 (char_shapes, line_segs, range_tags 등 자동 시프트)
-        if count > 0 {
-            para.delete_text_at(start_idx, count);
-        }
-
-        // 끝 경계에 넣는 글 앞에 남아 있던 FIELD_END를 개체 슬롯으로 읽지 않는다.
-        let mut control_positions = if value.is_empty() {
-            para.control_text_positions()
-        } else {
-            insert_text_with_control_positions(para, start_idx, value, false)
-        };
-
-        // 값 교체는 END 뒤의 컨트롤을 필드 안으로 끌어오지 않는다. 일반 캐럿 입력과 달리
-        // 끝 슬롯 소속과 원문 위치를 사용하므로 새 번호처럼 폭 없는 컨트롤도 뒤에 남는다.
-        for (index, position) in original_positions.into_iter().enumerate() {
-            if index > fr.control_idx + fr.inner_slot_count && position >= fr.end_char_idx {
-                control_positions[index] = position.saturating_sub(count) + inserted;
-            }
-        }
-
-        // field_ranges 갱신: start와 end를 명시적으로 재설정
-        let new_end = start_idx + inserted;
-        let current_fr = para
-            .field_ranges
-            .get_mut(field_range_index)
-            .ok_or_else(|| HwpError::InvalidField("field_range 인덱스 초과".into()))?;
-        current_fr.start_char_idx = start_idx;
-        current_fr.end_char_idx = new_end;
-        let control_idx = current_fr.control_idx;
+        let control_idx = fr.control_idx;
+        // 값은 이 필드가 품는다 — 빈 필드여도 같은 자리의 다른 필드보다 먼저다.
+        para.replace_text_keeping_slots(start_idx, count, value, Some(control_idx), false);
 
         // [#3380] 값을 채운 필드는 더 이상 "초기 상태"가 아니다 — properties 비트 15를 세운다.
         //
@@ -1127,8 +1098,6 @@ impl DocumentCore {
             }
         }
 
-        // FIELD_BEGIN/END만 새 범위로 옮기고 이웃 개체의 자리는 유지한다.
-        rebuild_char_offsets_at_positions(para, &control_positions);
         para.replace_line_segs(Vec::new());
 
         Ok(())
