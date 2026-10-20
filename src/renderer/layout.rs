@@ -11345,6 +11345,31 @@ impl LayoutEngine {
                                 Some(bin_data_content),
                                 ctx.wrap_anchors.get(para_index),
                             );
+                        } else if para.controls.iter().any(|control| {
+                            matches!(control, Control::Picture(_) | Control::Shape(_))
+                        }) {
+                            // 편집기가 캐럿을 둘 수 있게 일반 빈 문단과 같은 줄 기하만 만들어
+                            // 렌더 트리 밖(캐럿·클릭 판정용)에 남긴다. 흐름 전진량은 그대로다.
+                            let mut caret_lines = RenderNode::new(
+                                tree.next_id(),
+                                col_node.node_type.clone(),
+                                col_node.bbox,
+                            );
+                            self.layout_paragraph(
+                                tree,
+                                &mut caret_lines,
+                                para,
+                                composed.get(*para_index),
+                                styles,
+                                col_area,
+                                y_offset,
+                                page_content.section_index,
+                                *para_index,
+                                multi_col_width,
+                                Some(bin_data_content),
+                                ctx.wrap_anchors.get(para_index),
+                            );
+                            tree.push_caret_only_lines(caret_lines.children);
                         }
                         // 저장 사다리가 그 문서의 진실이다 — 한글이 이 앵커 줄을 예약했는지
                         // 다음 문단 vpos 델타로 먼저 묻고, 판별 불가일 때만 vert_rel_to
