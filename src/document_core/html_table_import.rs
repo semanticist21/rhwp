@@ -977,9 +977,22 @@ impl DocumentCore {
             page_break: TablePageBreak::None,
             repeat_header: has_header_row,
             caption: None,
-            // 하나의 바이너리 속성을 같은 parser로 해소한다. HWP5 raw에는
-            // flowWithText가 있는데 HWPX common에는 없는 상태를 만들지 않는다.
-            common: crate::parser::control::parse_common_obj_attr(&raw_ctrl_data),
+            // 본문에 붙이는 표는 편집기 삽입과 같은 인라인 배치를 쓴다.
+            // 아래에서 이 값으로 HWP 헤더 비트를 만들어 두 형식이 같은 배치를 읽는다.
+            common: crate::model::shape::CommonObjAttr {
+                treat_as_char: true,
+                text_wrap: crate::model::shape::TextWrap::TopAndBottom,
+                vert_rel_to: crate::model::shape::VertRelTo::Page,
+                horz_rel_to: crate::model::shape::HorzRelTo::Para,
+                vert_align: crate::model::shape::VertAlign::Top,
+                horz_align: crate::model::shape::HorzAlign::Left,
+                width: total_width,
+                height: total_height,
+                // [#7231] IR 과 raw 가 같은 값을 갖는다 — HWPX 저장기는 이 필드를,
+                // HWP5 쪽은 `raw_ctrl_data` 를 읽는다.
+                instance_id,
+                ..Default::default()
+            },
             outer_margin_left: outer_margin,
             outer_margin_right: outer_margin,
             outer_margin_top: outer_margin,
