@@ -1112,7 +1112,7 @@ impl DocumentCore {
                         &li_inner
                     };
                     let mut para = Paragraph::default();
-                    self.parse_inline_content(&mut para, li_inner, "");
+                    self.parse_inline_content(&mut para, li_inner, &parse_inline_style(&tag_str));
                     // 그림만 든 항목도 버리지 않는다 — 버리면 등록한 그림 데이터만 문서에 남는다.
                     if !para.text.trim().is_empty() || !para.controls.is_empty() {
                         para.text = format!("• {}", para.text);

@@ -3,6 +3,30 @@
 /// 파일 경로는 [`SCAN_ROOT`] 기준 상대 경로다. 병합 `devel` 기준 46건(2026-08-30 동결).
 const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     (
+        "commands/clipboard.rs",
+        "paste_internal_native",
+        Exempt::DelegatesTo("paste_internal_at_caret_native"),
+        "캐럿 붙이기 공통 함수에 위임한다. 공통 함수가 대상 구역의 raw_stream을 비운 뒤 붙인다.",
+    ),
+    (
+        "commands/clipboard.rs",
+        "paste_internal_text_logical_native",
+        Exempt::DelegatesTo("paste_internal_at_caret_native"),
+        "논리 캐럿을 글자 위치로 바꾼 뒤 캐럿 붙이기 공통 함수에 위임한다. 공통 함수가 raw_stream을 무효화한다.",
+    ),
+    (
+        "commands/html_import.rs",
+        "paste_html_native",
+        Exempt::DelegatesTo("paste_html_at_caret_native"),
+        "HTML 붙이기 공통 함수에 위임한다. 공통 함수가 대상 구역의 raw_stream을 비운 뒤 붙인다.",
+    ),
+    (
+        "commands/html_import.rs",
+        "paste_html_text_logical_native",
+        Exempt::DelegatesTo("paste_html_at_caret_native"),
+        "글 조각 HTML을 확인한 뒤 HTML 붙이기 공통 함수에 위임한다. 공통 함수가 raw_stream을 무효화한다.",
+    ),
+    (
         "commands/text_editing.rs",
         "delete_range_native",
         Exempt::DelegatesTo("delete_range_with_boundaries"),

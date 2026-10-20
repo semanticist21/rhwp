@@ -85,7 +85,8 @@ fn mixed_hwp3_lineage_keeps_the_hwp5_producer_axis() {
     let reopened = DocumentCore::from_bytes(&core.export_hwpx_native().unwrap()).unwrap();
     assert_contract(&reopened, true);
     let profile = reopened.document().layout_profile();
-    assert!(profile.hwp3_layout());
+    // HWP5-origin HWPX는 HWP5 문단 단위를 지키고 HWP3 전용 조판을 다시 켜지 않는다(devel 계약).
+    assert!(!profile.hwp3_layout());
     assert!(!profile.hwp3_native_layout());
     assert!(reopened
         .document()
