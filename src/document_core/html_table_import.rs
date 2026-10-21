@@ -1020,6 +1020,9 @@ impl DocumentCore {
             table.outer_margin_right = margin.right;
             table.outer_margin_top = margin.top;
             table.outer_margin_bottom = margin.bottom;
+            // HWP5 표의 바깥 여백은 CommonObjAttr 여백 칸이다. 원본 헤더 없이 합성 저장할 때
+            // 그 칸을 쓰므로 같은 값을 둔다(다르면 HWP 로 다시 열 때 여백이 사라진다).
+            common.margin = margin;
             // 원문 공통 속성에서 현재 직렬화기가 저장 헤더를 합성하게 한다.
             table.raw_ctrl_data.clear();
             table.raw_ctrl_seal = None;

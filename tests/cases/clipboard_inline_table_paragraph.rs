@@ -544,7 +544,10 @@ fn floating_table_only_cell_keeps_legacy_block_export_without_empty_prefix() {
     let html = core
         .export_control_html_native(0, 1, &[], outer["controlIdx"].as_u64().unwrap() as usize)
         .unwrap();
-    assert!(!html.contains("data-rhwp-paragraph"));
+    // 떠 있는 표만 든 셀 문단은 개체 문단 표시 하나로 감싸 자리 정보를 지킨다(빈 앞 문단은 없다).
+    assert_eq!(html.matches("data-rhwp-paragraph=").count(), 1);
+    assert!(html.contains(r#"data-rhwp-paragraph="objects""#));
+    assert!(!html.contains(r#"data-rhwp-paragraph="inline""#));
     assert_eq!(
         html.matches("<p ").count(),
         1,
