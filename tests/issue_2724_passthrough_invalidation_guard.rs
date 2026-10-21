@@ -261,6 +261,30 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     ),
     (
         "commands/clipboard.rs",
+        "paste_internal_native",
+        Exempt::DelegatesTo("paste_internal_at_caret_native"),
+        "본문 붙여넣기 진입점. 캐럿 자리를 넘겨 받는 공통 구현이 구역 패스스루를 무효화한다.",
+    ),
+    (
+        "commands/clipboard.rs",
+        "paste_internal_text_logical_native",
+        Exempt::DelegatesTo("paste_internal_at_caret_native"),
+        "논리 캐럿을 글 오프셋으로 바꿔 같은 공통 구현에 넘긴다. 검증 실패는 문서를 바꾸지 않는다.",
+    ),
+    (
+        "commands/html_import.rs",
+        "paste_html_native",
+        Exempt::DelegatesTo("paste_html_at_caret_native"),
+        "HTML 붙여넣기 진입점. 캐럿 자리를 넘겨 받는 공통 구현이 구역 패스스루를 무효화한다.",
+    ),
+    (
+        "commands/html_import.rs",
+        "paste_html_text_logical_native",
+        Exempt::DelegatesTo("paste_html_at_caret_native"),
+        "한 문단 글 HTML 을 논리 캐럿에서 같은 공통 구현에 넘긴다. 검증 실패는 문서를 바꾸지 않는다.",
+    ),
+    (
+        "commands/clipboard.rs",
         "clear_clipboard_native",
         Exempt::SessionState,
         "`self.clipboard = None` 뿐.",
