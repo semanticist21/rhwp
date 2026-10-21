@@ -1110,6 +1110,28 @@ impl DocumentCore {
                         hit.page_index, hit.x, hit.y, hit.height
                     ));
                 }
+                // 떠 있는 개체만 있는 빈 문단의 줄은 렌더 트리 밖에 있다. 같은 규칙으로 찾는다.
+                let caret_only_hit = tree.caret_only_lines().iter().find_map(|line| {
+                    [true, false].into_iter().find_map(|exact| {
+                        find_cursor_in_node(
+                            line,
+                            section_idx,
+                            para_idx,
+                            render_para_for_cursor,
+                            char_offset,
+                            page_num,
+                            exact,
+                            is_list_para,
+                            &footnote_marker_positions,
+                        )
+                    })
+                });
+                if let Some(hit) = caret_only_hit {
+                    return Ok(format!(
+                        "{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"height\":{:.1}}}",
+                        hit.page_index, hit.x, hit.y, hit.height
+                    ));
+                }
             }
         }
 
@@ -2160,6 +2182,22 @@ impl DocumentCore {
             None,
             None,
         );
+        // 떠 있는 개체만 있는 빈 문단의 줄은 그리지 않지만 클릭하면 그 문단으로 간다.
+        for line in tree.caret_only_lines() {
+            collect_runs(
+                line,
+                &mut runs,
+                &mut guide_runs,
+                &mut cell_bboxes,
+                &mut textbox_bboxes,
+                None,
+                None,
+                None,
+                None,
+                None,
+                None,
+            );
+        }
 
         // cell_bboxes의 section_index/parent_para_index/control_index/cellPath를 runs로 보완.
         // Table 노드에서 이미 채워진 최외곽 메타는 유지하되, 중첩 표의 Table 노드에는

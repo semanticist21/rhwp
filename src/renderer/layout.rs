@@ -10494,16 +10494,23 @@ impl LayoutEngine {
                 }
                 if let Some(para) = paragraphs.get(*para_index) {
                     if para_has_visible_textless_float_shape_item(page_content, para, *para_index) {
-                        // 실개체는 바로 뒤 Shape PageItem에서 그리고, 빈 본문 줄만 일반 문단처럼 남긴다.
-                        // 줄의 반환 높이는 더하지 않고 아래 앵커 계약으로 흐름 전진량을 정한다.
+                        // 빈 non-TAC 그림/도형 host 문단은 바로 뒤 Shape PageItem 이 실제
+                        // 개체를 렌더한다. 렌더 트리에 빈 줄을 두면 저장 vpos 기준으로 페이지 밖에
+                        // 기록되어 overflow 오탐이 나므로(#1274) 그 줄은 그리지 않는다.
                         para_start_y.entry(*para_index).or_insert(y_offset);
                         if para.controls.iter().any(|control| {
                             matches!(control, Control::Picture(_) | Control::Shape(_))
                         }) {
-                            // 일반 빈 문단과 같은 줄 기하만 만들고 개체의 기존 흐름 전진량을 유지한다.
+                            // 편집기가 캐럿을 둘 수 있게 일반 빈 문단과 같은 줄 기하만 만들어
+                            // 렌더 트리 밖(캐럿·클릭 판정용)에 남긴다. 흐름 전진량은 그대로다.
+                            let mut caret_lines = RenderNode::new(
+                                tree.next_id(),
+                                col_node.node_type.clone(),
+                                col_node.bbox,
+                            );
                             self.layout_paragraph(
                                 tree,
-                                col_node,
+                                &mut caret_lines,
                                 para,
                                 composed.get(*para_index),
                                 styles,
@@ -10515,6 +10522,7 @@ impl LayoutEngine {
                                 Some(bin_data_content),
                                 ctx.wrap_anchors.get(para_index),
                             );
+                            tree.push_caret_only_lines(caret_lines.children);
                         }
                         // 저장 사다리가 그 문서의 진실이다 — 한글이 이 앵커 줄을 예약했는지
                         // 다음 문단 vpos 델타로 먼저 묻고, 판별 불가일 때만 vert_rel_to

@@ -1827,6 +1827,9 @@ pub struct PageLayoutContext {
     horizontal_shaping_sidecars: HorizontalShapingPageSidecars,
     /// Q4-D2 bounded HWP5 vertical table-cell owners. Paint publication is D3-only.
     vertical_shaping_sidecars: VerticalShapingPageSidecars,
+    /// 그리지 않고 캐럿·클릭 판정에만 쓰는 줄. 떠 있는 그림·도형만 있는 빈 문단은 실개체만
+    /// 그리므로(#1274) 렌더 트리에 빈 줄을 두지 않지만, 편집기는 그 문단에 캐럿을 둬야 한다.
+    caret_only_lines: Vec<RenderNode>,
 }
 
 impl PageLayoutContext {
@@ -1839,7 +1842,13 @@ impl PageLayoutContext {
             page_bbox: BoundingBox::new(0.0, 0.0, width, height),
             horizontal_shaping_sidecars: HorizontalShapingPageSidecars::default(),
             vertical_shaping_sidecars: VerticalShapingPageSidecars::default(),
+            caret_only_lines: Vec::new(),
         }
+    }
+
+    /// 그리지 않을 문단 줄을 캐럿·클릭 판정용으로 남긴다.
+    pub(crate) fn push_caret_only_lines(&mut self, lines: Vec<RenderNode>) {
+        self.caret_only_lines.extend(lines);
     }
 
     /// 페이지 인덱스
@@ -2124,6 +2133,11 @@ impl PageRenderTree {
     /// 새 노드 ID 할당
     pub fn next_id(&mut self) -> NodeId {
         self.frame.next_id()
+    }
+
+    /// 렌더 트리에 넣지 않은 캐럿·클릭 판정용 줄(떠 있는 개체만 있는 빈 문단).
+    pub fn caret_only_lines(&self) -> &[RenderNode] {
+        &self.frame.caret_only_lines
     }
 
     /// 한컴 PDF가 현대 글리프로 인쇄하는 닫힌 레거시 제품명 어휘를 최종 화면
