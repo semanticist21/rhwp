@@ -1110,28 +1110,6 @@ impl DocumentCore {
                         hit.page_index, hit.x, hit.y, hit.height
                     ));
                 }
-                // 떠 있는 개체만 있는 빈 문단의 줄은 렌더 트리 밖에 있다. 같은 규칙으로 찾는다.
-                let caret_only_hit = tree.caret_only_lines().iter().find_map(|line| {
-                    [true, false].into_iter().find_map(|exact| {
-                        find_cursor_in_node(
-                            line,
-                            section_idx,
-                            para_idx,
-                            render_para_for_cursor,
-                            char_offset,
-                            page_num,
-                            exact,
-                            is_list_para,
-                            &footnote_marker_positions,
-                        )
-                    })
-                });
-                if let Some(hit) = caret_only_hit {
-                    return Ok(format!(
-                        "{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"height\":{:.1}}}",
-                        hit.page_index, hit.x, hit.y, hit.height
-                    ));
-                }
             }
         }
 
@@ -1462,15 +1440,21 @@ impl DocumentCore {
             ));
         }
 
-        if let Some(line_hit) = find_para_line(
-            &tree.root,
-            section_idx,
-            para_idx,
-            is_list_para,
-            list_marker_char_shape_id,
-            list_marker_body_dx,
-            &self.styles,
-        ) {
+        // 떠 있는 개체만 있는 빈 문단의 줄은 렌더 트리 밖(캐럿·클릭 판정용)에 있다.
+        let line_hit = std::iter::once(&tree.root)
+            .chain(tree.caret_only_lines())
+            .find_map(|node| {
+                find_para_line(
+                    node,
+                    section_idx,
+                    para_idx,
+                    is_list_para,
+                    list_marker_char_shape_id,
+                    list_marker_body_dx,
+                    &self.styles,
+                )
+            });
+        if let Some(line_hit) = line_hit {
             let x = line_hit.cursor_x(is_list_para, char_offset);
             let y = line_hit.y;
             let h = line_hit.height;
