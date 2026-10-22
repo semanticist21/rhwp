@@ -119,6 +119,47 @@ fn first_line_emphasis_dot_ink_is_inside_body_clip() {
 }
 
 #[test]
+fn hancom_solid_top_underline_keeps_print_height_and_width() {
+    let doc = probe("top-probe-shape-0");
+    let svg = doc.render_page_svg_native(0).unwrap();
+    let mut baselines: Vec<(f64, f64)> = tags(&svg, "text")
+        .iter()
+        .map(|tag| (attr(tag, "y"), attr(tag, "font-size")))
+        .collect();
+    baselines.sort_by(|a, b| a.0.total_cmp(&b.0));
+    baselines.dedup();
+    assert_eq!(baselines.len(), 16, "Top/Bottom 원문 문단 보존");
+    let lines = tags(&svg, "line");
+    let clip = body_clip(&doc);
+    // 독립 Hancom Print PDF의 9/10/12/15/18/24/36/48pt 실선 실측(em)이다.
+    for (pair, (offset, width)) in baselines.chunks_exact(2).zip([
+        (-0.86664, 0.04004),
+        (-0.87957, 0.03618),
+        (-0.87004, 0.04004),
+        (-0.87198, 0.04004),
+        (-0.86668, 0.04004),
+        (-0.87002, 0.04000),
+        (-0.87000, 0.04002),
+        (-0.87001, 0.04002),
+    ]) {
+        let (baseline, size) = pair[0];
+        let top: Vec<_> = lines
+            .iter()
+            .filter(|tag| tag.contains("stroke=\"#cc0000\""))
+            .filter(|tag| (attr(tag, "y1") - baseline).abs() < size * 1.3)
+            .collect();
+        assert!(!top.is_empty(), "위 실선 누락 방지");
+        for line in top {
+            let y = attr(line, "y1");
+            let stroke = attr(line, "stroke-width");
+            assert!(((y - baseline) / size - offset).abs() < 0.02);
+            assert!((stroke / size - width).abs() < 0.005);
+            assert!(clip.y <= y - stroke / 2.0, "첫 줄 잉크를 본문 clip에 포함");
+        }
+    }
+}
+
+#[test]
 fn hancom_multi_underline_keeps_bottom_strokes_above_baseline() {
     // 같은 이름의 pdf/raised-decoration-hancom Print PDF, 9~48pt 32쌍이다.
     for (shape, lift, print_y) in [

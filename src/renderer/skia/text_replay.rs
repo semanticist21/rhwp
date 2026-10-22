@@ -791,11 +791,11 @@ impl SkiaTextReplay<'_> {
                     // [#5730] 아래 밑줄은 기준선 + 0.17em (한글 2022 프로브 실측) —
                     // 이중/삼중선(shape 7~10)은 em 비례 실측표를 따른다.
                     // SVG 백엔드(renderer/svg.rs)와 같은 표(text_decoration)를 소비한다.
-                    let multi = crate::renderer::text_decoration::underline_multi_lines(
+                    let lines = crate::renderer::text_decoration::underline_lines(
                         style.underline,
                         style.underline_shape,
                     );
-                    if let Some(lines) = multi {
+                    if let Some(lines) = lines {
                         for (dy_em, width_em) in lines {
                             draw_styled_line(
                                 bbox.x as f32,

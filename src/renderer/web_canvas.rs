@@ -2516,7 +2516,7 @@ impl Renderer for WebCanvasRenderer {
             } else {
                 color_to_css(style.color)
             };
-            if let Some(lines) = crate::renderer::text_decoration::underline_multi_lines(
+            if let Some(lines) = crate::renderer::text_decoration::underline_lines(
                 style.underline,
                 style.underline_shape,
             ) {

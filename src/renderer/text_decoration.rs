@@ -101,7 +101,7 @@ pub(crate) fn emphasis_marks<'a>(
         .flatten()
 }
 
-/// 밑줄 다중선(shape 7~10)의 (기준선 아래 오프셋 em, 선 굵기 em) 목록.
+/// 위 실선(shape 0)과 밑줄 다중선(shape 7~10)의 (기준선 아래 오프셋 em, 선 굵기 em) 목록.
 ///
 /// 한글 2022 실측 (15pt/24pt 프로브, PDF 드로잉 좌표):
 /// - 7 이중선: 0.160(0.032) + 0.250(0.032)
@@ -111,12 +111,13 @@ pub(crate) fn emphasis_marks<'a>(
 ///
 /// 한글 2024 Print PDF(9~48pt)의 위 밑줄은 같은 획을 7번은 1.11em,
 /// 8~10번은 1.20em 위로 옮긴다. 획 순서와 굵기는 그대로 유지한다.
-/// 그 외 shape는 `None`으로 기존 단일선 경로를 쓴다.
-pub(crate) fn underline_multi_lines(
+/// 위 실선은 기준선 -0.87em, 굵기 0.04em이다. 나머지는 기존 경로를 쓴다.
+pub(crate) fn underline_lines(
     underline: crate::model::style::UnderlineType,
     shape: u8,
 ) -> Option<impl Iterator<Item = (f64, f64)>> {
     let lines: &[(f64, f64)] = match shape {
+        0 if underline == crate::model::style::UnderlineType::Top => &[(-0.87, 0.04)],
         7 => &[(0.160, 0.032), (0.250, 0.032)],
         8 => &[(0.175, 0.048), (0.300, 0.100)],
         9 => &[(0.200, 0.100), (0.325, 0.048)],
@@ -124,10 +125,10 @@ pub(crate) fn underline_multi_lines(
         _ => return None,
     };
     let lift = if underline == crate::model::style::UnderlineType::Top {
-        if shape == 7 {
-            1.11
-        } else {
-            1.20
+        match shape {
+            7 => 1.11,
+            8..=10 => 1.20,
+            _ => 0.0,
         }
     } else {
         0.0
@@ -135,14 +136,14 @@ pub(crate) fn underline_multi_lines(
     Some(lines.iter().map(move |&(dy, width)| (dy - lift, width)))
 }
 
-/// 다중선의 잉크 상하단이다. clip과 paint bounds가 같은 획을 포함한다.
-pub(crate) fn underline_multi_ink_bounds(
+/// 실선·다중선의 잉크 상하단이다. clip과 paint bounds가 같은 획을 포함한다.
+pub(crate) fn underline_ink_bounds(
     underline: crate::model::style::UnderlineType,
     shape: u8,
     font_size: f64,
     baseline: f64,
 ) -> Option<(f64, f64)> {
-    let lines = underline_multi_lines(underline, shape)?;
+    let lines = underline_lines(underline, shape)?;
     Some(lines.fold(
         (f64::INFINITY, f64::NEG_INFINITY),
         |(top, bottom), (dy, width)| {
@@ -190,7 +191,7 @@ pub(crate) fn raised_decoration_ink_bbox(
     let mut right = f64::NEG_INFINITY;
     if top_underline {
         if let Some((ink_top, ink_bottom)) =
-            underline_multi_ink_bounds(style.underline, style.underline_shape, font_size, baseline)
+            underline_ink_bounds(style.underline, style.underline_shape, font_size, baseline)
         {
             top = top.min(ink_top);
             bottom = bottom.max(ink_bottom);

@@ -870,7 +870,7 @@ fn decoration_bounds(
     let ink = match kind {
         TextDecorationKind::Underline => {
             let (y, height) = if let Some((top, bottom)) =
-                crate::renderer::text_decoration::underline_multi_ink_bounds(
+                crate::renderer::text_decoration::underline_ink_bounds(
                     run.style.underline,
                     run.style.underline_shape,
                     font_size,
