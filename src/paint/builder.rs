@@ -488,6 +488,7 @@ fn publish_line_decoration_trims(node: &mut LayerNode) {
         ..
     } = &mut node.kind
     {
+        publish_underline_dash_offsets(children);
         if let Some((source, trim)) = line_decoration_trim_target(children) {
             set_decoration_trim_for_source(children, &source, trim);
         }
@@ -502,6 +503,55 @@ fn publish_line_decoration_trims(node: &mut LayerNode) {
             publish_line_decoration_trims(child)
         }
         LayerNodeKind::Leaf { .. } => {}
+    }
+}
+
+fn publish_underline_dash_offsets(children: &mut [LayerNode]) {
+    let mut previous: Option<(f64, f64, f64, u32, f64)> = None;
+    for child in children {
+        let LayerNodeKind::Leaf { ops } = &mut child.kind else {
+            previous = None;
+            continue;
+        };
+        let mut next = None;
+        for op in ops {
+            if let PaintOp::TextDecoration {
+                bbox,
+                run,
+                kind: TextDecorationKind::Underline,
+                underline_dash_offset,
+                ..
+            } = op
+            {
+                if run.style.underline == UnderlineType::Top
+                    && run.style.underline_shape == 1
+                    && run.rotation == 0.0
+                    && !run.is_vertical
+                {
+                    let (size, y) = run.style.script_draw_metrics(
+                        run.style.effective_font_size(),
+                        bbox.y + run.baseline,
+                    );
+                    let color = run.style.underline_color;
+                    *underline_dash_offset = previous
+                        .filter(|&(end, baseline, font_size, ink, _)| {
+                            (end - bbox.x).abs() < 0.01
+                                && (baseline - y).abs() < 0.01
+                                && font_size == size
+                                && ink == color
+                        })
+                        .map_or(0.0, |(_, _, _, _, offset)| offset);
+                    next = Some((
+                        bbox.x + bbox.width,
+                        y,
+                        size,
+                        color,
+                        *underline_dash_offset + bbox.width,
+                    ));
+                }
+            }
+        }
+        previous = next;
     }
 }
 

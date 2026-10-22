@@ -402,6 +402,7 @@ pub struct WebCanvasRenderer {
     /// 줄바꿈 줄(서명란 밑줄 공백)은 대상 아님.
     soft_wrap_decoration_trim: Option<(u32, usize)>,
     active_decoration_trim: usize,
+    underline_dash_offset: f64,
     suppress_text_glyphs: bool,
     metric_descriptor_mismatch: std::cell::Cell<bool>,
     hft_outline_fonts: Option<super::hft_outline::HftOutlineFonts>,
@@ -433,6 +434,7 @@ impl WebCanvasRenderer {
             partial_context_saved: false,
             soft_wrap_decoration_trim: None,
             active_decoration_trim: 0,
+            underline_dash_offset: 0.0,
             suppress_text_glyphs: false,
             metric_descriptor_mismatch: std::cell::Cell::new(false),
             hft_outline_fonts: None,
@@ -704,6 +706,7 @@ impl WebCanvasRenderer {
         run: &TextRunNode,
         role: TextVisualReplayRole,
         decoration_trim: usize,
+        underline_dash_offset: f64,
     ) {
         if role == TextVisualReplayRole::SuppressedFallback {
             return;
@@ -758,6 +761,8 @@ impl WebCanvasRenderer {
         }
         let previous_suppression = self.suppress_text_glyphs;
         self.suppress_text_glyphs = suppress_glyphs;
+        let previous_offset = self.underline_dash_offset;
+        self.underline_dash_offset = underline_dash_offset;
         let previous_trim = self.active_decoration_trim;
         self.active_decoration_trim = if matches!(role, TextVisualReplayRole::Decoration(_)) {
             decoration_trim
@@ -779,6 +784,7 @@ impl WebCanvasRenderer {
         }
 
         self.active_decoration_trim = previous_trim;
+        self.underline_dash_offset = previous_offset;
         self.suppress_text_glyphs = previous_suppression;
         self.show_paragraph_marks = previous_marks.0;
         self.show_control_codes = previous_marks.1;
@@ -804,6 +810,13 @@ impl WebCanvasRenderer {
                         ..
                     } => *trim_trailing_spaces,
                     _ => 0,
+                },
+                match op {
+                    PaintOp::TextDecoration {
+                        underline_dash_offset,
+                        ..
+                    } => *underline_dash_offset,
+                    _ => 0.0,
                 },
             ),
             PaintOp::FootnoteMarker { bbox, marker } => {
@@ -2522,15 +2535,23 @@ impl Renderer for WebCanvasRenderer {
             ) {
                 for (dy_em, width_em) in lines {
                     let ul_y = y + font_size * dy_em;
-                    self.draw_single_canvas_line(
-                        x,
-                        ul_y,
-                        x + text_width,
-                        ul_y,
-                        &ul_color,
-                        (font_size * width_em).max(0.3),
-                        &[],
-                    );
+                    for (left, right) in crate::renderer::text_decoration::underline_spans(
+                        style.underline,
+                        style.underline_shape,
+                        text_width,
+                        font_size,
+                        self.underline_dash_offset,
+                    ) {
+                        self.draw_single_canvas_line(
+                            x + left,
+                            ul_y,
+                            x + right,
+                            ul_y,
+                            &ul_color,
+                            (font_size * width_em).max(0.3),
+                            &[],
+                        );
+                    }
                 }
             } else {
                 let ul_y = match style.underline {

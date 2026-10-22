@@ -1743,6 +1743,13 @@ impl SkiaLayerRenderer {
                                 projected
                                     .validated_layout_positions_for(projected.display_or_text()),
                                 decoration_trim,
+                                match op {
+                                    PaintOp::TextDecoration {
+                                        underline_dash_offset,
+                                        ..
+                                    } => *underline_dash_offset,
+                                    _ => 0.0,
+                                },
                                 suppress_glyphs,
                                 render_marks,
                             );
@@ -1782,6 +1789,7 @@ impl SkiaLayerRenderer {
                                 false,
                                 None,
                                 0,
+                                0.0,
                                 false,
                                 false,
                             );
@@ -1794,7 +1802,7 @@ impl SkiaLayerRenderer {
                             };
                             text_replay.draw_text(
                                 label, *bbox, &style, 10.0, 0.0, false, None, false, false, false,
-                                None, 0, false, false,
+                                None, 0, 0.0, false, false,
                             );
                         }
                         PaintOp::Line { bbox, line } => {

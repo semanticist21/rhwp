@@ -52,6 +52,7 @@ impl SkiaTextReplay<'_> {
         is_line_break_end: bool,
         layout_positions: Option<&[f64]>,
         trim_trailing_spaces: usize,
+        underline_dash_offset: f64,
         suppress_glyphs: bool,
         render_marks: bool,
     ) {
@@ -797,15 +798,23 @@ impl SkiaTextReplay<'_> {
                     );
                     if let Some(lines) = lines {
                         for (dy_em, width_em) in lines {
-                            draw_styled_line(
-                                bbox.x as f32,
-                                y as f32 + font_size * dy_em as f32,
-                                bbox.x as f32 + text_width,
-                                color,
-                                (font_size * width_em as f32).max(0.3),
-                                &[],
-                                false,
-                            );
+                            for (left, right) in crate::renderer::text_decoration::underline_spans(
+                                style.underline,
+                                style.underline_shape,
+                                text_width as f64,
+                                font_size as f64,
+                                underline_dash_offset,
+                            ) {
+                                draw_styled_line(
+                                    bbox.x as f32 + left as f32,
+                                    y as f32 + font_size * dy_em as f32,
+                                    bbox.x as f32 + right as f32,
+                                    color,
+                                    (font_size * width_em as f32).max(0.3),
+                                    &[],
+                                    false,
+                                );
+                            }
                         }
                     } else {
                         let line_y =

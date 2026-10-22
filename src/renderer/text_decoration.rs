@@ -101,7 +101,7 @@ pub(crate) fn emphasis_marks<'a>(
         .flatten()
 }
 
-/// 위 실선(shape 0)과 밑줄 다중선(shape 7~10)의 (기준선 아래 오프셋 em, 선 굵기 em) 목록.
+/// 위 단일선(shape 0~1)과 밑줄 다중선(shape 7~10)의 (기준선 아래 오프셋 em, 선 굵기 em) 목록.
 ///
 /// 한글 2022 실측 (15pt/24pt 프로브, PDF 드로잉 좌표):
 /// - 7 이중선: 0.160(0.032) + 0.250(0.032)
@@ -111,13 +111,13 @@ pub(crate) fn emphasis_marks<'a>(
 ///
 /// 한글 2024 Print PDF(9~48pt)의 위 밑줄은 같은 획을 7번은 1.11em,
 /// 8~10번은 1.20em 위로 옮긴다. 획 순서와 굵기는 그대로 유지한다.
-/// 위 실선은 기준선 -0.87em, 굵기 0.04em이다. 나머지는 기존 경로를 쓴다.
+/// 위 실선·파선은 기준선 -0.87em, 굵기 0.04em이다. 나머지는 기존 경로를 쓴다.
 pub(crate) fn underline_lines(
     underline: crate::model::style::UnderlineType,
     shape: u8,
 ) -> Option<impl Iterator<Item = (f64, f64)>> {
     let lines: &[(f64, f64)] = match shape {
-        0 if underline == crate::model::style::UnderlineType::Top => &[(-0.87, 0.04)],
+        0 | 1 if underline == crate::model::style::UnderlineType::Top => &[(-0.87, 0.04)],
         7 => &[(0.160, 0.032), (0.250, 0.032)],
         8 => &[(0.175, 0.048), (0.300, 0.100)],
         9 => &[(0.200, 0.100), (0.325, 0.048)],
@@ -134,6 +134,39 @@ pub(crate) fn underline_lines(
         0.0
     };
     Some(lines.iter().map(move |&(dy, width)| (dy - lift, width)))
+}
+
+/// 한컴 Print의 위 파선은 글꼴별 run 경계에서도 0.285em 획·0.17em 간격을 잇는다.
+pub(crate) fn underline_spans(
+    underline: crate::model::style::UnderlineType,
+    shape: u8,
+    width: f64,
+    font_size: f64,
+    offset: f64,
+) -> impl Iterator<Item = (f64, f64)> {
+    let dashed = underline == crate::model::style::UnderlineType::Top && shape == 1;
+    let on = font_size * 0.285;
+    let period = font_size * 0.455;
+    let mut start = if dashed {
+        -offset.rem_euclid(period)
+    } else {
+        0.0
+    };
+    std::iter::from_fn(move || loop {
+        if start >= width || !start.is_finite() || !width.is_finite() || (dashed && period <= 0.0) {
+            return None;
+        }
+        let end = if dashed {
+            (start + on).min(width)
+        } else {
+            width
+        };
+        let left = start.max(0.0);
+        start = if dashed { start + period } else { width };
+        if end > left {
+            return Some((left, end));
+        }
+    })
 }
 
 /// 실선·다중선의 잉크 상하단이다. clip과 paint bounds가 같은 획을 포함한다.

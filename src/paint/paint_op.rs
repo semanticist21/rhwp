@@ -105,6 +105,7 @@ pub enum PaintOp {
         kind: TextDecorationKind,
         source: Option<TextSourceSpan>,
         trim_trailing_spaces: usize,
+        underline_dash_offset: f64,
     },
     /// Editor control-code label for a non-text object.
     ControlLabel { bbox: BoundingBox, label: String },
@@ -212,6 +213,7 @@ impl PaintOp {
             kind,
             source: None,
             trim_trailing_spaces: 0,
+            underline_dash_offset: 0.0,
         }
     }
 

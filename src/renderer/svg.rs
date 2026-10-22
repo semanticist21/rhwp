@@ -163,6 +163,7 @@ pub struct SvgRenderer {
     /// (서명란, issue_157)은 저자 콘텐츠라 제외하지 않는다.
     soft_wrap_decoration_trim: Option<(u32, usize)>,
     forced_decoration_trim: Option<usize>,
+    underline_dash_offset: f64,
     /// draw_text 한 회 한정 활성 트림 수 (위 필드에서 파생).
     active_decoration_trim: usize,
     /// Canonical sidecar replay reuses `draw_text_positioned` for decoration geometry while
@@ -261,6 +262,7 @@ impl SvgRenderer {
             metric_faces: std::collections::BTreeSet::new(),
             soft_wrap_decoration_trim: None,
             forced_decoration_trim: None,
+            underline_dash_offset: 0.0,
             active_decoration_trim: 0,
             suppress_text_glyphs: false,
             active_decoration_width: None,
@@ -397,6 +399,7 @@ impl SvgRenderer {
                 run,
                 kind,
                 trim_trailing_spaces,
+                underline_dash_offset,
                 ..
             } => {
                 let rotation = run.rotation;
@@ -418,6 +421,8 @@ impl SvgRenderer {
                 } else {
                     0
                 };
+                let previous_offset = self.underline_dash_offset;
+                self.underline_dash_offset = *underline_dash_offset;
                 let previous_forced_trim = self.forced_decoration_trim;
                 self.forced_decoration_trim = Some(*trim_trailing_spaces);
                 self.with_layer_text_rotation(rotation, *bbox, |renderer| {
@@ -431,6 +436,7 @@ impl SvgRenderer {
                     });
                 });
                 self.forced_decoration_trim = previous_forced_trim;
+                self.underline_dash_offset = previous_offset;
             }
             PaintOp::FootnoteMarker { bbox, marker } => self.render_layer_payload_node(
                 node_id,
@@ -3584,15 +3590,19 @@ impl Renderer for SvgRenderer {
             if let Some(lines) = lines {
                 for (dy_em, width_em) in lines {
                     let ly = y + font_size * dy_em;
-                    self.output.push_str(&format!(
-                        "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"{:.2}\"/>\n",
-                        x,
-                        ly,
-                        x + text_width,
-                        ly,
-                        ul_color,
-                        (font_size * width_em).max(0.3),
-                    ));
+                    for (left, right) in crate::renderer::text_decoration::underline_spans(
+                        style.underline,
+                        style.underline_shape,
+                        text_width,
+                        font_size,
+                        self.underline_dash_offset,
+                    ) {
+                        self.output.push_str(&format!(
+                            "<line x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"{:.2}\"/>\n",
+                            x + left, ly, x + right, ly, ul_color,
+                            (font_size * width_em).max(0.3),
+                        ));
+                    }
                 }
             } else {
                 let ul_y = match style.underline {

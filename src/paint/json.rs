@@ -939,6 +939,7 @@ impl PaintOp {
                 run,
                 kind,
                 trim_trailing_spaces,
+                underline_dash_offset,
                 source,
             } => {
                 buf.push('{');
@@ -950,6 +951,9 @@ impl PaintOp {
                 }
                 buf.push_str(",\"decoration\":");
                 write_text_decoration(buf, *kind, run, *trim_trailing_spaces);
+                if *underline_dash_offset != 0.0 {
+                    let _ = write!(buf, ",\"underlineDashOffset\":{}", underline_dash_offset);
+                }
                 buf.push('}');
             }
             PaintOp::ControlLabel { bbox, label } => {

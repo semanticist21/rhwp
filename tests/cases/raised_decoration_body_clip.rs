@@ -160,6 +160,158 @@ fn hancom_solid_top_underline_keeps_print_height_and_width() {
 }
 
 #[test]
+fn hancom_dashed_top_underline_keeps_print_geometry_across_font_runs() {
+    let doc = probe("top-probe-shape-1");
+    let svg = doc.render_page_svg_native(0).unwrap();
+    let mut baselines: Vec<_> = tags(&svg, "text")
+        .iter()
+        .map(|tag| (attr(tag, "y"), attr(tag, "font-size")))
+        .collect();
+    baselines.sort_by(|a, b| a.0.total_cmp(&b.0));
+    baselines.dedup();
+    assert_eq!(baselines.len(), 16);
+    let lines = tags(&svg, "line");
+    // 독립 Print PDF의 높이·굵기(em), 첫 획 길이·주기·마지막 끝점(96dpi px)이다.
+    let measured = [
+        (-0.86664, 0.04004, 3.35867, 5.27733, 153.67733, 8),
+        (-0.87957, 0.03618, 3.83867, 6.07733, 165.83067, 9),
+        (-0.87004, 0.04004, 4.47733, 7.35600, 176.70533, 9),
+        (-0.87198, 0.04004, 5.75733, 9.27600, 192.85600, 9),
+        (-0.86668, 0.04004, 6.87600, 11.03467, 208.52800, 9),
+        (-0.87002, 0.04000, 9.11600, 14.55200, 238.91200, 9),
+        (-0.87000, 0.04002, 13.59333, 21.90800, 302.23733, 9),
+        (-0.87001, 0.04002, 18.23067, 29.10533, 364.44400, 9),
+    ];
+    let clip = body_clip(&doc);
+    for (pair, (offset, width, on, period, end, count)) in baselines.chunks_exact(2).zip(measured) {
+        let (baseline, size) = pair[0];
+        let mut strokes: Vec<_> = lines
+            .iter()
+            .filter(|tag| tag.contains("stroke=\"#cc0000\""))
+            .filter(|tag| (attr(tag, "y1") - baseline).abs() < size * 1.3)
+            .collect();
+        assert!(!strokes.is_empty());
+        strokes.sort_by(|a, b| attr(a, "x1").total_cmp(&attr(b, "x1")));
+        let mut spans: Vec<(f64, f64)> = Vec::new();
+        for line in strokes {
+            let y = attr(line, "y1");
+            let stroke = attr(line, "stroke-width");
+            assert!(((y - baseline) / size - offset).abs() < 0.02);
+            assert!((stroke / size - width).abs() < 0.005);
+            assert!(clip.y <= y - stroke / 2.0);
+            let (left, right) = (attr(line, "x1"), attr(line, "x2"));
+            // run 경계에서 나뉜 같은 획을 합쳐 Print의 실제 획과 대조한다.
+            if let Some(last) = spans
+                .last_mut()
+                .filter(|last| (last.1 - left).abs() < 0.001)
+            {
+                last.1 = right;
+            } else {
+                spans.push((left, right));
+            }
+        }
+        assert_eq!(
+            spans.len(),
+            count,
+            "언어별 run에서 파선이 다시 시작하지 않는다"
+        );
+        for (i, (left, right)) in spans.into_iter().enumerate() {
+            let print_left = 113.37867 + i as f64 * period;
+            near_print(left, print_left);
+            near_print(right, (print_left + on).min(end));
+        }
+    }
+}
+
+#[test]
+fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
+    use rhwp::paint::{LayerBuilder, RenderProfile};
+    use rhwp::renderer::render_tree::PageRenderTree;
+
+    fn find(node: &RenderNode) -> Option<RenderNode> {
+        if matches!(node.node_type, RenderNodeType::TextLine(_))
+            && node.children.iter().any(|child| {
+                matches!(&child.node_type, RenderNodeType::TextRun(run)
+                    if run.style.underline == rhwp::model::style::UnderlineType::Top)
+            })
+        {
+            return Some(node.clone());
+        }
+        node.children.iter().find_map(find)
+    }
+    fn offsets(value: &serde_json::Value, output: &mut Vec<f64>) {
+        match value {
+            serde_json::Value::Object(map) => {
+                if map.get("type").and_then(|v| v.as_str()) == Some("textDecoration") {
+                    output.push(
+                        map.get("underlineDashOffset")
+                            .and_then(|v| v.as_f64())
+                            .unwrap_or(0.0),
+                    );
+                }
+                for child in map.values() {
+                    offsets(child, output);
+                }
+            }
+            serde_json::Value::Array(items) => {
+                for item in items {
+                    offsets(item, output);
+                }
+            }
+            _ => {}
+        }
+    }
+    let original = find(
+        &probe("top-probe-shape-1")
+            .build_page_render_tree(0)
+            .unwrap()
+            .root,
+    )
+    .unwrap();
+    assert_eq!(
+        original.children.len(),
+        2,
+        "영문·한글 run 경계가 있는 실제 원본"
+    );
+    let width = original.children[0].bbox.width;
+    for change in ["none", "gap", "color", "new-line"] {
+        let mut line = original.clone();
+        match change {
+            "gap" => line.children[1].bbox.x += 1.0,
+            "color" => {
+                let RenderNodeType::TextRun(run) = &mut line.children[1].node_type else {
+                    unreachable!()
+                };
+                run.style.underline_color ^= 1;
+            }
+            _ => {}
+        }
+        let mut tree = PageRenderTree::new(0, 794.0, 1122.0);
+        tree.root.children.push(line);
+        if change == "new-line" {
+            let mut next = original.clone();
+            next.id += 100_000;
+            for child in &mut next.children {
+                child.id += 100_000;
+            }
+            tree.root.children.push(next);
+        }
+        let layer = LayerBuilder::new(RenderProfile::Print).build(&tree);
+        let mut phases = Vec::new();
+        offsets(
+            &serde_json::from_str(&layer.to_json()).unwrap(),
+            &mut phases,
+        );
+        let expected = match change {
+            "gap" | "color" => vec![0.0, 0.0],
+            "new-line" => vec![0.0, width, 0.0, width],
+            _ => vec![0.0, width],
+        };
+        assert_eq!(phases, expected, "{change}");
+    }
+}
+
+#[test]
 fn hancom_multi_underline_keeps_bottom_strokes_above_baseline() {
     // 같은 이름의 pdf/raised-decoration-hancom Print PDF, 9~48pt 32쌍이다.
     for (shape, lift, print_y) in [
