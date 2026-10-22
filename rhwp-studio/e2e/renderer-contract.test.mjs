@@ -317,7 +317,7 @@ for (const sample of rendererBaselineManifest.samples.filter(
 }
 assert.deepEqual(
   layerNodeKindSet,
-  ['clipRect', 'group', 'leaf'],
+  ['clipPath', 'clipRect', 'group', 'leaf'],
   'renderer contract guard should know every LayerNode kind',
 );
 
@@ -331,11 +331,13 @@ requireSnippet(
   /node\.kind === 'group'[\s\S]*?for \(const child of node\.children\)[\s\S]*?this\.renderNode\(canvas, child,[\s\S]*?\}\s*return;/,
   'group nodes should recurse through children',
 );
-requireSnippet(
-  renderNodeContentsBody,
-  /node\.kind === 'clipRect'[\s\S]*?this\.renderClipNode\(canvas, node,[\s\S]*?\);\s*return;/,
-  'clipRect nodes should go through renderClipNode',
-);
+for (const kind of ['clipPath', 'clipRect']) {
+  requireSnippet(
+    renderNodeContentsBody,
+    new RegExp(`node\\.kind === '${kind}'[\\s\\S]*?this\\.renderClipNode\\(canvas, node,[\\s\\S]*?\\);\\s*return;`),
+    `${kind} nodes should go through renderClipNode`,
+  );
+}
 requireSnippet(
   renderNodeContentsBody,
   /this\.renderLeaf\(canvas, node, profile, replayPlane, activeLayer\);/,
@@ -553,7 +555,7 @@ assert.doesNotMatch(
 );
 requireSnippet(
   mainSource,
-  /new RendererSession\([\s\S]*?async \(mode, surface\) => \{[\s\S]*?import\('\@\/view\/canvaskit-renderer'\)[\s\S]*?CanvasKitLayerRenderer\.create\(mode, surface,[\s\S]*?requirePreparedFontFamilies:[\s\S]*?transformCanvasKitPreflight[\s\S]*?prepareCanvasKitDocument[\s\S]*?loadStoredLocalFonts\(\)[\s\S]*?prepareLocalFonts\(fontRequirements\.requiredFontFamilies\)[\s\S]*?prepareBundledFonts/,
+  /new RendererSession\([\s\S]*?async \(mode, surface\) => \{[\s\S]*?import\('\@\/view\/canvaskit-renderer'\)[\s\S]*?CanvasKitLayerRenderer\.create\(mode, surface,[\s\S]*?requirePreparedFontFamilies:[\s\S]*?transformCanvasKitPreflight[\s\S]*?prepareCanvasKitDocument[\s\S]*?loadStoredLocalFonts\(\)[\s\S]*?requiredFontFamilies = documentFontRequirements\(fontRequirements\)[\s\S]*?prepareLocalFonts\(requiredFontFamilies\)[\s\S]*?prepareBundledFonts/,
   'Studio should prepare stored local faces and bundled fallback before first CanvasKit replay',
 );
 requireSnippet(
@@ -730,7 +732,6 @@ const renderEquationBody = extractMethodBody(canvaskitSource, 'renderEquation');
 const renderEquationBoxBody = extractMethodBody(canvaskitSource, 'renderEquationBox');
 const renderPathBody = extractMethodBody(canvaskitSource, 'renderPath');
 const renderLineBody = extractMethodBody(canvaskitSource, 'renderLine');
-const drawStrokeWithDashBody = extractMethodBody(canvaskitSource, 'drawStrokeWithDash');
 const renderFormObjectBody = extractMethodBody(canvaskitSource, 'renderFormObject');
 const renderPlaceholderBody = extractMethodBody(canvaskitSource, 'renderPlaceholder');
 const renderTextRunBody = extractMethodBody(canvaskitSource, 'renderTextRun');
@@ -756,6 +757,57 @@ try {
     = await vite.ssrLoadModule('/src/view/glyph-outline-payload-status.ts'));
 } finally {
   await vite.close();
+}
+
+// Source-text clipping remains mandatory even when diagnostic body/cell clips are disabled.
+for (const clipEnabled of [true, false]) {
+  const events = [];
+  const renderer = new CanvasKitLayerRendererRuntime({
+    Path: {
+      MakeFromSVGString(data) {
+        return {
+          setFillType(rule) { events.push(['rule', data, rule]); },
+          delete() { events.push(['delete', data]); },
+        };
+      },
+    },
+    FillType: { EvenOdd: 0, Winding: 1 },
+    ClipOp: { Intersect: 23 },
+  }, 'default', {}, null);
+  const canvas = {
+    save() { events.push(['save']); },
+    clipPath(_path, operation, antialias) { events.push(['clip', operation, antialias]); },
+    restore() { events.push(['restore']); },
+  };
+  const child = { kind: 'leaf', bounds: { x: 0, y: 0, width: 20, height: 20 }, ops: [] };
+  const node = {
+    kind: 'clipPath',
+    bounds: child.bounds,
+    paths: [
+      { commands: [{ Move: [0, 0] }, { Line: [20, 0] }, { Line: [0, 20] }, 'Close'], even_odd: false },
+      { commands: [{ Move: [2, 2] }, { Cubic: [3, 2, 4, 3, 4, 4] }, 'Close'], even_odd: true },
+    ],
+    child,
+  };
+  renderer.currentClipEnabled = clipEnabled;
+  renderer.renderLeaf = (target, leaf) => {
+    assert.equal(target, canvas);
+    assert.equal(leaf, child, 'path clips should retain the editable child node');
+    events.push(['child']);
+  };
+  renderer.renderNode(canvas, node, 'default', 'content');
+  assert.deepEqual(events, [
+    ['save'],
+    ['rule', 'M0 0 L20 0 L0 20 Z', 1], ['clip', 23, true], ['delete', 'M0 0 L20 0 L0 20 Z'],
+    ['rule', 'M2 2 C3 2 4 3 4 4 Z', 0], ['clip', 23, true], ['delete', 'M2 2 C3 2 4 3 4 4 Z'],
+    ['child'], ['restore'],
+  ], `source path intersections and fill rules must survive clipEnabled=${clipEnabled}`);
+
+  events.length = 0;
+  const replayFailure = new Error('synthetic clipped-child failure');
+  renderer.renderLeaf = () => { throw replayFailure; };
+  assert.throws(() => renderer.renderNode(canvas, node, 'default', 'content'), error => error === replayFailure);
+  assert.deepEqual(events.at(-1), ['restore'], 'a failed child must not leak the source clip to later nodes');
 }
 
 function runExecutableTextReplay(op, {
@@ -861,6 +913,9 @@ function runExecutableTextReplay(op, {
     translate(x, y) {
       events.push({ type: 'canvas.translate', x, y });
     },
+    scale(x, y) {
+      events.push({ type: 'canvas.scale', x, y });
+    },
     drawGlyphs(ids, positions, x, y, _font, paint) {
       events.push({
         type: 'canvas.drawGlyphs',
@@ -956,6 +1011,9 @@ function runExecutableStrokeDashReplay() {
     setStyle() {}
     setColor(color) { this.color = color; }
     setStrokeWidth(width) { this.width = width; }
+    getStrokeWidth() { return this.width ?? 0; }
+    getStrokeCap() { return this.strokeCap ?? 0; }
+    setStrokeCap(cap) { this.strokeCap = cap; }
     setPathEffect() { events.push({ type: 'paint.pathEffect' }); }
     delete() { events.push({ type: 'paint.delete' }); }
   }
@@ -1134,6 +1192,9 @@ function runExecutableM07PackReplay({ withArrowGeometry = true } = {}) {
     setStyle() {}
     setColor(color) { this.color = color; }
     setStrokeWidth(width) { this.width = width; }
+    getStrokeWidth() { return this.width ?? 0; }
+    getStrokeCap() { return this.strokeCap ?? 0; }
+    setStrokeCap(cap) { this.strokeCap = cap; }
     setShader(shader) { this.shader = shader; }
     setPathEffect() {}
     delete() { events.push({ type: 'paint.delete' }); }
@@ -1936,6 +1997,8 @@ function runExecutableEquationFallback() {
       baseline: 10,
       kind: {
         type: 'fraction',
+        // 수학 축은 글자 크기에 대한 비율이며 실제 layout JSON의 필수 필드다.
+        axisHeight: 12 * 0.25,
         numer: { x: 2, y: 0, width: 8, height: 8, baseline: 7, kind: { type: 'text', text: 'x' } },
         denom: { x: 2, y: 12, width: 8, height: 8, baseline: 7, kind: { type: 'number', text: '2' } },
       },
@@ -2172,11 +2235,7 @@ requireSnippet(
   /resolvedShadow\([\s\S]*?1 - alpha \/ 255/,
   'shape and line shadows should convert HWP alpha 0=opaque into CanvasKit opacity',
 );
-requireSnippet(
-  drawStrokeWithDashBody,
-  /dash === 'dash'[\s\S]*?\[6, 3\][\s\S]*?dash === 'dot'[\s\S]*?\[2, 2\][\s\S]*?dash === 'dashDot'[\s\S]*?\[6, 3, 2, 3\][\s\S]*?dash === 'dashDotDot'[\s\S]*?\[6, 3, 2, 3, 2, 3\][\s\S]*?PathEffect\.MakeDash[\s\S]*?setPathEffect[\s\S]*?finally[\s\S]*?effect\.delete/,
-  'stroke dash replay should map every producer enum and release its native path effect',
-);
+
 requireSnippet(
   renderFormObjectBody,
   /formDrawingReplayRejection\(op\)[\s\S]*?if \(rejection\)[\s\S]*?return;[\s\S]*?const drawing = op\.drawing![\s\S]*?for \(const primitive of drawing\.primitives\)[\s\S]*?const label = drawing\.label[\s\S]*?this\.drawStaticControlText[\s\S]*?x: label\.x, y: label\.baseline[\s\S]*?formObject:textReplayFailed/,

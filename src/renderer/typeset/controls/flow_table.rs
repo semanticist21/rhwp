@@ -96,6 +96,10 @@ pub(in crate::renderer::typeset) fn place(
             if let Some(placement) = super::stored_tac::prepare_coanchored_first_line(
                 ctrl_idx,
                 para,
+                next_para,
+                next_para
+                    .and_then(|next| styles.para_styles.get(next.para_shape_id as usize))
+                    .map_or(0.0, |style| style.spacing_before),
                 fmt,
                 ft.effective_height,
                 st.stored_tac_page(paragraphs_all),
@@ -119,9 +123,13 @@ pub(in crate::renderer::typeset) fn place(
             is_last_placed,
             styles,
             composed,
+            next_para,
             preceding_stored_vpos(paragraphs_all, para_idx),
         );
-    } else if engine.try_typeset_empty_para_float_table(
+    } else if !crate::renderer::float_placement::is_textless_coanchored_float_host(para)
+        // [#7687] 양수 오프셋 표를 품은 글자 없는 다중 자리차지 host 는 lane 적층이 아니라
+        // 글 있는 host 와 같은 공동 앵커 경로(`place_table_with_text`)로 간다.
+        && engine.try_typeset_empty_para_float_table(
         st,
         para_idx,
         ctrl_idx,

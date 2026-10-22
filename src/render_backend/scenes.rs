@@ -160,7 +160,8 @@ fn expected_kinds_after_replay(tree: &PageLayerTree) -> Vec<&'static str> {
                     walk(child, active, plane, out);
                 }
             }
-            crate::paint::LayerNodeKind::ClipRect { child, .. } => {
+            crate::paint::LayerNodeKind::ClipRect { child, .. }
+            | crate::paint::LayerNodeKind::ClipPath { child, .. } => {
                 walk(child, active, plane, out);
             }
             crate::paint::LayerNodeKind::Leaf { ops } => {
@@ -336,6 +337,7 @@ fn sample_equation_node() -> EquationNode {
     EquationNode {
         svg_content: "<text>x</text>".into(),
         layout_box: LayoutBox {
+            font_size: 12.0,
             x: 0.0,
             y: 0.0,
             width: 10.0,

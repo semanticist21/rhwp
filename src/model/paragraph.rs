@@ -54,6 +54,10 @@ pub struct Paragraph {
     /// 각 항목은 해당 LineSeg의 text_start와 결합하며, 줄 교체 시 함께 교체한다.
     #[serde(skip_serializing)]
     pub layout_space_metrics: Vec<(u32, SpaceMetric)>,
+    /// 정규화가 개체 흐름에서 이미 확정한 줄 기하. 파일의 저장 줄 권위와 구분한다.
+    /// 재조판 입력을 무효화하거나 줄을 교체하면 지우며, 직렬화하지 않는다.
+    #[serde(skip_serializing)]
+    pub layout_object_projection: bool,
     /// 본문 동적 필드의 확정 표시값. 모델 문자 위치는 유지하며 측정과 paint가 함께 읽는다.
     /// 직렬화하지 않고, 재페이지네이션이 실제 쪽 소속에서 다시 결정한다.
     #[serde(skip_serializing)]
@@ -846,6 +850,7 @@ impl Paragraph {
     #[inline]
     pub fn invalidate_layout_inputs(&mut self) {
         self.stored_text_partition_dirty = true;
+        self.layout_object_projection = false;
         self.layout_field_values.clear();
     }
 
@@ -857,6 +862,7 @@ impl Paragraph {
     /// Replace stored rows and their validity state at one owner boundary.
     pub(crate) fn replace_line_segs(&mut self, line_segs: Vec<LineSeg>) {
         self.line_segs = line_segs;
+        self.layout_object_projection = false;
         self.layout_space_metrics.clear();
         // A fresh vector has no renderer-appended suffix and cannot reuse a
         // source-position snapshot owned by the replaced rows.
@@ -876,6 +882,12 @@ impl Paragraph {
     ) {
         self.replace_line_segs(line_segs);
         self.layout_space_metrics = metrics;
+    }
+
+    /// 개체 흐름 투영의 생산 경계에서만 확정 줄과 그 출처를 함께 발행한다.
+    pub(crate) fn publish_object_projection(&mut self, line_segs: Vec<LineSeg>) {
+        self.replace_line_segs(line_segs);
+        self.layout_object_projection = true;
     }
 
     pub(crate) fn line_space_metric(&self, line_index: usize) -> SpaceMetric {
@@ -1251,16 +1263,17 @@ impl Paragraph {
         let trailing_number = self.trailing_auto_number(&control_positions);
         let char_end = |idx: usize| self.char_stream_end(&text_chars, idx, trailing_number);
         let is_inline_object = |ctrl: &Control| {
-            matches!(
-                ctrl,
-                Control::Shape(_)
-                    | Control::Table(_)
-                    | Control::Picture(_)
-                    | Control::Equation(_)
-                    | Control::Footnote(_)
-                    | Control::Endnote(_)
-                    | Control::AutoNumber(_)
-            )
+            !super::border_paint::is_cell_frame_paint(ctrl)
+                && matches!(
+                    ctrl,
+                    Control::Shape(_)
+                        | Control::Table(_)
+                        | Control::Picture(_)
+                        | Control::Equation(_)
+                        | Control::Footnote(_)
+                        | Control::Endnote(_)
+                        | Control::AutoNumber(_)
+                )
         };
         // 이 자리 컨트롤 가운데 첫 개체의 차례 — 그 앞에 놓인 같은 자리 컨트롤 수와 같다.
         // 문단 끝 자동 번호는 자리표 글자가 8유닛을 차지하므로 이 자리 컨트롤로 세지 않는다.
@@ -1634,6 +1647,7 @@ impl Paragraph {
     /// 분할의 시맨틱이다. 병합의 역연산으로 쓰는 호출부는 `apply_meta` 로 사라진
     /// 문단의 원래 값을 되돌려야 한다 (Task #2342).
     pub fn split_at(&mut self, char_offset: usize) -> Paragraph {
+        self.layout_object_projection = false;
         let control_positions = self.split_logical_control_positions();
         let split_pos = self.split_text_pos_for_logical_offset(char_offset, &control_positions);
         let text_positions = self.control_text_positions();
@@ -1938,6 +1952,7 @@ impl Paragraph {
             char_shapes: new_char_shapes,
             line_segs: new_line_segs,
             layout_space_metrics: Vec::new(),
+            layout_object_projection: false,
             layout_field_values: Vec::new(),
             // 분리된 문단의 줄은 새로 계산된 것이라 조판 전용 보강 줄이 없다 (#4677).
             layout_only_fill_lines: 0,
@@ -2305,6 +2320,13 @@ impl Paragraph {
         let deleted = delete_count.min(len - at);
         let inserted = text.chars().count();
         let mut positions = self.control_text_positions();
+        // Cell-frame paint has a paragraph-start anchor, including in an empty
+        // cell whose other controls use synthetic logical slot positions.
+        for (ci, at) in positions.iter_mut().enumerate() {
+            if super::border_paint::is_cell_frame_paint(&self.controls[ci]) {
+                *at = 0;
+            }
+        }
         // 문단 끝 자동 번호는 갭 슬롯이 아니라 자리표 글자(마지막 글자)를 차지한다. 그 글자
         // 자리로 두어야 끝에 친 글자가 번호 앞 갭으로 들어가지 않고, 다시 셀 때 빈 슬롯이 생기지 않는다.
         if let Some(ci) = self.trailing_auto_number(&positions) {
@@ -2384,7 +2406,7 @@ impl Paragraph {
                 })
                 .collect();
             let object = |slot: &Slot| {
-                matches!(slot, Slot::Control(ci) if matches!(
+                matches!(slot, Slot::Control(ci) if !super::border_paint::is_cell_frame_paint(&self.controls[*ci]) && matches!(
                     self.controls[*ci],
                     Control::Shape(_)
                         | Control::Table(_)
@@ -2467,6 +2489,53 @@ impl Paragraph {
             .map(|(ci, &p)| place(p, Slot::Control(ci)))
             .collect();
         self.rebuild_char_offsets(&moved);
+        deleted
+    }
+
+    /// [#7866] 글자 `char_offset..+delete_count` 를 `text` 로 바꾸되, 새 글자가 지운 글자의
+    /// 글자 모양을 **자리대로** 잇는다: i번째 새 글자는 i번째 지운 글자의 모양, 지운 글자
+    /// 수를 넘는 꼬리는 마지막 지운 글자의 모양이다. 한/글 2024 찾아 바꾸기 실측
+    /// (`samples/issue7866/*_before.hwpx` → `*_after.hwpx`): 「굵게」의 첫 글자만 굵으면
+    /// 「새말」의 「새」만 굵고, 「굵(굵게)게(빨강)」→「일이삼」은 「일」 굵게·「이삼」 빨강이다.
+    ///
+    /// 지우고 넣는 두 단계만 거치면 낱말이 모양 구간을 통째로 차지할 때 그 구간이 사라져
+    /// 새 글자가 앞 글자의 모양에 붙는다. 지울 글자가 없거나 넣을 글자가 없으면 각각
+    /// 넣기·지우기와 같다. 반환값은 실제로 지운 글자 수.
+    pub fn replace_text_inheriting_char_shapes(
+        &mut self,
+        char_offset: usize,
+        delete_count: usize,
+        text: &str,
+    ) -> usize {
+        let len = self.text.chars().count();
+        let at = char_offset.min(len);
+        let old_end = at.saturating_add(delete_count).min(len);
+        let old_ids: Vec<u32> = (at..old_end)
+            .map(|offset| self.char_shape_id_at(offset).unwrap_or(0))
+            .collect();
+        let deleted = self.delete_text_at(at, delete_count);
+        let inserted_at = self.insert_text_at(at, text);
+        let new_len = text.chars().count();
+        let Some(&last_id) = old_ids.last() else {
+            return deleted;
+        };
+        if new_len == 0 {
+            return deleted;
+        }
+        let mut runs: Vec<CharShapeRun> = Vec::new();
+        for i in 0..new_len {
+            let id = old_ids.get(i).copied().unwrap_or(last_id);
+            let offset = inserted_at + i;
+            match runs.last_mut() {
+                Some(run) if run.char_shape_id == id => run.end_offset = offset + 1,
+                _ => runs.push(CharShapeRun {
+                    start_offset: offset,
+                    end_offset: offset + 1,
+                    char_shape_id: id,
+                }),
+            }
+        }
+        self.restore_char_shape_runs(inserted_at, inserted_at + new_len, &runs);
         deleted
     }
 

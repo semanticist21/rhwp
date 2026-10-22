@@ -1,10 +1,99 @@
 //! 현재 프레임에서 이어 붙일 수 있는 저장된 마지막 자동 줄바꿈.
 
-use super::{line_breaking, utf16_range_to_text_range, ResolvedStyleSet};
+use super::{
+    line_breaking, utf16_range_to_text_range, ComposedParagraph, ResolvedStyleSet, SpaceMetric,
+};
 use crate::model::paragraph::{LineSeg, Paragraph};
-use crate::renderer::layout_frame::LayoutFrame;
+use crate::renderer::layout_frame::{LayoutFrame, ParagraphBox};
 
-/// 저장된 마지막 줄이 앞줄과 같은 한글 어절의 일부인지 확인한다.
+/// 원문 문자 밖의 목록 마커는 현재 해소한 기하로 줄 구성을 갱신한다.
+/// 본문과 셀이 같은 가로 상자 인증과 마커 소유 판정을 소비한다.
+pub(crate) fn projects_current_marker_geometry(
+    para: &Paragraph,
+    box_: &ParagraphBox,
+    styles: &ResolvedStyleSet,
+) -> bool {
+    let extent = box_.effective();
+    // 셀의 문단 여백 경로는 실제 폭을 유지하고, 저장 줄의 오른쪽 끝은
+    // content_width_px와 같은 4 HWPUNIT 격자에 놓인다. 격자에서 접힌
+    // 잔여를 다른 상자로 오인하지 않으며 실제 채움 폭은 바꾸지 않는다.
+    let stored_right = extent.end
+        - extent
+            .end
+            .rem_euclid(crate::renderer::layout_frame::COLUMN_WIDTH_QUANTUM_HWP);
+    box_.is_usable()
+        && !para.line_segs.is_empty()
+        && para.line_segs.iter().all(|line| {
+            line.is_first_segment()
+                && line.is_last_segment()
+                && line.column_start == extent.start
+                && (line.segment_width == extent.end - extent.start
+                    || line.segment_width == stored_right - extent.start)
+        })
+        && crate::renderer::layout::list_marker_geometry(para, styles)
+            .is_some_and(|marker| marker.marker_visible)
+}
+
+/// 앞선 물리 경계가 없는 마지막 자동 어절의 캐시 원점 되감김인가.
+/// 명시적 쪽/단과 다른 가로 상자는 실제 프레임 소유자로 남긴다.
+pub(super) fn has_unmarked_final_word_rewind(para: &Paragraph) -> bool {
+    let Some((last, prefix)) = para.line_segs.split_last() else {
+        return false;
+    };
+    let Some(previous) = prefix.last() else {
+        return false;
+    };
+    let chars: Vec<_> = para.text.chars().collect();
+    let (start, _) = utf16_range_to_text_range(
+        &para.char_offsets,
+        para.line_seg_text_start(para.line_segs.len() - 1),
+        u32::MAX,
+        chars.len(),
+    );
+    start > 0
+        && start < chars.len()
+        && chars[start - 1].is_alphanumeric()
+        && chars[start].is_alphanumeric()
+        && !last.is_first_line_of_page()
+        && !last.is_first_line_of_column()
+        && last.vertical_pos >= 0
+        && last.vertical_pos < previous.vertical_pos
+        && last.column_start == previous.column_start
+        && last.segment_width > 0
+        && last.segment_width == previous.segment_width
+        && !prefix.windows(2).any(|pair| {
+            pair[1].is_first_line_of_page()
+                || pair[1].is_first_line_of_column()
+                || pair[1].vertical_pos < pair[0].vertical_pos
+        })
+}
+
+/// 저장 run과 현재 채움이 서로 다른 공백 전진을 사용하면 줄 분할도 재검토해야 한다.
+/// 같은 공백 메트릭의 정상 본문은 더 적은 줄로 들어간다는 이유만으로 무효화하지 않는다.
+pub(super) fn regenerated_spaces_change_metrics(
+    composed: &ComposedParagraph,
+    styles: &ResolvedStyleSet,
+    metric: SpaceMetric,
+) -> bool {
+    composed
+        .lines
+        .iter()
+        .flat_map(|line| &line.runs)
+        .any(|run| {
+            if !run.text.contains(' ') {
+                return false;
+            }
+            let stored = run.text_style(styles);
+            let mut regenerated = stored.clone();
+            metric.apply_to_style(&mut regenerated);
+            let advance = |style: &crate::renderer::TextStyle| {
+                crate::renderer::layout::estimate_text_width_unrounded(" ", style)
+            };
+            (advance(&stored) - advance(&regenerated)).abs() > f64::EPSILON
+        })
+}
+
+/// 저장된 마지막 줄이 앞줄의 영숫자·한글 어절 중간에서 시작하는지 확인한다.
 /// 명시적 개행·실제 쪽/단 경계·어울림 상자의 경계는 재조판으로 합치지 않는다.
 /// 완결된 마지막 어절은 그대로 보존하며, 같은 번호 마커·스타일·가용 폭을 쓰는
 /// 프레임이 더 적은 줄로 수용할 때만 낡은 자동 줄 경계를 재검토한다.
@@ -15,24 +104,7 @@ pub(super) fn can_rejoin_stored_word_tail(
     dpi: f64,
     supported_inline_picture: bool,
 ) -> bool {
-    if para.line_segs.len() < 2
-        || (!para.controls.is_empty() && !supported_inline_picture)
-        || para.text.contains('\n')
-        || para.stored_text_partition_is_dirty()
-        || frame.models_exclusions()
-        || para
-            .line_segs
-            .iter()
-            .any(|line| line.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY != 0)
-    {
-        return false;
-    }
-    let last = para.line_segs.last().unwrap();
-    let previous = &para.line_segs[para.line_segs.len() - 2];
-    if last.is_first_line_of_page()
-        || last.is_first_line_of_column()
-        || last.vertical_pos <= previous.vertical_pos
-    {
+    if para.line_segs.len() < 2 {
         return false;
     }
     let chars: Vec<_> = para.text.chars().collect();
@@ -42,25 +114,84 @@ pub(super) fn can_rejoin_stored_word_tail(
         u32::MAX,
         chars.len(),
     );
-    let is_syllable = |c: char| ('가'..='힣').contains(&c);
-    // 어절 뒤의 닫는 괄호 등 줄 머리 금칙 문자는 같은 토큰의 꼬리다.
-    // 새 줄에 내려온 어절 조각을 판정할 때 그 문장부호만 분리해 보되,
-    // 실제 프레임 재조판에는 원문 전체를 그대로 전달한다.
-    let tail_end = chars[start.min(chars.len())..]
-        .iter()
-        .rposition(|&ch| !line_breaking::is_line_start_forbidden(ch))
-        .map_or(start, |last| start + last + 1);
+    // 어절을 자른 경계인지는 앞줄 끝과 마지막 줄 첫 글자로 판단한다.
+    // 같은 줄 뒤의 다른 어절·문장부호는 이 경계의 소속을 바꾸지 않는다.
+    // 실제 줄 수 감소는 그 뒤 내용까지 포함한 동일 프레임 조판으로 확인한다.
     if start == 0
         || start >= chars.len()
-        || tail_end <= start
-        || !is_syllable(chars[start - 1])
-        || !chars[start..tail_end].iter().copied().all(is_syllable)
+        || !chars[start - 1].is_alphanumeric()
+        || !chars[start].is_alphanumeric()
     {
         return false;
     }
+    project_stored_soft_wraps(para, frame, styles, dpi, supported_inline_picture).is_some()
+}
+
+/// 같은 frame에서 자동 줄을 다시 구성한다. 줄 수 감소는 캐시 무효화 근거가 아니다.
+/// 호출자는 현재 마커 기하·공백 메트릭 등 갱신 이유와 후속 축 소유를 먼저 확인한다.
+pub(crate) fn project_stored_soft_wraps(
+    para: &Paragraph,
+    frame: &LayoutFrame,
+    styles: &ResolvedStyleSet,
+    dpi: f64,
+    supported_inline_picture: bool,
+) -> Option<(Vec<LineSeg>, Vec<(u32, SpaceMetric)>)> {
+    if let Some(projected) = super::stored_marker_frames::project(para, frame, styles, dpi) {
+        return Some(projected);
+    }
+    if para.line_segs.len() < 2
+        || (!para.controls.is_empty() && !supported_inline_picture)
+        || para.text.contains('\n')
+        || para.stored_text_partition_is_dirty()
+        || (super::stored_row_fragments::crosses_physical_frame(para)
+            && !has_unmarked_final_word_rewind(para))
+        || frame.models_exclusions()
+        || para
+            .line_segs
+            .iter()
+            .any(|line| line.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY != 0)
+    {
+        return None;
+    }
+    let last = para.line_segs.last()?;
+    let previous = &para.line_segs[para.line_segs.len() - 2];
+    if last.is_first_line_of_page()
+        || last.is_first_line_of_column()
+        || last.vertical_pos == previous.vertical_pos
+        // 같은 가로 상자의 저장 캐시 되감김은 명시적 쪽 경계와 구분한다.
+        || (last.vertical_pos < previous.vertical_pos
+            && (last.vertical_pos < 0
+                || last.column_start != previous.column_start
+                || last.segment_width <= 0
+                || last.segment_width != previous.segment_width))
+    {
+        return None;
+    }
+    let count = para.text.chars().count();
+    let (last_start, _) = utf16_range_to_text_range(
+        &para.char_offsets,
+        para.line_seg_text_start(para.line_segs.len() - 1),
+        u32::MAX,
+        count,
+    );
+    // 빈 문단·마지막 빈 예약 행의 물리 점유를 자동 어절 줄로 바꾸지 않는다.
+    if last_start == 0
+        || last_start >= count
+        || !para
+            .text
+            .chars()
+            .skip(last_start)
+            .any(|ch| !ch.is_whitespace())
+    {
+        return None;
+    }
     let mut probe = frame.clone();
-    let mut input = para.clone();
-    input.line_segs.clear();
-    line_breaking::layout_paragraph_in_frame(&input, &mut probe, styles, dpi)
-        .is_some_and(|rows| rows.len() < para.line_segs.len())
+    // 채움은 새 줄을 만들지만 원본의 줄별 들여쓰기 기록도 소비한다. 저장 줄을
+    // 비워 입력의 근거까지 없애면 명시적으로 꺼진 들여쓰기가 다시 적용된다.
+    let rows = line_breaking::layout_paragraph_in_frame(para, &mut probe, styles, dpi)?;
+    // 마지막 자동 어절의 가짜 프레임 원점은 줄 수가 같아도 복원한다.
+    // 일반 저장 줄은 같은 줄 수라는 이유만으로 다시 구성하지 않는다.
+    (rows.len() < para.line_segs.len()
+        || (rows.len() == para.line_segs.len() && has_unmarked_final_word_rewind(para)))
+    .then(|| (rows, probe.project_space_metrics()))
 }

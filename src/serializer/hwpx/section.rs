@@ -990,7 +990,7 @@ pub(crate) struct InlineCursor<'a> {
     pub mark_idx: usize,
     /// 지금까지 방출한 문단 텍스트의 문자 수
     pub char_idx: usize,
-    /// [#4895] 이 문단의 소프트 하이픈을 `<hp:hyphen/>` 요소로 내릴지 여부.
+    /// [#4895] 이 문단의 소프트 하이픈을 `<hp:hypen/>` 요소로 내릴지 여부.
     ///
     /// 한컴 원본은 소프트 하이픈을 리터럴 U+00AD 로도, 제어 표기로도 쓴다. 출처가
     /// 제어 표기(HWP5 `control_mask` 비트 24)일 때만 요소로 내려 원본 표기를 지킨다.
@@ -1163,9 +1163,11 @@ pub(crate) fn render_hp_t_content(
             // 바꾸면 글자가 사라지고(10k 스윕 36경로 회귀), 반대로 제어 표기 원본을
             // 리터럴로 바꾸면 원본에 없던 글자가 생긴다. 그래서 출처 표기를 보존한다 —
             // HWP5 PARA_HEADER `control_mask` 비트 24 가 그 신호다(`cursor` 가 나른다).
+            // [#7993] 요소 이름은 한/글 표기 `hp:hypen` 이다 — `hp:hyphen` 은 한/글이
+            // 모르는 요소로 버린다(위 «글자를 버린다» 실측의 원인, 07615 h2x 265 → 264쪽).
             '\u{00AD}' if cursor.soft_hyphen_as_element => {
                 flush_buf(&mut t_xml, &mut buf);
-                t_xml.push_str("<hp:hyphen/>");
+                t_xml.push_str("<hp:hypen/>");
             }
             c if (c as u32) < 0x20 => { /* 기타 제어문자 무시 */ }
             c => buf.push(hancom_symbol_for_hwpx(c)),
@@ -1669,7 +1671,7 @@ fn render_runs_in_paragraph_scope(
         markpen_marks: &para.markpen_marks,
         markpen_idx: 0,
         mark_owned_by_prev: &mark_owned_by_prev,
-        // [#4895] 출처가 제어 표기였던 문단만 `<hp:hyphen/>` 로 되돌린다.
+        // [#4895] 출처가 제어 표기였던 문단만 `<hp:hypen/>` 로 되돌린다(#7993 철자).
         soft_hyphen_as_element: para.control_mask & (1u32 << 0x0018) != 0,
         // [#5174] 같은 계약 — 출처가 제어·요소 표기였던 문단만 `<hp:nbSpace/>` 로 되돌린다.
         nb_space_as_element: para.control_mask & (1u32 << 0x001E) != 0,
@@ -3496,6 +3498,13 @@ fn render_endnote(note: &Endnote, ctx: &mut SerializeContext) -> String {
 
 fn render_equation(eq: &Equation) -> String {
     let c = &eq.common;
+    // 한컴 저장본이 보존하는 크기 보호를 내보내기에서도 유지한다.
+    // false는 기존과 같이 생략한다.
+    let size_protect = if c.size_protect {
+        r#" protect="1""#
+    } else {
+        ""
+    };
     let id = c.instance_id.to_string();
     let z_order = c.z_order.to_string();
     let version = xml_escape(&eq.version_info);
@@ -3552,7 +3561,7 @@ fn render_equation(eq: &Equation) -> String {
     let allow_overlap = if c.allow_overlap { "1" } else { "0" };
 
     format!(
-        r#"<hp:equation id="{id}" zOrder="{z_order}" numberingType="EQUATION" textWrap="{}" textFlow="{}" lock="{lock}" dropcapstyle="None" version="{version}" baseLine="{baseline}" textColor="{text_color}" baseUnit="{base_unit}" lineMode="{line_mode}" font="{font}"><hp:script>{script}</hp:script><hp:sz width="{width}" widthRelTo="{width_rel_to}" height="{height}" heightRelTo="{height_rel_to}"/><hp:pos treatAsChar="{treat}" affectLSpacing="0" flowWithText="{flow_with_text}" allowOverlap="{allow_overlap}" holdAnchorAndSO="{hold}" vertRelTo="{}" horzRelTo="{}" vertAlign="{}" horzAlign="{}" vertOffset="{vert_offset}" horzOffset="{horz_offset}"/><hp:outMargin left="{margin_left}" right="{margin_right}" top="{margin_top}" bottom="{margin_bottom}"/>{shape_comment}</hp:equation>"#,
+        r#"<hp:equation id="{id}" zOrder="{z_order}" numberingType="EQUATION" textWrap="{}" textFlow="{}" lock="{lock}" dropcapstyle="None" version="{version}" baseLine="{baseline}" textColor="{text_color}" baseUnit="{base_unit}" lineMode="{line_mode}" font="{font}"><hp:script>{script}</hp:script><hp:sz width="{width}" widthRelTo="{width_rel_to}" height="{height}" heightRelTo="{height_rel_to}"{size_protect}/><hp:pos treatAsChar="{treat}" affectLSpacing="0" flowWithText="{flow_with_text}" allowOverlap="{allow_overlap}" holdAnchorAndSO="{hold}" vertRelTo="{}" horzRelTo="{}" vertAlign="{}" horzAlign="{}" vertOffset="{vert_offset}" horzOffset="{horz_offset}"/><hp:outMargin left="{margin_left}" right="{margin_right}" top="{margin_top}" bottom="{margin_bottom}"/>{shape_comment}</hp:equation>"#,
         text_wrap_to_hwpx(c.text_wrap),
         text_flow_to_hwpx(c.text_flow),
         vert_rel_to_hwpx(c.vert_rel_to),
@@ -3899,8 +3908,8 @@ mod tests {
         let mut cursor = InlineCursor::default();
         let xml = render_hp_t_content("축사로\u{00AD}한우", &[], &mut cursor);
         assert!(
-            !xml.contains("<hp:hyphen/>"),
-            "소프트 하이픈을 요소로 내리면 한글이 글자를 버린다: {xml}"
+            !xml.contains("<hp:hyphen/>") && !xml.contains("<hp:hypen/>"),
+            "리터럴 출처 소프트 하이픈을 요소로 바꾸면 원본에 없던 표기가 생긴다: {xml}"
         );
         assert!(
             xml.contains('\u{00AD}'),
@@ -3917,9 +3926,10 @@ mod tests {
             ..Default::default()
         };
         let xml = render_hp_t_content("축사로\u{00AD}한우", &[], &mut cursor);
+        // [#7993] 요소 이름은 한/글 표기 `hp:hypen` — `hp:hyphen` 은 한/글이 버린다.
         assert!(
-            xml.contains("<hp:hyphen/>"),
-            "제어 표기 출처는 요소로 보존되어야 한다: {xml}"
+            xml.contains("<hp:hypen/>") && !xml.contains("<hp:hyphen/>"),
+            "제어 표기 출처는 한/글 요소 이름 `hp:hypen` 으로 보존되어야 한다: {xml}"
         );
         assert!(
             !xml.contains('\u{00AD}'),

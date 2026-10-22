@@ -307,7 +307,7 @@ impl Paginator {
         let is_hwp3_variant = opts.is_hwp3_variant;
         let source_uses_inline_field_reset = source_context.source_uses_inline_field_reset;
         let hwp3_converted_missing_lineseg = source_context.hwp3_converted_missing_lineseg;
-        let legacy_hwp3_stored_geometry = source_context.legacy_hwp3_stored_geometry;
+        let stored_geometry_policy = source_context.stored_geometry_policy;
         // [Task #1007] 페이지 본문 영역 높이 (HWPUNIT) — variant cross-paragraph
         // vpos reset 감지 THRESHOLD 계산용.
         let body_height_hu_for_variant = if is_hwp3_variant {
@@ -326,7 +326,7 @@ impl Paginator {
         let tac_seg_width_fallback_hu = layout.column_width_hu();
         let measurer = HeightMeasurer::new(self.dpi)
             .with_hwp3_variant(is_hwp3_variant)
-            .with_legacy_hwp3_stored_geometry(legacy_hwp3_stored_geometry);
+            .with_stored_geometry_policy(stored_geometry_policy);
 
         // 머리말/꼬리말/쪽 번호 위치/새 번호 지정 컨트롤 수집
         let (hf_entries, page_number_pos) =
@@ -1165,6 +1165,7 @@ impl Paginator {
             endnotes: Vec::new(),
             endnote_paragraphs: Vec::new(),
             endnote_para_sources: Vec::new(),
+            endnote_measured_tables: Vec::new(),
             endnote_between_notes_hu: 0,
             endnote_separator_above_hu: 0,
             endnote_separator_below_hu: 0,
@@ -2852,6 +2853,7 @@ impl Paginator {
                         straddle_row_relief: Vec::new(),
                         straddle_page_bands: Vec::new(),
                         fragment_row_heights: None,
+                        fragment_block_frames: Vec::new(),
                         end_row_owns_stored_frame: false,
                     });
                     // 마지막 부분 표: spacing_after도 포함 (레이아웃과 일치)
@@ -2879,6 +2881,7 @@ impl Paginator {
                 straddle_row_relief: Vec::new(),
                 straddle_page_bands: Vec::new(),
                 fragment_row_heights: None,
+                fragment_block_frames: Vec::new(),
                 end_row_owns_stored_frame: false,
             });
             st.advance_column_or_new_page();
@@ -2965,11 +2968,13 @@ impl Paginator {
             page.active_header = active_header;
             page.active_footer = active_footer;
 
-            if !assigner.should_hide_page_number() {
+            if !events.positions.is_empty() {
+                page.page_number_pos = events.active_position(i).cloned();
+            } else if !assigner.should_hide_page_number() {
                 page.page_number_pos = page_number_pos.clone();
             }
             // 한 컨트롤의 감추기는 소스 위치가 매핑된 한 쪽에만 적용한다.
-            if let Some((_, hide)) = events.hides.iter().find(|(target, _)| *target == i) {
+            if let Some((_, hide)) = events.hides.iter().rev().find(|(target, _)| *target == i) {
                 page.page_hide = Some(hide.clone());
             }
 

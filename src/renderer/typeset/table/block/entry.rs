@@ -596,7 +596,9 @@ impl TypesetEngine {
         // 판정한다. 동기화하지 않으면 footer 가 flowed cur_h(vpos 보다 ~수십px 낮음)에 배치되어
         // page-fit 이 과소되고 footer 가 본문 페이지에 흡수된다(−1쪽 갭 요인 B).
         let is_page_bottom_topbottom_block = is_page_bottom_fixed_float(&table.common);
-        if is_page_bottom_topbottom_block && st.current_column == 0 {
+        // 쪽 하단 고정 개체는 어느 단에서 만나도 본문 순서로 높이를 소비하지 않는다.
+        // 현재 단의 하단 배타 영역과 호스트 글줄은 같은 기존 계약으로 예약한다.
+        if is_page_bottom_topbottom_block {
             if let Some(first_seg) = para.line_segs.first() {
                 // 한컴은 고정크기 자리차지 블록을 **선언 높이**(common.height)로 렌더·예약한다.
                 // 페이지네이터의 effective_height 는 셀 내용 기반 측정치라 선언보다 작을 수 있어
@@ -1064,7 +1066,22 @@ impl TypesetEngine {
                 .and_then(|seg| {
                     line_seg_visible_bounds_px(seg, st.vpos_page_base.unwrap_or(0), self.dpi)
                 })
-                .is_some_and(|bounds| saved_bounds_overlap_current_flow(bounds, st.current_height));
+                .is_some_and(|bounds| {
+                    // 저장 줄 윗변은 호스트 위 간격을 지난 자리다. 흐름이 아직 그 간격 앞에
+                    // 있으면(쪽 첫 줄이 아니어서 간격이 적용될 자리) 간격을 더한 흐름으로도 대조한다
+                    // (1613000 188쪽: 앞 문단 끝 88 + 위 간격 40 = 저장 줄 128, 한/글은 여기서 분할).
+                    // 뒤 문단의 저장 줄이 되감기면 원본은 표 뒤에서 새 쪽을 시작했다 — 표를 통째
+                    // 넘긴 증거와 구별되지 않으므로 이 보조 대조를 쓰지 않는다(hwpspec 표 40: 한/글은
+                    // 다음 쪽 맨 위에 통째).
+                    saved_bounds_overlap_current_flow(bounds, st.current_height)
+                        || (!st.current_items.is_empty()
+                            && !next_rewinds_after_table
+                            && fmt.spacing_before > 0.0
+                            && saved_bounds_overlap_current_flow(
+                                bounds,
+                                st.current_height + fmt.spacing_before,
+                            ))
+                });
             let saved_anchor_splits_here = st.has_stored_line_segs
                 // HWPX stores the source anchor as the physical fragment
                 // owner. Native HWP needs the visible-bounds check because a
@@ -1493,7 +1510,7 @@ impl TypesetEngine {
                     || st
                         .paragraph_fragment_content_bottoms
                         .get(&(previous_index, end_line))
-                        .is_some_and(|bottom| *bottom <= placement.table_top)
+                        .is_some_and(|bounds| bounds.content_bottom <= placement.table_top)
             });
             placement.table_top < st.current_height
                 && !preceding_host_tail_is_free
@@ -1907,6 +1924,42 @@ impl TypesetEngine {
                     return None;
                 }
                 placement.stored_host_origin = Some(placement.occupied_bottom);
+                Some(placement)
+            })
+            .or_else(|| {
+                // 단 앞의 독립 장식과 별개로, 실제 직전 글줄·표·뒤 글줄이
+                // 닫는 로컬 프레임을 쓴다. 빈 호스트 줄도 표 뒤 공간을 점유한다.
+                if st.col_count != 1
+                    || st.vpos_ladder_dirty
+                    || st.current_endnote_flow
+                    || st.profile.session_edited()
+                    || !(st.profile.hwp5_stored_pagination_layout() || st.profile.hwpx_stored_layout())
+                    || self.render_normalization.table_text_reflowed(table)
+                    || fmt.computed_host_lines.is_some()
+                {
+                    return None;
+                }
+                let previous = para_idx.checked_sub(1)?;
+                if !matches!(st.current_items.last(), Some(PageItem::FullParagraph { para_index })
+                    if *para_index == previous)
+                {
+                    return None;
+                }
+                let outer = hwpunit_to_px(signed_hwpunit(table.common.vertical_offset), self.dpi)
+                    + hwpunit_to_px(i32::from(table.outer_margin_top), self.dpi)
+                    + ft.effective_height
+                    + hwpunit_to_px(i32::from(table.outer_margin_bottom), self.dpi);
+                let mut placement = crate::renderer::float_placement::stored_table_before_host_frame(
+                    paragraphs_all.get(previous..)?, 1, table, ctrl_idx,
+                    placement_para_start_height + outer, ft.effective_height, styles, self.dpi,
+                )?;
+                let [host] = para.line_segs.as_slice() else { return None; };
+                let end = placement.occupied_bottom
+                    + hwpunit_to_px(host.line_height.checked_add(host.line_spacing)?, self.dpi)
+                    + fmt.spacing_after;
+                if end > available { return None; }
+                placement.stored_host_origin = Some(placement.occupied_bottom);
+                placement.stored_successor_line_origin = Some(end);
                 Some(placement)
             })
             .or_else(|| {

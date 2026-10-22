@@ -282,6 +282,7 @@ fn context_display_overlay_preserves_frame_style_partitions_around_the_field() {
             supplemental_metrics_blocked: false,
             inserted_control_text: false,
             space_metric: crate::renderer::composer::SpaceMetric::Stored,
+            regenerated_font_metrics: false,
             ..stale.clone()
         },
         ComposedTextRun {
@@ -1197,12 +1198,14 @@ fn test_split_runs_by_lang_korean_english() {
         text: "안녕Hello세계".to_string(),
         char_style_id: 0,
         lang_index: 0,
+        neutral_space_origin: None,
         char_overlap: None,
         footnote_marker: None,
         display_text: None,
         supplemental_metrics_blocked: false,
         inserted_control_text: false,
         space_metric: crate::renderer::composer::SpaceMetric::Stored,
+        regenerated_font_metrics: false,
     }];
     let result = split_runs_by_lang(runs);
     assert_eq!(result.len(), 3);
@@ -1221,12 +1224,14 @@ fn test_split_runs_by_lang_no_split() {
         text: "안녕하세요".to_string(),
         char_style_id: 0,
         lang_index: 0,
+        neutral_space_origin: None,
         char_overlap: None,
         footnote_marker: None,
         display_text: None,
         supplemental_metrics_blocked: false,
         inserted_control_text: false,
         space_metric: crate::renderer::composer::SpaceMetric::Stored,
+        regenerated_font_metrics: false,
     }];
     let result = split_runs_by_lang(runs);
     assert_eq!(result.len(), 1);
@@ -1241,12 +1246,14 @@ fn test_split_runs_by_lang_space_follows_prev() {
         text: "안녕 Hello 세계".to_string(),
         char_style_id: 0,
         lang_index: 0,
+        neutral_space_origin: None,
         char_overlap: None,
         footnote_marker: None,
         display_text: None,
         supplemental_metrics_blocked: false,
         inserted_control_text: false,
         space_metric: crate::renderer::composer::SpaceMetric::Stored,
+        regenerated_font_metrics: false,
     }];
     let result = split_runs_by_lang(runs);
     assert_eq!(result.len(), 3);
@@ -1265,12 +1272,14 @@ fn test_split_runs_by_lang_empty() {
         text: "".to_string(),
         char_style_id: 0,
         lang_index: 0,
+        neutral_space_origin: None,
         char_overlap: None,
         footnote_marker: None,
         display_text: None,
         supplemental_metrics_blocked: false,
         inserted_control_text: false,
         space_metric: crate::renderer::composer::SpaceMetric::Stored,
+        regenerated_font_metrics: false,
     }];
     let result = split_runs_by_lang(runs);
     assert_eq!(result.len(), 1);
@@ -1284,12 +1293,14 @@ fn test_split_runs_by_lang_english_only() {
         text: "Hello World".to_string(),
         char_style_id: 0,
         lang_index: 0,
+        neutral_space_origin: None,
         char_overlap: None,
         footnote_marker: None,
         display_text: None,
         supplemental_metrics_blocked: false,
         inserted_control_text: false,
         space_metric: crate::renderer::composer::SpaceMetric::Stored,
+        regenerated_font_metrics: false,
     }];
     let result = split_runs_by_lang(runs);
     assert_eq!(result.len(), 1);
@@ -1388,12 +1399,14 @@ fn test_estimate_composed_line_width() {
             text: "가나다".to_string(),
             char_style_id: 0,
             lang_index: 0,
+            neutral_space_origin: None,
             char_overlap: None,
             footnote_marker: None,
             display_text: None,
             supplemental_metrics_blocked: false,
             inserted_control_text: false,
             space_metric: crate::renderer::composer::SpaceMetric::Stored,
+            regenerated_font_metrics: false,
         }],
         line_height: 400,
         baseline_distance: 320,
@@ -1879,12 +1892,14 @@ fn test_555_effective_text_for_metrics_uses_display_text_when_present() {
         text: "\u{F861}".to_string(), // PUA 책괄호 (1 char)
         char_style_id: 0,
         lang_index: 0,
+        neutral_space_origin: None,
         char_overlap: None,
         footnote_marker: None,
         display_text: Some("《".to_string()), // 변환된 자모 (1 char in this case)
         supplemental_metrics_blocked: false,
         inserted_control_text: false,
         space_metric: crate::renderer::composer::SpaceMetric::Stored,
+        regenerated_font_metrics: false,
     };
     let effective = super::effective_text_for_metrics(&run);
     assert_eq!(
@@ -1904,12 +1919,14 @@ fn test_555_effective_text_for_metrics_multi_jamo_cluster() {
         text: "\u{F8E0}".to_string(), // PUA 옛한글 합자 (가상 codepoint, 1 char)
         char_style_id: 0,
         lang_index: 0,
+        neutral_space_origin: None,
         char_overlap: None,
         footnote_marker: None,
         display_text: Some("ᄃᆞᄫᆡ".to_string()), // 4 jamo chars
         supplemental_metrics_blocked: false,
         inserted_control_text: false,
         space_metric: crate::renderer::composer::SpaceMetric::Stored,
+        regenerated_font_metrics: false,
     };
     let effective = super::effective_text_for_metrics(&run);
     assert_eq!(
@@ -1930,12 +1947,14 @@ fn test_555_effective_text_for_metrics_no_display_text_falls_back_to_text() {
         text: "한글".to_string(),
         char_style_id: 0,
         lang_index: 0,
+        neutral_space_origin: None,
         char_overlap: None,
         footnote_marker: None,
         display_text: None,
         supplemental_metrics_blocked: false,
         inserted_control_text: false,
         space_metric: crate::renderer::composer::SpaceMetric::Stored,
+        regenerated_font_metrics: false,
     };
     let effective = super::effective_text_for_metrics(&run);
     assert_eq!(
@@ -1957,12 +1976,14 @@ fn test_677_effective_text_for_metrics_preserves_f081c_filler() {
         text: "\u{F081C}\u{F081C}".to_string(),
         char_style_id: 0,
         lang_index: 0,
+        neutral_space_origin: None,
         char_overlap: None,
         footnote_marker: None,
         display_text: Some("□□".to_string()),
         supplemental_metrics_blocked: false,
         inserted_control_text: false,
         space_metric: crate::renderer::composer::SpaceMetric::Stored,
+        regenerated_font_metrics: false,
     };
     let effective = super::effective_text_for_metrics(&run);
     assert_eq!(
@@ -2082,12 +2103,14 @@ fn test_kbu1_line_start_forbidden_retraction() {
             text: "적용한다.111111".to_string(),
             char_style_id: 0,
             lang_index: 0,
+            neutral_space_origin: None,
             char_overlap: None,
             footnote_marker: None,
             display_text: None,
             supplemental_metrics_blocked: false,
             inserted_control_text: false,
             space_metric: crate::renderer::composer::SpaceMetric::Stored,
+            regenerated_font_metrics: false,
         }],
         line_height: 400,
         baseline_distance: 320,

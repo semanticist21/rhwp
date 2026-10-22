@@ -1,6 +1,7 @@
 //! 양쪽 정렬의 문단 앞 공백과 낱말 사이 공백을 같은 줄 계획에서 구분한다.
 
 use super::super::text_measurement::estimate_text_width_unrounded;
+use super::leading_spaces::source_leading_spaces;
 use crate::renderer::{
     composer::{effective_text_for_metrics, ComposedLine},
     style_resolver::ResolvedStyleSet,
@@ -12,6 +13,7 @@ pub(super) struct LeadingSpacePlan<'a> {
     pub leading_spaces: usize,
     pub natural_prefix_runs: usize,
     pub body_field_runs: Vec<bool>,
+    pub terminal_inline_object: bool,
 }
 
 impl<'a> LeadingSpacePlan<'a> {
@@ -20,14 +22,9 @@ impl<'a> LeadingSpacePlan<'a> {
         let mut leading_spaces = 0;
         for run in &line.runs {
             // 표시 필드·각주·겹친 글자는 원본 공백 문자열과 다른 흐름 요소다.
-            if run.display_text.is_some()
-                || run.footnote_marker.is_some()
-                || run.char_overlap.is_some()
-                || run.inserted_control_text
-            {
+            let Some(prefix) = source_leading_spaces(run) else {
                 break;
-            }
-            let prefix = run.text.chars().take_while(|&ch| ch == ' ').count();
+            };
             leading_spaces += prefix.min(limit.saturating_sub(leading_spaces));
             if leading_spaces == limit || prefix < run.text.chars().count() {
                 break;
@@ -39,6 +36,7 @@ impl<'a> LeadingSpacePlan<'a> {
                 leading_spaces: 0,
                 natural_prefix_runs: 0,
                 body_field_runs: Vec::new(),
+                terminal_inline_object: false,
             };
         }
         let mut prepared = line.clone();
@@ -57,9 +55,11 @@ impl<'a> LeadingSpacePlan<'a> {
             } else {
                 let mut prefix = run.clone();
                 prefix.text.truncate(take);
+                prefix.display_text = run.display_for_model_range(0, take);
                 prepared.runs.push(prefix);
                 let mut rest = run.clone();
                 rest.text = run.text[take..].to_owned();
+                rest.display_text = run.display_for_model_range(take, run.source_scalar_count());
                 prepared.runs.push(rest);
             }
             natural_prefix_runs += 1;
@@ -67,10 +67,34 @@ impl<'a> LeadingSpacePlan<'a> {
         }
         Self {
             body_field_runs: Vec::new(),
+            terminal_inline_object: false,
             line: Cow::Owned(prepared),
             leading_spaces,
             natural_prefix_runs,
         }
+    }
+
+    /// 마지막 가시 글자 다음에 실제 개체가 있으면 그 사이 자간도 소비한다.
+    pub fn with_inline_objects(mut self, offsets: &[(usize, f64, usize)]) -> Self {
+        let text_end = self.line.char_start
+            + self
+                .line
+                .runs
+                .iter()
+                .map(|run| run.source_scalar_count())
+                .sum::<usize>();
+        let trailing = self
+            .line
+            .runs
+            .iter()
+            .rev()
+            .flat_map(|run| run.text.chars().rev())
+            .take_while(|ch| *ch == ' ')
+            .count();
+        self.terminal_inline_object = offsets
+            .iter()
+            .any(|(position, _, _)| *position >= text_end.saturating_sub(trailing));
+        self
     }
 
     /// 표시 숫자는 원본 필드 한 칸에 속한다. 자릿수와 관계없이 내부/뒤에

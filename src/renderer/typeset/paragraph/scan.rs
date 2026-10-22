@@ -22,6 +22,8 @@ pub(in crate::renderer::typeset) struct LineScanPage {
     pub current_height: f64,
     pub has_items: bool,
     pub vpos_ladder_dirty: bool,
+    /// 첫 항목에서 임시 유추한 원점과 구분되는 확정 저장 프레임의 축.
+    pub stored_vpos_base: Option<i32>,
     pub current_footnote_height: f64,
     pub footnote_safety_margin: f64,
     pub current_zone_y_offset: f64,
@@ -236,6 +238,19 @@ pub(in crate::renderer::typeset) fn scan_lines(
             // 10k 실측(판정 가능한 이른 분할 135지점): 이 마진이 최대 원인이었다 —
             // 73지점·133줄·42문서. 한글은 그 자리에 줄을 두는데 rhwp 만 다음 쪽으로
             // 밀어내며, 쪽수 지표는 뒤쪽의 저장 좌표 신뢰가 흡수해 침묵한다.
+            //
+            // [#7695] 저장 줄은 **이 조각의 흐름 구간** 안에 있으면 같은 좌표계다 — 조각
+            // 시작(문단 시작) 부근에서 이 줄의 흐름 위치까지. 문단 시작 하나와만 대조하면
+            // 흐름과 사다리가 맞을 때(드리프트 0) 조각 둘째 줄부터 늘 실패해, 각주 영역 위에
+            // 저장된 줄을 안전마진 몫으로 다음 쪽에 밀었다(1130000-201300023 86쪽 pi=1065:
+            // 저장 0~2째 줄이 각주 위인데 첫 줄 뒤에서 끊겨 이후 전 쪽이 한 쪽 밀림).
+            let line_flow_top = page.current_height
+                + if cursor_line == 0 {
+                    fmt.spacing_before
+                } else {
+                    0.0
+                }
+                + cumulative;
             let saved_line_clears_footnote_area = saved_line_clears_footnote_area(
                 page.current_footnote_height,
                 page.col_count == 1,
@@ -246,7 +261,16 @@ pub(in crate::renderer::typeset) fn scan_lines(
                 }),
                 page.body_height,
                 page.current_height,
+                line_flow_top,
             );
+            // 진단은 원본 줄의 수용 근거와 실제 예약 경계를 함께 남긴다.
+            if std::env::var("RHWP_DIAG_SPLIT_BUDGET").is_ok() {
+                eprintln!(
+                    "DIAG_LINE_FIT pi={para_idx} line={li} cursor={cursor_line} current={:.3} cumulative={cumulative:.3} content={content_h:.3} available={avail_for_lines:.3} body={:.3} notes={:.3} zone={:.3} saved_tail={saved_tail_vpos_fit} authoritative={hwp_authoritative} reset_owner={hwpx_reset_fragment_owner} note_reset={native_hwp5_reset_tail_fits_actual_footnote_boundary} note_clear={saved_line_clears_footnote_area} dirty={}",
+                    page.current_height, page.body_height, page.current_footnote_height,
+                    page.current_zone_y_offset, page.vpos_ladder_dirty,
+                );
+            }
             match saved_tail_fit_chain_decision(
                 tail_fit_chain,
                 saved_tail_vpos_fit,
@@ -265,9 +289,13 @@ pub(in crate::renderer::typeset) fn scan_lines(
             {
                 break;
             }
+            // [#7695] 각주 영역 위 저장 줄로 받은 줄도 저장 좌표 근거의 수용이다. 표시하지
+            // 않으면 문단 전체가 이 쪽에 들어간 경우 조각 계획이 예산 초과로 보고 문단을
+            // 통째로 다음 쪽에 넘긴다(스캔은 받고 계획은 거부하는 두 판정).
             used_saved_tail_vpos_fit |= saved_tail_vpos_fit
                 || hwpx_reset_fragment_owner
-                || native_hwp5_reset_tail_fits_actual_footnote_boundary;
+                || native_hwp5_reset_tail_fits_actual_footnote_boundary
+                || saved_line_clears_footnote_area;
         }
         cumulative += fmt.line_advance(li);
         end_line = li + 1;
@@ -373,6 +401,13 @@ pub(in crate::renderer::typeset) fn stored_body_reset_fragment_matches_current_f
                         | crate::model::shape::TextWrap::InFrontOfText))
         });
     if page.profile.session_edited()
+        // 앞선 재조판 이력만으로 현재 저장 조각의 소유를 버리지 않는다.
+        // 아래에서 현재 실제 원점과 저장 첫 줄의 일치, 편집되지 않은
+        // 연속 prefix와 본문 안의 마지막 점유 끝을 함께 확인한다.
+        // 재조판된 쪽의 임시 로컬 원점에 맞는다는 사실만으로 원래의
+        // 물리 reset을 복원하지 않는다. 확정 프레임의 같은 축이어야 한다.
+        || (page.vpos_ladder_dirty
+            && page.stored_vpos_base != Some(current_page_vpos_base))
         || para.stored_text_partition_is_dirty()
         || para.cell_format_vpos_dirty
         || page.col_count != 1

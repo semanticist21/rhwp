@@ -214,10 +214,27 @@ fn collect_visual_bounds(
             .map(PaintOp::visual_bounds)
             .filter(|bounds| valid(*bounds))
             .reduce(union),
-        LayerNodeKind::Group { children, .. } => children
-            .iter()
-            .filter_map(|child| collect_visual_bounds(child, clip_enabled, visit))
-            .reduce(union),
+        LayerNodeKind::Group {
+            children,
+            group_kind,
+            ..
+        } => {
+            let bounds = children
+                .iter()
+                .filter_map(|child| collect_visual_bounds(child, clip_enabled, visit))
+                .reduce(union);
+            bounds.map(|bounds| {
+                let transform = match group_kind {
+                    super::layer_tree::GroupKind::Group(g) => g
+                        .paint_transform
+                        .map(|[a, b, c, d, e, f]| LayerAffineTransform { a, b, c, d, e, f }),
+                    _ => None,
+                };
+                affine_bounds(bounds, transform)
+            })
+        }
+        // A conservative visual hull must not pretend that a curved clip is a rectangle.
+        LayerNodeKind::ClipPath { child, .. } => collect_visual_bounds(child, clip_enabled, visit),
         LayerNodeKind::ClipRect { clip, child, .. } => {
             let child = collect_visual_bounds(child, clip_enabled, visit);
             if clip_enabled {
@@ -734,6 +751,25 @@ fn rotate_text(bounds: BoundingBox, logical: BoundingBox, run: &TextRunNode) -> 
 
 fn text_bounds(logical: BoundingBox, run: &TextRunNode) -> BoundingBox {
     let (font_size, _) = effective_text_font_size_and_baseline(run);
+    // Character position moves ink, not the line's logical flow box. Keep both
+    // extents in the conservative paint bounds so clipping/cache invalidation
+    // cannot drop a raised/lowered glyph. Rotation still uses the original box.
+    let position_offset = run.style.effective_font_size()
+        * f64::from(run.style.font_position.unwrap_or_default())
+        / 100.0;
+    let positioned = if position_offset == 0.0 {
+        logical
+    } else {
+        union(
+            logical,
+            BoundingBox::new(
+                logical.x,
+                logical.y + position_offset,
+                logical.width,
+                logical.height,
+            ),
+        )
+    };
     let mut padding: f64 = 0.0;
     if run.style.underline != UnderlineType::None || run.style.strikethrough {
         padding = font_size * 0.2;
@@ -744,13 +780,13 @@ fn text_bounds(logical: BoundingBox, run: &TextRunNode) -> BoundingBox {
     if run.style.emphasis_dot != 0 {
         padding = padding.max(font_size * 0.35);
     }
-    let mut bounds = expand(logical, padding);
+    let mut bounds = expand(positioned, padding);
     if run.style.shadow_type != 0 {
         let offset = BoundingBox::new(
-            logical.x + run.style.shadow_offset_x,
-            logical.y + run.style.shadow_offset_y,
-            logical.width,
-            logical.height,
+            positioned.x + run.style.shadow_offset_x,
+            positioned.y + run.style.shadow_offset_y,
+            positioned.width,
+            positioned.height,
         );
         bounds = union(
             bounds,
@@ -831,29 +867,47 @@ fn decoration_bounds(
     let end = positions.len().saturating_sub(trim.min(trailing));
     let width = positions.get(end.saturating_sub(1)).copied().unwrap_or(0.0);
     let (font_size, baseline) = effective_text_font_size_and_baseline(run);
-    let (y, height) = match kind {
-        TextDecorationKind::Underline => (
-            if run.style.underline == UnderlineType::Top {
-                baseline - font_size + 1.0
+    let ink = match kind {
+        TextDecorationKind::Underline => {
+            let (y, height) = if let Some((top, bottom)) =
+                crate::renderer::text_decoration::underline_multi_ink_bounds(
+                    run.style.underline,
+                    run.style.underline_shape,
+                    font_size,
+                    baseline,
+                ) {
+                (top, bottom - top)
             } else {
-                baseline + 2.0
-            },
+                (
+                    if run.style.underline == UnderlineType::Top {
+                        baseline - font_size + 1.0
+                    } else {
+                        baseline + 2.0
+                    },
+                    1.0,
+                )
+            };
+            BoundingBox::new(logical.x, logical.y + y, width, height)
+        }
+        TextDecorationKind::Strikethrough => BoundingBox::new(
+            logical.x,
+            logical.y + baseline - font_size * 0.3,
+            width,
             1.0,
         ),
-        TextDecorationKind::Strikethrough => (baseline - font_size * 0.3, 1.0),
-        TextDecorationKind::EmphasisDot => (baseline - font_size * 1.2, font_size * 0.3),
+        TextDecorationKind::EmphasisDot => crate::renderer::text_decoration::emphasis_marks(
+            &text,
+            &positions,
+            logical.x,
+            logical.y + baseline,
+            font_size,
+            run.style.emphasis_dot,
+        )
+        .map(|mark| mark.bounds())
+        .reduce(union)
+        .unwrap_or(logical),
     };
-    rotate_text(
-        union(
-            logical,
-            expand(
-                BoundingBox::new(logical.x, logical.y + y, width, height),
-                2.0,
-            ),
-        ),
-        logical,
-        run,
-    )
+    rotate_text(union(logical, expand(ink, 2.0)), logical, run)
 }
 
 // The JSON writer and recording estimates must use the same bounded display
@@ -875,10 +929,6 @@ pub(super) fn bounded_display_text_for_run(run: &TextRunNode) -> (String, bool) 
 }
 
 pub(super) fn effective_text_font_size_and_baseline(run: &TextRunNode) -> (f64, f64) {
-    let base_font_size = if run.style.font_size > 0.0 {
-        run.style.font_size
-    } else {
-        12.0
-    };
+    let base_font_size = run.style.effective_font_size();
     run.style.script_draw_metrics(base_font_size, run.baseline)
 }

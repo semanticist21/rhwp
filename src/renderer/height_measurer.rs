@@ -6,7 +6,8 @@
 mod rowspan_block;
 mod table_wrapper;
 pub(crate) use table_wrapper::{
-    sole_nested_table_in_paragraph, unrestricted_wrapper_frame, TableWrapperVerticalFrame,
+    sole_nested_table_in_paragraph, unrestricted_wrapper_frame, whole_table_frame_height,
+    wrapper_owns_paint_or_horizontal_frame, TableWrapperVerticalFrame,
 };
 
 use super::composer::{compose_paragraph, ComposedParagraph, SingleLineOverflowCache};
@@ -42,7 +43,13 @@ pub(crate) fn single_table_wrapper_has_vertical_alignment_space(
     i64::from(signed_hwpunit(cell.height)) > content_height
 }
 
-pub(crate) fn transparent_table_wrapper_child(table: &Table) -> Option<&Table> {
+pub(crate) fn transparent_table_wrapper_child<'a>(
+    table: &'a Table,
+    styles: &ResolvedStyleSet,
+) -> Option<&'a Table> {
+    if wrapper_owns_paint_or_horizontal_frame(table, styles) {
+        return None;
+    }
     let [cell] = table.cells.as_slice() else {
         return None;
     };
@@ -69,12 +76,17 @@ pub(crate) fn transparent_table_wrapper_child(table: &Table) -> Option<&Table> {
 
 /// Whole placement keeps the unwrapped row metrics intact and folds each
 /// enclosing frame around them. Split placement continues to own row cuts.
-pub(crate) fn unwrapped_table_whole_height(table: &Table, measured: f64, dpi: f64) -> f64 {
-    let Some(nested) = transparent_table_wrapper_child(table) else {
+pub(crate) fn unwrapped_table_whole_height(
+    table: &Table,
+    measured: f64,
+    dpi: f64,
+    styles: &ResolvedStyleSet,
+) -> f64 {
+    let Some(nested) = transparent_table_wrapper_child(table, styles) else {
         return measured;
     };
     TableWrapperVerticalFrame::new(table, nested, dpi, true)
-        .height(unwrapped_table_whole_height(nested, measured, dpi))
+        .height(unwrapped_table_whole_height(nested, measured, dpi, styles))
 }
 
 /// A stored Square table fits between its host line and the next visible paragraph.
@@ -647,16 +659,64 @@ impl MeasuredParagraph {
 /// 10pt·160% host 의 표 아래 8.0px 가 한/글 행 387.7 과 rhwp 380.2 의 차이다.
 /// 칸의 마지막 줄 뒤 줄간격은 칸을 채우지 않으므로(측정 규칙) 호출자가 마지막 문단을 뺀다.
 ///
-/// 줄이 **하나도 없는** 문단만 해당한다. rhwp 가 합성한 줄(tag 0x8…)이 있으면 그 줄의
-/// 줄간격을 배치가 이미 전진시킨다 — 36384689 칸[2] host 는 합성 줄 ls=600 으로 다음 문단을
-/// 한/글 저장 vpos 28760(= 28160 + 600)에 놓는데, 여기서 또 더하면 8.0px 가 두 번 실린다.
+/// 원본 NO_LS와 그 호스트를 투영한 합성 줄(tag 0x8…)을 같은 입력으로 본다.
+/// 실제 저장 줄·보이는 본문·다른 개체가 섞인 호스트는 제외한다. 소비자는 이 종료 간격을
+/// 마지막 원문 유닛에 한 번만 계상하고 자식 viewport와 부모 흐름을 구분한다.
 pub(crate) fn no_ls_tac_table_host_trailing_spacing_px(
     p: &Paragraph,
     styles: &ResolvedStyleSet,
     dpi: f64,
 ) -> Option<f64> {
-    if !p.line_segs.is_empty()
-        || !p.text.trim().is_empty()
+    if !crate::renderer::para_has_no_stored_line_segs(p) {
+        return None;
+    }
+    reflowed_tac_table_host_trailing_spacing_px(p, styles, dpi)
+}
+
+/// [#7872] 저장 줄이 있는 TAC 표 host 가 **낡은** 줄인가 — 칸 내용이 자라난 표의 점유
+/// 높이(`occupied_px`: 자란 행 합 + 바깥 위·아래 여백)가 저장 줄 높이를 넘는다.
+///
+/// 한/글은 저장 줄이 담지 못하는 표를 그 줄대로 그릴 수 없어 그 줄을 다시 조판한다
+/// (`samples/issue7872/nested-tac-row-drop.hwpx` 의 저장 줄 전부를 지운 변형이 한/글
+/// Print PDF 에서 원본과 같은 쪽을 낸다). 측정·배치는 그 줄을 저장 줄 없는 host 와
+/// 같은 규칙(점유 높이 + 글자 크기로 잰 줄간격)으로 센다. 둘째 문단부터 `vpos=0` 인
+/// 붕괴 사다리 칸에서만 쓴다 — 온전한 사다리는 저장 좌표가 증언이다.
+pub(crate) fn stored_tac_table_host_line_outgrown(
+    p: &Paragraph,
+    occupied_px: f64,
+    dpi: f64,
+) -> bool {
+    if crate::renderer::para_has_no_stored_line_segs(p)
+        || p.text
+            .chars()
+            .any(|ch| ch > '\u{001F}' && ch != '\u{FFFC}' && !ch.is_whitespace())
+        || p.controls.is_empty()
+        || !p
+            .controls
+            .iter()
+            .all(|c| matches!(c, Control::Table(t) if t.common.treat_as_char))
+    {
+        return false;
+    }
+    let line = p
+        .line_segs
+        .iter()
+        .map(|seg| hwpunit_to_px(seg.line_height.max(0), dpi))
+        .fold(0.0f64, f64::max);
+    line + 0.5 < occupied_px
+}
+
+/// TAC 표만 품은 빈 host 줄 뒤의 줄간격(px) — 글자 크기로 잰 값. 저장 줄 유무를 따지지
+/// 않는다. 저장 줄 없는 host 는 [`no_ls_tac_table_host_trailing_spacing_px`], 낡은 저장
+/// 줄 host 는 [`stored_tac_table_host_line_outgrown`] 판정 뒤에 이 값을 쓴다.
+pub(crate) fn reflowed_tac_table_host_trailing_spacing_px(
+    p: &Paragraph,
+    styles: &ResolvedStyleSet,
+    dpi: f64,
+) -> Option<f64> {
+    if p.text
+        .chars()
+        .any(|ch| ch > '\u{001F}' && ch != '\u{FFFC}' && !ch.is_whitespace())
         || p.controls.is_empty()
         || !p
             .controls
@@ -699,6 +759,8 @@ pub struct MeasuredTable {
     /// 직전 측정이 아니라 이 값을 하한으로 써야 undo/삭제로 내용이 줄었을 때
     /// 행이 로드 배분까지 되돌아온다. 비편집 측정은 None(자기 자신이 기준).
     pub baseline_row_heights: Option<Vec<f64>>,
+    /// 조각이 실제 수용한 물리 행 상자의 소유 범위. 원본 전체 측정은 비어 있다.
+    pub fragment_block_frames: Vec<(usize, usize)>,
     /// 캡션 높이 (px)
     pub caption_height: f64,
     /// 셀 간격 (px)
@@ -1090,6 +1152,37 @@ fn declared_height_lands_on_a_row_boundary(
     false
 }
 
+/// 개체 선언 높이가 선언 행 경계 `k` 에 떨어지고, 그 앞 행들은 측정이 선언과 같으며 경계를
+/// 닫는 행 `k-1` 만 내용으로 선언보다 자랐는가. 그러면 개체 높이는 그 행을 선언 높이에서
+/// 나누는 첫 조각 높이다 (#7147 의 행 경계 판정을, 끝 행이 자란 경우로 넓힌다).
+fn declared_fragment_closes_on_a_grown_row(
+    measured: &MeasuredTable,
+    table: &Table,
+    target_body_height: f64,
+    dpi: f64,
+) -> bool {
+    let mut cumulative = 0.0f64;
+    for row in 0..measured.row_heights.len() {
+        if row > 0 {
+            cumulative += measured.cell_spacing;
+        }
+        let declared = declared_row_height_px(table, row, dpi);
+        if declared <= 0.0 {
+            return false;
+        }
+        cumulative += declared;
+        let measured_row = measured.row_heights[row];
+        if (cumulative - target_body_height).abs() <= 0.5 {
+            // 경계를 닫는 행은 선언보다 자랐고 다음 행이 남아 있어야 조각 경계다.
+            return measured_row > declared + 0.5 && row + 1 < measured.row_heights.len();
+        }
+        if (measured_row - declared).abs() > 0.5 || cumulative > target_body_height + 0.5 {
+            return false;
+        }
+    }
+    false
+}
+
 pub fn fit_measured_table_to_declared_height(
     measured: &MeasuredTable,
     table: &Table,
@@ -1143,6 +1236,13 @@ pub(crate) fn fit_measured_table_to_declared_height_with_outcome(
     if measured_rows_match_declared(&fitted, table, dpi)
         && declared_height_lands_on_a_row_boundary(&fitted, table, target_body_height, dpi)
     {
+        return (fitted, false);
+    }
+    // 첫 조각의 마지막 행만 내용으로 자란 표도 같다. 그 행은 선언 높이만큼 첫 쪽에 놓이고
+    // 나머지 줄은 다음 쪽으로 이어진다(1613000 185쪽 29×3 표: 개체 58227HU = 행 0–26 선언 합,
+    // 행 26 은 두 줄로 38.4px 까지 자라지만 한/글 2020 정본은 첫 줄만 185쪽에 두고 둘째 줄을
+    // 186쪽 첫머리에 둔다. 앞 행들은 모두 선언 28.4·45.4·27.3px 그대로다).
+    if declared_fragment_closes_on_a_grown_row(&fitted, table, target_body_height, dpi) {
         return (fitted, false);
     }
 
@@ -1540,7 +1640,7 @@ pub struct HeightMeasurer {
     dpi: f64,
     section_column_spacing_hu: std::cell::Cell<Option<i32>>,
     is_hwp3_variant: bool,
-    legacy_hwp3_stored_geometry: bool,
+    stored_geometry_policy: crate::model::provenance::StoredGeometryPolicy,
     is_native_hwp5: bool,
     hwpx_stored_layout: bool,
     session_edited: bool,
@@ -1644,7 +1744,7 @@ impl HeightMeasurer {
             dpi,
             section_column_spacing_hu: std::cell::Cell::new(None),
             is_hwp3_variant: false,
-            legacy_hwp3_stored_geometry: false,
+            stored_geometry_policy: Default::default(),
             is_native_hwp5: false,
             hwpx_stored_layout: false,
             session_edited: false,
@@ -1673,7 +1773,16 @@ impl HeightMeasurer {
     }
 
     pub fn with_legacy_hwp3_stored_geometry(mut self, enabled: bool) -> Self {
-        self.legacy_hwp3_stored_geometry = enabled;
+        self.stored_geometry_policy = enabled.into();
+        self
+    }
+
+    /// 측정과 배치가 같은 저장 기하 수용 정책을 소비한다.
+    pub fn with_stored_geometry_policy(
+        mut self,
+        policy: crate::model::provenance::StoredGeometryPolicy,
+    ) -> Self {
+        self.stored_geometry_policy = policy;
         self
     }
 
@@ -1773,7 +1882,7 @@ impl HeightMeasurer {
         let object_height = hwpunit_to_px(common.height as i32, self.dpi);
         let top_offset = if matches!(common.vert_rel_to, VertRelTo::Para) {
             hwpunit_to_px(
-                crate::renderer::float_placement::cell_wrap_vertical_offset_hu(common).max(0),
+                crate::renderer::float_placement::cell_wrap_vertical_offset_hu(common),
                 self.dpi,
             )
         } else {
@@ -1782,7 +1891,11 @@ impl HeightMeasurer {
         top_offset + object_height
     }
 
-    fn cell_wrap_objects_bottom_height(&self, paragraphs: &[Paragraph]) -> f64 {
+    fn cell_wrap_objects_bottom_height(
+        &self,
+        paragraphs: &[Paragraph],
+        styles: &ResolvedStyleSet,
+    ) -> f64 {
         let saved_picture_extent =
             crate::renderer::float_placement::stored_cell_flow_picture_extent_hu(
                 paragraphs,
@@ -1797,7 +1910,8 @@ impl HeightMeasurer {
         let mut prev_extent = 0.0f64;
         paragraphs
             .iter()
-            .map(|p| {
+            .enumerate()
+            .map(|(pi, p)| {
                 let first_vpos = p
                     .line_segs
                     .first()
@@ -1818,10 +1932,19 @@ impl HeightMeasurer {
                     .fold(0.0f64, f64::max);
                 let objects_above_line = probe_object_bottom > 0.0
                     && prev_extent + probe_object_bottom <= first_vpos + 0.5;
+                let before = crate::renderer::cell_paragraph_spacing::paragraph_before(
+                    p,
+                    pi,
+                    styles
+                        .para_styles
+                        .get(p.para_shape_id as usize)
+                        .map_or(0.0, |s| s.spacing_before),
+                    self.dpi,
+                );
                 let para_top = if objects_above_line {
                     prev_extent
                 } else {
-                    first_vpos
+                    before.stored_anchor_top(first_vpos)
                 };
                 let para_extent = p
                     .line_segs
@@ -1971,7 +2094,7 @@ impl HeightMeasurer {
                         inner,
                         styles,
                         self.dpi,
-                        self.legacy_hwp3_stored_geometry,
+                        self.stored_geometry_policy,
                         crate::renderer::composer::StoredRowMissPolicy::Reflow,
                         &self.float_carve_evidence,
                     )
@@ -2010,14 +2133,11 @@ impl HeightMeasurer {
                     let margin_l = para_style.map(|s| s.margin_left).unwrap_or(0.0);
                     let margin_r = para_style.map(|s| s.margin_right).unwrap_or(0.0);
                     let indent = para_style.map(|s| s.indent).unwrap_or(0.0);
-                    // [Task #1472] 변환본은 effective indent 불변 위해 scale 절반(2.0→1.0).
-                    let eq_scale = 2.0 * if self.is_hwp3_variant { 0.5 } else { 1.0 };
-                    let effective_margin_l = crate::renderer::equation_tac_flow::
-                        paragraph_effective_margin_left_with_indent_scale(
+                    let effective_margin_l =
+                        crate::renderer::equation_tac_flow::paragraph_effective_margin_left(
                             margin_l,
                             indent,
                             visual_line_idx,
-                            eq_scale,
                         );
                     (cw - effective_margin_l - margin_r).max(0.0)
                 })
@@ -2617,6 +2737,85 @@ impl HeightMeasurer {
             .sum()
     }
 
+    /// 저장 호스트 줄이 중첩 표의 **선언** 높이는 품지만, 칸 내용이 자라난 **실측**
+    /// 높이는 못 담을 때 그 초과분(px)의 합.
+    ///
+    /// `unabsorbed_nested_tables_height` 는 `lh ≥ 선언` 이면 표를 줄이 흡수했다고 보고
+    /// 건너뛴다. 그러나 선언 높이로만 적힌 줄(둘째 문단부터 vpos=0 인 붕괴 사다리,
+    /// 생성기 저장본)은 중첩 표의 칸이 내용만큼 자란 뒤의 높이를 모른다. 페인트는
+    /// `resolve_row_heights` 로 자란 행을 그대로 그리므로(#7140) 측정이 선언에 머물면
+    /// 칸이 짧게 재어지고, 뒤 중첩 표가 칸 viewport 에 잘려 행이 사라진다(#7872:
+    /// 1×1 문항 틀 900HU, 둘째 글자처럼 취급 표의 ④⑤ 행 소실).
+    ///
+    /// 붕괴 사다리·NO_LS 의 additive 경로에서만 더한다. 온전한 사다리는 저장 좌표가
+    /// 흡수의 증언이므로 그대로 둔다.
+    fn outgrown_absorbed_nested_tables_height(
+        &self,
+        paragraphs: &[Paragraph],
+        styles: &ResolvedStyleSet,
+        depth: usize,
+    ) -> f64 {
+        if depth >= Self::MAX_NESTED_DEPTH {
+            return 0.0;
+        }
+        let para_count = paragraphs.len();
+        paragraphs
+            .iter()
+            .enumerate()
+            .map(|(pidx, p)| {
+                let para_max_lh = p.line_segs.iter().map(|s| s.line_height).max().unwrap_or(0);
+                if para_max_lh <= 0 {
+                    return 0.0;
+                }
+                let line = hwpunit_to_px(para_max_lh, self.dpi);
+                let mut occupied = 0.0f64;
+                let excess: f64 = p
+                    .controls
+                    .iter()
+                    .filter_map(|ctrl| {
+                        let Control::Table(nested) = ctrl else {
+                            return None;
+                        };
+                        if crate::renderer::float_placement::nested_table_is_overlay(nested)
+                            || para_max_lh < nested.common.height as i32
+                        {
+                            return None;
+                        }
+                        let stretch = self.render_normalization.nested_table_width_scale(nested);
+                        let mt = self.measure_table_impl(nested, 0, 0, styles, depth + 1, stretch);
+                        let declared = hwpunit_to_px(nested.common.height as i32, self.dpi);
+                        let om = hwpunit_to_px(nested.outer_margin_top as i32, self.dpi)
+                            + hwpunit_to_px(nested.outer_margin_bottom as i32, self.dpi);
+                        let needed = mt.total_height.max(declared) + om;
+                        occupied = occupied.max(needed);
+                        (needed > line + 0.5).then_some(needed - line)
+                    })
+                    .sum();
+                if excess <= 0.0 {
+                    return 0.0;
+                }
+                // 낡은 host 줄의 저장 줄간격은 생성기 값이다(표 선언 높이의 비율). 한/글은
+                // 그 줄을 다시 조판하므로 줄 뒤 간격도 저장 줄 없는 host 와 같은 글자 크기
+                // 기준 값으로 바꾼다. `text_height` 가 칸의 마지막 문단이 아닌 줄에만 저장
+                // 줄간격을 더했으므로 같은 조건에서만 맞바꾼다.
+                let spacing_swap = if pidx + 1 < para_count
+                    && stored_tac_table_host_line_outgrown(p, occupied, self.dpi)
+                {
+                    let stored = p
+                        .line_segs
+                        .iter()
+                        .map(|seg| hwpunit_to_px(seg.line_spacing, self.dpi))
+                        .fold(0.0f64, f64::max);
+                    reflowed_tac_table_host_trailing_spacing_px(p, styles, self.dpi)
+                        .map_or(0.0, |reflowed| reflowed - stored)
+                } else {
+                    0.0
+                };
+                excess + spacing_swap
+            })
+            .sum()
+    }
+
     fn cell_stored_block_flow(
         &self,
         cell: &crate::model::table::Cell,
@@ -2703,6 +2902,8 @@ impl HeightMeasurer {
         } else {
             0.0
         };
+        // 앞 문단의 흐름 중첩 표 끝. 뒤 호스트의 저장 갭이 그 표의 띠인지 가린다.
+        let prior_nested_end = std::cell::Cell::new(0.0f64);
         paragraphs
             .iter()
             .enumerate()
@@ -2788,15 +2989,13 @@ impl HeightMeasurer {
                     // 호스트가 셀 마지막 문단인 변형도 같은 식으로 갈린다). 흐름형
                     // (lh 미흡수 포함)은 직전 갭이 평범한 줄간격이라 배제되고,
                     // 호스트가 셀 첫 문단이면(49308 조각 셀) 직전 줄이 없어 배제된다.
-                    let prev_end = paragraphs
-                        .iter()
-                        .take(pidx)
-                        .flat_map(|prev| prev.line_segs.iter())
-                        .map(|s| {
-                            hwpunit_to_px(s.vertical_pos.saturating_add(s.line_height), self.dpi)
-                        })
-                        .filter(|&e| e <= para_top + 0.5)
-                        .fold(f64::NEG_INFINITY, f64::max);
+                    let prev_end = crate::renderer::float_placement::nested_host_gap_start(
+                        paragraphs,
+                        pidx,
+                        para_top,
+                        prior_nested_end.get(),
+                        self.dpi,
+                    );
                     let gap_before = para_top - prev_end;
                     // [#5723] 호스트가 **셀 첫 문단**인데 그 줄의 저장 vpos 가 표
                     // 높이 이상으로 내려가 있으면(셀 상단→줄 갭 = 표 공간), 그 줄은
@@ -2835,11 +3034,13 @@ impl HeightMeasurer {
                         && nested_h <= ladder_end
                         && prev_end.is_finite()
                         && gap_before >= nested_h * 0.85;
-                    if anchored_not_flowing {
+                    let bottom = if anchored_not_flowing {
                         candidate.min(ladder_end)
                     } else {
                         candidate
-                    }
+                    };
+                    prior_nested_end.set(prior_nested_end.get().max(bottom));
+                    bottom
                 }
             })
             .fold(0.0f64, f64::max)
@@ -2870,6 +3071,7 @@ impl HeightMeasurer {
                 total_height: 0.0,
                 row_heights: vec![0.0; rc],
                 baseline_row_heights: None,
+                fragment_block_frames: Vec::new(),
                 caption_height: 0.0,
                 cell_spacing: 0.0,
                 cumulative_heights: vec![0.0; rc + 1],
@@ -2881,38 +3083,17 @@ impl HeightMeasurer {
                 row_block_end: rbe,
             };
         }
-        // 1x1 래퍼 표 감지: 내부 표의 높이를 직접 측정.
-        // (Task #688) 셀 paragraphs 가 2개 이상이면 첫 nested 표만 unwrap 시 나머지
-        // paragraph 의 nested 표가 누락되므로 paragraphs.len() == 1 가드를 둔다.
-        // 정렬 마커는 허용하지만 배치 소유자가 여럿이면 감싸기를 풀지 않는다.
-        // 측정·whole paint·partial paint가 같은 단일 자식 계약을 사용한다.
-        if table.row_count == 1 && table.col_count == 1 && table.cells.len() == 1 {
-            let cell = &table.cells[0];
-            if cell.paragraphs.len() == 1 {
-                let p = &cell.paragraphs[0];
-                let has_visible_text = p
-                    .text
-                    .chars()
-                    .any(|ch| !ch.is_whitespace() && ch != '\r' && ch != '\n');
-                if !has_visible_text {
-                    if let Some(nested) = sole_nested_table_in_paragraph(p) {
-                        if unrestricted_wrapper_frame(table, nested, self.dpi).is_some()
-                            || !single_table_wrapper_has_vertical_alignment_space(table, nested)
-                        {
-                            return self.measure_table_impl(
-                                nested,
-                                para_index,
-                                control_index,
-                                styles,
-                                // 펼친 표는 실제 배치에서도 부모와 같은 깊이를 사용한다.
-                                // 셀 중첩 깊이를 늘리면 저장 줄의 안여백을 측정에서만 제외한다.
-                                depth,
-                                width_scale,
-                            );
-                        }
-                    }
-                }
-            }
+        // 측정 행과 실제 배치가 같은 표를 소유해야 한다. 독립적인 셀 채움이나
+        // 자식 문단 프레임이 있으면 부모 행을 측정하고 일반 셀 경로를 유지한다.
+        if let Some(nested) = transparent_table_wrapper_child(table, styles) {
+            return self.measure_table_impl(
+                nested,
+                para_index,
+                control_index,
+                styles,
+                depth,
+                width_scale,
+            );
         }
 
         // 표 레이아웃은 열 그리드를 먼저 해석한 뒤 셀 문단을 그 너비에 맞춰 줄바꿈한다.
@@ -3022,11 +3203,9 @@ impl HeightMeasurer {
                     cell_w_px, pad_left, pad_right, self.dpi,
                 );
 
-                // 실제 합계에 들어간 셀 마지막 줄간격만 선언 높이 수용에서 회수한다.
-                // 비-TAC 마지막 줄은 이미 제외되므로 아래에서 다시 빼지 않는다.
-                let mut included_cell_last_trailing_ls = 0.0;
                 // 셀 내 문단들의 실제 높이 합산
                 let mut frame_paragraphs = None;
+                let mut stored_ladder_discarded = false;
                 let text_height: f64 = if cell.text_direction != 0 {
                     // 세로쓰기: line_seg.segment_width가 열의 세로 길이
                     // 셀 높이 = 최대 segment_width
@@ -3061,7 +3240,7 @@ impl HeightMeasurer {
                                 cell_inner_width,
                                 styles,
                                 self.dpi,
-                                self.legacy_hwp3_stored_geometry,
+                                self.stored_geometry_policy,
                                 self.is_native_hwp5,
                                 &self.single_line_overflow_cache,
                                 |nested| {
@@ -3075,6 +3254,11 @@ impl HeightMeasurer {
                                 frame_paragraphs.get_or_insert_with(|| cell.paragraphs.clone())[pidx] = paragraph.clone();
                             }
                             let p = frame_paragraph.as_ref();
+                            // 프레임이 저장 줄을 버리고 다시 끊었는데 새 줄 좌표를 발행하지 않았으면
+                            // 저장 사다리는 그리는 줄이 아니다. 아래 저장 extent 증인에 쓰지 않는다.
+                            if !p.line_segs.is_empty() && comp.lines.len() != p.line_segs.len() {
+                                stored_ladder_discarded = true;
+                            }
                             let reflow_nested_height = if cell.paragraphs.iter().all(
                                 crate::renderer::para_has_no_stored_line_segs,
                             ) && crate::renderer::float_placement::reflow_block_table_host_occupied_height(p, 0.0, 0.0).is_some() {
@@ -3291,34 +3475,10 @@ impl HeightMeasurer {
                                         };
                                         // 마지막 가시 줄 뒤에는 다음 줄이 없으므로 줄간격을
                                         // 붙이지 않는다. 명시적 공백 문단의 빈 줄 점유는 유지한다.
-                                        let include_trailing_ls = !is_cell_last_line
-                                            || (cell_para_count > 1
-                                                && table.common.treat_as_char
-                                                && matches!(table.page_break, TablePageBreak::RowBreak)
-                                                && !p.text.is_empty()
-                                                && p.controls.is_empty()
-                                                && p.text.trim().is_empty());
-                                        if include_trailing_ls {
-                                            let trailing =
-                                                hwpunit_to_px(line.line_spacing, self.dpi);
-                                            // [#6030] TAC 다문단 예외로 포함되는 셀 마지막
-                                            // 줄의 trailing 이 음수(압축 줄간격, 70% 등)면
-                                            // 0 으로 — 뒤에 줄이 없어 압축 대상이 없고,
-                                            // 한글은 마지막 글리프 박스를 lh 그대로 그려
-                                            // 행을 그만큼 키운다(2386771 심사서식 10곳
-                                            // descender 깎임). 양수 trailing 포함 회계
-                                            // (KTX TOC 핀)는 불변.
-                                            let trailing = if is_cell_last_line {
-                                                trailing.max(0.0)
-                                            } else {
-                                                trailing
-                                            };
-                                            if is_cell_last_line {
-                                                included_cell_last_trailing_ls = trailing;
-                                            }
-                                            h + trailing
-                                        } else {
+                                        if is_cell_last_line {
                                             h
+                                        } else {
+                                            h + hwpunit_to_px(line.line_spacing, self.dpi)
                                         }
                                     })
                                     .enumerate()
@@ -3438,7 +3598,13 @@ impl HeightMeasurer {
                     // outMargin — 이 additive 경로 한정, 한글 검산 160.1)으로 가산.
                     let nested_sum =
                         self.unabsorbed_nested_tables_height(&cell.paragraphs, styles, depth);
-                    text_height + nested_sum
+                    // [#7872] 줄이 흡수한 표라도 자란 칸 내용의 초과분은 페인트가 그린다.
+                    let outgrown = self.outgrown_absorbed_nested_tables_height(
+                        &cell.paragraphs,
+                        styles,
+                        depth,
+                    );
+                    text_height + nested_sum + outgrown
                 } else if has_nested_table_in_cell {
                     // 마지막 문단의 마지막 LINE_SEG의 vpos + line_height
                     let last_seg_end: i32 = cell
@@ -3453,7 +3619,7 @@ impl HeightMeasurer {
                     hwpunit_to_px(last_seg_end, self.dpi)
                         .max(text_height)
                         .max(nested_bottom)
-                        .max(self.cell_wrap_objects_bottom_height(&cell.paragraphs))
+                        .max(self.cell_wrap_objects_bottom_height(&cell.paragraphs, styles))
                 } else {
                     // 단, 비-인라인 이미지/도형은 LINE_SEG에 미포함이므로 별도 합산
                     let ordinary_non_inline_h =
@@ -3499,14 +3665,16 @@ impl HeightMeasurer {
                         0.0
                     };
                     let non_inline_h = ordinary_non_inline_h.max(stacked_stored_picture_h);
-                    let wrap_bottom = self.cell_wrap_objects_bottom_height(&cell.paragraphs);
+                    let wrap_bottom =
+                        self.cell_wrap_objects_bottom_height(&cell.paragraphs, styles);
                     // [Task #2226] 저장 LINE_SEG 흐름 extent 가 additive 합보다 작으면
                     // 저장 지오메트리 신뢰 — TopAndBottom flow 그림의 배치는 저장 vpos
                     // 사다리(줄이 그림 아래로 밀림)에 이미 반영되어 있어, 별도 합산은
                     // 이중 계상이다 (주보 p2 로고 표 셀: 그림 2개 합산 112.8px vs 저장
                     // extent 65.9px → 행 1.9× 팽창, 2행 텍스트 페이지 밖 소실).
                     // layout trust_stored_cell_flow 와 동일 원리·가드 (#2211 계보).
-                    let stored_extent = if !cell.paragraphs.is_empty()
+                    let stored_extent = if !stored_ladder_discarded
+                        && !cell.paragraphs.is_empty()
                         && cell
                             .paragraphs
                             .iter()
@@ -3760,16 +3928,10 @@ impl HeightMeasurer {
                     text_height
                 };
 
-                // 패딩 포함 총 필요 높이
-                // [Task #501] cell.padding 이 IR cell.height 자체를 넘는 비정상 케이스
-                // (mel-001 p2 셀[21]: cell.h=1280 HU, pad.top+bottom=3400 HU) 가드:
-                // 비정상 padding 이 row_heights 를 확장하면 TAC 표 비례 축소가 모든 행에
-                // 영향. content_height 가 IR cell.height 안에 들어가면 IR 권위 우선.
-                // [#5751] 발동 기준은 렌더(table_layout 의 padding 비례 축소)와 같은
-                // `Cell::vertical_padding_is_abnormal` 하나를 쓴다. 종전 `절반 초과`
-                // 기준은 여백이 셀 높이의 절반~1배인 **정상 조밀 표**에서도 발동해
-                // (156505020 데이터 셀: pad 15.09px, h 21.09px) 측정만 행을 안 늘리고
-                // 렌더는 저장 여백을 그대로 써 글자가 아래 괘선을 넘겼다.
+                // 패딩 포함 총 필요 높이.
+                // [#8067] 안 여백 합이 칸 선언 높이를 넘어도 선언 높이로 누르지 않는다 —
+                // 렌더도 저장 여백을 그대로 쓰므로(table_layout `resolve_cell_padding`) 측정이
+                // 행을 안 늘리면 글자가 아래 괘선을 넘는다(#5751 과 같은 결).
                 let total_pad = pad_top + pad_bottom;
                 let padding_guard_height = cell.vertical_padding_guard_height_hu(table);
                 let cell_h_px = if padding_guard_height < 0x80000000 {
@@ -3812,6 +3974,12 @@ impl HeightMeasurer {
                     crate::renderer::float_placement::stored_plain_closed_cell_ink_height(
                         cell, table,
                     )
+                    .or_else(|| {
+                        crate::renderer::float_placement::stored_editor_tail_frame(
+                            cell, table, styles,
+                        )
+                        .map(|frame| frame.content_end_hu)
+                    })
                 })
                 .flatten()
                 .map(|ink| {
@@ -3826,16 +3994,11 @@ impl HeightMeasurer {
                     hwpunit_to_px(frame.body_height_hu, self.dpi)
                 } else if let Some(end) = stored_frame_end {
                     end
-                } else if crate::model::table::Cell::vertical_padding_is_abnormal(
-                    cell_h_px, total_pad,
-                ) && content_height <= cell_h_px
-                {
-                    cell_h_px
                 } else if relaxed_pad_mirror {
                     let non_inline_h =
                         self.measure_non_inline_controls_height(cell, &table.padding);
-                    let object_based =
-                        non_inline_h.max(self.cell_wrap_objects_bottom_height(&cell.paragraphs));
+                    let object_based = non_inline_h
+                        .max(self.cell_wrap_objects_bottom_height(&cell.paragraphs, styles));
                     let object_req = if object_based > 0.0 {
                         object_based + total_pad
                     } else {
@@ -3854,31 +4017,6 @@ impl HeightMeasurer {
                     .max(object_req)
                 } else {
                     content_height + total_pad
-                };
-                // [Task #1763] 한컴 선언 셀높이 권위 — 저장 cell.height 는 trailing ls
-                // 미포함(825행 주석 원칙)인데, 다문단 셀 측정은 셀 마지막 줄 trailing ls
-                // 를 포함(#874/#1086 보존 조건)해 required 가 선언높이를 초과 확장할 수
-                // 있다(2501937 row0: 콘텐츠 10016HU + trailing 600HU + pad → 149.1px >
-                // 선언 142.2px, 한글은 선언 유지). 초과분이 전적으로 trailing ls 때문이면
-                // (trailing 제외 콘텐츠+pad 가 선언 안) 선언높이로 clamp — 콘텐츠가 진짜
-                // 초과하는 기존 보존 케이스(aift/KTX)는 조건 미충족으로 불변.
-                // RowBreak(행 단위 쪽나눔) 표는 TAC 여부와 무관하게 clamp 제외 —
-                // 분할 배치가 trailing 포함 측정에 정합 (rowbreak-problem-pages p11~13).
-                let cell_last_trailing_ls = if !has_nested_table_in_cell
-                    && !matches!(table.page_break, TablePageBreak::RowBreak)
-                {
-                    included_cell_last_trailing_ls
-                } else {
-                    0.0
-                };
-                let required_height = if cell_h_px > 0.0
-                    && required_height > cell_h_px
-                    && cell_last_trailing_ls > 0.0
-                    && content_height - cell_last_trailing_ls + total_pad <= cell_h_px
-                {
-                    cell_h_px
-                } else {
-                    required_height
                 };
                 // [#2146] 저장 LINE_SEG 이 전혀 없고 모든 문단이 1줄(폭 여유 포함)인
                 // 라벨 셀(사선 헤더 등)은 재합성 초과가 순수 줄높이 인플레이션 —
@@ -3899,7 +4037,7 @@ impl HeightMeasurer {
                 } else {
                     required_height
                 };
-                // [#2097 진단] 셀별 선언/측정/trailing 분해 — 동작 불변.
+                // [#2097 진단] 셀별 선언·측정·여백 분해 — 동작 불변.
                 if std::env::var("RHWP_DIAG_ROWH").is_ok() && depth == 0 {
                     let all_stored = !cell.paragraphs.is_empty()
                         && cell
@@ -3907,7 +4045,7 @@ impl HeightMeasurer {
                             .iter()
                             .all(|p| !crate::renderer::para_has_no_stored_line_segs(p));
                     eprintln!(
-                        "DIAG_ROWH pi={} ci={} depth={} r={} c={} decl={:.1} req={:.1} content={:.1} pad={:.1} trail={:.1} stored={} nested={}",
+                        "DIAG_ROWH pi={} ci={} depth={} r={} c={} decl={:.1} req={:.1} content={:.1} pad={:.1} stored={} nested={}",
                         para_index,
                         control_index,
                         depth,
@@ -3917,7 +4055,6 @@ impl HeightMeasurer {
                         required_height,
                         content_height,
                         total_pad,
-                        cell_last_trailing_ls,
                         all_stored,
                         has_nested_table_in_cell,
                     );
@@ -3940,7 +4077,7 @@ impl HeightMeasurer {
                                 cell_inner_width,
                                 styles,
                                 self.dpi,
-                                self.legacy_hwp3_stored_geometry,
+                                self.stored_geometry_policy,
                                 self.is_native_hwp5,
                                 &self.single_line_overflow_cache,
                                 |nested| {
@@ -4058,6 +4195,8 @@ impl HeightMeasurer {
             }
         }
 
+        let initial_span_rows = row_heights.clone();
+        let mut span_content_requirements = Vec::new();
         // 2-b단계: 병합 셀에서 미지 행 높이를 반복적으로 해결
         {
             let mut constraints: Vec<(usize, usize, f64)> = Vec::new();
@@ -4154,7 +4293,7 @@ impl HeightMeasurer {
                                 cell_inner_width,
                                 styles,
                                 self.dpi,
-                                self.legacy_hwp3_stored_geometry,
+                                self.stored_geometry_policy,
                                 self.is_native_hwp5,
                                 &self.single_line_overflow_cache,
                                 |nested| {
@@ -4365,31 +4504,10 @@ impl HeightMeasurer {
                                         };
                                         // 마지막 가시 줄 뒤에는 다음 줄이 없으므로 줄간격을
                                         // 붙이지 않는다. 명시적 공백 문단의 빈 줄 점유는 유지한다.
-                                        let include_trailing_ls = !is_cell_last_line
-                                            || (cell_para_count > 1
-                                                && table.common.treat_as_char
-                                                && matches!(table.page_break, TablePageBreak::RowBreak)
-                                                && !p.text.is_empty()
-                                                && p.controls.is_empty()
-                                                && p.text.trim().is_empty());
-                                        if include_trailing_ls {
-                                            let trailing =
-                                                hwpunit_to_px(line.line_spacing, self.dpi);
-                                            // [#6030] TAC 다문단 예외로 포함되는 셀 마지막
-                                            // 줄의 trailing 이 음수(압축 줄간격, 70% 등)면
-                                            // 0 으로 — 뒤에 줄이 없어 압축 대상이 없고,
-                                            // 한글은 마지막 글리프 박스를 lh 그대로 그려
-                                            // 행을 그만큼 키운다(2386771 심사서식 10곳
-                                            // descender 깎임). 양수 trailing 포함 회계
-                                            // (KTX TOC 핀)는 불변.
-                                            let trailing = if is_cell_last_line {
-                                                trailing.max(0.0)
-                                            } else {
-                                                trailing
-                                            };
-                                            h + trailing
-                                        } else {
+                                        if is_cell_last_line {
                                             h
+                                        } else {
+                                            h + hwpunit_to_px(line.line_spacing, self.dpi)
                                         }
                                     })
                                     .enumerate()
@@ -4418,7 +4536,7 @@ impl HeightMeasurer {
                 let non_inline_h = self.measure_non_inline_controls_height(cell, &table.padding);
                 let nested_bottom =
                     self.cell_nested_controls_bottom(cell, styles, depth, cell_w_px);
-                let wrap_bottom = self.cell_wrap_objects_bottom_height(&cell.paragraphs);
+                let wrap_bottom = self.cell_wrap_objects_bottom_height(&cell.paragraphs, styles);
                 // [Task #2221] 단일행과 동일 — 중첩/TAC 표의 저장 LINE_SEG 텍스트
                 // 셀은 pad 미가산 (layout 2-b relaxed_pad 미러).
                 let relaxed_pad_mirror = depth > 0
@@ -4469,6 +4587,12 @@ impl HeightMeasurer {
                     crate::renderer::float_placement::stored_plain_closed_cell_ink_height(
                         cell, table,
                     )
+                    .or_else(|| {
+                        crate::renderer::float_placement::stored_editor_tail_frame(
+                            cell, table, styles,
+                        )
+                        .map(|frame| frame.content_end_hu)
+                    })
                 })
                 .flatten()
                 .map(|ink| {
@@ -4490,8 +4614,17 @@ impl HeightMeasurer {
                         )
                     })
                     .unwrap_or(required_height);
+                span_content_requirements.push((cell_index, required_height));
                 let combined: f64 = (r..r + span).map(|i| row_heights[i]).sum::<f64>()
                     + hwpunit_to_px(1, self.dpi) * table.inner_cell_spacing_hu(span) as f64;
+                #[cfg(not(target_arch = "wasm32"))]
+                if std::env::var_os("RHWP_DIAG_ROWH").is_some() && depth == 0 {
+                    eprintln!(
+                        "DIAG_SPANH measure id={} r={r} c={} span={span} declared={:.6} text={text_height:.6} nested={nested_bottom:.6} non_inline={non_inline_h:.6} wrap={wrap_bottom:.6} required={required_height:.6} combined={combined:.6} closed={closed_plain_frame:?}",
+                        table.common.instance_id, cell.col,
+                        hwpunit_to_px(cell.height as i32, self.dpi)
+                    );
+                }
                 if required_height > combined {
                     let deficit = required_height - combined;
                     row_heights[r + span - 1] += deficit;
@@ -4499,10 +4632,32 @@ impl HeightMeasurer {
             }
         }
 
-        // 3단계: 높이가 0인 행은 기본값 적용
-        for h in &mut row_heights {
+        if let Some(heights) =
+            crate::renderer::layout::LayoutEngine::resolve_reflow_span_requirements(
+                table,
+                &span_content_requirements,
+                &initial_span_rows,
+                &content_row_floor,
+                &table.rowspan_declared_overflow_shrink(),
+                self.dpi,
+                self.render_normalization.table_text_reflowed(table),
+            )
+        {
+            row_heights = heights;
+        }
+
+        // 3단계: 실제 배치와 같은 저장 그리드의 미결 행 기본값을 소비한다.
+        let stored = !self.session_edited
+            && (self.is_native_hwp5 || self.hwpx_stored_layout)
+            && !self.render_normalization.table_text_reflowed(table);
+        for (row, h) in row_heights.iter_mut().enumerate() {
             if *h <= 0.0 {
-                *h = hwpunit_to_px(400, self.dpi);
+                *h = hwpunit_to_px(
+                    crate::renderer::layout::LayoutEngine::unresolved_row_default_hu(
+                        table, row, stored,
+                    ),
+                    self.dpi,
+                );
             }
         }
 
@@ -4879,13 +5034,15 @@ impl HeightMeasurer {
                         let line_start = line_heights.len();
                         let mut comp =
                             crate::renderer::composer::compose_paragraph_in_context(p, styles);
-                        if cell.text_direction == 0 && !self.is_native_hwp5
-                            && !self.legacy_hwp3_stored_geometry
+                        // 상세 컷 원장도 행 높이와 실제 배치가 사용한 셀 너비에서 합성한다.
+                        // 저장 줄 없는 HWP5를 단일 줄로 세면 분할 가능한 첫 행을 통째 이월한다.
+                        if cell.text_direction == 0
+                            && !self.stored_geometry_policy.preserve_hwp3_origins
                             && crate::renderer::para_has_no_stored_line_segs(p)
                         {
                             crate::renderer::composer::recompose_cell_lines_with_nested_tables(
                                 &mut comp, p, inner_width, styles, self.dpi,
-                                self.legacy_hwp3_stored_geometry, self.is_native_hwp5,
+                                self.stored_geometry_policy, self.is_native_hwp5,
                                 &self.single_line_overflow_cache,
                                 |nested| {
                                     let stretch = self.render_normalization.nested_table_width_scale(nested);
@@ -5121,6 +5278,11 @@ impl HeightMeasurer {
                     } else if ladder_collapsed || all_no_ls {
                         mc.total_content_height
                             + self.unabsorbed_nested_tables_height(frame_paragraphs, styles, depth)
+                            + self.outgrown_absorbed_nested_tables_height(
+                                frame_paragraphs,
+                                styles,
+                                depth,
+                            )
                     } else {
                         let nested_bottom =
                             self.cell_nested_controls_bottom(cell, styles, depth, mc_cell_w);
@@ -5136,7 +5298,7 @@ impl HeightMeasurer {
             else {
                 continue;
             };
-            let wrap_bottom = self.cell_wrap_objects_bottom_height(&cell.paragraphs);
+            let wrap_bottom = self.cell_wrap_objects_bottom_height(&cell.paragraphs, styles);
             mc.total_content_height = mc.total_content_height.max(wrap_bottom);
             if let Some(flow) = (self.is_native_hwp5 || self.hwpx_stored_layout)
                 .then(|| self.section_column_spacing_hu.get())
@@ -5164,6 +5326,7 @@ impl HeightMeasurer {
             total_height,
             row_heights,
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height,
             cell_spacing,
             cumulative_heights,
@@ -5650,18 +5813,46 @@ pub(crate) fn solve_rowspan_row_heights(
         }
         changed
     };
-    let max_iter = row_heights.len() + constraints.len();
-    for _ in 0..max_iter {
-        let mut progress = add_declared_overflow(row_heights, true);
+    // 먼저 끝나는 미해결 제약을 기다리되, 같은 회차의 해 중에서는
+    // 새 devel의 앞 행 우선 계약을 유지한다. 순환 대기는 진전이 없을 때만 푼다.
+    let ends_before_unresolved = |row_heights: &[f64], row: usize, end: usize| {
+        constraints.iter().any(|&(r, span, _)| {
+            r <= row
+                && row < r + span
+                && r + span < end
+                && (r..r + span).any(|i| row_heights[i] == 0.0)
+        })
+    };
+    let solve_single = |row_heights: &mut [f64], prefer_earliest_end: bool| {
+        let mut next_assignment: Option<(usize, f64)> = None;
         for &(r, span, total_h) in constraints {
             let known_sum: f64 = (r..r + span).map(|i| row_heights[i]).sum();
             let unknown_rows: Vec<usize> =
                 (r..r + span).filter(|&i| row_heights[i] == 0.0).collect();
-            if unknown_rows.len() == 1 {
+            if unknown_rows.len() == 1
+                && !(prefer_earliest_end
+                    && ends_before_unresolved(row_heights, unknown_rows[0], r + span))
+            {
                 let remaining = (total_h - known_sum).max(0.0);
-                row_heights[unknown_rows[0]] = remaining;
-                progress = true;
+                let row = unknown_rows[0];
+                if remaining > 0.0 && next_assignment.is_none_or(|(prior, _)| row < prior) {
+                    next_assignment = Some((row, remaining));
+                }
             }
+        }
+        if let Some((row, height)) = next_assignment {
+            row_heights[row] = height;
+            true
+        } else {
+            false
+        }
+    };
+    let max_iter = row_heights.len() + constraints.len();
+    for _ in 0..max_iter {
+        let mut progress = add_declared_overflow(row_heights, true);
+        progress |= solve_single(row_heights, true);
+        if !progress {
+            progress = solve_single(row_heights, false);
         }
         if !progress {
             break;
@@ -6147,6 +6338,7 @@ mod tests {
             total_height: 100.0,
             row_heights: vec![20.0, 30.0, 25.0],
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height: 0.0,
             cell_spacing: 5.0,
             cumulative_heights: vec![0.0, 20.0, 55.0, 85.0], // 0, 20, 20+30+5, 55+25+5
@@ -6170,6 +6362,7 @@ mod tests {
             total_height: 100.0,
             row_heights: vec![20.0, 30.0, 25.0, 40.0],
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height: 0.0,
             cell_spacing: 5.0,
             cumulative_heights: vec![0.0, 20.0, 55.0, 85.0, 130.0],
@@ -6200,6 +6393,7 @@ mod tests {
             total_height: 100.0,
             row_heights: vec![50.0, 30.0],
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height: 0.0,
             cell_spacing: 5.0,
             cumulative_heights: vec![0.0, 50.0, 85.0],
@@ -6222,6 +6416,7 @@ mod tests {
             total_height: 100.0,
             row_heights: vec![20.0, 30.0, 25.0],
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height: 0.0,
             cell_spacing: 5.0,
             cumulative_heights: vec![0.0, 20.0, 55.0, 85.0],
@@ -6255,6 +6450,7 @@ mod tests {
             total_height: 100.0,
             row_heights: vec![50.0, 30.0, 25.0],
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height: 0.0,
             cell_spacing: 5.0,
             cumulative_heights: vec![0.0, 50.0, 85.0, 115.0],
@@ -6283,6 +6479,7 @@ mod tests {
             total_height: 0.0,
             row_heights: vec![],
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height: 0.0,
             cell_spacing: 0.0,
             cumulative_heights: vec![0.0],
@@ -6305,6 +6502,7 @@ mod tests {
             total_height: 50.0,
             row_heights: vec![50.0],
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height: 0.0,
             cell_spacing: 0.0,
             cumulative_heights: vec![0.0, 50.0],
@@ -6429,6 +6627,7 @@ mod tests {
             total_height: 100.0,
             row_heights: vec![20.0, 30.0, 25.0],
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height: 0.0,
             cell_spacing: 5.0,
             cumulative_heights: vec![0.0, 20.0, 55.0, 85.0],
@@ -6462,6 +6661,7 @@ mod tests {
             total_height: 50.0,
             row_heights: vec![20.0, 30.0],
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height: 0.0,
             cell_spacing: 5.0,
             cumulative_heights: vec![0.0, 20.0, 55.0],
@@ -6489,6 +6689,7 @@ mod tests {
             total_height: 100.0,
             row_heights: vec![10.0, 10.0, 10.0, 10.0, 10.0],
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height: 0.0,
             cell_spacing: 0.0,
             cumulative_heights: vec![0.0, 10.0, 20.0, 30.0, 40.0, 50.0],
@@ -6522,6 +6723,7 @@ mod tests {
             total_height: 100.0,
             row_heights: vec![10.0, 10.0, 10.0, 10.0, 10.0],
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height: 0.0,
             cell_spacing: 0.0,
             cumulative_heights: vec![0.0, 10.0, 20.0, 30.0, 40.0, 50.0],
@@ -6547,6 +6749,7 @@ mod tests {
             total_height: 0.0,
             row_heights: vec![],
             baseline_row_heights: None,
+            fragment_block_frames: Vec::new(),
             caption_height: 0.0,
             cell_spacing: 0.0,
             cumulative_heights: vec![0.0],

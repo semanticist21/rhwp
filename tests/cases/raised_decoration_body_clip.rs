@@ -38,6 +38,30 @@ fn attr(tag: &str, name: &str) -> f64 {
     rest.split_once('"').unwrap().0.parse().unwrap()
 }
 
+fn tags(svg: &str, name: &str) -> Vec<String> {
+    svg.split(&format!("<{name} "))
+        .skip(1)
+        .map(|tag| format!(" {tag}"))
+        .collect()
+}
+
+fn probe(name: &str) -> HwpDocument {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("mydocs/pr/assets/raised-decoration-hancom")
+        .join(format!("{name}.hwp"));
+    let mut doc = HwpDocument::from_bytes(&std::fs::read(path).unwrap()).unwrap();
+    doc.set_hangul2024_compat(true);
+    assert_eq!(doc.page_count(), 1, "독립 Print PDF와 쪽수 일치");
+    doc
+}
+
+fn near_print(actual: f64, expected: f64) {
+    assert!(
+        (actual - expected).abs() <= 2.0,
+        "96dpi Print 좌표: {actual} / {expected}"
+    );
+}
+
 /// SVG 가 발행한 `<line stroke="#d03050">` 들의 잉크 상단(중심 - 획 반).
 fn top_line_ink(svg: &str) -> f64 {
     svg.split("<line ")
@@ -48,13 +72,13 @@ fn top_line_ink(svg: &str) -> f64 {
         .fold(f64::INFINITY, f64::min)
 }
 
-/// SVG 가 발행한 강조점 `<text ...>●</text>` 의 em 상자 상단(기준선 - 글자 크기).
+/// 독립 Print가 쓰는 HCR Batang U+0307 잉크 상단이다.
 fn top_dot_ink(svg: &str) -> f64 {
     svg.split("<text ")
         .skip(1)
         .map(|c| format!(" {c}"))
-        .filter(|c| c.contains(">●</text>"))
-        .map(|tag| attr(&tag, "y") - attr(&tag, "font-size"))
+        .filter(|c| c.contains(">\u{0307}</text>"))
+        .map(|tag| attr(&tag, "y") - attr(&tag, "font-size") * 0.675)
         .fold(f64::INFINITY, f64::min)
 }
 
@@ -92,4 +116,143 @@ fn first_line_emphasis_dot_ink_is_inside_body_clip() {
         doc.get_cursor_rect_native(0, 0, 1).unwrap(),
         plain_doc.get_cursor_rect_native(0, 0, 1).unwrap()
     );
+}
+
+#[test]
+fn hancom_multi_underline_keeps_bottom_strokes_above_baseline() {
+    // 같은 이름의 pdf/raised-decoration-hancom Print PDF, 9~48pt 32쌍이다.
+    for (shape, lift, print_y) in [
+        (7, 1.11, 131.056),
+        (8, 1.20, 130.0973),
+        (9, 1.20, 130.5773),
+        (10, 1.20, 130.0973),
+    ] {
+        let svg = probe(&format!("top-probe-shape-{shape}"))
+            .render_page_svg_native(0)
+            .unwrap();
+        let mut baselines: Vec<(f64, f64)> = tags(&svg, "text")
+            .iter()
+            .map(|tag| (attr(tag, "y"), attr(tag, "font-size")))
+            .collect();
+        baselines.sort_by(|a, b| a.0.total_cmp(&b.0));
+        baselines.dedup();
+        assert_eq!(baselines.len(), 16, "원문 문단 누락·중복 방지");
+        let lines = tags(&svg, "line");
+        let first = lines
+            .iter()
+            .find(|tag| tag.contains("stroke=\"#cc0000\""))
+            .unwrap();
+        near_print(attr(first, "x1"), 113.3787);
+        near_print(attr(first, "y1"), print_y);
+        for pair in baselines.chunks_exact(2) {
+            let strokes = |(baseline, size): (f64, f64), color: &str| {
+                let mut rows: Vec<(f64, f64)> = lines
+                    .iter()
+                    .filter(|tag| tag.contains(&format!("stroke=\"{color}\"")))
+                    .filter(|tag| (attr(tag, "y1") - baseline).abs() < size * 1.3)
+                    .map(|tag| {
+                        (
+                            (attr(tag, "y1") - baseline) / size,
+                            attr(tag, "stroke-width") / size,
+                        )
+                    })
+                    .collect();
+                rows.sort_by(|a, b| a.0.total_cmp(&b.0));
+                rows.dedup();
+                rows
+            };
+            let top = strokes(pair[0], "#cc0000");
+            let bottom = strokes(pair[1], "#0000cc");
+            assert_eq!(top.len(), if shape == 10 { 3 } else { 2 });
+            assert_eq!(top.len(), bottom.len());
+            for (top, bottom) in top.iter().zip(&bottom) {
+                assert!((top.0 - bottom.0 + lift).abs() < 0.02, "shape {shape}");
+                assert!((top.1 - bottom.1).abs() < 0.001, "획 굵기 보존");
+            }
+        }
+    }
+}
+
+#[test]
+fn hancom_emphasis_marks_skip_spaces_and_keep_print_glyphs() {
+    for (kind, glyph) in [
+        (1, "\u{0307}"),
+        (2, "\u{030a}"),
+        (3, "\u{030c}"),
+        (4, "\u{0303}"),
+    ] {
+        let svg = probe(&format!("emphasis-probe-{kind}"))
+            .render_page_svg_native(0)
+            .unwrap();
+        let texts = tags(&svg, "text");
+        let marks: Vec<_> = texts
+            .iter()
+            .filter(|tag| tag.contains(&format!(">{glyph}</text>")))
+            .collect();
+        // 3개 글꼴 × 4개 크기 × 문장 부호 포함 7자, 각 문단의 공백 2개는 제외한다.
+        assert_eq!(marks.len(), 84, "kind {kind}");
+        for size in [12.0, 16.0, 32.0, 48.0] {
+            assert_eq!(
+                marks
+                    .iter()
+                    .filter(|tag| (attr(tag, "font-size") - size).abs() < 0.01)
+                    .count(),
+                21
+            );
+        }
+        for mark in &marks {
+            assert!(mark.contains("font-family=\"HCR Batang,함초롬바탕,serif\""));
+            let size = attr(mark, "font-size");
+            let baseline = attr(mark, "y") + size * 0.37;
+            assert!(texts
+                .iter()
+                .any(|tag| !tag.contains(&format!(">{glyph}</text>"))
+                    && (attr(tag, "font-size") - size).abs() < 0.01
+                    && (attr(tag, "y") - baseline).abs() < 0.01));
+        }
+        // 각 Print PDF 첫 U+030x의 텍스트 행렬을 72dpi에서 96dpi로 환산했다.
+        near_print(attr(marks[0], "x"), 120.5747);
+        near_print(attr(marks[0], "y"), 137.9293);
+    }
+    for (kind, count, print_y) in [(5, 84, 138.4607), (6, 168, 137.328)] {
+        let svg = probe(&format!("emphasis-probe-{kind}"))
+            .render_page_svg_native(0)
+            .unwrap();
+        let marks = tags(&svg, "ellipse");
+        assert_eq!(marks.len(), count, "kind {kind}");
+        near_print(attr(&marks[0], "cx"), 112.69);
+        near_print(attr(&marks[0], "cy"), print_y);
+        if kind == 6 {
+            for pair in marks.chunks_exact(2) {
+                assert_eq!(attr(&pair[0], "cx"), attr(&pair[1], "cx"));
+                assert!(attr(&pair[0], "cy") < attr(&pair[1], "cy"));
+            }
+        }
+    }
+}
+
+#[test]
+fn hancom_body_and_cell_decorations_keep_print_positions() {
+    for (name, x, y) in [
+        ("body-top-36pt", 113.3787, 127.2213),
+        ("cell-top-10-36pt", 123.9333, 136.6507),
+    ] {
+        let svg = probe(name).render_page_svg_native(0).unwrap();
+        let line = tags(&svg, "line")
+            .into_iter()
+            .find(|tag| tag.contains("stroke=\"#cc0000\""))
+            .unwrap();
+        near_print(attr(&line, "x1"), x);
+        near_print(attr(&line, "y1"), y);
+    }
+    let svg = probe("body-emphasis-36pt")
+        .render_page_svg_native(0)
+        .unwrap();
+    let marks: Vec<_> = tags(&svg, "text")
+        .into_iter()
+        .filter(|tag| tag.contains(">\u{0307}</text>"))
+        .collect();
+    assert_eq!(marks.len(), 7);
+    near_print(attr(&marks[0], "x"), 147.2802);
+    near_print(attr(&marks[0], "y"), 155.1904);
 }

@@ -5,7 +5,7 @@
 
 use super::composer::{
     char_overlap_display_text, char_overlap_size_ratio, decode_pua_overlap_number,
-    expand_pua_render_text, CharOverlapInfo,
+    expand_pua_render_text_in_style, CharOverlapInfo,
 };
 pub(crate) use super::image_resolver::{
     bmp_bytes_to_png_bytes, detect_image_mime_type, pcx_bytes_to_png_bytes,
@@ -21,10 +21,12 @@ use super::render_tree::{
 };
 use super::{
     boxed_pua_char_overlap_semantics, clamp_tab_leader_end_x, GradientFillInfo, LineStyle,
-    PathCommand, PatternFillInfo, Renderer, ShapeStyle, StrokeDash, TextStyle,
+    PathCommand, PatternFillInfo, Renderer, ShapeStyle, TextStyle,
 };
 use crate::paint::{PaintOp, TextDecorationKind};
 use std::fmt::Write as _;
+
+mod stroke_pattern;
 
 /// Hanyang-PUA 옛한글 코드포인트를 KS X 1026-1:2007 자모 시퀀스로 확장.
 /// PUA 가 없으면 원본 문자열 그대로 반환 (allocation 없음).
@@ -47,11 +49,17 @@ use crate::model::style::{ImageFillMode, UnderlineType};
 use base64::Engine;
 
 #[cfg(not(target_arch = "wasm32"))]
+mod fallback_fonts;
+#[cfg(not(target_arch = "wasm32"))]
 mod font_file_lookup;
+#[cfg(not(target_arch = "wasm32"))]
+mod system_fonts;
 #[cfg(all(test, not(target_arch = "wasm32")))]
 use font_file_lookup::FontFileName;
 #[cfg(not(target_arch = "wasm32"))]
-use font_file_lookup::{find_font_file, plan_svg_font_file_lookup, FontFileLookupPlan};
+use font_file_lookup::{
+    find_font_file, find_font_file_for_chars, plan_svg_font_file_lookup, FontFileLookupPlan,
+};
 
 const TEXT_MARK_CLIP_RIGHT_PAD: f64 = 48.0;
 
@@ -553,6 +561,39 @@ impl SvgRenderer {
             .push_str(&format!("<g clip-path=\"url(#{})\">", id));
     }
 
+    pub(super) fn begin_layer_path_clip(
+        &mut self,
+        paths: &[crate::model::text_clip::TextClipPath],
+        id: &str,
+    ) {
+        use crate::model::text_clip::ClipCommand;
+        for (index, path) in paths.iter().enumerate() {
+            let mut d = String::new();
+            for c in &path.commands {
+                use std::fmt::Write;
+                match *c {
+                    ClipCommand::Move(x, y) => {
+                        let _ = write!(d, "M{x} {y} ");
+                    }
+                    ClipCommand::Line(x, y) => {
+                        let _ = write!(d, "L{x} {y} ");
+                    }
+                    ClipCommand::Cubic(a, b, c, d1, e, f) => {
+                        let _ = write!(d, "C{a} {b} {c} {d1} {e} {f} ");
+                    }
+                    ClipCommand::Close => d.push_str("Z "),
+                }
+            }
+            let rule = if path.even_odd { "evenodd" } else { "nonzero" };
+            let name = format!("{id}-{index}");
+            self.defs.push(format!(
+                "<clipPath id=\"{name}\"><path d=\"{d}\" clip-rule=\"{rule}\"/></clipPath>"
+            ));
+            self.output
+                .push_str(&format!("<g clip-path=\"url(#{name})\">"));
+        }
+    }
+
     pub(super) fn end_layer_clip(&mut self) {
         self.output.push_str("</g>\n");
     }
@@ -651,6 +692,17 @@ impl SvgRenderer {
 
     /// 개별 노드를 SVG로 렌더링
     fn render_node(&mut self, node: &RenderNode) {
+        if let Some(paths) = &node.paint_clip {
+            let mut source = node.clone();
+            source.paint_clip = None;
+            self.begin_layer_path_clip(paths, &format!("source-text-{}", node.id));
+            self.render_node(&source);
+            for _ in paths {
+                self.end_layer_clip();
+            }
+            return;
+        }
+
         if !node.visible {
             return;
         }
@@ -734,11 +786,7 @@ impl SvgRenderer {
                     let cx = node.bbox.x + node.bbox.width / 2.0;
                     let cy = node.bbox.y + node.bbox.height / 2.0;
                     let color = color_to_svg(run.style.color);
-                    let font_size = if run.style.font_size > 0.0 {
-                        run.style.font_size
-                    } else {
-                        12.0
-                    };
+                    let font_size = run.style.effective_font_size();
                     let font_family = if run.style.font_family.is_empty() {
                         "sans-serif".to_string()
                     } else {
@@ -802,11 +850,7 @@ impl SvgRenderer {
                         run.field_marker,
                         crate::renderer::render_tree::FieldMarkerType::None
                     );
-                    let font_size = if run.style.font_size > 0.0 {
-                        run.style.font_size
-                    } else {
-                        12.0
-                    };
+                    let font_size = run.style.effective_font_size();
                     // 공백·탭 기호: 각 문자 위치에 오버레이
                     if !run.text.is_empty() && !is_marker {
                         let char_positions = run.replay_positions_for(&run.text);
@@ -916,21 +960,18 @@ impl SvgRenderer {
             }
             RenderNodeType::Equation(eq) => {
                 // 수식 SVG 조각을 bbox 위치에 배치
-                // HWP 저장 영역(bbox)과 레이아웃 산출 크기(layout_box)가 다를 수 있으므로
-                // bbox 너비에 맞춰 스케일링한다. 일반 높이는 줄 여백을 포함하므로
-                // 유지하고, 기본 글자보다 낮은 압축 프레임만 공통 세로 비율을 쓴다.
-                let scale_x =
-                    super::equation::stored_horizontal_scale(node.bbox.width, &eq.layout_box);
+                // 저장 프레임은 흐름 예약 영역이고 글자 장평이 아니다. BaseUnit으로
+                // 만든 공통 글자·장식 폭을 유지하며 압축 프레임의 세로 비율만 적용한다.
                 let scale_y = super::equation::stored_vertical_scale(
                     node.bbox.height,
                     eq.layout_box.height,
                     eq.font_size,
                 );
-                let needs_scale = (scale_x - 1.0).abs() > 0.01 || (scale_y - 1.0).abs() > 0.01;
+                let needs_scale = (scale_y - 1.0).abs() > 0.01;
                 if needs_scale {
                     self.output.push_str(&format!(
-                        "<g transform=\"translate({},{}) scale({:.4},{:.4})\">\n",
-                        node.bbox.x, node.bbox.y, scale_x, scale_y,
+                        "<g transform=\"translate({},{}) scale(1,{:.4})\">\n",
+                        node.bbox.x, node.bbox.y, scale_y,
                     ));
                 } else {
                     self.output.push_str(&format!(
@@ -947,17 +988,22 @@ impl SvgRenderer {
                         if let Some(start) = segment.rfind('>') {
                             let text = &segment[start + 1..];
                             let header = &segment[..start];
-                            let family = if header
-                                .rsplit("<text ")
-                                .next()
-                                .is_some_and(|attrs| attrs.contains("font-family=\"HyhwpEQ\""))
-                            {
-                                super::equation::hancom_glyphs::FONT_FAMILY
-                            } else if super::equation::text_has_cjk(text) {
-                                "Haansoft Batang"
-                            } else {
-                                "Latin Modern Math"
-                            };
+                            let family =
+                                if header
+                                    .rsplit("<text ")
+                                    .next()
+                                    .is_some_and(|attrs| attrs.contains("font-family=\"HyhwpEQ\""))
+                                {
+                                    super::equation::hancom_glyphs::FONT_FAMILY
+                                } else if header.rsplit("<text ").next().is_some_and(|attrs| {
+                                    attrs.contains("font-family=\"HancomEQN\"")
+                                }) {
+                                    "HancomEQN"
+                                } else if super::equation::text_has_cjk(text) {
+                                    "Haansoft Batang"
+                                } else {
+                                    "Latin Modern Math"
+                                };
                             self.font_codepoints
                                 .entry(family.to_string())
                                 .or_default()
@@ -1364,12 +1410,19 @@ impl SvgRenderer {
         let def = match grad.gradient_type {
             2 => {
                 // 원형 (Radial)
-                let cx = grad.center_x as f64;
-                let cy = grad.center_y as f64;
-                format!(
-                    "<radialGradient id=\"{}\" cx=\"{}%\" cy=\"{}%\" r=\"50%\" fx=\"{}%\" fy=\"{}%\">\n{}</radialGradient>\n",
-                    id, cx, cy, cx, cy, stops,
-                )
+                if let Some((cx, cy, radius)) =
+                    super::gradient_geometry::radial_circle(bbox, grad.center_x, grad.center_y)
+                {
+                    format!(
+                        "<radialGradient id=\"{}\" gradientUnits=\"userSpaceOnUse\" cx=\"{}\" cy=\"{}\" r=\"{}\" fx=\"{}\" fy=\"{}\">\n{}</radialGradient>\n",
+                        id, cx, cy, radius, cx, cy, stops,
+                    )
+                } else {
+                    format!(
+                        "<radialGradient id=\"{}\" cx=\"{}%\" cy=\"{}%\" r=\"50%\" fx=\"{}%\" fy=\"{}%\">\n{}</radialGradient>\n",
+                        id, grad.center_x, grad.center_y, grad.center_x, grad.center_y, stops,
+                    )
+                }
             }
             _ => {
                 // 선형 (Linear) — gradient_type 1(줄무늬), 3(원뿔), 4(사각) 모두 선형으로 근사
@@ -1540,13 +1593,7 @@ impl SvgRenderer {
                 color_to_svg(stroke),
                 style.stroke_width
             ));
-            match style.stroke_dash {
-                StrokeDash::Dash => attrs.push_str(" stroke-dasharray=\"6 3\""),
-                StrokeDash::Dot => attrs.push_str(" stroke-dasharray=\"2 2\""),
-                StrokeDash::DashDot => attrs.push_str(" stroke-dasharray=\"6 3 2 3\""),
-                StrokeDash::DashDotDot => attrs.push_str(" stroke-dasharray=\"6 3 2 3 2 3\""),
-                _ => {}
-            }
+            stroke_pattern::append_attrs(&mut attrs, style.stroke_dash, style.stroke_width);
         }
 
         if style.opacity < 1.0 {
@@ -1608,13 +1655,7 @@ impl SvgRenderer {
                 color_to_svg(stroke),
                 style.stroke_width
             ));
-            match style.stroke_dash {
-                StrokeDash::Dash => attrs.push_str(" stroke-dasharray=\"6 3\""),
-                StrokeDash::Dot => attrs.push_str(" stroke-dasharray=\"2 2\""),
-                StrokeDash::DashDot => attrs.push_str(" stroke-dasharray=\"6 3 2 3\""),
-                StrokeDash::DashDotDot => attrs.push_str(" stroke-dasharray=\"6 3 2 3 2 3\""),
-                _ => {}
-            }
+            stroke_pattern::append_attrs(&mut attrs, style.stroke_dash, style.stroke_width);
         }
 
         self.output.push_str(&format!("<path {}/>\n", attrs));
@@ -1895,6 +1936,10 @@ impl SvgRenderer {
     }
 
     fn render_image_node(&mut self, img: &ImageNode, bbox: &super::render_tree::BoundingBox) {
+        if let Some(path) = super::pdf_stroke::project(img, *bbox) {
+            self.draw_path_with_gradient(&path.commands, &path.style, None);
+            return;
+        }
         let interpolation = img.data.as_deref().and_then(|data| {
             let (width, height) = super::image_resolver::png_sampling::dimensions(data)?;
             let source = img.crop.map_or((width, height), |crop| {
@@ -2082,6 +2127,18 @@ impl SvgRenderer {
         let data_uri = format!("data:{};base64,{}", render_mime, base64_data);
 
         let fill_mode = img.fill_mode.unwrap_or(ImageFillMode::FitToSize);
+        let image_size = parse_image_dimensions(&render_data)
+            .map(|(w, h)| (f64::from(w), f64::from(h)))
+            .or_else(|| {
+                (render_mime == "image/svg+xml")
+                    .then(|| super::metafile_geometry::svg_viewport(&render_data))
+                    .flatten()
+            });
+        let crop_reference = if mime_type == "image/x-wmf" {
+            super::metafile_geometry::wmf_crop_reference(img.original_size_hu)
+        } else {
+            img.original_size_hu
+        };
 
         match fill_mode {
             // [#7235] 채우기 유형 15(NONE): 한컴은 원래 픽셀 크기로 두지 않고 종횡비를
@@ -2089,12 +2146,8 @@ impl SvgRenderer {
             ImageFillMode::Zoom | ImageFillMode::None => {
                 // contain 비율은 최종적으로 보이는 crop 영역으로 계산한다.
                 // 맞춘 viewport 자체를 clip하여 잘려 나간 픽셀이 letterbox에 새지 않는다.
-                if let (Some(crop), Some((iw, ih))) =
-                    (img.crop, parse_image_dimensions(&render_data))
-                {
-                    let (iw, ih) = (iw as f64, ih as f64);
-                    let (sx, sy, sw, sh) =
-                        compute_image_crop_src(crop, img.original_size_hu, iw, ih);
+                if let (Some(crop), Some((iw, ih))) = (img.crop, image_size) {
+                    let (sx, sy, sw, sh) = compute_image_crop_src(crop, crop_reference, iw, ih);
                     let scale = (bbox.width / sw).min(bbox.height / sh);
                     let (w, h) = (sw * scale, sh * scale);
                     self.output.push_str(&format!(
@@ -2112,15 +2165,9 @@ impl SvgRenderer {
             ImageFillMode::FitToSize | ImageFillMode::Total => {
                 // 그림 자르기: crop이 있으면 원본 이미지의 일부만 표시
                 if let Some((cl, ct, cr, cb)) = img.crop {
-                    if let Some((img_w, img_h)) = parse_image_dimensions(&render_data) {
-                        let img_w = img_w as f64;
-                        let img_h = img_h as f64;
-                        let (src_x, src_y, src_w, src_h) = compute_image_crop_src(
-                            (cl, ct, cr, cb),
-                            img.original_size_hu,
-                            img_w,
-                            img_h,
-                        );
+                    if let Some((img_w, img_h)) = image_size {
+                        let (src_x, src_y, src_w, src_h) =
+                            compute_image_crop_src((cl, ct, cr, cb), crop_reference, img_w, img_h);
                         // 전체 이미지 대비 잘림이 있는지 확인
                         let is_cropped = src_x > 0.5
                             || src_y > 0.5
@@ -2446,11 +2493,7 @@ impl SvgRenderer {
         bbox_w: f64,
         bbox_h: f64,
     ) {
-        let font_size = if style.font_size > 0.0 {
-            style.font_size
-        } else {
-            12.0
-        };
+        let font_size = style.effective_font_size();
         let chars: Vec<char> = text.chars().collect();
         if chars.is_empty() {
             return;
@@ -2596,11 +2639,7 @@ impl SvgRenderer {
         bbox_w: f64,
         bbox_h: f64,
     ) {
-        let font_size = if style.font_size > 0.0 {
-            style.font_size
-        } else {
-            12.0
-        };
+        let font_size = style.effective_font_size();
         let box_size = font_size;
 
         // border_type=0이고 PUA 숫자이면 원형으로 자동 렌더링
@@ -3046,6 +3085,30 @@ impl SvgRenderer {
         style: &TextStyle,
         font_size: f64,
     ) {
+        if let Some(g) = super::boxed_digit_geometry::single_digit(number, font_size) {
+            let face = super::boxed_digit_geometry::number_face();
+            self.font_codepoints
+                .entry(face.to_string())
+                .or_default()
+                .extend(number.to_string().chars());
+            let family = format!(
+                "'{face}',{}",
+                super::render_font_family_chain_for_weight(
+                    &style.font_family,
+                    style.is_visually_bold()
+                )
+            );
+            let color = color_to_svg(style.color);
+            self.output.push_str(&format!(
+                "<rect x=\"{}\" y=\"{}\" width=\"{}\" height=\"{}\" fill=\"none\" stroke=\"{}\" stroke-width=\"{}\"/>\n",
+                x + g.frame_x, baseline_y + g.frame_y, g.frame_width, g.frame_height,
+                color, g.stroke_width));
+            self.output.push_str(&format!(
+                "<text transform=\"matrix({} 0 0 {} {} {})\" x=\"0\" y=\"0\" font-family=\"{}\" font-size=\"{}\" fill=\"{}\">{}</text>\n",
+                g.number_scale_x, g.number_scale_y, x + g.number_x,
+                baseline_y + g.number_y, escape_xml(&family), font_size, color, number));
+            return;
+        }
         let box_size = (font_size * 0.72).max(1.0);
         let box_y = baseline_y - font_size * 0.76;
         let color = color_to_svg(style.color);
@@ -3177,17 +3240,13 @@ impl Renderer for SvgRenderer {
         // [Task #509] 한컴은 폰트 지정과 상관없이 PUA 를 자체 처리. 지정 폰트에 글리프
         // 부재 시 한컴 내부 매핑이 발행. rhwp 도 동일 동작 모방 — 일반 텍스트도 PUA
         // 변환 적용 (PR #251 정합). 매핑 표는 한컴 PDF 정답지 기준.
-        let text = &expand_pua_render_text(&text);
+        let text = &expand_pua_render_text_in_style(&text, style);
         // [Task #528] Hanyang-PUA 옛한글 → KS X 1026-1:2007 자모 시퀀스.
         // 한/글 2010 이전 옛한글 PUA 인코딩을 표준 자모로 변환 (KTUG 매핑).
         let text = &expand_pua_old_hangul(text);
 
         let color = color_to_svg(style.color);
-        let base_font_size = if style.font_size > 0.0 {
-            style.font_size
-        } else {
-            12.0
-        };
+        let base_font_size = style.effective_font_size();
         // 위첨자/아래첨자는 레이아웃 advance 는 원래 run 기준으로 유지하고,
         // 실제 SVG glyph 크기와 baseline 만 Canvas/HTML 출력과 동일하게 조정한다.
         let (font_size, y) = style.script_draw_metrics(base_font_size, y);
@@ -3205,9 +3264,8 @@ impl Renderer for SvgRenderer {
         };
         let old_hangul_font_family = format!("'RHWP Old Hangul',{}", font_family);
 
-        // [#5821] 압축 장평은 세로도 √r — SSOT 는 condensed_ratio_draw_params.
-        let (font_size, ratio) =
-            crate::renderer::condensed_ratio_draw_params(font_size, style.ratio);
+        // HFT와 TrueType의 장평 변환을 같은 스타일 계약에서 소비한다.
+        let (font_size, ratio) = style.ratio_draw_params(font_size);
         let has_ratio = (ratio - 1.0).abs() > 0.01;
 
         // 공통 스타일 속성 구성 (fill 제외 — 그림자/원본에서 각각 설정)
@@ -3416,7 +3474,7 @@ impl Renderer for SvgRenderer {
                         char_x + cx, y + cy, rx, ry, color,
                     ));
                     self.output.push_str(&format!(
-                        "<text x=\"{:.4}\" y=\"{:.4}\" fill-opacity=\"0\">∙</text>\n",
+                        "<text x=\"{:.4}\" y=\"{:.4}\" fill-opacity=\"0\">{cluster_str}</text>\n",
                         char_x, y,
                     ));
                     continue;
@@ -3519,11 +3577,10 @@ impl Renderer for SvgRenderer {
             // 글자색으로 바꿔 그렸다(hwpx_sample2 12쪽: 정답지 검정 25개 vs
             // rhwp 글자색 #082108 24개). 저장값을 그대로 쓴다.
             let ul_color = color_to_svg(style.underline_color);
-            let multi = if matches!(style.underline, UnderlineType::Top) {
-                None
-            } else {
-                crate::renderer::text_decoration::underline_multi_lines(style.underline_shape)
-            };
+            let multi = crate::renderer::text_decoration::underline_multi_lines(
+                style.underline,
+                style.underline_shape,
+            );
             if let Some(lines) = multi {
                 for (dy_em, width_em) in lines {
                     let ly = y + font_size * dy_em;
@@ -3574,24 +3631,20 @@ impl Renderer for SvgRenderer {
 
         // 강조점 처리
         if style.emphasis_dot > 0 {
-            let dot_char = match style.emphasis_dot {
-                1 => "●",
-                2 => "○",
-                3 => "ˇ",
-                4 => "˜",
-                5 => "･",
-                6 => "˸",
-                _ => "",
+            use crate::renderer::text_decoration::{
+                emphasis_marks, EmphasisMark, EMPHASIS_FONT_FAMILY,
             };
-            if !dot_char.is_empty() {
-                let dot_size = font_size * 0.3;
-                let dot_y = y - font_size * 1.05;
-                for &cx in &char_positions[..char_positions.len().saturating_sub(1)] {
-                    let dot_x = x + cx + (font_size * style.ratio * 0.5);
-                    self.output.push_str(&format!(
-                        "<text x=\"{}\" y=\"{}\" font-size=\"{}\" text-anchor=\"middle\" fill=\"{}\">{}</text>\n",
-                        dot_x, dot_y, dot_size, color, dot_char,
-                    ));
+            for mark in emphasis_marks(text, &char_positions, x, y, font_size, style.emphasis_dot) {
+                match mark {
+                    EmphasisMark::Text { glyph, x, y, size, .. } => self.output.push_str(&format!(
+                        "<text x=\"{}\" y=\"{}\" font-family=\"{},함초롬바탕,serif\" font-size=\"{}\" font-weight=\"normal\" font-style=\"normal\" fill=\"{}\">{}</text>\n",
+                        x, y, EMPHASIS_FONT_FAMILY, size, color, glyph,
+                    )),
+                    EmphasisMark::Ellipse(ink) => self.output.push_str(&format!(
+                        "<ellipse cx=\"{}\" cy=\"{}\" rx=\"{}\" ry=\"{}\" fill=\"{}\"/>\n",
+                        ink.x + ink.width / 2.0, ink.y + ink.height / 2.0,
+                        ink.width / 2.0, ink.height / 2.0, color,
+                    )),
                 }
             }
         }
@@ -3781,12 +3834,17 @@ impl Renderer for SvgRenderer {
             "x1=\"{}\" y1=\"{}\" x2=\"{}\" y2=\"{}\" stroke=\"{}\" stroke-width=\"{}\"",
             lx1, ly1, lx2, ly2, color, width,
         );
-        match style.dash {
-            super::StrokeDash::Dash => attrs.push_str(" stroke-dasharray=\"6 3\""),
-            super::StrokeDash::Dot => attrs.push_str(" stroke-dasharray=\"2 2\""),
-            super::StrokeDash::DashDot => attrs.push_str(" stroke-dasharray=\"6 3 2 3\""),
-            super::StrokeDash::DashDotDot => attrs.push_str(" stroke-dasharray=\"6 3 2 3 2 3\""),
-            _ => {} // Solid
+        if let Some(intervals) = &style.dash_pattern {
+            attrs.push_str(&format!(
+                " stroke-dasharray=\"{}\"",
+                intervals
+                    .iter()
+                    .map(|v| v.to_string())
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            ));
+        } else {
+            stroke_pattern::append_attrs(&mut attrs, style.dash, width);
         }
         attrs.push_str(&marker_start_attr);
         attrs.push_str(&marker_end_attr);
@@ -4022,7 +4080,16 @@ pub(crate) fn convert_wmf_to_svg(data: &[u8]) -> Option<Vec<u8>> {
     use crate::wmf::converter::{SVGPlayer, WMFConverter};
     let player = SVGPlayer::new();
     let converter = WMFConverter::new(data, player);
-    converter.run().ok()
+    let fallback = converter.run().ok()?;
+    // 표준 WMFC만 복원한다. 알 수 없는 escape나 불완전한 EMF+를 부분 표시하지 않는다.
+    if let Some(emf) = crate::parser::ole_container::emf_from_wmf_comment_chunks(data) {
+        if let Some(viewport) = super::metafile_geometry::svg_viewport(&fallback) {
+            if let Some(svg) = crate::emf::emfplus::convert_supported(&emf, viewport) {
+                return Some(svg);
+            }
+        }
+    }
+    Some(fallback)
 }
 
 /// 이미지 데이터에서 픽셀 크기(width, height)를 파싱한다.
@@ -4822,7 +4889,9 @@ pub fn generate_font_style(
                     continue;
                 }
                 let regular_lookup = plan_svg_font_file_lookup(font_name, font_paths, false);
-                if let Some(font_path) = find_font_file(&regular_lookup) {
+                if let Some(font_path) =
+                    find_font_file_for_chars(&regular_lookup, &codepoints[font_name])
+                {
                     if let Ok(font_data) = std::fs::read(&font_path) {
                         let outline_data = svg_outline_font_data(&font_data, chars);
                         if matches!(outline_data, std::borrow::Cow::Owned(_)) {
@@ -4924,7 +4993,9 @@ pub fn generate_font_style(
                     continue;
                 }
                 let regular_lookup = plan_svg_font_file_lookup(font_name, font_paths, false);
-                if let Some(font_path) = find_font_file(&regular_lookup) {
+                if let Some(font_path) =
+                    find_font_file_for_chars(&regular_lookup, &codepoints[font_name])
+                {
                     if let Ok(font_data) = std::fs::read(&font_path) {
                         let font_data = svg_outline_font_data(&font_data, &codepoints[font_name]);
                         let b64 = base64::engine::general_purpose::STANDARD.encode(&font_data);
@@ -4969,6 +5040,7 @@ pub fn generate_font_style(
         FontEmbedMode::None => {}
     }
 
+    fallback_fonts::append_missing_serif_font_css(&mut css, renderer, font_paths, embedded_fonts);
     css
 }
 

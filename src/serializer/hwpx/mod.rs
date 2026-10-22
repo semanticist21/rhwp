@@ -75,6 +75,8 @@ pub fn serialize_hwpx_with_report(doc: &Document) -> Result<SerializedDocument, 
     // 3. Contents/header.xml — Stage 1 동적 생성 (IR 기반)
     let header_xml = header::write_header(doc, &ctx)?;
     z.write_deflated("Contents/header.xml", &header_xml)?;
+    let mut hwp3_page_ownership =
+        crate::model::hwp3_page_ownership::PageOwnership::for_document(doc, &header_xml);
 
     // 4. Contents/section{N}.xml — 실제 섹션만큼, 없으면 0개
     let section_hrefs: Vec<String> = (0..doc.sections.len())
@@ -82,6 +84,9 @@ pub fn serialize_hwpx_with_report(doc: &Document) -> Result<SerializedDocument, 
         .collect();
     for (i, sec) in doc.sections.iter().enumerate() {
         let xml = section::write_section(sec, doc, i, &mut ctx)?;
+        if let Some(ownership) = &mut hwp3_page_ownership {
+            ownership.push_section(sec, &xml);
+        }
         z.write_deflated(&section_hrefs[i], &xml)?;
     }
 
@@ -134,6 +139,29 @@ pub fn serialize_hwpx_with_report(doc: &Document) -> Result<SerializedDocument, 
         }
     }
 
+    if let Some(bytes) = ctx
+        .table_row_grids
+        .encode()
+        .map_err(SerializeError::UnsupportedInput)?
+    {
+        z.write_deflated(crate::model::table_row_grid::HWPX_ENTRY, &bytes)?;
+        ctx.content_loss
+            .record(crate::model::table_row_grid::native_grid_loss());
+    }
+    if let Some(bytes) =
+        crate::model::border_paint::encode(doc).map_err(SerializeError::UnsupportedInput)?
+    {
+        z.write_deflated(crate::model::border_paint::HWPX_ENTRY, &bytes)?;
+        ctx.content_loss
+            .record(crate::model::border_paint::native_editing_loss());
+    }
+    if let Some(bytes) =
+        crate::model::text_clip::encode(doc).map_err(SerializeError::UnsupportedInput)?
+    {
+        z.write_deflated(crate::model::text_clip::HWPX_ENTRY, &bytes)?;
+        ctx.content_loss
+            .record(crate::model::text_clip::native_visibility_loss());
+    }
     if let Some(bytes) = crate::model::hyperlink_format::encode(doc) {
         z.write_deflated(crate::model::hyperlink_format::HWPX_ENTRY, &bytes)?;
     }
@@ -269,7 +297,21 @@ pub fn serialize_hwpx_with_report(doc: &Document) -> Result<SerializedDocument, 
     }
     // HWP3-origin 마커 — 재열람 시 hwp3_lineage 복원(왕복 레이아웃 등식).
     if let Some(marker) = doc.hwpx_aux_entry(crate::model::document::HWP3_ORIGIN_HWPX_MARKER_PATH) {
-        z.write_deflated(crate::model::document::HWP3_ORIGIN_HWPX_MARKER_PATH, marker)?;
+        let encoded = hwp3_page_ownership
+            .as_ref()
+            .map(crate::model::hwp3_page_ownership::PageOwnership::encode)
+            .transpose()
+            .map_err(|error| SerializeError::XmlError(error.to_string()))?;
+        z.write_deflated(
+            crate::model::document::HWP3_ORIGIN_HWPX_MARKER_PATH,
+            encoded.as_deref().unwrap_or(marker),
+        )?;
+    }
+    if doc.layout_profile().hwp3_external_realign() {
+        z.write_deflated(
+            crate::model::document::HWP3_EXTERNAL_REALIGN_HWPX_PATH,
+            b"1",
+        )?;
     }
 
     // 참조 정합성 단언 (Stage 1+)
@@ -798,6 +840,7 @@ mod tests {
             version_info: "Equation Version 60".to_string(),
             raw_ctrl_data: Vec::new(),
             raw_ctrl_seal: None,
+            unpositioned_host_frame_seal: None,
         })));
         section.paragraphs.push(para);
         doc.sections.push(section);

@@ -8,6 +8,31 @@ use std::sync::OnceLock;
 
 use crate::renderer::font_rule_layout_metric_projection::find_font_rule_layout_metric;
 
+#[path = "font_metric_han_santteut.rs"]
+mod han_santteut;
+
+#[path = "font_metric_legacy_hft.rs"]
+mod legacy_hft;
+
+#[path = "font_metric_hci_poppy.rs"]
+mod hci_poppy;
+
+#[path = "font_metric_hci_tulip.rs"]
+mod hci_tulip;
+
+#[path = "font_metric_math_alphabet.rs"]
+mod math_alphabet;
+
+#[path = "font_metric_math_symbols.rs"]
+mod math_symbols;
+
+#[path = "font_metric_cjk_punctuation.rs"]
+mod cjk_punctuation;
+
+pub(crate) use legacy_hft::{
+    is_metric_face as is_legacy_hft_metric_face, metric_face_name as legacy_hft_metric_face,
+};
+
 #[derive(Debug)]
 pub struct HangulMetric {
     pub cho_groups: u8,
@@ -27,6 +52,19 @@ pub struct FontMetric {
     pub em_size: u16,
     pub latin_ranges: &'static [LatinRange],
     pub hangul: Option<&'static HangulMetric>,
+}
+
+/// Source SFNT hhea descent for the Windows Korean UI families. Like the
+/// generated advance tables this is program metadata, independent of an
+/// installed rendering substitute. Gulim.ttc faces 0..=3 have upem=1024 and
+/// descender=-145; provenance is recorded with the TAC baseline qualification.
+/// Other programs retain the caller's existing compatibility fallback.
+pub(crate) fn source_descent_em(name: &str, bold: bool, italic: bool) -> Option<f64> {
+    let metric = find_metric(name, bold, italic)?.metric;
+    match metric.name {
+        "Gulim" | "GulimChe" | "Dotum" | "DotumChe" => Some(145.0 / 1024.0),
+        _ => None,
+    }
 }
 
 #[derive(Debug)]
@@ -66,10 +104,31 @@ impl FontMetric {
         }
         // 기존 범위는 그대로 우선하며, 확인된 프로그램의 누락 구간만 보충한다.
         verified_technical_symbol_width(self, ch)
+            .or_else(|| math_symbols::width(self, ch))
+            .or_else(|| math_alphabet::width(self, ch))
     }
 }
 
 include!("font_metrics_technical_symbols.rs");
+
+/// 실제 프로그램에서 확인한 cmap. DB의 미수집 범위를 glyph 결측으로 취급하지 않는다.
+pub(crate) fn verified_metric_has_glyph(metric: &FontMetric, ch: char) -> Option<bool> {
+    verified_program_has_glyph(metric, ch)
+        .or_else(|| math_symbols::has_glyph(metric, ch))
+        .or_else(|| math_alphabet::entry(metric, ch).map(|(present, _)| present))
+        .or_else(|| cjk_punctuation::primary_has_glyph(metric.name, metric.bold, metric.italic, ch))
+}
+
+/// DB 항목이 없어도 확인한 원 face의 cmap은 독립적으로 조회한다.
+pub(crate) fn verified_named_program_has_glyph(
+    family: &str,
+    bold: bool,
+    italic: bool,
+    ch: char,
+) -> Option<bool> {
+    math_alphabet::primary_has_glyph(family, bold, italic, ch)
+        .or_else(|| cjk_punctuation::primary_has_glyph(family, bold, italic, ch))
+}
 
 /// find_metric의 반환값: 메트릭 + 폴백 정보
 pub struct MetricMatch {
@@ -239,6 +298,40 @@ pub(crate) fn find_metric_decision<'a>(
     })
 }
 
+/// 원본 프로그램에서 확인한 문자 폭은 표시 대체 글꼴의 완전한 표보다 우선한다.
+/// 부분 표의 미측정 문자·확인하지 않은 정체는 기존 색인 선택을 그대로 쓴다.
+pub(crate) fn find_metric_decision_for_character<'a>(
+    name: &'a str,
+    bold: bool,
+    italic: bool,
+    character: char,
+) -> Option<MetricLookupDecision<'a>> {
+    let mut decision = find_metric_decision(name, bold, italic)?;
+    let source = &hci_poppy::METRICS[0];
+    if decision.alias_resolved_name != source.name
+        || bold != source.bold
+        || italic != source.italic
+        || character.is_whitespace()
+        || source.get_width(character).is_none()
+    {
+        return Some(decision);
+    }
+    static SOURCE_INDEX: OnceLock<Option<usize>> = OnceLock::new();
+    if let Some(index) = *SOURCE_INDEX.get_or_init(|| {
+        FONT_METRICS
+            .iter()
+            .position(|entry| std::ptr::eq(entry, source))
+    }) {
+        // 각 표가 가진 em을 함께 선택한다. em=1000의 폭을 em=2048 표에
+        // 정수 반올림해 섞지 않으며 가운뎃점 등 기존 독립 측정도 보존한다.
+        decision.metric = source;
+        decision.entry_index = index;
+        decision.match_kind = MetricMatchKind::Exact;
+        decision.bold_fallback = false;
+    }
+    Some(decision)
+}
+
 /// [#4709] 이 스타일의 글자폭 배치에 실제로 쓰인 내장 메트릭 face 이름.
 ///
 /// `measure_char_width_embedded`(text_measurement.rs)의 해석 순서를 따른다:
@@ -252,11 +345,17 @@ pub fn layout_metric_face_name(font_family: &str, bold: bool, italic: bool) -> O
         .trim()
         .trim_matches('\'');
     // KoPub 은 kopub_char_width 전용 표가 find_metric 보다 앞선다 — face 자체가 정체.
-    let lower = primary.to_lowercase();
+    // `measure_char_width_embedded` 의 `KoPubFamily::from_primary` 와 같은 이름 판정
+    // (`KoPubWorld` 개정판도 구분하며 각 face의 전진폭은 해당 측정 표가 결정한다).
+    let lower = primary.to_lowercase().replace(' ', "");
     if primary.contains("KoPub돋움체")
-        || lower.contains("kopub dotum")
+        || primary.contains("KoPubWorld돋움체")
+        || lower.contains("kopubdotum")
+        || lower.contains("kopubworlddotum")
         || primary.contains("KoPub바탕체")
-        || lower.contains("kopub batang")
+        || primary.contains("KoPubWorld바탕체")
+        || lower.contains("kopubbatang")
+        || lower.contains("kopubworldbatang")
     {
         return Some(primary.to_string());
     }
@@ -299,10 +398,39 @@ fn legacy_find_metric(name: &str, bold: bool, italic: bool) -> Option<MetricMatc
 
 include!("font_metrics_generated.rs");
 include!("font_metrics_overlays.rs");
+include!("font_metrics_core14.rs");
 
-/// 기존 600-entry 물리 순서를 노출하는 논리 view.
+/// Published AFMs are independent of the historical 600-entry evidence ledger.
+pub(crate) fn core14_metric_source(metric: &FontMetric) -> Option<(&'static str, &'static str)> {
+    if !CORE14_FONT_METRICS
+        .iter()
+        .any(|entry| std::ptr::eq(entry, metric))
+    {
+        return None;
+    }
+    Some(match (metric.bold, metric.italic) {
+        (false, false) => (
+            "data/font-metrics/adobe-core14/Helvetica.afm",
+            "CORE14_0_RANGES",
+        ),
+        (true, false) => (
+            "data/font-metrics/adobe-core14/Helvetica-Bold.afm",
+            "CORE14_1_RANGES",
+        ),
+        (false, true) => (
+            "data/font-metrics/adobe-core14/Helvetica-Oblique.afm",
+            "CORE14_2_RANGES",
+        ),
+        (true, true) => (
+            "data/font-metrics/adobe-core14/Helvetica-BoldOblique.afm",
+            "CORE14_3_RANGES",
+        ),
+    })
+}
+
+/// 기존 600-entry 물리 순서를 보존하고 독립 AFM 메트릭을 뒤에 연결한다.
 ///
-/// generated 595개 뒤에 measured overlay 5개를 연결하며 정렬·dedupe하지 않는다.
+/// generated 595개와 measured overlay 5개를 정렬·dedupe하지 않는다.
 struct FontMetrics;
 
 static FONT_METRICS: FontMetrics = FontMetrics;
@@ -312,6 +440,11 @@ impl FontMetrics {
         GENERATED_FONT_METRICS
             .iter()
             .chain(MEASURED_FONT_METRIC_OVERLAYS.iter())
+            .chain(CORE14_FONT_METRICS.iter())
+            .chain(han_santteut::METRICS.iter())
+            .chain(legacy_hft::METRICS.iter())
+            .chain(hci_poppy::METRICS.iter())
+            .chain(hci_tulip::METRICS.iter())
     }
 }
 

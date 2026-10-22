@@ -11,7 +11,7 @@ use crate::paint::{
     PaintOp, PaintReplayPlane, RenderProfile, ResolvedImageKind, ResolvedImagePayload,
     TextDecorationKind, TextVariantKind,
 };
-use crate::renderer::composer::expand_pua_display_text;
+use crate::renderer::composer::expand_pua_render_text_in_style;
 use crate::renderer::equation::{
     layout::{LayoutBox, LayoutKind},
     symbols::{DecoKind, FontStyleKind},
@@ -622,7 +622,7 @@ fn count_layer_tree_work_units(
                 }
                 pending.extend(children.iter().rev().map(|child| (child, depth + 1)));
             }
-            LayerNodeKind::ClipRect { child, .. } => {
+            LayerNodeKind::ClipRect { child, .. } | LayerNodeKind::ClipPath { child, .. } => {
                 if minimum_work_exceeds_limit(work_units, pending.len(), 1, max_work_units) {
                     return CanvasKitBoundedWorkCount::Exceeded;
                 }
@@ -662,9 +662,11 @@ fn additional_payload_work_units(bytes: usize) -> usize {
 
 fn paint_op_work_units(op: &PaintOp) -> usize {
     let repeated_visual_units = match op {
-        PaintOp::TextRun { run, .. } => expand_pua_display_text(run.display_or_text())
-            .chars()
-            .count(),
+        PaintOp::TextRun { run, .. } => {
+            expand_pua_render_text_in_style(run.display_or_text(), &run.style)
+                .chars()
+                .count()
+        }
         PaintOp::CharOverlap { run, .. } => run.text.chars().count(),
         PaintOp::TextControlMark { run, .. } => bounded_text_char_count(&run.text),
         PaintOp::TabLeader { run, .. } => {
@@ -775,7 +777,7 @@ fn bounded_display_text_for_visual(run: &TextRunNode) -> (String, bool) {
     let mut source_chars = run.display_or_text().chars();
     let source: String = source_chars.by_ref().take(limit).collect();
     let source_complete = source_chars.next().is_none();
-    let expanded = expand_pua_display_text(&source);
+    let expanded = expand_pua_render_text_in_style(&source, &run.style);
     let mut display_chars = expanded.chars();
     let display: String = display_chars.by_ref().take(limit).collect();
     (display, source_complete && display_chars.next().is_none())
@@ -1388,6 +1390,19 @@ impl CanvasKitReplayPlanBuilder {
                         pending.push((child, format!("{path}/group/{index}"), active_layer));
                     }
                 }
+                LayerNodeKind::ClipPath { child, .. } => {
+                    self.push(CanvasKitReplayItem {
+                        path: format!("{path}/clip"),
+                        op_type: "clipPath",
+                        replay_plane: None,
+                        feature: CanvasKitReplayFeature::Clip,
+                        status: CanvasKitReplayStatus::Direct,
+                        reason: CanvasKitReplayReason::DirectReplaySupported,
+                        compat_overlay_allowed: false,
+                        detail: Some("source text path intersection".into()),
+                    });
+                    pending.push((child, format!("{path}/clip/child"), active_layer));
+                }
                 LayerNodeKind::ClipRect {
                     child, clip_kind, ..
                 } => {
@@ -1440,7 +1455,8 @@ impl CanvasKitReplayPlanBuilder {
             match op {
                 PaintOp::TextRun { run, .. } if text_run_selected => {
                     self.record_required_font_family(&run.style.font_family);
-                    let display_text = expand_pua_display_text(run.display_or_text());
+                    let display_text =
+                        expand_pua_render_text_in_style(run.display_or_text(), &run.style);
                     if crate::renderer::contains_old_hangul_jamo(&display_text) {
                         self.record_required_font_family(OLD_HANGUL_FONT_FAMILY);
                     }
@@ -1451,9 +1467,11 @@ impl CanvasKitReplayPlanBuilder {
                 PaintOp::Equation { equation, .. }
                     if crate::renderer::equation::hancom_glyphs::is_used(&equation.layout_box) =>
                 {
-                    self.record_required_font_family(
-                        crate::renderer::equation::hancom_glyphs::FONT_FAMILY,
-                    );
+                    for family in crate::renderer::equation::hancom_glyphs::used_font_families(
+                        &equation.layout_box,
+                    ) {
+                        self.record_required_font_family(family);
+                    }
                 }
                 _ => {}
             }
@@ -1996,7 +2014,10 @@ fn canvaskit_equation_layout_is_supported(layout: &LayoutBox) -> bool {
             | LayoutKind::Symbol(text)
             | LayoutKind::MathSymbol(text)
             | LayoutKind::Function(text) => text_supported(text),
-            LayoutKind::Fraction { numer, denom } => {
+            // CanvasKit은 해당 시스템 face의 SFNT 조달을 아직 입증하지 않았다.
+            // 다른 수학 글꼴로 조용히 대체하지 않고 기존 SVG fallback을 사용한다.
+            LayoutKind::FontGlyph { outline, .. } => outline.is_some(),
+            LayoutKind::Fraction { numer, denom, .. } => {
                 child(numer, remaining_nodes) && child(denom, remaining_nodes)
             }
             LayoutKind::Atop { top, bottom } => {
@@ -2019,7 +2040,9 @@ fn canvaskit_equation_layout_is_supported(layout: &LayoutBox) -> bool {
                     && child(sub, remaining_nodes)
                     && child(sup, remaining_nodes)
             }
-            LayoutKind::BigOp { symbol, sub, sup } => {
+            LayoutKind::BigOp {
+                symbol, sub, sup, ..
+            } => {
                 text_supported(symbol)
                     && sub
                         .as_deref()
@@ -2049,15 +2072,18 @@ fn canvaskit_equation_layout_is_supported(layout: &LayoutBox) -> bool {
             LayoutKind::EqAlign { rows } => rows
                 .iter()
                 .all(|(left, right)| child(left, remaining_nodes) && child(right, remaining_nodes)),
-            LayoutKind::Paren { left, right, body } => {
+            LayoutKind::Paren {
+                left, right, body, ..
+            } => {
                 (left.is_empty() || text_supported(left))
                     && (right.is_empty() || text_supported(right))
                     && child(body, remaining_nodes)
             }
-            LayoutKind::Decoration { kind, body } => {
+            LayoutKind::Decoration { kind, body, .. } => {
                 matches!(
                     kind,
-                    DecoKind::Hat
+                    DecoKind::Box
+                        | DecoKind::Hat
                         | DecoKind::Dot
                         | DecoKind::DDot
                         | DecoKind::Bar
@@ -2069,6 +2095,7 @@ fn canvaskit_equation_layout_is_supported(layout: &LayoutBox) -> bool {
                         | DecoKind::StrikeThrough
                 ) && child(body, remaining_nodes)
             }
+            LayoutKind::Color { body, .. } => child(body, remaining_nodes),
             LayoutKind::FontStyle { style, body } => {
                 matches!(
                     style,
@@ -2319,6 +2346,7 @@ fn image_has_replayable_payload(
 fn resolved_image_kind_detail(value: ResolvedImageKind) -> &'static str {
     match value {
         ResolvedImageKind::FormatConverted => "formatConverted",
+        ResolvedImageKind::OutputDevice => "outputDevice",
         ResolvedImageKind::BakedWatermark => "bakedWatermark",
     }
 }
@@ -2376,6 +2404,7 @@ mod tests {
     use crate::model::control::FormType;
     use crate::model::style::ImageFillMode;
     use crate::paint::{GroupKind, LayerNode, ResolvedImageKind, ResolvedImagePayload};
+    use crate::renderer::composer::expand_pua_display_text;
     use crate::renderer::composer::CharOverlapInfo;
     use crate::renderer::equation::layout::{LayoutBox, LayoutKind};
     use crate::renderer::render_tree::{
@@ -2458,6 +2487,7 @@ mod tests {
         EquationNode {
             svg_content: "<text>x</text>".to_string(),
             layout_box: LayoutBox {
+                font_size: 12.0,
                 x: 0.0,
                 y: 0.0,
                 width: 8.0,
@@ -2967,6 +2997,7 @@ mod tests {
         equation.layout_box.kind = LayoutKind::FontStyle {
             style: FontStyleKind::Blackboard,
             body: Box::new(LayoutBox {
+                font_size: 12.0,
                 x: 0.0,
                 y: 0.0,
                 width: 8.0,

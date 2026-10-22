@@ -6,6 +6,7 @@ import io
 import json
 import os
 import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -404,19 +405,67 @@ class SelectedRasterTests(unittest.TestCase):
             Path("reference.pdf"), 144, Path("out/pdf"), [1, 3]
         )
 
-        self.assertEqual(len(commands), 2)
-        self.assertEqual(commands[0][1:5], ["-f", "1", "-l", "1"])
-        self.assertEqual(commands[1][1:5], ["-f", "3", "-l", "3"])
-        self.assertEqual(commands[0][7:9], ["-thinlinemode", "shape"])
-        self.assertEqual(commands[1][7:9], ["-thinlinemode", "shape"])
-        self.assertEqual(commands[0][-2:], ["reference.pdf", str(Path("out") / "pdf")])
+        self.assertEqual(len(commands), 1)
+        command = commands[0]
+        self.assertEqual(command[0], sys.executable)
+        self.assertEqual(Path(command[1]).name, "visual_sweep_pdf.py")
+        self.assertEqual(command[2:], ["--pdf", "reference.pdf", "--dpi", "144",
+                                      "--prefix", str(Path("out") / "pdf"), "--pages", "1,3"])
 
     def test_pdf_raster_commands_keeps_full_document_default(self) -> None:
         commands = SWEEP.pdf_raster_commands(
             Path("reference.pdf"), 144, Path("out/pdf"), None
         )
 
-        self.assertEqual(commands, [["pdftoppm", "-r", "144", "-thinlinemode", "shape", "-png", "reference.pdf", str(Path("out") / "pdf")]])
+        self.assertEqual(len(commands), 1)
+        self.assertEqual(commands[0][0], sys.executable)
+        self.assertEqual(Path(commands[0][1]).name, "visual_sweep_pdf.py")
+        self.assertEqual(commands[0][2:], ["--pdf", "reference.pdf", "--dpi", "144",
+                                         "--prefix", str(Path("out") / "pdf")])
+
+@unittest.skipUnless(shutil.which("pdftoppm"), "Poppler is required for the actual reference raster contract")
+class PdfRasterFillStateTests(unittest.TestCase):
+    @staticmethod
+    def pdf(content: str) -> bytes:
+        # Independent PDF contract: w changes strokes, never the following fill.
+        objects = [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Count 1 /Kids [3 0 R] >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 80 100] /Resources << >> /Contents 4 0 R >>",
+            f"<< /Length {len(content)} >>\nstream\n{content}endstream",
+        ]
+        data = bytearray(b"%PDF-1.4\n")
+        offsets = []
+        for number, body in enumerate(objects, 1):
+            offsets.append(len(data))
+            data.extend(f"{number} 0 obj\n{body}\nendobj\n".encode("ascii"))
+        xref = len(data)
+        data.extend(f"xref\n0 {len(objects) + 1}\n0000000000 65535 f \n".encode("ascii"))
+        for offset in offsets:
+            data.extend(f"{offset:010} 00000 n \n".encode("ascii"))
+        data.extend(
+            f"trailer\n<< /Size {len(objects) + 1} /Root 1 0 R >>\nstartxref\n{xref}\n%%EOF\n".encode("ascii")
+        )
+        return bytes(data)
+
+    def test_stroke_width_cannot_erase_or_change_a_filled_rectangle(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            for rule, fill in [("nonzero", "f"), ("evenodd", "f*")]:
+                with self.subTest(fill=fill):
+                    outputs = []
+                    for index, state in enumerate(["", ".14 w "]):
+                        source = Path(directory) / f"source-{rule}-{index}.pdf"
+                        source.write_bytes(self.pdf(state + f"0 g 10 20 60 .12 re {fill}\n"))
+                        prefix = Path(directory) / f"page-{rule}-{index}"
+                        for command in SWEEP.pdf_raster_commands(source, 96, prefix, [1]):
+                            subprocess.run(command, check=True, capture_output=True)
+                        with Image.open(prefix.with_name(prefix.name + "-001.png")) as raster:
+                            outputs.append(raster.convert("RGB"))
+                    self.assertLess(min(outputs[0].convert("L").getdata()), 255, "the declared black fill must be visible")
+                    self.assertEqual(
+                        outputs[0].tobytes(), outputs[1].tobytes(),
+                        "the PDF reference must preserve identical fill geometry when only an unused stroke width changes",
+                    )
 
 
 class EmbeddedFontPreflightTests(unittest.TestCase):

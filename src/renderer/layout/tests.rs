@@ -599,6 +599,7 @@ fn test_build_page_with_paragraph() {
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,
@@ -689,6 +690,7 @@ fn partial_paragraph_start_line_beyond_lines_does_not_panic() {
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,
@@ -750,6 +752,8 @@ fn test_layout_with_composed_styles() {
     let composed: Vec<_> = paragraphs.iter().map(|p| compose_paragraph(p)).collect();
 
     let styles = ResolvedStyleSet {
+        native_pua_fonts: Default::default(),
+        resolved_dpi: None,
         page_number_char_style_id: None,
         page_number_font_is_hft: false,
         hwp3_variant: false,
@@ -802,6 +806,7 @@ fn test_layout_with_composed_styles() {
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,
@@ -898,6 +903,8 @@ fn test_layout_multi_run_x_position() {
 
     let composed: Vec<_> = paragraphs.iter().map(|p| compose_paragraph(p)).collect();
     let styles = ResolvedStyleSet {
+        native_pua_fonts: Default::default(),
+        resolved_dpi: None,
         page_number_char_style_id: None,
         page_number_font_is_hft: false,
         hwp3_variant: false,
@@ -945,6 +952,7 @@ fn test_layout_multi_run_x_position() {
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,
@@ -996,6 +1004,8 @@ fn test_resolved_to_text_style() {
     use crate::renderer::style_resolver::ResolvedCharStyle;
 
     let styles = ResolvedStyleSet {
+        native_pua_fonts: Default::default(),
+        resolved_dpi: None,
         page_number_char_style_id: None,
         page_number_font_is_hft: false,
         hwp3_variant: false,
@@ -1035,6 +1045,8 @@ fn test_resolved_to_text_style_with_ratio() {
     use crate::renderer::style_resolver::ResolvedCharStyle;
 
     let styles = ResolvedStyleSet {
+        native_pua_fonts: Default::default(),
+        resolved_dpi: None,
         page_number_char_style_id: None,
         page_number_font_is_hft: false,
         hwp3_variant: false,
@@ -1348,6 +1360,7 @@ fn test_layout_table_basic() {
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,
@@ -1509,6 +1522,7 @@ fn test_layout_table_cell_positions() {
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,
@@ -2416,6 +2430,7 @@ fn task1197_paper_nodes_sort_by_plane_z_order_and_stable_index() {
         RenderNode::new(
             id,
             RenderNodeType::Group(GroupNode {
+                paint_transform: None,
                 section_index: Some(0),
                 para_index: Some(0),
                 control_index: Some(control_index),
@@ -2763,31 +2778,6 @@ fn render_tree_with_header_control(control: Control) -> PageRenderTree {
         0,
         &[],
     )
-}
-
-#[test]
-fn header_paper_relative_shape_uses_page_origin() {
-    let tree = render_tree_with_header_control(Control::Shape(Box::new(ShapeObject::Rectangle(
-        RectangleShape {
-            common: CommonObjAttr {
-                width: 7_500,
-                height: 3_000,
-                horizontal_offset: 1_500,
-                vertical_offset: 2_250,
-                horz_rel_to: HorzRelTo::Paper,
-                vert_rel_to: VertRelTo::Paper,
-                text_wrap: TextWrap::InFrontOfText,
-                ..Default::default()
-            },
-            ..Default::default()
-        },
-    ))));
-
-    let bbox = first_header_child_bbox(&tree, |node_type| {
-        matches!(node_type, RenderNodeType::Rectangle(_))
-    });
-    assert!((bbox.x - hwpunit_to_px(1_500, DEFAULT_DPI)).abs() < 0.01);
-    assert!((bbox.y - hwpunit_to_px(2_250, DEFAULT_DPI)).abs() < 0.01);
 }
 
 /// [#6608] 머리말 안 용지 기준 그림은 물리 용지가 아니라 **머리말 틀 원점**에서
