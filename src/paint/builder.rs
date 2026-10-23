@@ -507,7 +507,7 @@ fn publish_line_decoration_trims(node: &mut LayerNode) {
 }
 
 fn publish_underline_dash_offsets(children: &mut [LayerNode]) {
-    let mut previous: Option<(f64, f64, f64, u32, f64)> = None;
+    let mut previous: Option<(f64, f64, f64, u32, u8, f64)> = None;
     for child in children {
         let LayerNodeKind::Leaf { ops } = &mut child.kind else {
             previous = None;
@@ -524,7 +524,7 @@ fn publish_underline_dash_offsets(children: &mut [LayerNode]) {
             } = op
             {
                 if run.style.underline == UnderlineType::Top
-                    && run.style.underline_shape == 1
+                    && matches!(run.style.underline_shape, 1 | 2)
                     && run.rotation == 0.0
                     && !run.is_vertical
                 {
@@ -534,18 +534,20 @@ fn publish_underline_dash_offsets(children: &mut [LayerNode]) {
                     );
                     let color = run.style.underline_color;
                     *underline_dash_offset = previous
-                        .filter(|&(end, baseline, font_size, ink, _)| {
+                        .filter(|&(end, baseline, font_size, ink, shape, _)| {
                             (end - bbox.x).abs() < 0.01
                                 && (baseline - y).abs() < 0.01
                                 && font_size == size
                                 && ink == color
+                                && shape == run.style.underline_shape
                         })
-                        .map_or(0.0, |(_, _, _, _, offset)| offset);
+                        .map_or(0.0, |(_, _, _, _, _, offset)| offset);
                     next = Some((
                         bbox.x + bbox.width,
                         y,
                         size,
                         color,
+                        run.style.underline_shape,
                         *underline_dash_offset + bbox.width,
                     ));
                 }
