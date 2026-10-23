@@ -101,7 +101,7 @@ pub(crate) fn emphasis_marks<'a>(
         .flatten()
 }
 
-/// 위 단일선(shape 0~4)과 밑줄 다중선(shape 7~10)의 (기준선 아래 오프셋 em, 선 굵기 em) 목록.
+/// 위 단일선(shape 0~5)과 밑줄 다중선(shape 7~10)의 (기준선 아래 오프셋 em, 선 굵기 em) 목록.
 ///
 /// 한글 2022 실측 (15pt/24pt 프로브, PDF 드로잉 좌표):
 /// - 7 이중선: 0.160(0.032) + 0.250(0.032)
@@ -117,7 +117,7 @@ pub(crate) fn underline_lines(
     shape: u8,
 ) -> Option<impl Iterator<Item = (f64, f64)>> {
     let lines: &[(f64, f64)] = match shape {
-        0..=4 if underline == crate::model::style::UnderlineType::Top => &[(-0.87, 0.04)],
+        0..=5 if underline == crate::model::style::UnderlineType::Top => &[(-0.87, 0.04)],
         7 => &[(0.160, 0.032), (0.250, 0.032)],
         8 => &[(0.175, 0.048), (0.300, 0.100)],
         9 => &[(0.200, 0.100), (0.325, 0.048)],
@@ -144,7 +144,7 @@ pub(crate) fn underline_spans(
     font_size: f64,
     offset: f64,
 ) -> impl Iterator<Item = (f64, f64)> {
-    let dashed = underline == crate::model::style::UnderlineType::Top && matches!(shape, 1..=4);
+    let dashed = underline == crate::model::style::UnderlineType::Top && matches!(shape, 1..=5);
     // 9~48pt Print 실측: 점은 600dpi 격자에 맞추고, 쇄선은 약 0.57em 획·0.17em 간격이다.
     const PRINT_GRID: f64 = 0.16;
     let dot_steps = (font_size * 0.057 / PRINT_GRID).round().max(1.0);
@@ -153,6 +153,7 @@ pub(crate) fn underline_spans(
         2 => (dot, (dot_steps + (dot_steps * 1.5).ceil()) * PRINT_GRID),
         3 => (font_size * 0.57, font_size * 0.91 + dot),
         4 => (font_size * 0.57, font_size * 1.08 + dot * 2.0),
+        5 => (font_size * 0.57, font_size * 0.74),
         _ => (font_size * 0.285, font_size * 0.455),
     };
     let mut stroke = 0;

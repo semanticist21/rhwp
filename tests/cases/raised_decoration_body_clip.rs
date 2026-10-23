@@ -330,6 +330,25 @@ fn hancom_dash_dot_dot_top_underline_keeps_print_pattern_across_font_runs() {
 }
 
 #[test]
+fn hancom_long_dashed_top_underline_keeps_print_geometry_across_font_runs() {
+    // 독립 Print PDF의 높이·굵기(em), 긴 획·주기·마지막 끝점(96dpi px)이다.
+    assert_top_pattern_probe(
+        "top-probe-shape-5",
+        [
+            (-0.86664, 0.04004, 6.87600, 8.79600, 154.47733, 5),
+            (-0.87957, 0.03618, 7.67600, 9.91467, 166.47067, 6),
+            (-0.87004, 0.04004, 9.11600, 11.99333, 177.02533, 6),
+            (-0.87198, 0.04004, 11.51467, 15.03200, 192.85600, 6),
+            (-0.86668, 0.04004, 13.75333, 17.91067, 208.84800, 6),
+            (-0.87002, 0.04000, 18.39067, 23.82800, 240.35067, 6),
+            (-0.87000, 0.04002, 27.34533, 35.66133, 303.99600, 6),
+            (-0.87001, 0.04002, 36.62000, 47.49467, 367.32267, 6),
+        ],
+        None,
+    );
+}
+
+#[test]
 fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
     use rhwp::paint::{LayerBuilder, RenderProfile};
     use rhwp::renderer::render_tree::PageRenderTree;
@@ -387,6 +406,7 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
         "shape",
         "chain",
         "double-chain",
+        "long",
         "new-line",
     ] {
         let mut line = original.clone();
@@ -398,13 +418,14 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
                 };
                 run.style.underline_color ^= 1;
             }
-            "shape" | "chain" | "double-chain" => {
+            "shape" | "chain" | "double-chain" | "long" => {
                 let RenderNodeType::TextRun(run) = &mut line.children[1].node_type else {
                     unreachable!()
                 };
                 run.style.underline_shape = match change {
                     "chain" => 3,
                     "double-chain" => 4,
+                    "long" => 5,
                     _ => 2,
                 };
             }
@@ -427,7 +448,7 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
             &mut phases,
         );
         let expected = match change {
-            "gap" | "color" | "shape" | "chain" | "double-chain" => vec![0.0, 0.0],
+            "gap" | "color" | "shape" | "chain" | "double-chain" | "long" => vec![0.0, 0.0],
             "new-line" => vec![0.0, width, 0.0, width],
             _ => vec![0.0, width],
         };

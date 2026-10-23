@@ -1,0 +1,60 @@
+{
+  "summary": {
+    "compared_pages": 1,
+    "average_silhouette_raw_match_percent": 99.60182,
+    "worst_silhouette_raw_match_percent": 99.60182,
+    "pixel_diff_threshold": 32,
+    "average_pixel_match_percent": 98.37383,
+    "worst_pixel_match_percent": 98.37383,
+    "average_ink_match_percent": 31.32821,
+    "worst_ink_match_percent": 31.32821,
+    "average_visual_accuracy_proxy_percent": 31.32821,
+    "worst_visual_accuracy_proxy_percent": 31.32821,
+    "average_tolerant_content_match_percent": 99.60182,
+    "worst_tolerant_content_match_percent": 99.60182,
+    "worst_pages": [
+      1
+    ]
+  },
+  "pages": [
+    {
+      "page": 1,
+      "rhwp_png": "C:\\Users\\seman\\Documents\\ChatGPT\\hannote\\.playwright-mcp\\long-top-images\\native\\top-probe-shape-5\\page-1.png",
+      "pdf_png": "C:\\Users\\seman\\Documents\\ChatGPT\\hannote\\.playwright-mcp\\hancom-png-96\\top-probe-shape-5\\page-1.png",
+      "overlay_png": "C:\\Users\\seman\\Documents\\ChatGPT\\hannote\\.playwright-mcp\\long-top-images\\native\\top-probe-shape-5\\overlay_001.png",
+      "width": 794,
+      "height": 1122,
+      "pixel_diff_threshold": 32,
+      "overlay_color_legend": {
+        "rhwp_only": "blue",
+        "pdf_only": "red",
+        "both_different": "orange",
+        "matching": "gray"
+      },
+      "total_pixels": 890868,
+      "diff_pixels": 14487,
+      "diff_ratio": 0.01626167,
+      "pixel_match_percent": 98.37383,
+      "ink_union_pixels": 21096,
+      "ink_diff_pixels": 14487,
+      "ink_diff_ratio": 0.68671786,
+      "ink_match_percent": 31.32821,
+      "visual_accuracy_proxy_percent": 31.32821,
+      "tolerant_content_match_radius_px": 2,
+      "silhouette_method": "threshold_boundary_color_support_v1",
+      "silhouette_raw_match_percent": 99.60182,
+      "silhouette_boundary_reconciled_pixels": 0,
+      "silhouette_color_tolerance": 32,
+      "silhouette_content_union_pixels": 21096,
+      "tolerant_content_match_percent": 99.60182,
+      "mean_abs_channel_delta": 2.14,
+      "max_channel_delta": 255,
+      "diff_bbox": [
+        113,
+        132,
+        367,
+        829
+      ]
+    }
+  ]
+}

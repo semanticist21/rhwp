@@ -1,0 +1,42 @@
+[RustTestSuite] raised_decoration_body_clip -> regression_suite_020::raised_decoration_body_clip
+[RustTestSuite] cargo test --locked --profile release-test --test regression_suite_020 raised_decoration_body_clip::
+   Compiling rhwp-jpeg-decoder v0.3.2-rhwp.1 (/workspace/rhwp/vendor/rhwp-jpeg-decoder)
+   Compiling rhwp-zune-jpeg v0.5.15-rhwp.1 (/workspace/rhwp/vendor/rhwp-zune-jpeg)
+   Compiling rhwp v0.8.7 (/workspace/rhwp)
+   Compiling rhwp-password-crypto v0.1.0 (/workspace/rhwp/crates/rhwp-password-crypto)
+   Compiling svg2pdf v0.13.0 (/workspace/rhwp/vendor/svg2pdf)
+   Compiling rhwp-ooxml-chart v0.1.0 (/workspace/rhwp/crates/rhwp-ooxml-chart)
+   Compiling rhwp-contracts v0.1.0 (/workspace/rhwp/crates/rhwp-contracts)
+   Compiling rhwp-pdf-import-backend v0.3.78-rhwp.1 (/workspace/rhwp/vendor/rhwp-pdf-import-backend)
+    Finished `release-test` profile [optimized] target(s) in 3m 16s
+     Running tests/generated/regression_suite_020.rs (/workspace/target/pr-review/release-test/deps/regression_suite_020-e26a546e8f84ae1f)
+
+running 12 tests
+test raised_decoration_body_clip::first_line_emphasis_dot_ink_is_inside_body_clip ... ok
+test raised_decoration_body_clip::first_line_top_underline_ink_is_inside_body_clip ... ok
+test raised_decoration_body_clip::dashed_top_underline_phase_stays_with_its_contiguous_line ... ok
+test raised_decoration_body_clip::hancom_dash_dot_top_underline_keeps_print_pattern_across_font_runs ... ok
+test raised_decoration_body_clip::hancom_body_and_cell_decorations_keep_print_positions ... ok
+test raised_decoration_body_clip::hancom_long_dashed_top_underline_keeps_print_geometry_across_font_runs ... FAILED
+test raised_decoration_body_clip::hancom_dotted_top_underline_keeps_print_grid_across_font_runs ... ok
+test raised_decoration_body_clip::hancom_solid_top_underline_keeps_print_height_and_width ... ok
+test raised_decoration_body_clip::hancom_dashed_top_underline_keeps_print_geometry_across_font_runs ... ok
+test raised_decoration_body_clip::hancom_dash_dot_dot_top_underline_keeps_print_pattern_across_font_runs ... ok
+test raised_decoration_body_clip::hancom_multi_underline_keeps_bottom_strokes_above_baseline ... ok
+test raised_decoration_body_clip::hancom_emphasis_marks_skip_spaces_and_keep_print_glyphs ... ok
+
+failures:
+
+---- raised_decoration_body_clip::hancom_long_dashed_top_underline_keeps_print_geometry_across_font_runs stdout ----
+
+thread 'raised_decoration_body_clip::hancom_long_dashed_top_underline_keeps_print_geometry_across_font_runs' (783) panicked at tests/generated/../cases/raised_decoration_body_clip.rs:193:13:
+assertion failed: ((y - baseline) / size - offset).abs() < 0.02
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    raised_decoration_body_clip::hancom_long_dashed_top_underline_keeps_print_geometry_across_font_runs
+
+test result: FAILED. 11 passed; 1 failed; 0 ignored; 0 measured; 235 filtered out; finished in 0.03s
+
+error: test failed, to rerun pass `-p rhwp --test regression_suite_020`
