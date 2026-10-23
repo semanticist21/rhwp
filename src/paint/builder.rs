@@ -524,7 +524,7 @@ fn publish_underline_dash_offsets(children: &mut [LayerNode]) {
             } = op
             {
                 if run.style.underline == UnderlineType::Top
-                    && matches!(run.style.underline_shape, 1 | 2)
+                    && matches!(run.style.underline_shape, 1..=3)
                     && run.rotation == 0.0
                     && !run.is_vertical
                 {

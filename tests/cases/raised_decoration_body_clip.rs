@@ -159,7 +159,11 @@ fn hancom_solid_top_underline_keeps_print_height_and_width() {
     }
 }
 
-fn assert_top_pattern_probe(name: &str, measured: [(f64, f64, f64, f64, f64, usize); 8]) {
+fn assert_top_pattern_probe(
+    name: &str,
+    measured: [(f64, f64, f64, f64, f64, usize); 8],
+    dot_pattern: Option<[(f64, f64); 8]>,
+) {
     let doc = probe(name);
     let svg = doc.render_page_svg_native(0).unwrap();
     let mut baselines: Vec<_> = tags(&svg, "text")
@@ -171,7 +175,9 @@ fn assert_top_pattern_probe(name: &str, measured: [(f64, f64, f64, f64, f64, usi
     assert_eq!(baselines.len(), 16);
     let lines = tags(&svg, "line");
     let clip = body_clip(&doc);
-    for (pair, (offset, width, on, period, end, count)) in baselines.chunks_exact(2).zip(measured) {
+    for (index, (pair, (offset, width, on, period, end, count))) in
+        baselines.chunks_exact(2).zip(measured).enumerate()
+    {
         let (baseline, size) = pair[0];
         let mut strokes: Vec<_> = lines
             .iter()
@@ -204,9 +210,14 @@ fn assert_top_pattern_probe(name: &str, measured: [(f64, f64, f64, f64, f64, usi
             "언어별 run에서 무늬가 다시 시작하지 않는다"
         );
         for (i, (left, right)) in spans.into_iter().enumerate() {
-            let print_left = 113.37867 + i as f64 * period;
+            let (cycle, extra, ink) = match dot_pattern {
+                Some(pattern) if i % 2 == 1 => (i / 2, on + pattern[index].1, pattern[index].0),
+                Some(_) => (i / 2, 0.0, on),
+                None => (i, 0.0, on),
+            };
+            let print_left = 113.37867 + cycle as f64 * period + extra;
             near_print(left, print_left);
-            near_print(right, (print_left + on).min(end));
+            near_print(right, (print_left + ink).min(end));
         }
     }
 }
@@ -226,6 +237,7 @@ fn hancom_dashed_top_underline_keeps_print_geometry_across_font_runs() {
             (-0.87000, 0.04002, 13.59333, 21.90800, 302.23733, 9),
             (-0.87001, 0.04002, 18.23067, 29.10533, 364.44400, 9),
         ],
+        None,
     );
 }
 
@@ -244,6 +256,35 @@ fn hancom_dotted_top_underline_keeps_print_grid_across_font_runs() {
             (-0.87000, 0.04002, 2.71867, 6.87600, 301.75733, 28),
             (-0.87001, 0.04002, 3.67867, 9.27600, 367.32267, 28),
         ],
+        None,
+    );
+}
+
+#[test]
+fn hancom_dash_dot_top_underline_keeps_print_pattern_across_font_runs() {
+    // 독립 Print PDF의 긴 획·반복 주기·끝점과 짧은 점·긴 획 다음 간격(96dpi px)이다.
+    assert_top_pattern_probe(
+        "top-probe-shape-3",
+        [
+            (-0.86664, 0.04004, 6.87600, 11.35467, 154.31733, 7),
+            (-0.87957, 0.03618, 7.67600, 12.95333, 166.47067, 9),
+            (-0.87004, 0.04004, 9.11600, 15.83200, 177.02533, 9),
+            (-0.87198, 0.04004, 11.51467, 19.66933, 192.85600, 9),
+            (-0.86668, 0.04004, 13.75333, 23.50800, 208.84800, 9),
+            (-0.87002, 0.04000, 18.39067, 31.02400, 240.35067, 9),
+            (-0.87000, 0.04002, 27.34533, 46.69467, 303.99600, 9),
+            (-0.87001, 0.04002, 36.62000, 62.04667, 367.32267, 9),
+        ],
+        Some([
+            (0.63867, 1.92000),
+            (0.80000, 2.23867),
+            (0.96000, 2.87733),
+            (1.12000, 3.51733),
+            (1.43867, 4.15733),
+            (1.75867, 5.43733),
+            (2.71867, 8.31600),
+            (3.67867, 10.87467),
+        ]),
     );
 }
 
@@ -298,7 +339,7 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
         "영문·한글 run 경계가 있는 실제 원본"
     );
     let width = original.children[0].bbox.width;
-    for change in ["none", "gap", "color", "shape", "new-line"] {
+    for change in ["none", "gap", "color", "shape", "chain", "new-line"] {
         let mut line = original.clone();
         match change {
             "gap" => line.children[1].bbox.x += 1.0,
@@ -308,11 +349,11 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
                 };
                 run.style.underline_color ^= 1;
             }
-            "shape" => {
+            "shape" | "chain" => {
                 let RenderNodeType::TextRun(run) = &mut line.children[1].node_type else {
                     unreachable!()
                 };
-                run.style.underline_shape = 2;
+                run.style.underline_shape = if change == "chain" { 3 } else { 2 };
             }
             _ => {}
         }
@@ -333,7 +374,7 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
             &mut phases,
         );
         let expected = match change {
-            "gap" | "color" | "shape" => vec![0.0, 0.0],
+            "gap" | "color" | "shape" | "chain" => vec![0.0, 0.0],
             "new-line" => vec![0.0, width, 0.0, width],
             _ => vec![0.0, width],
         };

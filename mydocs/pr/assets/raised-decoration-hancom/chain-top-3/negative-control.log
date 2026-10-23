@@ -1,0 +1,101 @@
+[RustTestSuite] raised_decoration_body_clip -> regression_suite_011::raised_decoration_body_clip
+[RustTestSuite] cargo test --locked --profile release-test --test regression_suite_011 raised_decoration_body_clip::
+   Compiling bitflags v2.13.1
+   Compiling serde_core v1.0.229
+   Compiling syn v3.0.3
+   Compiling serde_json v1.0.151
+   Compiling getrandom v0.3.4
+   Compiling rhwp-jpeg-decoder v0.3.2-rhwp.1 (/workspace/rhwp/vendor/rhwp-jpeg-decoder)
+   Compiling rhwp-zune-jpeg v0.5.15-rhwp.1 (/workspace/rhwp/vendor/rhwp-zune-jpeg)
+   Compiling rhwp v0.8.7 (/workspace/rhwp)
+   Compiling rhwp-password-crypto v0.1.0 (/workspace/rhwp/crates/rhwp-password-crypto)
+   Compiling rhwp-ooxml-chart v0.1.0 (/workspace/rhwp/crates/rhwp-ooxml-chart)
+   Compiling rustix v1.1.4
+   Compiling futures-task v0.3.34
+   Compiling linux-raw-sys v0.12.1
+   Compiling slab v0.4.12
+   Compiling futures-core v0.3.34
+   Compiling pin-project-lite v0.2.17
+   Compiling fastrand v2.5.0
+   Compiling ppv-lite86 v0.2.21
+   Compiling wait-timeout v0.2.1
+   Compiling quick-error v1.2.3
+   Compiling bit-vec v0.8.0
+   Compiling png v0.18.1
+   Compiling pdf-writer v0.12.1
+   Compiling wasm-bindgen-test-macro v0.3.77
+   Compiling wasm-bindgen-test-shared v0.2.127
+   Compiling oorandom v11.1.5
+   Compiling futures-util v0.3.34
+   Compiling nu-ansi-term v0.50.3
+   Compiling unarray v0.1.4
+   Compiling bit-set v0.8.0
+   Compiling cast v0.3.0
+   Compiling rand_core v0.9.5
+   Compiling rand_chacha v0.9.0
+   Compiling rand_xorshift v0.4.0
+   Compiling rand v0.9.5
+   Compiling js-sys v0.3.104
+   Compiling tempfile v3.27.0
+   Compiling rusty-fork v0.3.1
+   Compiling proptest v1.11.0
+   Compiling bytemuck_derive v1.12.0
+   Compiling serde_derive v1.0.229
+   Compiling thiserror-impl v2.0.20
+   Compiling async-trait v0.1.92
+   Compiling thiserror v2.0.20
+   Compiling bytemuck v1.25.2
+   Compiling rhwp-contracts v0.1.0 (/workspace/rhwp/crates/rhwp-contracts)
+   Compiling font-types v0.11.3
+   Compiling rustybuzz v0.20.1
+   Compiling tiny-skia-path v0.11.4
+   Compiling tiny-skia-path v0.12.0
+   Compiling rgb v0.8.53
+   Compiling image v0.25.10
+   Compiling read-fonts v0.39.2
+   Compiling tiny-skia v0.11.4
+   Compiling tiny-skia v0.12.0
+   Compiling serde v1.0.229
+   Compiling quick-xml v0.41.0
+   Compiling usvg v0.45.1
+   Compiling usvg v0.47.0
+   Compiling office_oxide v0.1.9
+   Compiling resvg v0.45.1
+   Compiling resvg v0.47.0
+   Compiling wasm-bindgen-futures v0.4.77
+   Compiling wasm-bindgen-test v0.3.77
+   Compiling write-fonts v0.48.1
+   Compiling skrifa v0.42.1
+   Compiling subsetter v0.2.6
+   Compiling rhwp-pdf-import-backend v0.3.78-rhwp.1 (/workspace/rhwp/vendor/rhwp-pdf-import-backend)
+   Compiling svg2pdf v0.13.0 (/workspace/rhwp/vendor/svg2pdf)
+    Finished `release-test` profile [optimized] target(s) in 3m 22s
+     Running tests/generated/regression_suite_011.rs (/workspace/target/pr-review/release-test/deps/regression_suite_011-2d19c5b35eedec55)
+
+running 10 tests
+test raised_decoration_body_clip::first_line_emphasis_dot_ink_is_inside_body_clip ... ok
+test raised_decoration_body_clip::first_line_top_underline_ink_is_inside_body_clip ... ok
+test raised_decoration_body_clip::hancom_solid_top_underline_keeps_print_height_and_width ... ok
+test raised_decoration_body_clip::hancom_dashed_top_underline_keeps_print_geometry_across_font_runs ... ok
+test raised_decoration_body_clip::hancom_body_and_cell_decorations_keep_print_positions ... ok
+test raised_decoration_body_clip::dashed_top_underline_phase_stays_with_its_contiguous_line ... ok
+test raised_decoration_body_clip::hancom_dash_dot_top_underline_keeps_print_pattern_across_font_runs ... FAILED
+test raised_decoration_body_clip::hancom_dotted_top_underline_keeps_print_grid_across_font_runs ... ok
+test raised_decoration_body_clip::hancom_multi_underline_keeps_bottom_strokes_above_baseline ... ok
+test raised_decoration_body_clip::hancom_emphasis_marks_skip_spaces_and_keep_print_glyphs ... ok
+
+failures:
+
+---- raised_decoration_body_clip::hancom_dash_dot_top_underline_keeps_print_pattern_across_font_runs stdout ----
+
+thread 'raised_decoration_body_clip::hancom_dash_dot_top_underline_keeps_print_pattern_across_font_runs' (2644) panicked at tests/generated/../cases/raised_decoration_body_clip.rs:193:13:
+assertion failed: ((y - baseline) / size - offset).abs() < 0.02
+note: run with `RUST_BACKTRACE=1` environment variable to display a backtrace
+
+
+failures:
+    raised_decoration_body_clip::hancom_dash_dot_top_underline_keeps_print_pattern_across_font_runs
+
+test result: FAILED. 9 passed; 1 failed; 0 ignored; 0 measured; 249 filtered out; finished in 0.03s
+
+error: test failed, to rerun pass `-p rhwp --test regression_suite_011`
