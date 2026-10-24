@@ -166,8 +166,9 @@ fn hancom_solid_top_underline_keeps_print_height_and_width() {
     }
 }
 
-fn assert_top_pattern_probe(
+fn assert_pattern_probe(
     name: &str,
+    position: UnderlineType,
     measured: [(f64, f64, f64, f64, f64, usize); 8],
     dot_pattern: Option<(usize, [(f64, f64); 8])>,
 ) {
@@ -185,10 +186,15 @@ fn assert_top_pattern_probe(
     for (index, (pair, (offset, width, on, period, end, count))) in
         baselines.chunks_exact(2).zip(measured).enumerate()
     {
-        let (baseline, size) = pair[0];
+        let (baseline, size) = pair[usize::from(position == UnderlineType::Bottom)];
+        let color = if position == UnderlineType::Top {
+            "#cc0000"
+        } else {
+            "#0000cc"
+        };
         let mut strokes: Vec<_> = lines
             .iter()
-            .filter(|tag| tag.contains("stroke=\"#cc0000\""))
+            .filter(|tag| tag.contains(&format!(r#"stroke="{color}""#)))
             .filter(|tag| (attr(tag, "y1") - baseline).abs() < size * 1.3)
             .collect();
         assert!(!strokes.is_empty());
@@ -239,8 +245,9 @@ fn assert_top_pattern_probe(
 #[test]
 fn hancom_dashed_top_underline_keeps_print_geometry_across_font_runs() {
     // 독립 Print PDF의 높이·굵기(em), 첫 획 길이·주기·마지막 끝점(96dpi px)이다.
-    assert_top_pattern_probe(
+    assert_pattern_probe(
         "top-probe-shape-1",
+        UnderlineType::Top,
         [
             (-0.86664, 0.04004, 3.35867, 5.27733, 153.67733, 8),
             (-0.87957, 0.03618, 3.83867, 6.07733, 165.83067, 9),
@@ -258,8 +265,9 @@ fn hancom_dashed_top_underline_keeps_print_geometry_across_font_runs() {
 #[test]
 fn hancom_dotted_top_underline_keeps_print_grid_across_font_runs() {
     // 같은 9~48pt 독립 Print PDF에서 점선 획을 실측했다.
-    assert_top_pattern_probe(
+    assert_pattern_probe(
         "top-probe-shape-2",
+        UnderlineType::Top,
         [
             (-0.86664, 0.04004, 0.64000, 1.60000, 153.99733, 26),
             (-0.87957, 0.03618, 0.80000, 2.07867, 166.15067, 26),
@@ -277,8 +285,9 @@ fn hancom_dotted_top_underline_keeps_print_grid_across_font_runs() {
 #[test]
 fn hancom_dash_dot_top_underline_keeps_print_pattern_across_font_runs() {
     // 독립 Print PDF의 긴 획·반복 주기·끝점과 짧은 점·긴 획 다음 간격(96dpi px)이다.
-    assert_top_pattern_probe(
+    assert_pattern_probe(
         "top-probe-shape-3",
+        UnderlineType::Top,
         [
             (-0.86664, 0.04004, 6.87600, 11.35467, 154.31733, 7),
             (-0.87957, 0.03618, 7.67600, 12.95333, 166.47067, 9),
@@ -308,8 +317,9 @@ fn hancom_dash_dot_top_underline_keeps_print_pattern_across_font_runs() {
 #[test]
 fn hancom_dash_dot_dot_top_underline_keeps_print_pattern_across_font_runs() {
     // 독립 Print PDF의 긴 획·주기·끝점과 두 점의 길이·간격(96dpi px)이다.
-    assert_top_pattern_probe(
+    assert_pattern_probe(
         "top-probe-shape-4",
+        UnderlineType::Top,
         [
             (-0.86664, 0.04004, 6.87600, 13.91333, 153.19733, 9),
             (-0.87957, 0.03618, 7.67600, 15.99200, 166.47067, 10),
@@ -339,8 +349,9 @@ fn hancom_dash_dot_dot_top_underline_keeps_print_pattern_across_font_runs() {
 #[test]
 fn hancom_long_dashed_top_underline_keeps_print_geometry_across_font_runs() {
     // 독립 Print PDF의 높이·굵기(em), 긴 획·주기·마지막 끝점(96dpi px)이다.
-    assert_top_pattern_probe(
+    assert_pattern_probe(
         "top-probe-shape-5",
+        UnderlineType::Top,
         [
             (-0.86664, 0.04004, 6.87600, 8.79600, 154.47733, 5),
             (-0.87957, 0.03618, 7.67600, 9.91467, 166.47067, 6),
@@ -594,19 +605,23 @@ fn assert_round_run_boundaries(doc: &HwpDocument, position: UnderlineType) {
 
 #[test]
 fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
+    assert_dashed_phase_boundaries(UnderlineType::Top);
+}
+
+fn assert_dashed_phase_boundaries(position: UnderlineType) {
     use rhwp::paint::{LayerBuilder, RenderProfile};
     use rhwp::renderer::render_tree::PageRenderTree;
 
-    fn find(node: &RenderNode) -> Option<RenderNode> {
+    fn find(node: &RenderNode, position: UnderlineType) -> Option<RenderNode> {
         if matches!(node.node_type, RenderNodeType::TextLine(_))
             && node.children.iter().any(|child| {
                 matches!(&child.node_type, RenderNodeType::TextRun(run)
-                    if run.style.underline == rhwp::model::style::UnderlineType::Top)
+                    if run.style.underline == position)
             })
         {
             return Some(node.clone());
         }
-        node.children.iter().find_map(find)
+        node.children.iter().find_map(|child| find(child, position))
     }
     fn offsets(value: &serde_json::Value, output: &mut Vec<f64>) {
         match value {
@@ -635,6 +650,7 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
             .build_page_render_tree(0)
             .unwrap()
             .root,
+        position,
     )
     .unwrap();
     assert_eq!(
@@ -647,6 +663,7 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
         "none",
         "gap",
         "color",
+        "position",
         "shape",
         "chain",
         "double-chain",
@@ -662,6 +679,16 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
                     unreachable!()
                 };
                 run.style.underline_color ^= 1;
+            }
+            "position" => {
+                let RenderNodeType::TextRun(run) = &mut line.children[1].node_type else {
+                    unreachable!()
+                };
+                run.style.underline = if position == UnderlineType::Top {
+                    UnderlineType::Bottom
+                } else {
+                    UnderlineType::Top
+                };
             }
             "shape" | "chain" | "double-chain" | "long" | "round" => {
                 let RenderNodeType::TextRun(run) = &mut line.children[1].node_type else {
@@ -694,7 +721,8 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
             &mut phases,
         );
         let expected = match change {
-            "gap" | "color" | "shape" | "chain" | "double-chain" | "long" | "round" => {
+            "gap" | "color" | "position" | "shape" | "chain" | "double-chain" | "long"
+            | "round" => {
                 vec![0.0, 0.0]
             }
             "new-line" => vec![0.0, width, 0.0, width],
@@ -955,6 +983,48 @@ fn hancom_solid_bottom_underline_keeps_print_width_position_and_ink() {
     let plain = fixture("");
     let underlined =
         fixture(r##"{"underlineType":"Bottom","underlineShape":0,"underlineColor":"#0000cc"}"##);
+    let clip = body_clip(&underlined);
+    let plain_clip = body_clip(&plain);
+    assert_eq!(
+        (clip.x, clip.y, clip.width, clip.height),
+        (
+            plain_clip.x,
+            plain_clip.y,
+            plain_clip.width,
+            plain_clip.height
+        ),
+        "글줄 상자 보존"
+    );
+    for pos in [0, TEXT.chars().count()] {
+        assert_eq!(
+            underlined.get_cursor_rect_native(0, 0, pos).unwrap(),
+            plain.get_cursor_rect_native(0, 0, pos).unwrap()
+        );
+    }
+}
+
+#[test]
+fn hancom_dashed_bottom_underline_keeps_print_geometry_across_font_runs() {
+    assert_dashed_phase_boundaries(UnderlineType::Bottom);
+    // 같은 독립 Print PDF의 9~48pt 아래 파선 실측(em·96dpi px)이다.
+    assert_pattern_probe(
+        "top-probe-shape-1",
+        UnderlineType::Bottom,
+        [
+            (0.16000, 0.04004, 3.35867, 5.27733, 153.67733, 8),
+            (0.16861, 0.03618, 3.83867, 6.07733, 165.67067, 9),
+            (0.17001, 0.04004, 4.47733, 7.35600, 176.06533, 9),
+            (0.16797, 0.04004, 5.75733, 9.27600, 191.57733, 9),
+            (0.17331, 0.04004, 6.87600, 11.03467, 207.40800, 9),
+            (0.16998, 0.04000, 9.11600, 14.55200, 238.59200, 9),
+            (0.16999, 0.04002, 13.59333, 21.90800, 301.11867, 9),
+            (0.16749, 0.04002, 18.23067, 29.10533, 363.64400, 9),
+        ],
+        None,
+    );
+    let plain = fixture("");
+    let underlined =
+        fixture(r##"{"underlineType":"Bottom","underlineShape":1,"underlineColor":"#0000cc"}"##);
     let clip = body_clip(&underlined);
     let plain_clip = body_clip(&plain);
     assert_eq!(
