@@ -842,3 +842,135 @@ fn hancom_body_and_cell_decorations_keep_print_positions() {
     near_print(attr(&marks[0], "x"), 147.2802);
     near_print(attr(&marks[0], "y"), 155.1904);
 }
+
+#[test]
+fn hancom_solid_bottom_underline_keeps_print_width_position_and_ink() {
+    let doc = probe("top-probe-shape-0");
+    let svg = doc.render_page_svg_native(0).unwrap();
+    let mut baselines: Vec<(f64, f64)> = tags(&svg, "text")
+        .iter()
+        .map(|tag| (attr(tag, "y"), attr(tag, "font-size")))
+        .collect();
+    baselines.sort_by(|a, b| a.0.total_cmp(&b.0));
+    baselines.dedup();
+    assert_eq!(baselines.len(), 16, "Top/Bottom 원문 문단 보존");
+    let lines = tags(&svg, "line");
+    // 독립 한컴 Print PDF의 9/10/12/15/18/24/36/48pt 실측(em·96dpi 좌표)이다.
+    for (pair, (offset, width, start, end, print_y, print_stroke)) in
+        baselines.chunks_exact(2).zip([
+            (
+                0.16000145,
+                0.04004371,
+                113.37866667,
+                153.83733333,
+                163.50133333,
+                0.48000000,
+            ),
+            (
+                0.16860786,
+                0.03618408,
+                113.37866667,
+                165.67066667,
+                205.37466667,
+                0.48000000,
+            ),
+            (
+                0.17000634,
+                0.04004371,
+                113.37866667,
+                176.06533333,
+                255.08133333,
+                0.64000000,
+            ),
+            (
+                0.16796736,
+                0.04004371,
+                113.37866667,
+                191.57733333,
+                316.61333333,
+                0.80000000,
+            ),
+            (
+                0.17330870,
+                0.04004371,
+                113.37866667,
+                207.40800000,
+                391.09200000,
+                0.96000000,
+            ),
+            (
+                0.16998323,
+                0.04000200,
+                113.37866667,
+                238.59200000,
+                488.74533333,
+                1.27866667,
+            ),
+            (
+                0.16999333,
+                0.04001591,
+                113.37866667,
+                301.11866667,
+                632.90800000,
+                1.91866667,
+            ),
+            (
+                0.16749397,
+                0.04002286,
+                113.37866667,
+                363.64400000,
+                828.05466667,
+                2.55866667,
+            ),
+        ])
+    {
+        let (baseline, size) = pair[1];
+        let mut bottom: Vec<_> = lines
+            .iter()
+            .filter(|tag| tag.contains("stroke=\"#0000cc\""))
+            .filter(|tag| (attr(tag, "y1") - baseline).abs() < size * 0.5)
+            .collect();
+        bottom.sort_by(|a, b| attr(a, "x1").total_cmp(&attr(b, "x1")));
+        assert!(!bottom.is_empty(), "아래 실선 누락 방지");
+        near_print(attr(bottom[0], "x1"), start);
+        near_print(attr(bottom.last().unwrap(), "x2"), end);
+        for run in bottom.windows(2) {
+            assert!(
+                (attr(run[0], "x2") - attr(run[1], "x1")).abs() < 1e-6,
+                "run 경계 실선 연결"
+            );
+        }
+        for line in bottom {
+            let y = attr(line, "y1");
+            let stroke = attr(line, "stroke-width");
+            assert!(((y - baseline) / size - offset).abs() < 0.02);
+            assert!(
+                (stroke / size - width).abs() < 0.005,
+                "크기별 Print 굵기: {stroke} / {size}"
+            );
+            near_print(y - stroke / 2.0, print_y - print_stroke / 2.0);
+            near_print(y + stroke / 2.0, print_y + print_stroke / 2.0);
+        }
+    }
+    let plain = fixture("");
+    let underlined =
+        fixture(r##"{"underlineType":"Bottom","underlineShape":0,"underlineColor":"#0000cc"}"##);
+    let clip = body_clip(&underlined);
+    let plain_clip = body_clip(&plain);
+    assert_eq!(
+        (clip.x, clip.y, clip.width, clip.height),
+        (
+            plain_clip.x,
+            plain_clip.y,
+            plain_clip.width,
+            plain_clip.height
+        ),
+        "글줄 상자 보존"
+    );
+    for pos in [0, TEXT.chars().count()] {
+        assert_eq!(
+            underlined.get_cursor_rect_native(0, 0, pos).unwrap(),
+            plain.get_cursor_rect_native(0, 0, pos).unwrap()
+        );
+    }
+}

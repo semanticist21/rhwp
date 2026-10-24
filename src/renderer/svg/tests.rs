@@ -746,7 +746,12 @@ fn test_svg_text_decoration() {
     let strike_count = output
         .matches("stroke=\"#000000\" stroke-width=\"1\"")
         .count();
-    assert!(strike_count >= 2, "취소선과 밑줄 <line> 요소가 있어야 함");
+    assert_eq!(strike_count, 1, "취소선의 1px 굵기 유지");
+    // 독립 한컴 2024 Print의 12pt(16px) 아래 실선은 0.64px다.
+    assert!(
+        output.contains("stroke=\"#000000\" stroke-width=\"0.64\""),
+        "밑줄은 Print의 크기별 굵기 유지"
+    );
 }
 
 #[test]
