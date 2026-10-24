@@ -4667,13 +4667,13 @@ impl LayoutEngine {
             ) {
                 // 배치 bbox는 변환 원점을 소유한다. clip만 실제 채움 경로를 포함한다.
                 let mut cb = super::filled_path_bounds::including_filled_path(node);
-                // 위 밑줄·강조점은 글줄 상자 위로 그려져 첫 줄에서 본문 clip 에 잘린다.
+                // 위 밑줄·강조점과 원형점선의 돌출부는 글줄 상자 밖에서 본문 clip에 잘린다.
                 // 글자 상자는 캐럿/선택이 쓰므로 키우지 않고 clip 에만 잉크를 합친다.
                 // 글상자 안은 글상자 자체 clip 이 자르므로 반영하지 않는다.
                 if !inside_textbox {
                     if let RenderNodeType::TextRun(run) = &node.node_type {
                         if let Some(ink) =
-                            super::text_decoration::raised_decoration_ink_bbox(node.bbox, run)
+                            super::text_decoration::overflowing_decoration_ink_bbox(node.bbox, run)
                         {
                             let right = (cb.x + cb.width).max(ink.x + ink.width);
                             let bottom = (cb.y + cb.height).max(ink.y + ink.height);

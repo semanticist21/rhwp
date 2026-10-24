@@ -2,6 +2,7 @@
 //! 포함해야 SVG/PDF 에서 잘리지 않으며, 글줄·캐럿 기하는 바뀌지 않아야 한다.
 #![cfg(not(target_arch = "wasm32"))]
 
+use rhwp::model::style::UnderlineType;
 use rhwp::renderer::render_tree::{BoundingBox, RenderNode, RenderNodeType};
 use rhwp::wasm_api::HwpDocument;
 
@@ -401,23 +402,109 @@ fn hancom_round_dotted_top_underline_keeps_print_circles_across_font_runs() {
         }
         near_print(attr(dots.last().unwrap(), "cx"), last);
     }
-    assert_round_run_boundaries(&doc);
+    assert_round_run_boundaries(&doc, UnderlineType::Top);
 }
 
-fn assert_round_run_boundaries(doc: &HwpDocument) {
+#[test]
+fn hancom_round_dotted_bottom_underline_keeps_print_circles_across_font_runs() {
+    let doc = probe("top-probe-shape-6");
+    let svg = doc.render_page_svg_native(0).unwrap();
+    let mut baselines: Vec<_> = tags(&svg, "text")
+        .iter()
+        .map(|tag| (attr(tag, "y"), attr(tag, "font-size")))
+        .collect();
+    baselines.sort_by(|a, b| a.0.total_cmp(&b.0));
+    baselines.dedup();
+    assert_eq!(baselines.len(), 16, "Top/Bottom 원문 문단 보존");
+    let circles = tags(&svg, "circle");
+    // 같은 독립 Print PDF의 아래 원 중심·외곽 반지름·첫 중심·주기·마지막 중심이다.
+    for (pair, (cy, radius, first, period, last, count)) in baselines.chunks_exact(2).zip([
+        (163.42133, 0.32000, 113.29867, 1.60000, 153.27733, 26),
+        (205.29533, 0.48000, 113.29867, 2.07933, 165.27067, 26),
+        (255.00067, 0.48000, 113.29867, 2.39867, 175.66533, 27),
+        (316.53400, 0.63933, 113.29933, 2.87800, 191.01733, 28),
+        (391.01267, 0.79933, 113.29933, 3.67800, 205.25000, 26),
+        (488.66533, 0.95933, 113.29933, 4.47733, 234.19400, 28),
+        (632.82800, 1.43933, 113.29933, 6.87600, 298.95933, 28),
+        (827.97400, 1.91933, 113.29933, 9.27467, 354.44933, 27),
+    ]) {
+        let (baseline, size) = pair[1];
+        let mut dots: Vec<_> = circles
+            .iter()
+            .filter(|tag| tag.contains("fill=\"#0000cc\""))
+            .filter(|tag| (attr(tag, "cy") - baseline).abs() < size * 1.3)
+            .collect();
+        dots.sort_by(|a, b| attr(a, "cx").total_cmp(&attr(b, "cx")));
+        assert_eq!(
+            dots.len(),
+            count,
+            "아래 원형점선의 run 경계에서 원 누락·중복 방지"
+        );
+        for (i, dot) in dots.iter().enumerate() {
+            near_print(attr(dot, "cy"), cy);
+            assert!(
+                (attr(dot, "cy") - cy).abs() / size < 0.01,
+                "Print 원 중심의 위치 비율 보존"
+            );
+            near_print(attr(dot, "r"), radius);
+            assert!(
+                (attr(dot, "r") - radius).abs() / size < 0.002,
+                "Print 원 크기 비율 보존"
+            );
+            near_print(attr(dot, "cx"), first + i as f64 * period);
+        }
+        near_print(attr(dots.last().unwrap(), "cx"), last);
+    }
+    let plain = fixture("");
+    let decorated =
+        fixture(r##"{"underlineType":"Bottom","underlineShape":6,"underlineColor":"#0000cc"}"##);
+    let svg = decorated.render_page_svg_native(0).unwrap();
+    let left = tags(&svg, "circle")
+        .iter()
+        .map(|dot| attr(dot, "cx") - attr(dot, "r"))
+        .reduce(f64::min)
+        .unwrap();
+    assert!(
+        left < body_clip(&plain).x,
+        "첫 원은 본문 시작점 왼쪽으로 나간다"
+    );
+    assert!(
+        body_clip(&decorated).x <= left,
+        "아래 원형점선의 왼쪽 돌출을 본문 clip에 포함한다"
+    );
+    assert_eq!(body_clip(&decorated).y, body_clip(&plain).y);
+    for ch in [0, TEXT.chars().count()] {
+        assert_eq!(
+            plain.get_cursor_rect_native(0, 0, ch).unwrap(),
+            decorated.get_cursor_rect_native(0, 0, ch).unwrap()
+        );
+    }
+    assert_round_run_boundaries(&doc, UnderlineType::Bottom);
+}
+
+fn assert_round_run_boundaries(doc: &HwpDocument, position: UnderlineType) {
     use rhwp::paint::{LayerBuilder, RenderProfile};
     use rhwp::renderer::layer_renderer::LayerRenderer;
     use rhwp::renderer::render_tree::PageRenderTree;
     use rhwp::renderer::svg_layer::SvgLayerRenderer;
 
-    fn find(node: &RenderNode) -> Option<RenderNode> {
+    fn find(node: &RenderNode, position: UnderlineType) -> Option<RenderNode> {
         if matches!(node.node_type, RenderNodeType::TextLine(_))
-            && node.children.iter().any(|child| matches!(&child.node_type,
-                RenderNodeType::TextRun(run) if run.style.underline == rhwp::model::style::UnderlineType::Top)) {
+            && node.children.iter().any(|child| {
+                matches!(&child.node_type,
+                RenderNodeType::TextRun(run) if run.style.underline == position)
+            })
+        {
             Some(node.clone())
-        } else { node.children.iter().find_map(find) }
+        } else {
+            node.children.iter().find_map(|child| find(child, position))
+        }
     }
-    fn circles(mut line: RenderNode, widths: &[f64]) -> Vec<(f64, f64, f64)> {
+    fn circles(
+        mut line: RenderNode,
+        widths: &[f64],
+        other: Option<UnderlineType>,
+    ) -> Vec<(f64, f64, f64)> {
         let template = line.children[0].clone();
         line.children.clear();
         line.bbox.x = 0.0;
@@ -436,6 +523,9 @@ fn assert_round_run_boundaries(doc: &HwpDocument) {
             run.layout_positions = Some(vec![0.0, width]);
             run.is_para_end = false;
             run.is_line_break_end = false;
+            if i == 1 {
+                run.style.underline = other.unwrap_or(run.style.underline);
+            }
             line.children.push(child);
             x += width;
         }
@@ -446,22 +536,58 @@ fn assert_round_run_boundaries(doc: &HwpDocument) {
         renderer.render_page(&layer).unwrap();
         let mut dots: Vec<_> = tags(renderer.output(), "circle")
             .iter()
-            .filter(|t| t.contains("fill=\"#cc0000\""))
             .map(|t| (attr(t, "cx"), attr(t, "cy"), attr(t, "r")))
             .collect();
         dots.sort_by(|a, b| a.0.total_cmp(&b.0));
         dots
     }
-    let line = find(&doc.build_page_render_tree(0).unwrap().root).unwrap();
-    let whole = circles(line.clone(), &[64.0]);
+    let line = find(&doc.build_page_render_tree(0).unwrap().root, position).unwrap();
+    let whole = circles(line.clone(), &[64.0], None);
     // 9pt Print의 약 1.6px 주기 경계에서 run을 나눠도 원 소유와 위치는 같다.
     assert_eq!(whole.len(), 40);
     for n in [3, 8, 14, 22, 29] {
         let cut = n as f64 * 1.6;
-        let split = circles(line.clone(), &[cut, 64.0 - cut]);
+        let split = circles(line.clone(), &[cut, 64.0 - cut], None);
         assert_eq!(split.len(), whole.len(), "주기 경계 {n}: 원 누락·중복 방지");
         for (a, b) in split.iter().zip(&whole) {
             assert!((a.0 - b.0).abs() < 1e-8 && a.1 == b.1 && a.2 == b.2);
+        }
+    }
+
+    if position == UnderlineType::Bottom {
+        for (first, second) in [
+            (UnderlineType::Top, UnderlineType::Bottom),
+            (UnderlineType::Bottom, UnderlineType::Top),
+        ] {
+            let mut mixed = line.clone();
+            for child in &mut mixed.children {
+                if let RenderNodeType::TextRun(run) = &mut child.node_type {
+                    run.style.underline = first;
+                }
+            }
+            // 같은 색·크기의 위·아래 전환도 새 시작점에서 원을 그린다.
+            let dots = circles(mixed, &[3.0, 61.0], Some(second));
+            let cy = dots
+                .iter()
+                .map(|dot| dot.1)
+                .reduce(|a, b| {
+                    if second == UnderlineType::Top {
+                        a.min(b)
+                    } else {
+                        a.max(b)
+                    }
+                })
+                .unwrap();
+            let first_x = dots
+                .iter()
+                .filter(|dot| dot.1 == cy)
+                .map(|dot| dot.0)
+                .reduce(f64::min)
+                .unwrap();
+            assert!(
+                (first_x - (3.0 - 0.08)).abs() < 1e-8,
+                "위·아래 전환은 phase 초기화: {first_x}"
+            );
         }
     }
 }

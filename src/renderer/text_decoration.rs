@@ -143,14 +143,23 @@ fn underline_dot_pattern(font_size: f64) -> (f64, f64) {
     (steps, (steps + (steps * 1.5).ceil()) * PRINT_GRID)
 }
 
-fn underline_round_dot_geometry(font_size: f64) -> (super::render_tree::BoundingBox, f64) {
+fn underline_round_dot_geometry(
+    underline: crate::model::style::UnderlineType,
+    font_size: f64,
+) -> (super::render_tree::BoundingBox, f64) {
     let (steps, period) = underline_dot_pattern(font_size);
     // Print의 홀수 격자 지름에 1격자 외곽선을 더한 원은 채운 원으로 그릴 수 있다.
     let radius = (steps / 2.0).ceil() * PRINT_GRID;
+    let center_y = if underline == crate::model::style::UnderlineType::Top {
+        -font_size * 0.87 - PRINT_GRID / 2.0
+    } else {
+        // 9~48pt Print의 아래 원 중심은 기준선에서 약 0.155em 아래다.
+        font_size * 0.155
+    };
     (
         super::render_tree::BoundingBox::new(
             -PRINT_GRID / 2.0 - radius,
-            -font_size * 0.87 - PRINT_GRID / 2.0 - radius,
+            center_y - radius,
             radius * 2.0,
             radius * 2.0,
         ),
@@ -158,7 +167,7 @@ fn underline_round_dot_geometry(font_size: f64) -> (super::render_tree::Bounding
     )
 }
 
-/// 위 원형점선은 원 전체를 한 run에 소유시켜 경계에서도 중복하거나 자르지 않는다.
+/// 원형점선은 원 전체를 한 run에 소유시켜 경계에서도 중복하거나 자르지 않는다.
 pub(crate) fn underline_round_dots(
     underline: crate::model::style::UnderlineType,
     shape: u8,
@@ -166,10 +175,10 @@ pub(crate) fn underline_round_dots(
     font_size: f64,
     offset: f64,
 ) -> Option<impl Iterator<Item = super::render_tree::BoundingBox>> {
-    if underline != crate::model::style::UnderlineType::Top || shape != 6 {
+    if underline == crate::model::style::UnderlineType::None || shape != 6 {
         return None;
     }
-    let (dot, period) = underline_round_dot_geometry(font_size);
+    let (dot, period) = underline_round_dot_geometry(underline, font_size);
     let mut start = -offset.rem_euclid(period);
     Some(std::iter::from_fn(move || {
         // 주기 경계의 부동소수점 잔차는 다음 run 소유로 통일한다.
@@ -235,7 +244,7 @@ pub(crate) fn underline_spans(
     })
 }
 
-/// 실선·다중선의 잉크 상하단이다. clip과 paint bounds가 같은 획을 포함한다.
+/// 선·원의 잉크 상자다. clip과 paint bounds가 같은 기하를 포함한다.
 pub(crate) fn underline_ink_bbox(
     underline: crate::model::style::UnderlineType,
     shape: u8,
@@ -243,8 +252,8 @@ pub(crate) fn underline_ink_bbox(
     baseline: f64,
     width: f64,
 ) -> Option<super::render_tree::BoundingBox> {
-    if underline == crate::model::style::UnderlineType::Top && shape == 6 {
-        let (dot, _) = underline_round_dot_geometry(font_size);
+    if underline != crate::model::style::UnderlineType::None && shape == 6 {
+        let (dot, _) = underline_round_dot_geometry(underline, font_size);
         return Some(super::render_tree::BoundingBox::new(
             dot.x - 0.005,
             baseline + dot.y - 0.005,
@@ -270,22 +279,24 @@ pub(crate) fn underline_ink_bbox(
     ))
 }
 
-/// 글줄 상자 밖으로 나가는 장식(위 밑줄·강조점)의 잉크 범위다.
+/// 글줄 상자 밖으로 나가는 장식(위 밑줄·원형점선·강조점)의 잉크 범위다.
 ///
-/// 첫 줄의 이 잉크는 글줄 상자 밖, 본문 영역 위에 놓여 본문 clip에 잘린다.
+/// 위 장식은 본문 위로, 원형점선은 글자 시작점 왼쪽으로 나가 본문 clip에 잘린다.
 /// 글자·글줄 상자를 키우면 캐럿/선택도 바뀌므로 본문 clip 계산에만 쓴다.
 /// 장식의 잉크는 각 paint backend와 같은 기하로 계산한다.
 /// 회전·세로쓰기·글자겹침은 다루지 않는다.
-pub(crate) fn raised_decoration_ink_bbox(
+pub(crate) fn overflowing_decoration_ink_bbox(
     bbox: super::render_tree::BoundingBox,
     run: &super::render_tree::TextRunNode,
 ) -> Option<super::render_tree::BoundingBox> {
     use crate::model::style::UnderlineType;
 
     let style = &run.style;
-    let top_underline = style.underline == UnderlineType::Top && style.underline_shape <= 10;
+    let overflowing_underline = (style.underline == UnderlineType::Top
+        && style.underline_shape <= 10)
+        || (style.underline == UnderlineType::Bottom && style.underline_shape == 6);
     let emphasis = (1..=6).contains(&style.emphasis_dot);
-    if !(top_underline || emphasis)
+    if !(overflowing_underline || emphasis)
         || run.char_overlap.is_some()
         || run.rotation != 0.0
         || run.is_vertical
@@ -304,7 +315,7 @@ pub(crate) fn raised_decoration_ink_bbox(
     let mut bottom = f64::NEG_INFINITY;
     let mut left = f64::INFINITY;
     let mut right = f64::NEG_INFINITY;
-    if top_underline {
+    if overflowing_underline {
         if let Some(ink) = underline_ink_bbox(
             style.underline,
             style.underline_shape,

@@ -507,7 +507,7 @@ fn publish_line_decoration_trims(node: &mut LayerNode) {
 }
 
 fn publish_underline_dash_offsets(children: &mut [LayerNode]) {
-    let mut previous: Option<(f64, f64, f64, u32, u8, f64)> = None;
+    let mut previous: Option<(f64, f64, f64, u32, UnderlineType, u8, f64)> = None;
     for child in children {
         let LayerNodeKind::Leaf { ops } = &mut child.kind else {
             previous = None;
@@ -523,9 +523,10 @@ fn publish_underline_dash_offsets(children: &mut [LayerNode]) {
                 ..
             } = op
             {
-                if run.style.underline == UnderlineType::Top
-                    && matches!(run.style.underline_shape, 1..=6)
-                    && run.rotation == 0.0
+                if matches!(
+                    (run.style.underline, run.style.underline_shape),
+                    (UnderlineType::Top, 1..=6) | (UnderlineType::Bottom, 6)
+                ) && run.rotation == 0.0
                     && !run.is_vertical
                 {
                     let (size, y) = run.style.script_draw_metrics(
@@ -534,19 +535,21 @@ fn publish_underline_dash_offsets(children: &mut [LayerNode]) {
                     );
                     let color = run.style.underline_color;
                     *underline_dash_offset = previous
-                        .filter(|&(end, baseline, font_size, ink, shape, _)| {
+                        .filter(|&(end, baseline, font_size, ink, position, shape, _)| {
                             (end - bbox.x).abs() < 0.01
                                 && (baseline - y).abs() < 0.01
                                 && font_size == size
                                 && ink == color
+                                && position == run.style.underline
                                 && shape == run.style.underline_shape
                         })
-                        .map_or(0.0, |(_, _, _, _, _, offset)| offset);
+                        .map_or(0.0, |(_, _, _, _, _, _, offset)| offset);
                     next = Some((
                         bbox.x + bbox.width,
                         y,
                         size,
                         color,
+                        run.style.underline,
                         run.style.underline_shape,
                         *underline_dash_offset + bbox.width,
                     ));
