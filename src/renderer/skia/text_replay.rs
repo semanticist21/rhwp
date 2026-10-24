@@ -796,7 +796,28 @@ impl SkiaTextReplay<'_> {
                         style.underline,
                         style.underline_shape,
                     );
-                    if let Some(lines) = lines {
+                    if let Some(dots) = crate::renderer::text_decoration::underline_round_dots(
+                        style.underline,
+                        style.underline_shape,
+                        text_width as f64,
+                        font_size as f64,
+                        underline_dash_offset,
+                    ) {
+                        let mut paint = Paint::default();
+                        paint.set_anti_alias(true);
+                        paint.set_color(color);
+                        for dot in dots {
+                            canvas.draw_oval(
+                                Rect::from_xywh(
+                                    bbox.x as f32 + dot.x as f32,
+                                    y as f32 + dot.y as f32,
+                                    dot.width as f32,
+                                    dot.height as f32,
+                                ),
+                                &paint,
+                            );
+                        }
+                    } else if let Some(lines) = lines {
                         for (dy_em, width_em) in lines {
                             for (left, right) in crate::renderer::text_decoration::underline_spans(
                                 style.underline,

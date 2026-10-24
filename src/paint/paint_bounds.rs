@@ -869,25 +869,27 @@ fn decoration_bounds(
     let (font_size, baseline) = effective_text_font_size_and_baseline(run);
     let ink = match kind {
         TextDecorationKind::Underline => {
-            let (y, height) = if let Some((top, bottom)) =
-                crate::renderer::text_decoration::underline_ink_bounds(
-                    run.style.underline,
-                    run.style.underline_shape,
-                    font_size,
-                    baseline,
-                ) {
-                (top, bottom - top)
+            if let Some(ink) = crate::renderer::text_decoration::underline_ink_bbox(
+                run.style.underline,
+                run.style.underline_shape,
+                font_size,
+                baseline,
+                width,
+            ) {
+                BoundingBox::new(logical.x + ink.x, logical.y + ink.y, ink.width, ink.height)
             } else {
-                (
-                    if run.style.underline == UnderlineType::Top {
-                        baseline - font_size + 1.0
-                    } else {
-                        baseline + 2.0
-                    },
+                BoundingBox::new(
+                    logical.x,
+                    logical.y
+                        + if run.style.underline == UnderlineType::Top {
+                            baseline - font_size + 1.0
+                        } else {
+                            baseline + 2.0
+                        },
+                    width,
                     1.0,
                 )
-            };
-            BoundingBox::new(logical.x, logical.y + y, width, height)
+            }
         }
         TextDecorationKind::Strikethrough => BoundingBox::new(
             logical.x,

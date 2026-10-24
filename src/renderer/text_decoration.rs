@@ -136,6 +136,55 @@ pub(crate) fn underline_lines(
     Some(lines.iter().map(move |&(dy, width)| (dy - lift, width)))
 }
 
+const PRINT_GRID: f64 = 0.16;
+
+fn underline_dot_pattern(font_size: f64) -> (f64, f64) {
+    let steps = (font_size * 0.057 / PRINT_GRID).round().max(1.0);
+    (steps, (steps + (steps * 1.5).ceil()) * PRINT_GRID)
+}
+
+fn underline_round_dot_geometry(font_size: f64) -> (super::render_tree::BoundingBox, f64) {
+    let (steps, period) = underline_dot_pattern(font_size);
+    // Print의 홀수 격자 지름에 1격자 외곽선을 더한 원은 채운 원으로 그릴 수 있다.
+    let radius = (steps / 2.0).ceil() * PRINT_GRID;
+    (
+        super::render_tree::BoundingBox::new(
+            -PRINT_GRID / 2.0 - radius,
+            -font_size * 0.87 - PRINT_GRID / 2.0 - radius,
+            radius * 2.0,
+            radius * 2.0,
+        ),
+        period,
+    )
+}
+
+/// 위 원형점선은 원 전체를 한 run에 소유시켜 경계에서도 중복하거나 자르지 않는다.
+pub(crate) fn underline_round_dots(
+    underline: crate::model::style::UnderlineType,
+    shape: u8,
+    width: f64,
+    font_size: f64,
+    offset: f64,
+) -> Option<impl Iterator<Item = super::render_tree::BoundingBox>> {
+    if underline != crate::model::style::UnderlineType::Top || shape != 6 {
+        return None;
+    }
+    let (dot, period) = underline_round_dot_geometry(font_size);
+    let mut start = -offset.rem_euclid(period);
+    Some(std::iter::from_fn(move || {
+        // 주기 경계의 부동소수점 잔차는 다음 run 소유로 통일한다.
+        if start < -1e-9 {
+            start += period;
+        }
+        if start >= width - 1e-9 || !start.is_finite() || !width.is_finite() {
+            return None;
+        }
+        let ink = super::render_tree::BoundingBox::new(start + dot.x, dot.y, dot.width, dot.height);
+        start += period;
+        Some(ink)
+    }))
+}
+
 /// 한컴 Print의 위 파선·점선·쇄선은 글꼴별 run 경계에서도 획과 간격을 잇는다.
 pub(crate) fn underline_spans(
     underline: crate::model::style::UnderlineType,
@@ -146,11 +195,10 @@ pub(crate) fn underline_spans(
 ) -> impl Iterator<Item = (f64, f64)> {
     let dashed = underline == crate::model::style::UnderlineType::Top && matches!(shape, 1..=5);
     // 9~48pt Print 실측: 점은 600dpi 격자에 맞추고, 쇄선은 약 0.57em 획·0.17em 간격이다.
-    const PRINT_GRID: f64 = 0.16;
-    let dot_steps = (font_size * 0.057 / PRINT_GRID).round().max(1.0);
+    let (dot_steps, dot_period) = underline_dot_pattern(font_size);
     let dot = dot_steps * PRINT_GRID;
     let (on, period) = match shape {
-        2 => (dot, (dot_steps + (dot_steps * 1.5).ceil()) * PRINT_GRID),
+        2 => (dot, dot_period),
         3 => (font_size * 0.57, font_size * 0.91 + dot),
         4 => (font_size * 0.57, font_size * 1.08 + dot * 2.0),
         5 => (font_size * 0.57, font_size * 0.74),
@@ -188,14 +236,24 @@ pub(crate) fn underline_spans(
 }
 
 /// 실선·다중선의 잉크 상하단이다. clip과 paint bounds가 같은 획을 포함한다.
-pub(crate) fn underline_ink_bounds(
+pub(crate) fn underline_ink_bbox(
     underline: crate::model::style::UnderlineType,
     shape: u8,
     font_size: f64,
     baseline: f64,
-) -> Option<(f64, f64)> {
+    width: f64,
+) -> Option<super::render_tree::BoundingBox> {
+    if underline == crate::model::style::UnderlineType::Top && shape == 6 {
+        let (dot, _) = underline_round_dot_geometry(font_size);
+        return Some(super::render_tree::BoundingBox::new(
+            dot.x - 0.005,
+            baseline + dot.y - 0.005,
+            width + dot.width + 0.01,
+            dot.height + 0.01,
+        ));
+    }
     let lines = underline_lines(underline, shape)?;
-    Some(lines.fold(
+    let (top, bottom) = lines.fold(
         (f64::INFINITY, f64::NEG_INFINITY),
         |(top, bottom), (dy, width)| {
             let y = baseline + font_size * dy;
@@ -203,6 +261,12 @@ pub(crate) fn underline_ink_bounds(
             let half = (font_size * width).max(0.3) / 2.0 + 0.005;
             (top.min(y - half), bottom.max(y + half))
         },
+    );
+    Some(super::render_tree::BoundingBox::new(
+        0.0,
+        top,
+        width,
+        bottom - top,
     ))
 }
 
@@ -241,19 +305,24 @@ pub(crate) fn raised_decoration_ink_bbox(
     let mut left = f64::INFINITY;
     let mut right = f64::NEG_INFINITY;
     if top_underline {
-        if let Some((ink_top, ink_bottom)) =
-            underline_ink_bounds(style.underline, style.underline_shape, font_size, baseline)
-        {
-            top = top.min(ink_top);
-            bottom = bottom.max(ink_bottom);
+        if let Some(ink) = underline_ink_bbox(
+            style.underline,
+            style.underline_shape,
+            font_size,
+            baseline,
+            bbox.width,
+        ) {
+            top = top.min(ink.y);
+            bottom = bottom.max(ink.y + ink.height);
+            left = bbox.x + ink.x;
+            right = left + ink.width;
         } else {
             let y = baseline - font_size + 1.0;
             top = top.min(y - 0.5);
             bottom = bottom.max(y + 0.5);
+            left = bbox.x;
+            right = bbox.x + bbox.width;
         }
-        let end_pad = if style.underline_shape == 6 { 0.5 } else { 0.0 };
-        left = bbox.x - end_pad;
-        right = bbox.x + bbox.width + end_pad;
     }
     if emphasis {
         let text = run.display_or_text();

@@ -62,13 +62,19 @@ fn near_print(actual: f64, expected: f64) {
     );
 }
 
-/// SVG 가 발행한 `<line stroke="#d03050">` 들의 잉크 상단(중심 - 획 반).
-fn top_line_ink(svg: &str) -> f64 {
+/// SVG가 발행한 밑줄 선·원의 실제 잉크 상단이다.
+fn top_underline_ink(svg: &str) -> f64 {
     svg.split("<line ")
         .skip(1)
         .map(|c| format!(" {}", c.split_once('>').unwrap().0))
         .filter(|tag| tag.contains("stroke=\"#d03050\""))
         .map(|tag| attr(&tag, "y1") - attr(&tag, "stroke-width") / 2.0)
+        .chain(
+            tags(svg, "circle")
+                .iter()
+                .filter(|tag| tag.contains("fill=\"#d03050\""))
+                .map(|tag| attr(tag, "cy") - attr(tag, "r")),
+        )
         .fold(f64::INFINITY, f64::min)
 }
 
@@ -89,7 +95,7 @@ fn first_line_top_underline_ink_is_inside_body_clip() {
         let doc = fixture(&format!(
             r##"{{"underlineType":"Top","underlineShape":{shape},"underlineColor":"#d03050"}}"##
         ));
-        let ink_top = top_line_ink(&doc.render_page_svg_native(0).unwrap());
+        let ink_top = top_underline_ink(&doc.render_page_svg_native(0).unwrap());
         assert!(ink_top < plain.y, "fixture: 위 밑줄이 본문 위로 나가야 함");
         let clip = body_clip(&doc);
         assert!(
@@ -349,6 +355,118 @@ fn hancom_long_dashed_top_underline_keeps_print_geometry_across_font_runs() {
 }
 
 #[test]
+fn hancom_round_dotted_top_underline_keeps_print_circles_across_font_runs() {
+    let doc = probe("top-probe-shape-6");
+    let svg = doc.render_page_svg_native(0).unwrap();
+    let mut baselines: Vec<_> = tags(&svg, "text")
+        .iter()
+        .map(|tag| (attr(tag, "y"), attr(tag, "font-size")))
+        .collect();
+    baselines.sort_by(|a, b| a.0.total_cmp(&b.0));
+    baselines.dedup();
+    assert_eq!(baselines.len(), 16, "Top/Bottom 원문 문단 보존");
+    let circles = tags(&svg, "circle");
+    let clip = body_clip(&doc);
+    // 독립 Print의 원 중심·외곽 반지름·첫 중심·주기·마지막 중심(96dpi px)이다.
+    for (pair, (cy, radius, first, period, last, count)) in baselines.chunks_exact(2).zip([
+        (131.93600, 0.32000, 113.29867, 1.60000, 153.27733, 26),
+        (170.13400, 0.48000, 113.29867, 2.07933, 165.27067, 26),
+        (212.80733, 0.48000, 113.29867, 2.39867, 175.66533, 27),
+        (263.79133, 0.63933, 113.29933, 2.87800, 191.01733, 28),
+        (327.72200, 0.79933, 113.29933, 3.67800, 205.25000, 26),
+        (404.27800, 0.95933, 113.29933, 4.47733, 238.67133, 29),
+        (506.24667, 1.43933, 113.29933, 6.87600, 298.95933, 28),
+        (659.35933, 1.91933, 113.29933, 9.27467, 363.72467, 28),
+    ]) {
+        let (baseline, size) = pair[0];
+        let mut dots: Vec<_> = circles
+            .iter()
+            .filter(|tag| tag.contains("fill=\"#cc0000\""))
+            .filter(|tag| (attr(tag, "cy") - baseline).abs() < size * 1.3)
+            .collect();
+        dots.sort_by(|a, b| attr(a, "cx").total_cmp(&attr(b, "cx")));
+        assert_eq!(
+            dots.len(),
+            count,
+            "run 경계에서 원을 중복하거나 누락하지 않는다"
+        );
+        for (i, dot) in dots.iter().enumerate() {
+            let r = attr(dot, "r");
+            near_print(attr(dot, "cy"), cy);
+            near_print(r, radius);
+            assert!((r - radius).abs() / size < 0.002, "Print 원 크기 비율 보존");
+            near_print(attr(dot, "cx"), first + i as f64 * period);
+            assert!(clip.y <= attr(dot, "cy") - r);
+            assert!(clip.x <= attr(dot, "cx") - r);
+        }
+        near_print(attr(dots.last().unwrap(), "cx"), last);
+    }
+    assert_round_run_boundaries(&doc);
+}
+
+fn assert_round_run_boundaries(doc: &HwpDocument) {
+    use rhwp::paint::{LayerBuilder, RenderProfile};
+    use rhwp::renderer::layer_renderer::LayerRenderer;
+    use rhwp::renderer::render_tree::PageRenderTree;
+    use rhwp::renderer::svg_layer::SvgLayerRenderer;
+
+    fn find(node: &RenderNode) -> Option<RenderNode> {
+        if matches!(node.node_type, RenderNodeType::TextLine(_))
+            && node.children.iter().any(|child| matches!(&child.node_type,
+                RenderNodeType::TextRun(run) if run.style.underline == rhwp::model::style::UnderlineType::Top)) {
+            Some(node.clone())
+        } else { node.children.iter().find_map(find) }
+    }
+    fn circles(mut line: RenderNode, widths: &[f64]) -> Vec<(f64, f64, f64)> {
+        let template = line.children[0].clone();
+        line.children.clear();
+        line.bbox.x = 0.0;
+        line.bbox.width = widths.iter().sum();
+        let mut x = 0.0;
+        for (i, &width) in widths.iter().enumerate() {
+            let mut child = template.clone();
+            child.id += i as u32 * 100_000;
+            child.bbox.x = x;
+            child.bbox.width = width;
+            let RenderNodeType::TextRun(run) = &mut child.node_type else {
+                unreachable!()
+            };
+            run.text = "H".to_string();
+            run.display_text = None;
+            run.layout_positions = Some(vec![0.0, width]);
+            run.is_para_end = false;
+            run.is_line_break_end = false;
+            line.children.push(child);
+            x += width;
+        }
+        let mut tree = PageRenderTree::new(0, 794.0, 1122.0);
+        tree.root.children.push(line);
+        let layer = LayerBuilder::new(RenderProfile::Print).build(&tree);
+        let mut renderer = SvgLayerRenderer::new();
+        renderer.render_page(&layer).unwrap();
+        let mut dots: Vec<_> = tags(renderer.output(), "circle")
+            .iter()
+            .filter(|t| t.contains("fill=\"#cc0000\""))
+            .map(|t| (attr(t, "cx"), attr(t, "cy"), attr(t, "r")))
+            .collect();
+        dots.sort_by(|a, b| a.0.total_cmp(&b.0));
+        dots
+    }
+    let line = find(&doc.build_page_render_tree(0).unwrap().root).unwrap();
+    let whole = circles(line.clone(), &[64.0]);
+    // 9pt Print의 약 1.6px 주기 경계에서 run을 나눠도 원 소유와 위치는 같다.
+    assert_eq!(whole.len(), 40);
+    for n in [3, 8, 14, 22, 29] {
+        let cut = n as f64 * 1.6;
+        let split = circles(line.clone(), &[cut, 64.0 - cut]);
+        assert_eq!(split.len(), whole.len(), "주기 경계 {n}: 원 누락·중복 방지");
+        for (a, b) in split.iter().zip(&whole) {
+            assert!((a.0 - b.0).abs() < 1e-8 && a.1 == b.1 && a.2 == b.2);
+        }
+    }
+}
+
+#[test]
 fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
     use rhwp::paint::{LayerBuilder, RenderProfile};
     use rhwp::renderer::render_tree::PageRenderTree;
@@ -407,6 +525,7 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
         "chain",
         "double-chain",
         "long",
+        "round",
         "new-line",
     ] {
         let mut line = original.clone();
@@ -418,7 +537,7 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
                 };
                 run.style.underline_color ^= 1;
             }
-            "shape" | "chain" | "double-chain" | "long" => {
+            "shape" | "chain" | "double-chain" | "long" | "round" => {
                 let RenderNodeType::TextRun(run) = &mut line.children[1].node_type else {
                     unreachable!()
                 };
@@ -426,6 +545,7 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
                     "chain" => 3,
                     "double-chain" => 4,
                     "long" => 5,
+                    "round" => 6,
                     _ => 2,
                 };
             }
@@ -448,7 +568,9 @@ fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
             &mut phases,
         );
         let expected = match change {
-            "gap" | "color" | "shape" | "chain" | "double-chain" | "long" => vec![0.0, 0.0],
+            "gap" | "color" | "shape" | "chain" | "double-chain" | "long" | "round" => {
+                vec![0.0, 0.0]
+            }
             "new-line" => vec![0.0, width, 0.0, width],
             _ => vec![0.0, width],
         };

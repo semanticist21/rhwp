@@ -2529,7 +2529,28 @@ impl Renderer for WebCanvasRenderer {
             } else {
                 color_to_css(style.color)
             };
-            if let Some(lines) = crate::renderer::text_decoration::underline_lines(
+            if let Some(dots) = crate::renderer::text_decoration::underline_round_dots(
+                style.underline,
+                style.underline_shape,
+                text_width,
+                font_size,
+                self.underline_dash_offset,
+            ) {
+                self.ctx.set_fill_style_str(&ul_color);
+                for dot in dots {
+                    self.ctx.begin_path();
+                    self.ctx
+                        .arc(
+                            x + dot.x + dot.width / 2.0,
+                            y + dot.y + dot.height / 2.0,
+                            dot.width / 2.0,
+                            0.0,
+                            std::f64::consts::TAU,
+                        )
+                        .ok();
+                    self.ctx.fill();
+                }
+            } else if let Some(lines) = crate::renderer::text_decoration::underline_lines(
                 style.underline,
                 style.underline_shape,
             ) {

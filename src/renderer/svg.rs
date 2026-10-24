@@ -3587,7 +3587,23 @@ impl Renderer for SvgRenderer {
                 style.underline,
                 style.underline_shape,
             );
-            if let Some(lines) = lines {
+            if let Some(dots) = crate::renderer::text_decoration::underline_round_dots(
+                style.underline,
+                style.underline_shape,
+                text_width,
+                font_size,
+                self.underline_dash_offset,
+            ) {
+                for dot in dots {
+                    self.output.push_str(&format!(
+                        "<circle cx=\"{}\" cy=\"{}\" r=\"{}\" fill=\"{}\"/>\n",
+                        x + dot.x + dot.width / 2.0,
+                        y + dot.y + dot.height / 2.0,
+                        dot.width / 2.0,
+                        ul_color,
+                    ));
+                }
+            } else if let Some(lines) = lines {
                 for (dy_em, width_em) in lines {
                     let ly = y + font_size * dy_em;
                     for (left, right) in crate::renderer::text_decoration::underline_spans(
