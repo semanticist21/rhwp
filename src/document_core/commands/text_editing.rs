@@ -61,6 +61,7 @@ fn boundary_controls_to_delete(
                         | Control::Equation(_)
                         | Control::Footnote(_)
                         | Control::Endnote(_)
+                        | Control::Form(_)
                 ) || para.controls.iter().enumerate().any(|(other, control)| {
                     other != index
                         && Paragraph::is_split_movable_control(control)
@@ -1142,6 +1143,20 @@ fn replace_paragraph_text(
     };
     para.insert_text_at_caret(char_offset, text, after_inline_control);
     deleted
+}
+
+/// 서식 글 붙이기도 본문 입력과 같은 누름틀·개체 앞뒤 소속을 지킨다.
+pub(super) fn insert_body_text_with_field_affinity(
+    para: &mut Paragraph,
+    active_field: Option<&ActiveFieldInfo>,
+    section_idx: usize,
+    para_idx: usize,
+    char_offset: usize,
+    after_inline_control: bool,
+    text: &str,
+) {
+    let active = active_field_control(active_field, section_idx, para_idx, None);
+    replace_paragraph_text(para, char_offset, 0, text, active, after_inline_control);
 }
 
 fn para_has_visible_text_for_enter(para: &Paragraph) -> bool {
@@ -3457,6 +3472,36 @@ impl DocumentCore {
                 .get(section_idx)
                 .and_then(|section| section.paragraphs.get(index))
         };
+        for (index, offset) in [(start_para, start_logical), (end_para, end_logical)] {
+            if para(index).is_none_or(|p| offset > logical_paragraph_length(p)) {
+                return Err(HwpError::RenderError(
+                    "지울 논리 범위가 올바르지 않습니다".into(),
+                ));
+            }
+        }
+        if start_para == end_para
+            && super::clipboard::has_only_inline_forms(para(start_para).unwrap())
+        {
+            if start_logical != end_logical {
+                let paragraph = &mut self.document.sections[section_idx].paragraphs[start_para];
+                let suffix = paragraph.split_at(end_logical);
+                paragraph.split_at(start_logical);
+                paragraph.merge_from(&suffix);
+                self.reflow_body_paragraph_range_native(section_idx, start_para..start_para + 1)?;
+                self.document.doc_properties.caret_list_id = section_idx as u32;
+                self.document.doc_properties.caret_para_id = start_para as u32;
+                self.event_log.push(DocumentEvent::TextDeleted {
+                    section: section_idx,
+                    para: start_para,
+                    offset: start_logical,
+                    count: end_logical - start_logical,
+                });
+            }
+            return Ok(super::super::helpers::json_ok_with(&format!(
+                "\"paraIdx\":{},\"charOffset\":{}",
+                start_para, start_logical
+            )));
+        }
         for (index, logical) in [(start_para, start_logical), (end_para, end_logical)] {
             if let Some(p) = para(index) {
                 let positions = p.control_text_positions();

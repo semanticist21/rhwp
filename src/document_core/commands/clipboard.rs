@@ -84,6 +84,16 @@ fn bin_data_over_limit_error(bin_data_id: u16) -> HwpError {
     ))
 }
 
+pub(super) fn has_only_inline_forms(para: &Paragraph) -> bool {
+    para.field_ranges.is_empty()
+        && para.orphan_field_ends.is_empty()
+        && para.controls.iter().any(|c| matches!(c, Control::Form(_)))
+        && para.controls.iter().all(|c| {
+            matches!(c, Control::SectionDef(_) | Control::ColumnDef(_))
+                || matches!(c, Control::Form(form) if form.common.treat_as_char)
+        })
+}
+
 fn clipboard_paragraphs_contain_field(paragraphs: &[Paragraph]) -> bool {
     paragraphs.iter().any(|para| !para.field_ranges.is_empty())
 }
@@ -434,14 +444,7 @@ impl DocumentCore {
                 .sections
                 .get(section_idx)
                 .and_then(|section| section.paragraphs.get(start_para_idx))
-                .filter(|para| {
-                    para.field_ranges.is_empty()
-                        && para.controls.iter().any(|c| matches!(c, Control::Form(_)))
-                        && para.controls.iter().all(|c| {
-                            matches!(c, Control::SectionDef(_) | Control::ColumnDef(_))
-                                || matches!(c, Control::Form(form) if form.common.treat_as_char)
-                        })
-                })
+                .filter(|para| has_only_inline_forms(para))
             {
                 if start_logical > end_logical || end_logical > logical_paragraph_length(para) {
                     return Err(HwpError::RenderError(
