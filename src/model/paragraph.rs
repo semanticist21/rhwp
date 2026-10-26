@@ -1309,13 +1309,20 @@ impl Paragraph {
         };
         // 이 자리 컨트롤 가운데 첫 개체의 차례 — 그 앞에 놓인 같은 자리 컨트롤 수와 같다.
         // 문단 끝 자동 번호는 자리표 글자가 8유닛을 차지하므로 이 자리 컨트롤로 세지 않는다.
-        let controls_before_object = self
+        let same_position = self
             .controls
             .iter()
             .zip(control_positions.iter())
             .enumerate()
-            .filter(|&(ci, (_, &pos))| pos == effective_char_offset && Some(ci) != trailing_number)
-            .position(|(_, (ctrl, _))| is_inline_object(ctrl));
+            .filter(|&(ci, (_, &pos))| pos == effective_char_offset && Some(ci) != trailing_number);
+        // 다만 그 자리표 글자 앞 입력은 문단 중간 번호 앞처럼 앞 글자 바로 뒤(필드 끝 같은
+        // 갭 슬롯 앞)에 넣는다. 그래야 필드 끝에 친 글자가 필드 서식을 잇는다.
+        let before_trailing_number = trailing_number
+            .is_some_and(|ci| control_positions.get(ci) == Some(&effective_char_offset));
+        let controls_before_object = same_position
+            .clone()
+            .position(|(_, (ctrl, _))| is_inline_object(ctrl))
+            .or_else(|| before_trailing_number.then(|| same_position.count()));
         let inserts_before_inline_control =
             !after_inline_control && char_offset <= text_len && controls_before_object.is_some();
 
