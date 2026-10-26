@@ -38,6 +38,18 @@ mod prep {
         .unwrap();
         c.set_hangul2024_compat(true);
         assert_eq!(c.page_count(), 140);
+        let paragraph = &c.document().sections[2].paragraphs[38];
+        let scalar = 1;
+        assert_eq!(paragraph.text.chars().nth(scalar), Some('트'));
+        // 그리는 소스 키는 원문 글자 앞의 인라인 개체 칸도 포함한다.
+        let logical = scalar
+            + paragraph
+                .controls
+                .iter()
+                .zip(paragraph.control_text_positions())
+                .filter(|(control, position)| control.is_logical_inline() && *position <= scalar)
+                .count();
+        let source_key = format!("section:2/para:38/char:{logical}");
         let value: Value = serde_json::from_str(
             &c.get_page_layer_tree_with_options_native(
                 69,
@@ -55,7 +67,7 @@ mod prep {
         let owned: Vec<_> = runs
             .iter()
             .filter(|r| {
-                r["source"]["stableSourceKey"] == "section:2/para:38/char:1"
+                r["source"]["stableSourceKey"] == source_key
                     && r["text"]
                         .as_str()
                         .is_some_and(|t| t.starts_with("트랜스젠더군이"))
