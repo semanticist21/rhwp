@@ -16139,7 +16139,11 @@ impl LayoutEngine {
                                             })
                                             .collect()
                                     };
-                                    let start_cut = previous_cut;
+                                    let start_cut = if split_block {
+                                        previous_cut
+                                    } else {
+                                        cuts_at(driver_before)
+                                    };
                                     let end_cut = cuts_at(*driver_after);
                                     let terminal = row_units
                                         .iter()
@@ -16213,7 +16217,8 @@ impl LayoutEngine {
                                         || (reset_before && ri == 0 && fragment_index == 0);
                                     let mut stored_frame_break_before = (!split_block
                                         && driver_units[fragment_index].stored_frame_break_before)
-                                        || (stored_frame_break_before_para
+                                        || (split_block
+                                            && stored_frame_break_before_para
                                             && ri == 0
                                             && fragment_index == 0);
                                     let mut vpos_gap_before =
