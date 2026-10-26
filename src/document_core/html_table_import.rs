@@ -1754,7 +1754,7 @@ mod html_table_geometry_tests {
     use super::*;
     use crate::model::table::Table;
 
-    #[derive(Debug, Clone, PartialEq)]
+    #[derive(Debug, PartialEq)]
     struct Geometry {
         rows: u16,
         cols: u16,
@@ -1928,28 +1928,13 @@ mod html_table_geometry_tests {
             ),
             expected.height,
         );
-        // 한컴처럼 저장 표 높이는 조판한 행 높이 합이다. 내용이 선언보다 크면 그만큼 커진다.
-        let (paragraph, control) = {
-            let (paragraph, control, _) = super::html_table_geometry_tests::table(&core);
-            (paragraph, control)
-        };
-        let laid_out = core.measured_tables[0]
-            .iter()
-            .find(|m| m.para_index == paragraph && m.control_index == control)
-            .and_then(|m| m.cumulative_heights.last().copied())
-            .map(|px| crate::renderer::px_to_hwpunit(px, core.dpi).max(0) as u32)
-            .unwrap_or(0);
-        let mut saved_expected = expected.clone();
-        if laid_out > expected.height + 10 {
-            saved_expected.height = laid_out;
-        }
         let saved = [
             core.export_hwp_with_adapter().expect("save HWP"),
             core.export_hwpx_native().expect("save HWPX"),
         ];
         for bytes in saved {
             let reopened = DocumentCore::from_bytes(&bytes).expect("reopen saved table");
-            assert_eq!(geometry(&reopened), saved_expected);
+            assert_eq!(&geometry(&reopened), expected);
         }
     }
 
