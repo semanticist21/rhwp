@@ -158,8 +158,8 @@ impl DocumentCore {
                 });
         }
 
-        // 새 HTML 문단의 기본 글자 모양도 저장해 재열기 때 12px 폴백으로 달라지지 않게 한다.
-        if para.char_shapes.is_empty() {
+        // 새 HTML 빈 문단의 글자 모양도 저장해 재열기 때 12px 폴백으로 달라지지 않게 한다.
+        if para.text.is_empty() && para.char_shapes.is_empty() {
             para.set_single_char_shape(self.css_to_char_shape_id(block_style));
         }
 
