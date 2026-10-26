@@ -156,14 +156,18 @@ fn existing_shape_and_column_code_six_uses_long_dash_without_geometry_changes() 
         );
         assert_eq!(doc.get_cursor_rect_native(0, 0, 2).unwrap(), caret);
         let layer = doc.get_page_layer_tree_native(0).unwrap();
-        assert!(layer.contains("longDash"), "{kind} 원본 code6을 소비한다");
+        assert!(
+            layer.contains("hwpLongDash"),
+            "{kind} 원본 code6을 소비한다"
+        );
         let svg = doc.render_page_svg_native(0).unwrap();
         let tags: Vec<_> = svg
             .split('<')
             .filter(|tag| tag.contains("stroke=\"#cc3344\""))
             .collect();
         assert_eq!(tags.len(), 1, "{kind}: {svg}");
-        assert_svg_pattern(tags[0], 46.08, 15.36);
+        // 한컴 Print의 600dpi pen 외곽과 15/4.5배 도형 패턴을 따른다.
+        assert_svg_pattern(tags[0], 28.96, 8.48);
     }
 
     let mut doc = blank();
@@ -436,9 +440,15 @@ fn page_border_snapshot_and_both_formats_preserve_long_dash_and_body_content() {
     assert_eq!(assert_long_dash(&doc, COLOR, 0.80).len(), 4);
     assert_eq!(doc.get_cursor_rect_native(0, 0, 3).unwrap(), caret);
     doc.restore_snapshot_native(dash_snapshot).unwrap();
-    assert!(lines(&doc, COLOR)
-        .iter()
-        .all(|line| format!("{:?}", line.style.dash) == "Dash"));
+    for line in lines(&doc, COLOR) {
+        let StrokeDash::Explicit(pattern) = line.style.dash else {
+            panic!("한컴 Print의 선언 굵기별 파선 패턴: {:?}", line.style.dash);
+        };
+        // 굵기 index 3의 독립 2020/2024 Print 반복값은 34/21 dots(600dpi)다.
+        assert!((pattern[0] - 5.44).abs() < 1e-9);
+        assert!((pattern[1] - 3.36).abs() < 1e-9);
+        assert_eq!(&pattern[2..], &[0.0; 4]);
+    }
     doc.restore_snapshot_native(long_snapshot).unwrap();
     assert_eq!(format!("{:?}", doc.document()), model);
     for bytes in [

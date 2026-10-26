@@ -120,7 +120,16 @@ fn check(broken: &mut Vec<String>, label: &str, core: &DocumentCore, para: usize
             para,
             &mut owners,
         );
-        let expected_owner = want.1.iter().find(|(kind, _)| *kind == "번호").unwrap().1;
+        let raw_owner = want.1.iter().find(|(kind, _)| *kind == "번호").unwrap().1;
+        // paint의 char_start는 글자 앞 개체 칸을 포함한 논리 좌표다.
+        let paragraph = &doc.document().sections[0].paragraphs[para];
+        let expected_owner = raw_owner
+            + paragraph
+                .controls
+                .iter()
+                .zip(paragraph.control_text_positions())
+                .filter(|(control, at)| control.is_logical_inline() && *at <= raw_owner)
+                .count();
         if owners != [Some(expected_owner)] {
             broken.push(format!(
                 "{label} → {state}: 표시 필드의 모델 소속 {owners:?}, 원본 자리표 {expected_owner}"

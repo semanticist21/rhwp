@@ -1,4 +1,4 @@
-//! 미주 이중 구분선은 공통 두 Single 선과 같은 잉크 높이를 예약한다.
+//! 미주 구분선은 위·아래 여백만 흐름에 예약하고 공통 Double 선을 출력한다.
 //! NativeSkia 픽셀과 한컴 인쇄 대조는 이 공개 SVG·IR 검사의 범위가 아니다.
 #![cfg(not(target_arch = "wasm32"))]
 
@@ -185,32 +185,29 @@ fn assert_double(doc: &HwpDocument, width: u8) -> Vec<LineNode> {
         15 => 18.88,
         _ => panic!("fixture 굵기"),
     };
-    let span = raw_width.max(3.0);
+    let span = if width == 0 {
+        raw_width
+    } else {
+        raw_width.max(0.5)
+    };
     let result = lines(doc);
-    assert_eq!(result.len(), 2, "이중선은 두 실제 노드");
+    assert_eq!(result.len(), 1, "이중선은 공통 Double 노드 하나다");
     for line in &result {
         assert_eq!(
             line.style.line_type,
-            LineRenderType::Single,
-            "모든 백엔드의 공통 단일선"
+            LineRenderType::Double,
+            "모든 백엔드의 공통 이중선"
         );
         assert_eq!(line.style.dash, StrokeDash::Solid);
         assert_eq!(line.style.color, COLOR);
-        close(line.style.width, span * 0.3, "각 획 굵기");
+        close(line.style.width, span, "전체 이중선 굵기");
         close(line.y1, line.y2, "수평선");
         close(line.x2 - line.x1, 80.0, "원래 구분선 길이");
     }
-    close(result[0].x1, result[1].x1, "같은 시작점");
-    close(result[0].x2, result[1].x2, "같은 끝점");
-    close(result[1].y1 - result[0].y1, span * 0.7, "두 선 중심 간격");
-    let ink_top = result[0].ink_bbox().y;
-    let lower = result[1].ink_bbox();
-    close(lower.y + lower.height - ink_top, span, "실제 잉크 높이");
+    close(result[0].ink_bbox().height, span, "공통 잉크 상자 높이");
     let note = first_line(doc, NOTE);
-    assert!(
-        note.y + 0.002 >= lower.y + lower.height,
-        "여백0에서 미주 첫 줄과 선이 겹치지 않는다"
-    );
+    // #6574 독립 Print: 미주 첫 줄은 선 중심 + 아래 여백이다. 획 높이는 흐름에 더하지 않는다.
+    close(note.y, result[0].y1, "아래 여백0의 미주 첫 줄");
     for profile in [RenderProfile::Screen, RenderProfile::Print] {
         let svg = doc
             .render_page_svg_layer_with_profile_native(0, profile)
@@ -221,14 +218,15 @@ fn assert_double(doc: &HwpDocument, width: u8) -> Vec<LineNode> {
             .collect::<Vec<_>>();
         tags.sort_by(|a, b| attribute(a, "y1").total_cmp(&attribute(b, "y1")));
         assert_eq!(tags.len(), 2, "{profile:?}: 두 실제 SVG 획");
-        for (tag, line) in tags.iter().zip(&result) {
+        for (tag, offset) in tags.iter().zip([-0.35, 0.35]) {
+            let line = &result[0];
             assert!(!tag.contains("stroke-dasharray"));
             for (key, expected) in [
                 ("x1", line.x1),
                 ("x2", line.x2),
-                ("y1", line.y1),
-                ("y2", line.y2),
-                ("stroke-width", line.style.width),
+                ("y1", line.y1 + span * offset),
+                ("y2", line.y2 + span * offset),
+                ("stroke-width", span * 0.3),
             ] {
                 close(
                     attribute(tag, key),
@@ -276,7 +274,7 @@ fn assert_double(doc: &HwpDocument, width: u8) -> Vec<LineNode> {
 }
 
 #[test]
-fn double_endnote_separator_reserves_exact_visual_span_with_zero_margins() {
+fn double_endnote_separator_keeps_the_center_and_margin_flow_with_zero_margins() {
     for width in [0, 1, 5, 15] {
         let (mut doc, control) = fixture(width);
         let original = model_content(&doc, control);
@@ -292,18 +290,16 @@ fn double_endnote_separator_reserves_exact_visual_span_with_zero_margins() {
         doc.apply_endnote_shape_native(0, r#"{"separatorLineType":8}"#)
             .unwrap();
         let double = assert_double(&doc, width);
-        let ink_top = double[0].ink_bbox().y;
         close(
-            ink_top,
+            double[0].y1,
             single[0].y1,
-            "선 묶음이 원래 예약 시작 아래에 놓인다",
+            "이중선도 같은 위 여백 끝에 중심을 둔다",
         );
-        let bottom = double[1].ink_bbox();
         let new_note = first_line(&doc, NOTE);
         close(
             new_note.y,
-            old_note.y.max(bottom.y + bottom.height),
-            "필요한 이중선 높이만 미주 첫 줄을 민다",
+            old_note.y,
+            "획 굵기·종류는 미주 첫 줄을 밀지 않는다",
         );
         let delta = new_note.y - old_note.y;
         for (old, new) in old_carets.iter().zip(note_carets(&doc, control)) {
@@ -363,7 +359,7 @@ fn double_endnote_separator_history_recovers_existing_single_dash_and_hidden_geo
 }
 
 #[test]
-fn double_endnote_separator_height_is_included_in_the_page_budget() {
+fn double_endnote_separator_width_does_not_change_the_margin_page_budget() {
     for width in [0, 1] {
         let (mut doc, control) = fixture(width);
         // glyph 높이와 줄 전진 높이를 같게 하여 기존 160% 줄간격의 다음 줄 예약과
@@ -374,8 +370,8 @@ fn double_endnote_separator_height_is_included_in_the_page_budget() {
             .unwrap();
         let original = model_content(&doc, control);
         let note = first_line(&doc, NOTE);
-        // 단일선의 실제 마지막 줄 바로 아래에 본문 끝을 둔다. 이중선의 추가 높이는
-        // 이 쪽에 들어갈 수 없으므로 다음 쪽으로 보내야 하며, 용지 아래로 그리면 안 된다.
+        // #6574 독립 Print처럼 획 높이는 페이지 흐름에 더하지 않는다.
+        // 단일선이 맞는 페이지에는 같은 위·아래 여백의 이중선도 들어가야 한다.
         let height_hu = ((note.y + note.height + 10.0) * 75.0).ceil() as u32;
         doc.set_page_def_native(0, &json!({"height":height_hu}).to_string())
             .unwrap();
@@ -384,7 +380,8 @@ fn double_endnote_separator_height_is_included_in_the_page_budget() {
         assert!(before.y + before.height <= f64::from(height_hu) / 75.0 - 10.0 + 0.002);
         doc.apply_endnote_shape_native(0, r#"{"separatorLineType":8}"#)
             .unwrap();
-        assert_eq!(doc.page_count(), 2, "추가 잉크 높이도 페이지 예산에 포함");
+        assert_eq!(doc.page_count(), 1, "페이지 예산은 위·아래 여백을 유지한다");
+        close(first_line(&doc, NOTE).y, before.y, "미주 첫 줄 위치 유지");
         assert_eq!(model_content(&doc, control), original);
         for page in 0..doc.page_count() {
             fn check(node: &RenderNode, bottom: f64) {
@@ -488,11 +485,7 @@ fn assert_thin(doc: &HwpDocument, kind: u8) {
     close(line.style.width, 0.32, "규격0.1mm의 600dpi 양자화 획");
     close(line.ink_bbox().height, 0.32, "실제 잉크 높이");
     close(line.x2 - line.x1, 80.0, "구분선 길이 유지");
-    let ink = line.ink_bbox();
-    assert!(
-        first_line(doc, NOTE).y + 0.002 >= ink.y + ink.height,
-        "0여백에서도 미주와 겹치지 않는다"
-    );
+    close(first_line(doc, NOTE).y, line.y1, "아래 여백0의 미주 첫 줄");
     for profile in [RenderProfile::Screen, RenderProfile::Print] {
         let svg = doc
             .render_page_svg_layer_with_profile_native(0, profile)
