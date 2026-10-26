@@ -698,7 +698,7 @@ fn owned_inline_v2_accepts_an_unmarked_external_data_image() {
 }
 
 #[test]
-fn inline_table_v2_preserves_placement_but_keeps_existing_60003_to_40454_budget() {
+fn inline_table_v2_preserves_placement_inside_the_60003_to_41954_budget() {
     let original = source(false, true, true, true);
     for origin in saved(&original) {
         assert_source(&origin, false, true, true, true, 283);
@@ -706,9 +706,10 @@ fn inline_table_v2_preserves_placement_but_keeps_existing_60003_to_40454_budget(
         let mut expected = control_model(&origin, 0, &[], s, c);
         assert_eq!(expected["outer"], json!([283, 283, 283, 283]));
         let html = exported(&origin, false);
-        expected["width"] = json!(40454);
-        expected["cells"][0]["width"] = json!(16855);
-        expected["cells"][1]["width"] = json!(23599);
+        // 기본 문단 여백은 0이며 본문 42520HU에서 원문 바깥 여백 566HU만 예약한다.
+        expected["width"] = json!(41954);
+        expected["cells"][0]["width"] = json!(17480);
+        expected["cells"][1]["width"] = json!(24474);
         let mut target = blank();
         ok(&target.paste_html_native(0, 0, 0, &html).unwrap());
         let (t, d) = first(&target, 0, false);
@@ -716,9 +717,9 @@ fn inline_table_v2_preserves_placement_but_keeps_existing_60003_to_40454_budget(
         for (source, target) in saved(&origin).into_iter().zip(saved(&target)) {
             let (s, c) = first(&source, 0, false);
             let mut expected = control_model(&source, 0, &[], s, c);
-            expected["width"] = json!(40454);
-            expected["cells"][0]["width"] = json!(16855);
-            expected["cells"][1]["width"] = json!(23599);
+            expected["width"] = json!(41954);
+            expected["cells"][0]["width"] = json!(17480);
+            expected["cells"][1]["width"] = json!(24474);
             let (t, d) = first(&target, 0, false);
             assert_eq!(control_model(&target, 0, &[], t, d), expected);
         }
@@ -748,19 +749,19 @@ fn inline_table_v2_reserves_larger_source_outer_margins_without_overflow() {
         assert!(html.contains("data-rhwp-outer-margin=\"750,750,283,283\""));
         let mut target = blank();
         ok(&target.paste_html_native(0, 0, 0, &html).unwrap());
-        // 기본 본문 42520HU에서 본문 문단 여백 1500과 원문 바깥 여백 1500을 예약한다.
+        // 기본 문단 여백은 0이며 본문 42520HU에서 원문 바깥 여백 1500HU를 예약한다.
         let mut expected = expected_source;
-        expected["width"] = json!(39520);
-        expected["cells"][0]["width"] = json!(16466);
-        expected["cells"][1]["width"] = json!(23054);
+        expected["width"] = json!(41020);
+        expected["cells"][0]["width"] = json!(17091);
+        expected["cells"][1]["width"] = json!(23929);
         let (t, d) = first(&target, 0, false);
         assert_eq!(control_model(&target, 0, &[], t, d), expected);
         for (source, target) in saved(&origin).into_iter().zip(saved(&target)) {
             let (s, c) = first(&source, 0, false);
             let mut expected = control_model(&source, 0, &[], s, c);
-            expected["width"] = json!(39520);
-            expected["cells"][0]["width"] = json!(16466);
-            expected["cells"][1]["width"] = json!(23054);
+            expected["width"] = json!(41020);
+            expected["cells"][0]["width"] = json!(17091);
+            expected["cells"][1]["width"] = json!(23929);
             let (t, d) = first(&target, 0, false);
             assert_eq!(control_model(&target, 0, &[], t, d), expected);
         }

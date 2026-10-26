@@ -205,9 +205,9 @@ fn exact_css_preserves_original_height_beyond_cell_sum() {
     assert_eq!(expected.height, 2564);
     assert!(expected.cells.iter().all(|cell| cell.5 == 282));
     // 기본 표는 대상 문단 가용 폭을 넘는다. 너비 제한과 원래 세로 여유를 구분한다.
-    expected.width = 40454;
+    expected.width = 41954;
     for cell in &mut expected.cells {
-        cell.4 = 20227;
+        cell.4 = 20977;
     }
     assert_saved_geometry(import(&exact_html(&source)), &expected);
 }
@@ -244,9 +244,10 @@ fn exact_css_preserves_cell_width_set_by_public_api_and_scales_only_for_availabl
 
     let wide = fixture(&[3003, 4004], &[25001, 35002], false);
     let mut expected = geometry(&wide);
-    expected.width = 40454;
+    // 기본 문단 여백 0과 표 바깥 여백 566HU를 반영한 본문 폭이다.
+    expected.width = 41954;
     for cell in &mut expected.cells {
-        cell.4 = if cell.1 == 0 { 16855 } else { 23599 };
+        cell.4 = if cell.1 == 0 { 17480 } else { 24474 };
     }
     assert_saved_geometry(import(&exact_html(&wide)), &expected);
 
@@ -258,9 +259,9 @@ fn exact_css_preserves_cell_width_set_by_public_api_and_scales_only_for_availabl
         .unwrap();
     let mut expected = geometry(&wide);
     assert_eq!(expected.width, 61003);
-    expected.width = 40454;
+    expected.width = 41954;
     // 선언 폭이 넓은 행별 다른 칸은 비례 축소하고, 공유 열과 같은 칸은 기존 반올림을 쓴다.
-    for (cell, width) in expected.cells.iter_mut().zip([16579, 23212, 17242, 22548]) {
+    for (cell, width) in expected.cells.iter_mut().zip([17194, 24073, 17881, 23384]) {
         cell.4 = width;
     }
     assert_saved_geometry(import(&exact_html(&wide)), &expected);
@@ -271,7 +272,9 @@ fn ordinary_css_keeps_shared_columns_and_height_as_minimum() {
     let html = r#"<table style="height:5pt"><tr><td style="width:10pt;height:10pt"></td><td style="width:20pt;height:10pt"></td></tr><tr><td style="width:15pt;height:10pt"></td><td style="width:15pt;height:10pt"></td></tr></table>"#;
     let target = import(html);
     let expected = geometry(&target);
-    assert_eq!((expected.width, expected.height), (3500, 2000));
+    // 공개 붙이기는 행당 기본 글자 높이 1000HU와 위·아래 패딩 141HU씩을 예약한다.
+    assert_eq!((expected.width, expected.height), (3500, 2564));
+    assert!(expected.cells.iter().all(|cell| cell.5 == 1282));
     assert_eq!(
         expected.cells.iter().map(|cell| cell.4).collect::<Vec<_>>(),
         [1500, 2000, 1500, 2000]
@@ -312,7 +315,7 @@ fn untrusted_exact_width_falls_back_to_shared_columns_without_losing_exact_heigh
                 .map(|cell| u64::from(cell.4))
                 .sum();
             assert!(width <= u64::from(expected.width));
-            assert!(width <= 40454);
+            assert!(width <= 41954);
         }
         assert_saved_geometry(target, &expected);
     }
@@ -493,9 +496,10 @@ fn css_padding_and_spacing_keep_zero_clamp_large_values_and_ignore_invalid_value
     );
     assert!(parsed_table.cells[0].apply_inner_margin);
     assert_eq!(parsed_table.cells[0].padding.left, 0);
+    // #7412: 공개 셀 재조판은 한컴 저장 줄의 4HU 격자로 내용 폭을 내린다.
     assert_eq!(
         parsed_table.cells[0].paragraphs[0].line_segs[0].segment_width,
-        parsed_table.cells[0].width as i32
+        (parsed_table.cells[0].width / 4 * 4) as i32
     );
 
     for invalid in ["-1pt", "NaNpt", "infpt", "1e308pt", "autopt"] {
