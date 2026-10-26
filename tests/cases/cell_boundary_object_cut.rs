@@ -825,11 +825,26 @@ fn cell_caret_prefers_the_next_run_origin_but_keeps_the_slot_before_an_object() 
         let RenderNodeType::TextRun(before_run) = &before.node_type else {
             unreachable!()
         };
-        let before_x = before.bbox.x
-            + before_run
-                .replay_positions_for(&before_run.text)
+        let layout: serde_json::Value =
+            serde_json::from_str(&doc.get_page_text_layout_native(0).unwrap()).unwrap();
+        let expected_path = serde_json::Value::Array(entries);
+        let painted = layout["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|run| {
+                run["cellPath"] == expected_path
+                    && run["charStart"] == 0
+                    && run["text"] == before_run.text
+            })
+            .expect("개체 앞 글자의 공개 조판 좌표");
+        let before_x = painted["x"].as_f64().unwrap()
+            + painted["charX"]
+                .as_array()
+                .unwrap()
                 .last()
-                .copied()
+                .unwrap()
+                .as_f64()
                 .unwrap();
         // 연속 런 경계는 다음 글자 원점, 개체 앞 칸은 앞 글자 끝을 유지한다.
         for (offset, expected) in [(3, next.bbox.x), (1, before_x)] {

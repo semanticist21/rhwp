@@ -77,7 +77,7 @@ fn fractional_css_margins_keep_physical_units_after_both_formats() {
     let mut core = DocumentCore::new_empty();
     core.create_blank_document_native().unwrap();
     core.paste_html_native(0, 0, 0,
-        r#"<p style="margin-left:19.7px;margin-right:7.3px;text-indent:-5.1px;margin-top:9.9px;margin-bottom:3.7px">문단</p>"#,
+        r#"<p>앞</p><p style="margin-left:19.7px;margin-right:7.3px;text-indent:-5.1px;margin-top:9.9px;margin-bottom:3.7px">문단</p>"#,
     ).unwrap();
     let expected = [
         ("marginLeft", 14.6),
@@ -92,7 +92,7 @@ fn fractional_css_margins_keep_physical_units_after_both_formats() {
     ] {
         let saved = DocumentCore::from_bytes(&bytes).unwrap();
         for document in [&core, &saved] {
-            let values = props(document, 0);
+            let values = props(document, 1);
             for (key, expected) in expected {
                 assert_eq!(values[key], expected, "{key}: {values}");
             }
@@ -108,15 +108,15 @@ fn oversized_or_nonfinite_css_margins_do_not_overflow_or_replace_valid_defaults(
     ] {
         let mut core = DocumentCore::new_empty();
         core.create_blank_document_native().unwrap();
-        core.paste_html_native(0, 0, 0, &format!("<p style=\"{css}\">문단</p>"))
+        core.paste_html_native(0, 0, 0, &format!("<p>앞</p><p style=\"{css}\">문단</p>"))
             .unwrap();
         for bytes in [core.export_hwp_native().unwrap(), core.export_hwpx_native().unwrap()] {
             let saved = DocumentCore::from_bytes(&bytes).unwrap();
-            let values = props(&saved, 0);
+            let values = props(&saved, 1);
             for key in ["marginLeft", "marginRight", "indent", "spacingBefore", "spacingAfter"] {
                 assert_eq!(values[key], 0.0, "{key}: {values}");
             }
-            let caret = cursor(&saved, 0);
+            let caret = cursor(&saved, 1);
             assert!(caret["x"].as_f64().unwrap().is_finite());
             assert!(caret["y"].as_f64().unwrap().is_finite());
         }

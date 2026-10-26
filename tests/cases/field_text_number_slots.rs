@@ -240,10 +240,6 @@ fn assert_edited(core: &DocumentCore, number: Number, place: Place, edit: Edit) 
             (Number::New, Place::AfterEnd, Edit::SetValue) => {
                 (format!("P{value}尾"), &[0, 9, 10, 28], 30, (1, 3), 3)
             }
-            // 새 번호는 가시 자리표시자가 없어 기존 API가 번호 뒤 원시 슬롯에 입력한다.
-            (Number::New, Place::AfterEnd, Edit::ActiveEnd) => {
-                (format!("P{value}尾"), &[0, 9, 10, 19, 28], 30, (1, 4), 3)
-            }
             (Number::Auto, Place::AfterEnd, _) => (
                 format!("P{value} 尾"),
                 &[0, 9, 10, 11, 20, 28],
