@@ -347,6 +347,18 @@ fn preceding_text_edits_preserve_no_lineseg_object_bridge_and_saved_geometry() {
         .collect()
     }
 
+    fn assert_delta(core: &DocumentCore, stored: &[Vec<i32>], delta: i32, context: &str) {
+        let actual = origins(core);
+        assert_eq!(actual.len(), stored.len(), "{context}: 문단 수 보존");
+        for (para, (actual, stored)) in actual.iter().zip(stored).enumerate().skip(1) {
+            assert_eq!(
+                *actual,
+                stored.iter().map(|vpos| vpos + delta).collect::<Vec<_>>(),
+                "{context}: 문단 {para}의 미수정 개체 점유와 저장 간격"
+            );
+        }
+    }
+
     let mut producer = blank();
     for (para, text) in ["바깥 본문", "가🦦나다라", "중간", "앞뒤끝말", ""]
         .iter()
@@ -427,18 +439,15 @@ fn preceding_text_edits_preserve_no_lineseg_object_bridge_and_saved_geometry() {
         let original = origins(&core);
         let original_end = end(&core);
         let original_svg = saved_svg(&core);
+        let original_saved_origins = [
+            core.export_hwp_native().unwrap(),
+            core.export_hwpx_native().unwrap(),
+        ]
+        .iter()
+        .map(|bytes| origins(&DocumentCore::from_bytes(bytes).unwrap()))
+        .collect::<Vec<_>>();
         let original_shape = core.document().sections[0].paragraphs[0].para_shape_id;
         let original_style = core.document().sections[0].paragraphs[0].style_id;
-        let assert_delta = |core: &DocumentCore, delta: i32| {
-            for (para, (actual, stored)) in origins(core).iter().zip(&original).enumerate().skip(1)
-            {
-                assert_eq!(
-                    *actual,
-                    stored.iter().map(|vpos| vpos + delta).collect::<Vec<_>>(),
-                    "{format}: 문단 {para}의 미수정 개체 점유와 저장 간격"
-                );
-            }
-        };
         for text in ["임시".to_string(), "늘림 ".repeat(80)] {
             core.insert_text_native(0, 0, 0, &text).unwrap();
             let delta = end(&core) - original_end;
@@ -447,7 +456,7 @@ fn preceding_text_edits_preserve_no_lineseg_object_bridge_and_saved_geometry() {
             } else {
                 assert_eq!(delta, 0);
             }
-            assert_delta(&core, delta);
+            assert_delta(&core, &original, delta, format);
             core.delete_text_native(0, 0, 0, text.chars().count())
                 .unwrap();
             assert_eq!(origins(&core), original, "{format}: 역편집 뒤 원본 vpos");
@@ -461,29 +470,38 @@ fn preceding_text_edits_preserve_no_lineseg_object_bridge_and_saved_geometry() {
         for (after, expected) in [(1500, 750), (3000, 1500), (1500, 750)] {
             core.apply_para_format_native(0, 0, &format!(r#"{{"spacingAfter":{after}}}"#))
                 .unwrap();
-            assert_delta(&core, expected);
+            assert_delta(&core, &original, expected, format);
             core.insert_text_native(0, 0, 0, "임시").unwrap();
             core.delete_text_native(0, 0, 0, 2).unwrap();
-            assert_delta(&core, expected);
-            for bytes in [
-                core.export_hwp_native().unwrap(),
-                core.export_hwpx_native().unwrap(),
-            ] {
-                assert_delta(&DocumentCore::from_bytes(&bytes).unwrap(), expected);
+            assert_delta(&core, &original, expected, format);
+            // HWPX는 선택적인 개체 LS를 생략하므로 형식별 원래 저장 계약과 비교한다.
+            for ((saved_format, bytes), stored) in [
+                ("HWP", core.export_hwp_native().unwrap()),
+                ("HWPX", core.export_hwpx_native().unwrap()),
+            ]
+            .into_iter()
+            .zip(&original_saved_origins)
+            {
+                assert_delta(
+                    &DocumentCore::from_bytes(&bytes).unwrap(),
+                    stored,
+                    expected,
+                    &format!("{format} → {saved_format}"),
+                );
             }
         }
         let after_shape = core.document().sections[0].paragraphs[0].para_shape_id;
         core.set_para_shape_id_native(0, 0, original_shape).unwrap();
-        assert_delta(&core, 0);
+        assert_delta(&core, &original, 0, format);
         let style = core.create_style(&format!(
             r#"{{"name":"개체 앞 간격","type":0,"baseParaShapeId":{after_shape},"baseCharShapeId":0}}"#
         ));
         assert!(style >= 0);
         core.apply_style_native(0, 0, style as usize).unwrap();
-        assert_delta(&core, 750);
+        assert_delta(&core, &original, 750, format);
         core.apply_style_native(0, 0, original_style as usize)
             .unwrap();
-        assert_delta(&core, 0);
+        assert_delta(&core, &original, 0, format);
         assert_eq!(
             saved_svg(&core),
             original_svg,
