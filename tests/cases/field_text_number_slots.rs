@@ -240,9 +240,10 @@ fn assert_edited(core: &DocumentCore, number: Number, place: Place, edit: Edit) 
             (Number::New, Place::AfterEnd, Edit::SetValue) => {
                 (format!("P{value}尾"), &[0, 9, 10, 28], 30, (1, 3), 3)
             }
-            // 새 번호는 가시 자리표시자가 없어 기존 API가 번호 뒤 원시 슬롯에 입력한다.
+            // 활성 필드 끝 입력은 공식 슬롯 편집기처럼 END 앞 원시 슬롯에 들어가 필드 범위와
+            // 원시 순서가 같다. 새 번호에는 가시 자리표시자가 없어 뒤 글자 run을 잇는다.
             (Number::New, Place::AfterEnd, Edit::ActiveEnd) => {
-                (format!("P{value}尾"), &[0, 9, 10, 19, 28], 30, (1, 4), 3)
+                (format!("P{value}尾"), &[0, 9, 10, 11, 28], 30, (1, 4), 4)
             }
             (Number::Auto, Place::AfterEnd, _) => (
                 format!("P{value} 尾"),
@@ -279,6 +280,20 @@ fn assert_edited(core: &DocumentCore, number: Number, place: Place, edit: Edit) 
         Edit::ActiveEnd if inherits_suffix => Some((field.1 - 1, field.1)),
         _ => None,
     };
+    // 문단 끝 빈 필드에 값을 넣으면 공식 슬롯 편집기는 앞 글자 run을 잇는다. 뒤 글자도
+    // 번호 자리표도 없어 고를 다른 run이 없다.
+    if matches!((number, place, edit), (Number::New, Place::Last, Edit::SetValue)) {
+        let p = paragraph(core);
+        let plain = properties(core, 0);
+        for at in field.0..field.1 {
+            let actual = properties(core, at);
+            for key in ["bold", "italic", "textColor"] {
+                assert_eq!(actual[key], plain[key], "{place:?} at={at}: {actual}");
+            }
+        }
+        assert_eq!(p.control_text_positions().len(), 2);
+        return;
+    }
     styles(core, field, at, place, italic_new);
 }
 
