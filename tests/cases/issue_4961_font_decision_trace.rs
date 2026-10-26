@@ -91,6 +91,44 @@ fn assert_stage4_profile(trace: &serde_json::Value, profile: &serde_json::Value)
     );
 }
 
+fn run_source_paragraph<'a>(
+    core: &'a DocumentCore,
+    run: &serde_json::Value,
+) -> &'a rhwp::model::paragraph::Paragraph {
+    use rhwp::model::{control::Control, shape::ShapeObject};
+    let section = run["secIdx"].as_u64().expect("원문 구역") as usize;
+    let parent = run["parentParaIdx"]
+        .as_u64()
+        .or_else(|| run["paraIdx"].as_u64())
+        .expect("원문 문단") as usize;
+    let mut para = &core.document().sections[section].paragraphs[parent];
+    for entry in run["cellPath"].as_array().into_iter().flatten() {
+        let control = entry["controlIndex"].as_u64().expect("원문 컨트롤") as usize;
+        let cell = entry["cellIndex"].as_u64().expect("원문 셀") as usize;
+        let paragraph = entry["cellParaIndex"].as_u64().expect("원문 셀 문단") as usize;
+        para = match &para.controls[control] {
+            Control::Table(table) => &table.cells[cell].paragraphs[paragraph],
+            Control::Shape(shape) => {
+                assert_eq!(cell, 0);
+                let drawing = match shape.as_ref() {
+                    ShapeObject::Rectangle(shape) => &shape.drawing,
+                    ShapeObject::Ellipse(shape) => &shape.drawing,
+                    ShapeObject::Polygon(shape) => &shape.drawing,
+                    ShapeObject::Curve(shape) => &shape.drawing,
+                    other => panic!("원문 글상자가 아니다: {other:?}"),
+                };
+                &drawing.text_box.as_ref().expect("원문 글상자").paragraphs[paragraph]
+            }
+            Control::Picture(picture) => {
+                assert_eq!(cell, 0);
+                &picture.caption.as_ref().expect("원문 그림 캡션").paragraphs[paragraph]
+            }
+            other => panic!("원문 문단 컨테이너가 아니다: {other:?}"),
+        };
+    }
+    para
+}
+
 #[test]
 fn font_trace_profiles_follow_source_ownership_and_preserve_font_decisions() {
     let manifest = stage4_e2e_manifest();
@@ -128,8 +166,10 @@ fn font_trace_profiles_follow_source_ownership_and_preserve_font_decisions() {
             if document["validateRunOwnership"] == true {
                 let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
                     .join(document["path"].as_str().expect("source path"));
-                let core = DocumentCore::from_bytes(&std::fs::read(path).expect("동일 원본"))
-                    .expect("원본 문서 열기");
+                let bytes = std::fs::read(path).expect("동일 원본");
+                let core = DocumentCore::from_bytes(&bytes).expect("원본 문서 열기");
+                let logical =
+                    rhwp::wasm_api::HwpDocument::from_bytes(&bytes).expect("공개 논리 주소 변환");
                 let public: serde_json::Value =
                     serde_json::from_str(
                         &core
@@ -177,10 +217,50 @@ fn font_trace_profiles_follow_source_ownership_and_preserve_font_decisions() {
                         .expect("문자는 소유 런 안에 포함");
                     assert_eq!(record["source"]["character"], character.to_string());
                     if let Some(start) = run["charStart"].as_u64() {
-                        assert_eq!(
-                            record["source"]["charOffset"].as_u64(),
-                            Some(start + local as u64)
-                        );
+                        use rhwp::model::control::Control;
+                        let offset = start as usize + local;
+                        let para = run_source_paragraph(&core, run);
+                        let positions = para.logical_control_positions();
+                        let overlap_owned =
+                            para.controls
+                                .iter()
+                                .zip(&positions)
+                                .any(|(control, &position)| {
+                                    matches!(control, Control::CharOverlap(_)) && position <= offset
+                                });
+                        if overlap_owned {
+                            // 겹침 표시 이후의 주소는 원문 소유권을 증명할 때까지 확정하지 않는다.
+                            assert_eq!(record["source"]["status"], "unavailable");
+                            assert!(record["source"]["charOffset"].is_null());
+                        } else {
+                            let inline_before = para
+                                .controls
+                                .iter()
+                                .zip(&positions)
+                                .filter(|(control, position)| {
+                                    control.is_logical_inline() && **position < offset
+                                })
+                                .count();
+                            let scalar = offset - inline_before;
+                            if run["cellPath"].is_null() {
+                                assert_eq!(
+                                    logical
+                                        .logical_to_text_offset(
+                                            run["secIdx"].as_u64().unwrap() as u32,
+                                            run["paraIdx"].as_u64().unwrap() as u32,
+                                            offset as u32,
+                                        )
+                                        .unwrap() as usize,
+                                    scalar
+                                );
+                            }
+                            assert_eq!(record["source"]["status"], "complete", "{id}: {record}");
+                            assert_eq!(para.text.chars().nth(scalar), Some(character));
+                            assert_eq!(
+                                record["source"]["charOffset"].as_u64(),
+                                Some(scalar as u64)
+                            );
+                        }
                         assert_eq!(record["source"]["sectionIndex"], run["secIdx"]);
                     } else {
                         assert_eq!(record["source"]["status"], "unavailable");

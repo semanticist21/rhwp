@@ -27,10 +27,9 @@ fn sample16_layer_ops<'a>(value: &'a Value, kind: &str, prefix: &str, out: &mut 
 
 fn sample16_assert_tab_owner(label: &str) {
     let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"));
-    let mut core = DocumentCore::from_bytes(
-        &std::fs::read(root.join("samples/hwp3-sample16-hwp5.hwp")).unwrap(),
-    )
-    .unwrap();
+    let bytes = std::fs::read(root.join("samples/hwp3-sample16-hwp5.hwp")).unwrap();
+    let logical = rhwp::wasm_api::HwpDocument::from_bytes(&bytes).unwrap();
+    let mut core = DocumentCore::from_bytes(&bytes).unwrap();
     core.set_hangul2024_compat(true);
     let (pi, text) = core.document().sections[0]
         .paragraphs
@@ -93,7 +92,11 @@ fn sample16_assert_tab_owner(label: &str) {
             .chars()
             .position(|c| c == '\t')
             .unwrap();
-        assert_eq!(text.chars().nth(source_start + tab_local), Some('\t'));
+        // 안정 키는 편집용 논리 주소이며 원문에는 인라인 개체 칸이 없다.
+        let scalar = logical
+            .logical_to_text_offset(0, pi as u32, (source_start + tab_local) as u32)
+            .unwrap() as usize;
+        assert_eq!(text.chars().nth(scalar), Some('\t'));
         let number = texts.last().unwrap();
         for span in leader["leaders"].as_array().unwrap() {
             assert!(
