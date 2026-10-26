@@ -653,14 +653,6 @@ impl DocumentCore {
                 horz_align: crate::model::shape::HorzAlign::Left,
                 width: total_width,
                 height: total_height,
-                // HWP5 표의 바깥 여백은 CommonObjAttr 여백 칸이다. 원본 헤더(raw_ctrl_data)와 같은
-                // 값을 둬야 복사한 공통 속성으로 새로 합성할 때도 여백이 남는다.
-                margin: crate::model::Padding {
-                    left: outer_margin,
-                    right: outer_margin,
-                    top: outer_margin,
-                    bottom: outer_margin,
-                },
                 ..Default::default()
             },
             outer_margin_left: 283,
@@ -1100,13 +1092,6 @@ impl DocumentCore {
                 horz_align: crate::model::shape::HorzAlign::Left,
                 width: total_width,
                 height: total_height,
-                // 원본 헤더와 같은 바깥 여백(HWP5 CommonObjAttr 여백 칸).
-                margin: crate::model::Padding {
-                    left: outer_margin,
-                    right: outer_margin,
-                    top: outer_margin,
-                    bottom: outer_margin,
-                },
                 ..Default::default()
             },
             outer_margin_left: outer_margin,
