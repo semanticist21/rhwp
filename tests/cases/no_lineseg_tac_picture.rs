@@ -309,3 +309,147 @@ fn nonempty_inline_picture_is_not_emitted_twice() {
     assert_eq!(core.document().sections[0].paragraphs[0].text, "앞뒤");
     assert_roundtrip(&core, 0, false);
 }
+
+#[test]
+fn preceding_text_edits_preserve_no_lineseg_object_bridge_and_saved_geometry() {
+    fn origins(core: &DocumentCore) -> Vec<Vec<i32>> {
+        core.document().sections[0]
+            .paragraphs
+            .iter()
+            .map(|para| {
+                para.line_segs
+                    .iter()
+                    .map(|line| line.vertical_pos)
+                    .collect()
+            })
+            .collect()
+    }
+    fn end(core: &DocumentCore) -> i32 {
+        let last = core.document().sections[0].paragraphs[0]
+            .line_segs
+            .last()
+            .unwrap();
+        last.vertical_pos + last.line_height.min(last.text_height) + last.line_spacing
+    }
+    fn saved_svg(core: &DocumentCore) -> Vec<Vec<String>> {
+        [
+            core.export_hwp_native().unwrap(),
+            core.export_hwpx_native().unwrap(),
+        ]
+        .iter()
+        .map(|bytes| {
+            let reopened = DocumentCore::from_bytes(bytes).unwrap();
+            (0..reopened.page_count())
+                .map(|page| reopened.render_page_svg_native(page).unwrap())
+                .collect()
+        })
+        .collect()
+    }
+
+    let mut producer = blank();
+    for (para, text) in ["바깥 본문", "가🦦나다라", "중간", "앞뒤끝말", ""]
+        .iter()
+        .enumerate()
+    {
+        if para > 0 {
+            producer.insert_paragraph_native(0, para).unwrap();
+        }
+        producer.insert_text_native(0, para, 0, text).unwrap();
+    }
+    for (para, offset) in [(1, 1), (3, 1), (3, 3)] {
+        let inserted: Value = serde_json::from_str(
+            &producer
+                .insert_picture_native(
+                    0,
+                    para,
+                    offset,
+                    &[],
+                    include_bytes!("../../assets/logo/logo-16.png"),
+                    1300,
+                    1400,
+                    16,
+                    16,
+                    "png",
+                    "간격 소유 그림",
+                    None,
+                    None,
+                )
+                .unwrap(),
+        )
+        .unwrap();
+        producer
+            .set_picture_properties_native(
+                0,
+                para,
+                inserted["controlIdx"].as_u64().unwrap() as usize,
+                r#"{"treatAsChar":true}"#,
+            )
+            .unwrap();
+    }
+    producer
+        .create_shape_control_native(
+            0,
+            1,
+            2,
+            1200,
+            1400,
+            0,
+            0,
+            true,
+            "Square",
+            "Rectangle",
+            false,
+            false,
+            &[],
+        )
+        .unwrap();
+    producer
+        .apply_char_format_native(0, 1, 0, 2, r#"{"bold":true}"#)
+        .unwrap();
+    producer
+        .apply_char_format_native(0, 3, 2, 4, r#"{"italic":true}"#)
+        .unwrap();
+    producer.create_table_native(0, 4, 0, 1, 2).unwrap();
+
+    for (format, bytes) in [
+        ("HWP", producer.export_hwp_native().unwrap()),
+        ("HWPX", producer.export_hwpx_native().unwrap()),
+    ] {
+        let mut core = DocumentCore::from_bytes(&bytes).unwrap();
+        if format == "HWPX" {
+            for para in [1, 3] {
+                assert!(core.document().sections[0].paragraphs[para]
+                    .line_segs
+                    .is_empty());
+            }
+        }
+        let original = origins(&core);
+        let original_end = end(&core);
+        let original_svg = saved_svg(&core);
+        for text in ["임시".to_string(), "늘림 ".repeat(80)] {
+            core.insert_text_native(0, 0, 0, &text).unwrap();
+            let delta = end(&core) - original_end;
+            if text.len() > "임시".len() {
+                assert!(delta > 0, "{format}: 실제로 여러 줄로 늘어난 편집");
+            } else {
+                assert_eq!(delta, 0);
+            }
+            for (para, (actual, stored)) in origins(&core).iter().zip(&original).enumerate().skip(1)
+            {
+                assert_eq!(
+                    *actual,
+                    stored.iter().map(|vpos| vpos + delta).collect::<Vec<_>>(),
+                    "{format}: 문단 {para}의 미수정 개체 점유와 저장 간격"
+                );
+            }
+            core.delete_text_native(0, 0, 0, text.chars().count())
+                .unwrap();
+            assert_eq!(origins(&core), original, "{format}: 역편집 뒤 원본 vpos");
+            assert_eq!(
+                saved_svg(&core),
+                original_svg,
+                "{format}: 파일 형식별 재열기 SVG"
+            );
+        }
+    }
+}

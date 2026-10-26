@@ -5803,9 +5803,25 @@ pub(crate) fn recalculate_section_vpos(
             && !is_ignored(pi)
             && prev_stored_bound.is_some_and(|bound| current_start < bound);
 
+        // 미수정 NO_LS 개체 호스트 사이의 원본 간격은 앞뒤 문단의 스타일 간격이 아니다.
+        // 저장 끝점이 증명하는 점유는 유지하고, 편집 문단의 끝 변화량만 넘긴다.
+        let unchanged_object_bridge = !para_modified
+            && prev_idx == Some(start_para)
+            && pi > start_para + 1
+            && !is_ignored(start_para)
+            && (start_para + 1..pi)
+                .all(|gap| !is_ignored(gap) && !paragraphs[gap].stored_text_partition_is_dirty())
+            && paragraphs[start_para + 1..pi]
+                .iter()
+                .any(|paragraph| !paragraph.controls.is_empty());
+        let bridge_delta = start_stored_end
+            .filter(|_| unchanged_object_bridge)
+            .map(|end| next_vpos.saturating_sub(end));
         let delta = if is_reset {
             // 단/쪽 리셋 경계 — 저장 좌표 유지.
             0
+        } else if let Some(delta) = bridge_delta {
+            delta
         } else if para_modified || prev_modified {
             // 변조 인접 경계 — 이동 후 흐름에 스타일 여백 gap 으로 다시 잇는다.
             let gap = prev_idx
