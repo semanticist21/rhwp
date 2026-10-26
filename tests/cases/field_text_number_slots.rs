@@ -282,7 +282,10 @@ fn assert_edited(core: &DocumentCore, number: Number, place: Place, edit: Edit) 
     };
     // 문단 끝 빈 필드에 값을 넣으면 공식 슬롯 편집기는 앞 글자 run을 잇는다. 뒤 글자도
     // 번호 자리표도 없어 고를 다른 run이 없다.
-    if matches!((number, place, edit), (Number::New, Place::Last, Edit::SetValue)) {
+    if matches!(
+        (number, place, edit),
+        (Number::New, Place::Last, Edit::SetValue)
+    ) {
         let p = paragraph(core);
         let plain = properties(core, 0);
         for at in field.0..field.1 {
