@@ -154,7 +154,9 @@ impl<'a> TextShapeLowerer<'a> {
                     self.collect_node(child, report);
                 }
             }
-            LayerNodeKind::ClipRect { child, .. } => self.collect_node(child, report),
+            LayerNodeKind::ClipRect { child, .. } | LayerNodeKind::ClipPath { child, .. } => {
+                self.collect_node(child, report)
+            }
             LayerNodeKind::Leaf { ops } => {
                 for op in ops {
                     if let PaintOp::TextRun { run, .. } = op {
@@ -177,7 +179,7 @@ impl<'a> TextShapeLowerer<'a> {
                     self.lower_node(child, report, next_text_source_id);
                 }
             }
-            LayerNodeKind::ClipRect { child, .. } => {
+            LayerNodeKind::ClipRect { child, .. } | LayerNodeKind::ClipPath { child, .. } => {
                 self.lower_node(child, report, next_text_source_id);
             }
             LayerNodeKind::Leaf { ops } => {
@@ -192,7 +194,10 @@ impl<'a> TextShapeLowerer<'a> {
                     .collect::<HashSet<_>>();
                 let mut lowered = Vec::with_capacity(ops.len());
                 for op in ops.drain(..) {
-                    if let PaintOp::TextRun { bbox, run, source } = op {
+                    if let PaintOp::TextRun {
+                        bbox, run, source, ..
+                    } = op
+                    {
                         let source = source.unwrap_or_else(|| {
                             crate::paint::TextSourceSpan::for_text_run(*next_text_source_id, &run)
                         });
@@ -202,6 +207,7 @@ impl<'a> TextShapeLowerer<'a> {
                         let equivalence_group = format!("text-{text_source_id}");
                         if existing_glyph_groups.contains(&equivalence_group) {
                             lowered.push(PaintOp::TextRun {
+                                paint_transform: None,
                                 bbox,
                                 run,
                                 source: Some(source),
@@ -215,12 +221,14 @@ impl<'a> TextShapeLowerer<'a> {
                             report.shaped_measurements.push(measurement);
                         }
                         lowered.push(PaintOp::TextRun {
+                            paint_transform: None,
                             bbox,
                             run,
                             source: Some(source),
                         });
                         if let Some(glyph_run) = glyph_run {
                             lowered.push(PaintOp::GlyphRun {
+                                paint_transform: None,
                                 bbox,
                                 run: Box::new(glyph_run),
                             });

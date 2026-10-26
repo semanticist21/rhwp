@@ -75,6 +75,19 @@ rhwp 내부 보안 패치 dependency이며, 원 저작권·라이선스·NOTICE�
 
 ## 제한과 남은 게이트
 
+### #7998 실제 문자 paint의 clip 사용 관계
+
+opt-in `extract_paths_with_clips`는 full-parser invocation path와 함께 text-show 때의
+실제 clip chain도 제한된 장부에 기록한다. page/Form의 q/Q·CTM·BBox를 소비하는 기존
+interpreter에서 관측하며, 앞서 나온 clip과 문자 위치가 겹친다는 이유로 관계를 추정하지
+않는다. 요청 예산으로 예약·복사를 계상하고 32,768개를 넘은 관측은 incomplete로 남긴다.
+일반 path 추출·검색 API는 유지한다. painted span은 graphics-state/clip 경계를 지나
+합쳐지지 않도록 source group을 구분한다. 전체 parser 할당 감사 완료를 뜻하지 않는다.
+
+painted span의 글꼴 이름은 버퍼가 참조한 실제 FontInfo의 BaseFont로 고정한다. Form의 F1과
+caller의 F1은 같은 글꼴이라는 보장이 없으므로, Form을 벗어난 뒤 caller 자원으로 다시
+해석하지 않는다. 일반 검색의 기존 이름 해석은 유지한다.
+
 ### 후속 캐시 보완
 
 - span/character cache hit의 fatal 확인, span 보관·반환과 character 반환의 소유 payload
@@ -352,3 +365,36 @@ and inline JPEGs consume this same decision. No default limit or bitmap geometry
 - Public source controls and inventories: `pdf/issue7974/`. Implementation and
   validation boundaries: `mydocs/working/task_m100_7974_stage1.md` and
   `mydocs/working/task_m100_7974_stage2.md`.
+
+
+### #8183: independent opt-in image codecs
+
+- `jbig2` is separate from `rendering`; `rendering` still includes it. `jpeg2000`
+  keeps its own switch. Both select version+path internal hayro forks with
+  default features disabled, plus the synchronous `rhwp-codec-resource` scope.
+- The original import request charges input-sized decoder reservations before
+  fallible growth, including dictionaries, bitmap/component/tile storage, copies,
+  wavelet scratch and explicit stable-sort index buffers. Codec work consumes a
+  finite logical counter (`codec_work_units`, default 1,000,000,000), separate
+  from operators and stream bytes. A nested codec scope cannot reset counters.
+- Codec header dimensions are checked against the PDF declaration before pixel
+  allocation. JBIG2 uses a preallocated, exact-row collector and resolves indirect
+  filter-position DecodeParms/JBIG2Globals. JPX retains raw Indexed samples,
+  embedded palette resolution, source colour-channel counts and eight-bit output.
+  SMaskInData 1/2 preserves straight/premultiplied Gray/RGB alpha. Unsupported
+  embedded alpha combinations return a typed error, never silently discard alpha.
+- Bounded mask readers use the same source-sample adapters. Source mask depth must
+  agree with the supported packed sample contract; unsupported mixed depths are
+  explicit errors. Other byte-filter, Matte, interpolation, ownership and geometry
+  contracts retain their prior semantics. No encoded bytes become raw mask data.
+- Fixed-size Rc/Arc/iterator metadata still uses normal Rust allocation. Legacy
+  calls without a request and unused optional image/SIMD integrations are outside
+  this request contract. This is not a total allocator/RSS/CPU-time guarantee.
+  `parser_allocation_bounds_proven` stays false. Full Native/fresh WASM products,
+  visual evidence, performance and user guides belong to #8183 stage 3.
+
+## #8183 compile-time support disclosure
+
+`image_codec_support()` exposes the actual compiled JBIG2/JPEG 2000 feature flags.
+The RHWP frontend uses this result so a consumer enabling a backend feature through
+another dependency is reflected after Cargo feature unification. This adds no decoding work.

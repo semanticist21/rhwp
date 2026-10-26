@@ -2,7 +2,7 @@
 kind: guide
 status: active
 canonical: mydocs/manual/README.md
-last_verified: 2026-10-09
+last_verified: 2026-10-23
 ---
 
 # manual 문서 지도
@@ -21,6 +21,7 @@ last_verified: 2026-10-09
 | 외부 PR 검토, collaborator 처리, merge 후속 | [PR 리뷰·통합 워크플로우](pr_review_workflow.md) | [조건별 PR review 가이드](pr_review/README.md), [개발 환경 가이드](dev_environment_guide.md) |
 | rhwp 첫 외부 contributor PR | [PR 리뷰·통합 워크플로우](pr_review_workflow.md) | [첫 기여자 외부 PR 처리](pr_review/first_time_contributor.md), [조건별 PR review 가이드](pr_review/README.md) |
 | 로컬 빌드, 테스트, WASM 검증 | [개발 환경 가이드](dev_environment_guide.md) | [CLI 명령어 매뉴얼](cli_commands.md) |
+| 보안 때문에 제한되는 기능·자원 한도·일반 미지원 구분 | [보안 제한과 기능 사용 범위](security_feature_limits.md) | [CLI 명령어 매뉴얼](cli_commands.md), [에이전트 보안 매뉴얼](agent_codex/60_보안.md) |
 | 제품에서 선택적 Gym 평가 도구로 이동 | [선택적 Gym 안내](gym_optional_tool.md) | [Gym 벤치마크 운영 매뉴얼](gym_benchmark_operations.md) |
 | Gym 구조 계약·전수 벤치마크·증적 보고를 사람이 수동 실행 | [Gym 벤치마크 수동 운영 매뉴얼](gym_benchmark_operations.md) | [Gym 증적 seal·HTML 규약](../../gym/docs/evidence_report.md), [Gym 범위 AI 에이전트 지침](../../gym/AGENTS.md), [Gym 참가자 안내](../../gym/README.md) |
 | 문서 이동·정보구조의 링크 검사 | [문서 링크와 메타데이터 로컬 검사](markdown_link_check_guide.md) | [문서와 Git 워크플로우](codex/docs_and_git_workflow.md) |
@@ -28,6 +29,7 @@ last_verified: 2026-10-09
 | 에이전트가 rhwp 참조 문서를 처음 탐색 | [에이전트 지식 지도](agent_knowledge_map.md) | 루트 [`llms.txt`](../../llms.txt), [CLI 명령어 매뉴얼](cli_commands.md) |
 | 에이전트·스크립트 실행 실패의 증상별 처방 | [에이전트 실패 사전](agent_troubleshooting_guide.md) | [CLI 명령어 매뉴얼](cli_commands.md), [문서 진단 도구](document_diagnostics_tool_manual.md) |
 | `rhwp` CLI 전체 옵션과 동작 | [CLI 명령어 매뉴얼](cli_commands.md) | [rhwp-cli Skill 사용 가이드](rhwp_cli_skill_guide.md), [dump 명령 가이드](dump_command.md), [PNG 내보내기 가이드](export_png_command.md), [CLI JSON 파이프라인 가이드](cli_json_pipeline_guide.md), [에이전트 실무 대체 예제집](agent_task_playbook.md) |
+| 터미널에서 문서 이미지 표시·SSH·한글 폰트 설정 | [CLI 명령어 매뉴얼](cli_commands.md) | [Kitty 출력 가이드](export_kitty_command.md), [Sixel 출력 가이드](export_sixel_command.md) |
 | CLI `--json`·MCP 도구 신규 추가 절차와 수용 기준 | [에이전트 표면 플레이북](agent_surface_playbook.md) | [CLI 명령어 매뉴얼](cli_commands.md), [MCP 통합 가이드](mcp_integration_guide.md) |
 | 실사례 여정 기반 버그 헌팅 | [버그 헌팅 playbook](bug_hunting_playbook.md) | [Claude bug-hunter 에이전트](../../.claude/agents/bug-hunter.md), [Codex bug-hunter Skill](../../.agents/skills/bug-hunter/SKILL.md), [정답지 비교 하네스](../../tools/fidelity_compare/README.md) |
 | 로컬 OWPML XML 스키마 자산 | [OWPML XML 스키마 reference](owpml_schema_reference.md) | [한컴 공식 OWPML 모델 참조 가이드](../tech/hwpx_hancom_reference.md) |
@@ -53,6 +55,9 @@ last_verified: 2026-10-09
 | release 준비와 배포 | [배포 가이드](publish_guide.md) | [개발 환경 가이드](dev_environment_guide.md) |
 | rhwp-studio UI 명칭·CSS 접두어 | [rhwp-studio UI 명칭과 CSS 접두어](rhwp_studio_ui_conventions.md) | [개발 환경 가이드](dev_environment_guide.md) |
 | rhwp-studio 테마 토큰·스킨 제작 | [rhwp-studio 테마 토큰과 스킨 제작](rhwp_studio_theming.md) | [rhwp-studio UI 명칭과 CSS 접두어](rhwp_studio_ui_conventions.md) |
+
+PDF 가져오기에서 필요한 JBIG2·JPEG 2000의 선택 빌드와 진단은
+[PDF 이미지 코덱 가이드](pdf_image_codecs.md)를 참고한다.
 
 ## HWP 원격 MCP 선택과 접근 범위
 

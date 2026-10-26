@@ -78,6 +78,9 @@ mod tests {
         let composed: Vec<_> = paragraphs.iter().map(compose_paragraph).collect();
 
         let styles = ResolvedStyleSet {
+            source_program_projection_slots: Default::default(),
+            isolated_jamo_font: None,
+            native_pua_fonts: Default::default(),
             resolved_dpi: None,
             page_number_char_style_id: None,
             page_number_font_is_hft: false,
@@ -112,6 +115,8 @@ mod tests {
             section_index: 0,
             layout,
             column_contents: vec![ColumnContent {
+                paragraph_origins: Default::default(),
+                computed_paragraphs: Default::default(),
                 column_index: 0,
                 start_height: 0.0,
                 endnote_flow: false,
@@ -129,6 +134,7 @@ mod tests {
                 stored_column_top_spacings: Default::default(),
                 paragraph_float_placements: Default::default(),
                 float_pushed_line_spacings: Default::default(),
+                page_band_flow_starts: Default::default(),
             }],
             active_header: None,
             active_footer: None,
@@ -616,7 +622,7 @@ mod tests {
     /// 등록 페이지로 한컴이 "- 1 -" 표시. rhwp 도 표시되어야 함 (회귀 방지).
     #[test]
     fn test_634_aift_page1_shows_page_number() {
-        let Some(core) = load_document("samples/aift.hwp") else {
+        let Some(core) = load_document("mydocs/pr/assets/issue7445/aift74/aift.hwp") else {
             return;
         };
         let svg = core.render_page_svg_native(0).unwrap_or_default();
@@ -632,7 +638,7 @@ mod tests {
     /// rhwp 도 표시되어야 함 (회귀 방지).
     #[test]
     fn test_634_aift_page6_shows_page_number() {
-        let Some(core) = load_document("samples/aift.hwp") else {
+        let Some(core) = load_document("mydocs/pr/assets/issue7445/aift74/aift.hwp") else {
             return;
         };
         let svg = core.render_page_svg_native(5).unwrap_or_default();
@@ -647,7 +653,7 @@ mod tests {
     /// Task #634: aift.hwp 페이지 7 (□ 배경, NewNumber 발화) 부터 쪽번호 표시 (회귀 방지).
     #[test]
     fn test_634_aift_page7_shows_page_number() {
-        let Some(core) = load_document("samples/aift.hwp") else {
+        let Some(core) = load_document("mydocs/pr/assets/issue7445/aift74/aift.hwp") else {
             return;
         };
         let svg = core.render_page_svg_native(6).unwrap_or_default();
@@ -662,7 +668,7 @@ mod tests {
     /// 적용으로 쪽번호 미표시. rhwp 도 미표시 (기존 PageHide 지원).
     #[test]
     fn test_634_aift_page4_pagehide_no_page_number() {
-        let Some(core) = load_document("samples/aift.hwp") else {
+        let Some(core) = load_document("mydocs/pr/assets/issue7445/aift74/aift.hwp") else {
             return;
         };
         let svg = core.render_page_svg_native(3).unwrap_or_default();
@@ -676,7 +682,7 @@ mod tests {
     /// Task #634: aift.hwp 페이지 5 (별첨 목차) 는 PageHide (paragraph 2.54) 적용 미표시.
     #[test]
     fn test_634_aift_page5_pagehide_no_page_number() {
-        let Some(core) = load_document("samples/aift.hwp") else {
+        let Some(core) = load_document("mydocs/pr/assets/issue7445/aift74/aift.hwp") else {
             return;
         };
         let svg = core.render_page_svg_native(4).unwrap_or_default();
@@ -748,7 +754,7 @@ mod tests {
 
     #[test]
     fn test_705_aift_page2_cell_pagehide_collected() {
-        let Some(core) = load_document("samples/aift.hwp") else {
+        let Some(core) = load_document("mydocs/pr/assets/issue7445/aift74/aift.hwp") else {
             return;
         };
         // page 2 (global_idx=1, section=0, page_num=2)
@@ -771,7 +777,7 @@ mod tests {
 
     #[test]
     fn test_705_aift_page2_cell_pagehide_six_fields() {
-        let Some(core) = load_document("samples/aift.hwp") else {
+        let Some(core) = load_document("mydocs/pr/assets/issue7445/aift74/aift.hwp") else {
             return;
         };
         let page = core
@@ -794,7 +800,7 @@ mod tests {
 
     #[test]
     fn test_705_aift_page3_cell_pagehide_collected() {
-        let Some(core) = load_document("samples/aift.hwp") else {
+        let Some(core) = load_document("mydocs/pr/assets/issue7445/aift74/aift.hwp") else {
             return;
         };
         // page 3 (global_idx=2, section=1, page_num=3)
@@ -816,7 +822,7 @@ mod tests {
 
     #[test]
     fn test_705_aift_cell_pagehides_total_count() {
-        let Some(core) = load_document("samples/aift.hwp") else {
+        let Some(core) = load_document("mydocs/pr/assets/issue7445/aift74/aift.hwp") else {
             return;
         };
         // 본문 PageHide 2건 (s2/p[34], s2/p[54]) + 셀 안 PageHide 2건 (s0/셀[167], s1/셀[31])
@@ -858,7 +864,7 @@ mod tests {
     #[test]
     fn test_705_ktx_cell_pagehide_collected() {
         // Stage 0 측정: 본문 PageHide 1건 + 셀 안 PageHide 1건 (셀[10]/p[0] -----P "Ⅰ. 사업 개요")
-        let Some(core) = load_document("samples/KTX.hwp") else {
+        let Some(core) = load_document("mydocs/pr/assets/issue7445/ktx-toc27/KTX.hwp") else {
             return;
         };
         let count = core

@@ -409,7 +409,10 @@ fn prepare_vertical_line_publication(
                 VerticalGlyphLayerShadowRejectReason::UnsupportedLineSurface,
             ));
         };
-        let [PaintOp::TextRun { bbox, run, source }] = ops.as_slice() else {
+        let [PaintOp::TextRun {
+            bbox, run, source, ..
+        }] = ops.as_slice()
+        else {
             return Err(VerticalGlyphLinePublicationRejectReason::Shadow(
                 VerticalGlyphLayerShadowRejectReason::UnsupportedLineSurface,
             ));
@@ -430,6 +433,7 @@ fn prepare_vertical_line_publication(
             resource_delta.face.id.clone(),
         )?;
         ops.push(PaintOp::GlyphRun {
+            paint_transform: None,
             bbox: *bbox,
             run: Box::new(glyph_run),
         });
@@ -514,7 +518,7 @@ pub(crate) fn lower_vertical_shaping_page_sidecars(
                     lower_node(child, frame, resources, next_text_source_id, claimed);
                 }
             }
-            LayerNodeKind::ClipRect { child, .. } => {
+            LayerNodeKind::ClipRect { child, .. } | LayerNodeKind::ClipPath { child, .. } => {
                 lower_node(child, frame, resources, next_text_source_id, claimed);
             }
             LayerNodeKind::Leaf { ops } => {

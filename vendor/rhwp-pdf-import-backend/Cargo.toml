@@ -18,19 +18,17 @@ version = "0.3.78-rhwp.1"
 authors = ["Yury Fedoseev <yfedoseev@gmail.com>"]
 build = false
 include = [
-    "/src/**/*",
-    "/benches/**/*",
     "/Cargo.toml",
-    "/LICENSE-MIT",
-    "/LICENSE-APACHE",
-    "/NOTICE",
-    "/TRADEMARKS.md",
+    "/src/**",
+    "/include/**",
     "/README.md",
     "/RHWP_PATCHES.md",
     "/UPSTREAM_FILES.json",
     "/upstream/Cargo.toml.orig",
     "/rustfmt.toml",
-    "/include/**/*",
+    "/LICENSE-*",
+    "/NOTICE",
+    "/TRADEMARKS.md"
 ]
 autolib = false
 autobins = false
@@ -94,7 +92,8 @@ gpu = [
 icc = ["icc-qcms"]
 icc-lcms2 = ["dep:lcms2"]
 icc-qcms = ["dep:qcms"]
-jpeg2000 = ["dep:hayro-jpeg2000"]
+jbig2 = ["dep:hayro-jbig2", "dep:rhwp-codec-resource"]
+jpeg2000 = ["dep:hayro-jpeg2000", "dep:rhwp-codec-resource"]
 legacy-crypto = ["dep:md-5"]
 logging = []
 ml = [
@@ -126,7 +125,7 @@ rendering = [
     "dep:tiny-skia",
     "dep:fast_image_resize",
     "system-fonts",
-    "dep:hayro-jbig2",
+    "jbig2",
     "jpeg2000",
 ]
 signatures = [
@@ -384,12 +383,18 @@ version = "0.13"
 optional = true
 
 [dependencies.hayro-jbig2]
-version = "0.3"
+package = "rhwp-hayro-jbig2"
+path = "../rhwp-hayro-jbig2"
+version = "=0.3.0-rhwp.1"
+features = ["rhwp-bounded"]
 optional = true
 default-features = false
 
 [dependencies.hayro-jpeg2000]
-version = "0.4"
+package = "rhwp-hayro-jpeg2000"
+path = "../rhwp-hayro-jpeg2000"
+version = "=0.4.0-rhwp.1"
+features = ["rhwp-bounded"]
 optional = true
 default-features = false
 
@@ -694,3 +699,9 @@ version = "=0.5.3"
 package = "rhwp-jpeg-decoder"
 version = "=0.3.2-rhwp.1"
 path = "../rhwp-jpeg-decoder"
+
+[dependencies.rhwp-codec-resource]
+path = "../rhwp-codec-resource"
+version = "=0.1.0"
+optional = true
+features = ["scoped"]

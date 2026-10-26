@@ -13,9 +13,11 @@ import { MAX_PAGE_LOCAL_TEXT_EDIT_CHARS } from './input-edit-invalidation';
 import type { LineEndpoints as LineEndpointsLike } from './object-drag-record';
 import { setObjectProps, type ObjectPropsRef } from './object-props';
 import { CharFormatError, CharFormatRecoveryError, isCharFormatError } from '../core/char-format-error';
+import type { RollbackOutcome } from '../core/command-error';
 
 /** 편집 명령 공통 인터페이스 */
 export interface EditCommand {
+  failureRecovery?(): RollbackOutcome;
   readonly type: string;
   readonly timestamp: number;
   /** 명령 실행 — 실행 후 커서 위치 반환 */
@@ -349,15 +351,37 @@ export function canUseLocalBodyTextReplace(
 
 /** cellPath를 WASM용 JSON 문자열로 변환 */
 function cellPathJson(pos: DocumentPosition): string {
-  return JSON.stringify(pos.cellPath ?? []);
+  return JSON.stringify(cellPathForEdit(pos));
 }
 
 /** cellPath 의 최내곽(마지막) 엔트리의 cellParaIndex 를 지정 값으로 바꾼 pathJson.
  *  중첩 셀의 문단별 ByPath 호출(삭제 undo 저장과 문자 서식 적용/undo)에 쓴다. */
 function cellPathJsonForPara(pos: DocumentPosition, cellParaIndex: number): string {
-  const path = (pos.cellPath ?? []).map((e) => ({ ...e }));
-  if (path.length > 0) path[path.length - 1].cellParaIndex = cellParaIndex;
+  const path = cellPathForEdit(pos);
+  path[path.length - 1].cellParaIndex = cellParaIndex;
   return JSON.stringify(path);
+}
+
+/** 선택·편집이 공유하는 셀 주소. 완전한 flat 주소만 depth 1로 해석한다.
+ * 기존 중첩/글상자 경로가 우선이며 호출자의 경로를 변경하지 않는다. */
+export function cellPathForEdit(pos: DocumentPosition): CellPathEntry[] {
+  // WASM의 u32 인자는 2^32 이상을 하위 32비트로 변환한다. 조회도 같은 주소로
+  // 변환되므로 존재 여부 조회 전에 범위를 검사해 다른 셀로의 alias를 막는다.
+  const validIndex = (value: number | undefined): value is number =>
+    Number.isSafeInteger(value) && value! >= 0 && value! <= 0xffff_ffff;
+  if (!validIndex(pos.sectionIndex) || !validIndex(pos.parentParaIndex)) {
+    throw new Error('유효하지 않은 셀 편집 대상입니다.');
+  }
+  const path = pos.cellPath?.length ? pos.cellPath : [{
+    controlIndex: pos.controlIndex!,
+    cellIndex: pos.cellIndex!,
+    cellParaIndex: pos.cellParaIndex!,
+  }];
+  if (!path.every((entry) => entry && validIndex(entry.controlIndex)
+    && validIndex(entry.cellIndex) && validIndex(entry.cellParaIndex))) {
+    throw new Error('유효하지 않은 셀 편집 경로입니다.');
+  }
+  return path.map((entry) => ({ ...entry }));
 }
 
 /**
@@ -1102,6 +1126,8 @@ export class DeleteSelectionCommand implements EditCommand {
   /** 조각 경로(비셀) 또는 스냅샷 경로(셀). 둘 중 하나만 실체화된다. */
   private readonly fragment: FragmentDeleteCommand | null;
   private readonly snapshot: SnapshotCommand | null;
+  private validateTarget: ((wasm: WasmBridge) => void) | null = null;
+  private targetRejected = false;
   private readonly selection: {
     start: DocumentPosition;
     end: DocumentPosition;
@@ -1111,6 +1137,35 @@ export class DeleteSelectionCommand implements EditCommand {
   constructor(start: DocumentPosition, end: DocumentPosition, blockPhase: number | null = null) {
     if (start.sectionIndex !== end.sectionIndex) {
       throw new Error('구역을 걸친 선택 삭제는 아직 지원하지 않습니다.');
+    }
+    if (isCell(start) || isCell(end) || start.cellPath?.length || end.cellPath?.length) {
+      const startPath = cellPathForEdit(start);
+      const endPath = cellPathForEdit(end);
+      const sameCell = start.parentParaIndex === end.parentParaIndex
+        && startPath.length === endPath.length
+        && startPath.every((entry, i) => entry.controlIndex === endPath[i].controlIndex
+          && entry.cellIndex === endPath[i].cellIndex
+          && (i === startPath.length - 1 || entry.cellParaIndex === endPath[i].cellParaIndex));
+      const sp = startPath[startPath.length - 1].cellParaIndex;
+      const ep = endPath[endPath.length - 1].cellParaIndex;
+      if (!sameCell || !Number.isSafeInteger(start.charOffset) || start.charOffset < 0
+        || !Number.isSafeInteger(end.charOffset) || end.charOffset < 0
+        || sp > ep || (sp === ep && start.charOffset > end.charOffset)) {
+        throw new Error('유효하지 않은 셀 선택 범위입니다.');
+      }
+      start = { ...start, cellPath: startPath };
+      end = { ...end, cellPath: endPath };
+      // core가 일부 잘못된 범위를 무시할 수 있으므로 snapshot·mutation 전에 확인한다.
+      // redo는 삭제 후 문단 수로 검사하지 않고 기존 스냅샷을 복원한다.
+      this.validateTarget = (wasm) => {
+        const count = wasm.getCellParagraphCountByPath(start.sectionIndex, start.parentParaIndex!, cellPathJson(start));
+        const startLength = wasm.getCellParagraphLengthByPath(start.sectionIndex, start.parentParaIndex!, cellPathJson(start));
+        const endLength = wasm.getCellParagraphLengthByPath(end.sectionIndex, end.parentParaIndex!, cellPathJson(end));
+        if (!Number.isSafeInteger(count) || count < 1 || sp >= count || ep >= count
+          || start.charOffset > startLength || end.charOffset > endLength) {
+          throw new Error('셀 선택 범위가 문서 내용을 벗어났습니다.');
+        }
+      };
     }
     this.selection = { start: { ...start }, end: { ...end }, blockPhase };
 
@@ -1145,10 +1200,19 @@ export class DeleteSelectionCommand implements EditCommand {
     }
   }
 
+  failureRecovery(): RollbackOutcome {
+    return this.targetRejected ? 'rejected' : this.snapshot?.failureRecovery() ?? 'unknown';
+  }
+
   execute(wasm: WasmBridge): DocumentPosition {
-    return this.fragment
+    this.targetRejected = false;
+    try { this.validateTarget?.(wasm); }
+    catch (error) { this.targetRejected = true; throw error; }
+    const result = this.fragment
       ? this.fragment.execute(wasm)
       : this.snapshot!.execute(wasm);
+    this.validateTarget = null;
+    return result;
   }
 
   undo(wasm: WasmBridge): DocumentPosition {
@@ -2453,6 +2517,7 @@ export type CellBorderFillTarget =
   | { kind: 'zone'; range: { startRow: number; startCol: number; endRow: number; endCol: number } };
 
 interface CellBorderFillUndoState {
+  borderPaintUndoIds: number[];
   /** cellIdx → 적용 직전 borderFillId(배치 안 첫 기록이 원본이다). */
   cellBefores: Array<{ cellIdx: number; id: number }>;
   /** asOne 적용의 범위 — undo 시 id 원복 또는 신설 제거에 쓴다. */
@@ -2516,6 +2581,7 @@ export class SetCellBorderFillCommand implements EditCommand {
     }
 
     const cellBefores = new Map<number, number>();
+    const borderPaintUndoIds: number[] = [];
     // 같은 rect 여러 전이 중 undo 에 필요한 것은 최초(before 원본) 하나다.
     const zoneBefores = new Map<string, { startRow: number; startCol: number; endRow: number; endCol: number; id: number | null }>();
     let lenBefore = -1;
@@ -2543,14 +2609,27 @@ export class SetCellBorderFillCommand implements EditCommand {
       } else {
         const target = this.target;
         if (target.kind !== 'cells') throw new Error(`${this.type} 잘못된 대상`);
+        // The dialog's untouched preview sides describe the first selected cell.
+        // Send a delta so another cell keeps its own unrelated edges and fill base.
+        const cellProps = { ...this.props };
+        const borderPaintSides = cellProps.borderPaintSides;
+        if (Array.isArray(borderPaintSides)) {
+          const keys = ['borderLeft', 'borderRight', 'borderTop', 'borderBottom'];
+          keys.forEach((key, i) => { if (!borderPaintSides[i]) delete cellProps[key]; });
+          delete cellProps.borderFillId;
+        }
         // 셀 수만큼 setCellProperties 를 호출하므로 재페이지네이션을 묶는다(#4118).
         wasm.runInBatch(() => {
           for (const cellIdx of target.cellIdxes) {
             const r = wasm.setCellProperties(
               this.sec, this.ppi, this.ci, cellIdx,
-              this.props as Partial<CellProperties>,
+              cellProps as Partial<CellProperties>,
             );
             mutated = true;
+            if (r.borderPaintUndoId != null) {
+              borderPaintUndoIds.push(r.borderPaintUndoId);
+              changed = true;
+            }
             if (lenBefore === -1) {
               lenBefore = r.borderFillLenBefore ?? -1;
               dirtyBefore = r.docInfoDirtyBefore ?? false;
@@ -2581,7 +2660,7 @@ export class SetCellBorderFillCommand implements EditCommand {
     } catch (applyError) {
       // 최초 execute 실패 시 지금까지의 기록으로라도 원상 복구를 시도한다(#3350 계열).
       try {
-        this.rollback(wasm, cellBefores, zoneBefores, zoneBeforeId, lenBefore, dirtyBefore, mutated);
+        this.rollback(wasm, cellBefores, zoneBefores, zoneBeforeId, lenBefore, dirtyBefore, mutated, borderPaintUndoIds);
       } catch (rollbackError) {
         console.error(`${this.type} 실패 롤백도 실패:`, rollbackError);
       }
@@ -2597,6 +2676,7 @@ export class SetCellBorderFillCommand implements EditCommand {
     }
 
     this.state = {
+      borderPaintUndoIds,
       cellBefores: [...cellBefores.entries()].map(([cellIdx, id]) => ({ cellIdx, id })),
       zoneRange: this.target.kind === 'zone' ? { ...this.target.range } : null,
       zoneBeforeId,
@@ -2613,6 +2693,7 @@ export class SetCellBorderFillCommand implements EditCommand {
     }
     wasm.applyCellBorderFillIds(this.sec, this.ppi, this.ci, {
       cells: this.state.cellBefores,
+      borderPaintUndoIds: this.state.borderPaintUndoIds,
       zones: [
         ...(this.state.zoneRange
           ? [{ ...this.state.zoneRange, id: this.state.zoneBeforeId }]
@@ -2627,6 +2708,8 @@ export class SetCellBorderFillCommand implements EditCommand {
   }
 
   discard(wasm: WasmBridge): void {
+    for (const id of this.state?.borderPaintUndoIds ?? []) wasm.discardBorderPaintUndo(id);
+    this.state = null;
     if (this.captureId !== null) {
       wasm.discardSectionRaw(this.captureId);
       this.captureId = null;
@@ -2648,6 +2731,7 @@ export class SetCellBorderFillCommand implements EditCommand {
     lenBefore: number,
     dirtyBefore: boolean,
     mutated: boolean,
+    borderPaintUndoIds: number[],
   ): void {
     if (this.captureId === null) return;
     if (!mutated) {
@@ -2659,6 +2743,7 @@ export class SetCellBorderFillCommand implements EditCommand {
     }
     wasm.applyCellBorderFillIds(this.sec, this.ppi, this.ci, {
       cells: [...cellBefores.entries()].map(([cellIdx, id]) => ({ cellIdx, id })),
+      borderPaintUndoIds,
       zones: [
         ...(this.target.kind === 'zone'
           ? [{ ...this.target.range, id: zoneBeforeId }]
@@ -2948,6 +3033,8 @@ export class SetFormValueCommand implements EditCommand {
  * 치환이라 문서 충실도는 달라지지 않는다.
  */
 export class SnapshotCommand implements EditCommand {
+  private failure: RollbackOutcome = 'unknown';
+  failureRecovery(): RollbackOutcome { return this.failure; }
   readonly type: string;
   readonly timestamp = Date.now();
 
@@ -2985,6 +3072,7 @@ export class SnapshotCommand implements EditCommand {
   selectionBefore(): EditSelectionSnapshot | null { return this.undoSelection; }
 
   execute(wasm: WasmBridge): DocumentPosition {
+    this.failure = 'unknown';
     if (this.executed) {
       // Redo: undo 시점에 잡아 둔 after 로 복원하고 **그 스냅샷을 즉시 반환한다** —
       // 복원 뒤 이 명령은 undo 스택으로 돌아가고, 그러면 after 는 다시 "현재 문서" 와
@@ -3022,6 +3110,7 @@ export class SnapshotCommand implements EditCommand {
         this.cursorAfter = result;
       }
     } catch (operationError) {
+      this.failure = 'failed';
       // [#3350] 최초 execute 가 실패하면 명령 전체를 원자적으로 되돌린다. 이 커맨드는
       // history 에 push 되기 전이므로 before 스냅샷을 가진 SnapshotCommand만 rollback을
       // 수행할 수 있다.
@@ -3037,6 +3126,7 @@ export class SnapshotCommand implements EditCommand {
         );
       }
       this.discard(wasm);
+      this.failure = 'restored';
       throw operationError;
     }
 

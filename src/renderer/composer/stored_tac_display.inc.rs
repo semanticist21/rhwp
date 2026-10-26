@@ -279,6 +279,41 @@ pub(crate) fn caption_height_px_in_context(
     line_seg_height.max(composed_height)
 }
 
+/// 도형 캡션 선택은 실제 배치와 흐름 측정이 같은 속성을 소비한다.
+pub(crate) fn shape_caption_for_layout(shape: &ShapeObject) -> Option<Caption> {
+    match shape {
+        ShapeObject::Line(s) => s.drawing.caption.clone(),
+        ShapeObject::Rectangle(s) => s.drawing.caption.clone(),
+        ShapeObject::Ellipse(s) => s.drawing.caption.clone(),
+        ShapeObject::Arc(s) => s.drawing.caption.clone(),
+        ShapeObject::Polygon(s) => s.drawing.caption.clone(),
+        ShapeObject::Curve(s) => s.drawing.caption.clone(),
+        ShapeObject::Group(s) => s.caption.clone(),
+        ShapeObject::Picture(s) => s.caption.clone(),
+        ShapeObject::Chart(s) => s.caption.clone().or_else(|| s.drawing.caption.clone()),
+        ShapeObject::Ole(s) => s.caption.clone().or_else(|| s.drawing.caption.clone()),
+    }
+}
+
+/// 캡션 마지막 줄의 후행 간격을 제외한 도형·캡션의 세로 점유 상자.
+/// 위·아래 캡션은 틀과의 간격을 포함하고 옆 캡션은 같은 세로 띠를 공유한다.
+pub(crate) fn captioned_shape_height_px(
+    shape_height: f64,
+    caption: &Option<Caption>,
+    dpi: f64,
+) -> f64 {
+    let Some(cap) = caption.as_ref().filter(|cap| !cap.paragraphs.is_empty()) else {
+        return shape_height;
+    };
+    let caption_height = caption_height_px(caption, dpi);
+    match cap.direction {
+        CaptionDirection::Top | CaptionDirection::Bottom => {
+            shape_height + hwpunit_to_px(cap.spacing as i32, dpi) + caption_height
+        }
+        CaptionDirection::Left | CaptionDirection::Right => shape_height.max(caption_height),
+    }
+}
+
 /// Hanyang-PUA 옛한글 코드포인트·한컴 PUA와 legacy 제품명을 렌더링용 텍스트로 변환한다.
 ///
 /// 한컴 자체 폰트 (함초롬바탕 LVT 등) 는 PUA 영역에 옛한글 글리프를 직접
@@ -297,13 +332,23 @@ pub(crate) fn caption_height_px_in_context(
 /// 바꾸며, 원문 IR·검색·캐럿 offset은 그대로 보존한다.
 ///
 /// 매핑 표: KTUG HanyangPuaTableProject (Public Domain).
-fn convert_pua_display_text(composed: &mut ComposedParagraph) {
+fn convert_pua_display_text(
+    composed: &mut ComposedParagraph,
+    soft_hyphen_control: bool,
+    styles: Option<&ResolvedStyleSet>,
+) {
     use super::pua_oldhangul::map_pua_old_hangul;
 
     let product_prefix_starts = legacy_hancom_product_prefix_starts(composed);
     let mut run_char_start = 0usize;
     for line in composed.lines.iter_mut() {
-        for run in line.runs.iter_mut() {
+        // [#7993] 제어 표기 소프트 하이픈은 줄 끝에서만 `-` 로 보이고, 줄 중간에서는
+        // 보이지도 폭을 갖지도 않는다(한/글 2020 Print: task1725 162쪽 `<hp:hypen/>` 16개가
+        // 줄 첫머리에 아무 자국도 남기지 않는다). 모델 글자는 offset 공간에 남기고
+        // 표시 문자열만 바꾼다 — 줄 끝 판정은 이 줄의 마지막 모델 글자다.
+        let line_last_run = line.runs.iter().rposition(|run| !run.text.is_empty());
+        for (run_index, run) in line.runs.iter_mut().enumerate() {
+            let program = styles.and_then(|styles| run.text_style(styles).native_pua_metrics);
             let chars: Vec<char> = run.text.chars().collect();
             let run_char_end = run_char_start + chars.len();
             let has_product_projection = product_prefix_starts
@@ -313,7 +358,13 @@ fn convert_pua_display_text(composed: &mut ComposedParagraph) {
                 pua_plain_text_display(*ch).is_some()
                     || map_pua_old_hangul(*ch).is_some()
                     || map_pua_bullet_char(*ch) != *ch
+                    || (soft_hyphen_control && *ch == '\u{00AD}')
             });
+            let line_end_char = if Some(run_index) == line_last_run {
+                chars.len().checked_sub(1)
+            } else {
+                None
+            };
             if !has_product_projection && !has_pua_display {
                 run_char_start = run_char_end;
                 continue;
@@ -332,6 +383,20 @@ fn convert_pua_display_text(composed: &mut ComposedParagraph) {
                     // `ᄒᆞᆫ` 세 자모가 style/line 경계를 넘더라도 첫 위치에만
                     // `한`을 투영한다. 뒤 두 model char는 offset 공간에만 남긴다.
                     changed = true;
+                } else if soft_hyphen_control && ch == '\u{00AD}' {
+                    if line_end_char == Some(index) {
+                        display.push('-');
+                    }
+                    changed = true;
+                } else if program
+                    .as_ref()
+                    .is_some_and(|program| program.advance_em(ch).is_some())
+                {
+                    // 실제 공급한 원 glyph는 Unicode 표시 대체보다 우선한다.
+                    // 측정과 paint가 같은 프로그램의 전진·표시 문자를 소비한다.
+                    let source = hancom_symbol_display_key(ch);
+                    display.push(source);
+                    changed |= source != ch;
                 } else if let Some(replacement) = pua_plain_text_display(ch) {
                     display.push_str(replacement);
                     changed = true;
@@ -339,10 +404,9 @@ fn convert_pua_display_text(composed: &mut ComposedParagraph) {
                     display.extend(jamos.iter().copied());
                     changed = true;
                 } else {
-                    // paint 경로(`expand_pua_display_text`)와 같이 한컴 PUA 책괄호
-                    // (U+F0854/F0855 → 《》) 등을 측정 문자열에도 올린다. 원문 PUA 는
-                    // CJK가 아니라 0.5em 휴리스틱이 되어 run bbox 가 전각 글리프보다
-                    // 짧고, 다음 라틴 run 이 한글 위에 겹친다 (#6057).
+                    // paint와 같은 표시 투영을 사용하되 원본 프로그램의
+                    // 확인된 전진폭은 char_width_decision이 소유한다.
+                    // 표시용 전각 글리프로 원본 PUA의 반각 폭을 바꾸지 않는다.
                     let mapped = map_pua_bullet_char(ch);
                     display.push(mapped);
                     if mapped != ch {
@@ -351,9 +415,9 @@ fn convert_pua_display_text(composed: &mut ComposedParagraph) {
                 }
             }
             run_char_start = run_char_end;
-            if changed {
-                run.display_text = Some(display);
-            }
+            // 글꼴 공급 뒤 재구성할 때 앞선 일반 compose의 대체 문자열도 폐기한다.
+            // 원 PUA를 그대로 쓰는 결과는 changed=false여도 이전 display와 다르다.
+            run.display_text = changed.then_some(display);
         }
     }
 }
@@ -455,6 +519,8 @@ fn inject_footnote_markers(lines: &mut [ComposedLine], positions: &[(usize, u16)
                     supplemental_metrics_blocked: false,
                     inserted_control_text: false,
                     space_metric: crate::renderer::composer::SpaceMetric::Stored,
+                    regenerated_font_metrics: line.runs[ri].regenerated_font_metrics,
+                    literal_figure_space: line.runs[ri].literal_figure_space,
                 };
 
                 let mut new_runs = Vec::new();
@@ -473,6 +539,8 @@ fn inject_footnote_markers(lines: &mut [ComposedLine], positions: &[(usize, u16)
                                 supplemental_metrics_blocked: run.supplemental_metrics_blocked,
                                 inserted_control_text: run.inserted_control_text,
                                 space_metric: run.space_metric,
+                                regenerated_font_metrics: run.regenerated_font_metrics,
+                                literal_figure_space: run.literal_figure_space,
                             });
                         }
                         new_runs.push(marker_run.clone());
@@ -488,6 +556,8 @@ fn inject_footnote_markers(lines: &mut [ComposedLine], positions: &[(usize, u16)
                                 supplemental_metrics_blocked: run.supplemental_metrics_blocked,
                                 inserted_control_text: run.inserted_control_text,
                                 space_metric: run.space_metric,
+                                regenerated_font_metrics: run.regenerated_font_metrics,
+                                literal_figure_space: run.literal_figure_space,
                             });
                         }
                     } else {
@@ -505,4 +575,10 @@ fn inject_footnote_markers(lines: &mut [ComposedLine], positions: &[(usize, u16)
 // 메트릭을 비교해야 글자 테두리로 높아진 정상 줄을 재조판 줄로 오인하지 않는다.
 fn stored_line_box_height(seg: &LineSeg) -> i32 {
     seg.line_height.max(seg.text_height)
+}
+
+/// 표시 프레임과 캡션의 점유는 측정·paint가 같은 결과를 쓴다.
+pub(crate) fn captioned_picture_height_px(picture: &crate::model::image::Picture, dpi: f64) -> f64 {
+    let (_, height) = super::layout::picture_flow_frame_size_hu(picture);
+    captioned_shape_height_px(hwpunit_to_px(height, dpi), &picture.caption, dpi)
 }

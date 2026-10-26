@@ -14,7 +14,7 @@ use crate::model::control::Control;
 use crate::model::document::Section;
 pub use crate::model::paragraph::SpaceMetric;
 use crate::model::paragraph::{CharShapeRef, LineSeg, Paragraph};
-use crate::model::shape::Caption;
+use crate::model::shape::{Caption, CaptionDirection, ShapeObject};
 use crate::renderer::layout_frame::LayoutFrame;
 pub use crate::renderer::layout_frame::ParagraphBox;
 
@@ -26,9 +26,19 @@ pub(crate) use nested_table_frames::{
 mod inline_frame_admission;
 mod inline_picture_metrics;
 mod resolved_fields;
+pub(crate) mod stored_margin_context;
+mod stored_marker_frames;
+mod stored_tac_host_frame;
 mod stored_word_tail;
-pub(crate) use inline_picture_metrics::{inline_picture_ascent_ratio, inline_picture_size_hu};
-pub(crate) use stored_word_tail::project_stored_soft_wraps;
+pub(crate) use inline_picture_metrics::{
+    inline_picture_ascent_ratio, inline_picture_occupied_size_hu, inline_picture_size_hu,
+};
+pub(crate) use stored_tac_host_frame::stored_tac_host_frame;
+pub(crate) use stored_word_tail::{
+    project_current_body_box_rows, project_current_marker_height_rows,
+    project_current_source_program_rows, project_stored_soft_wraps,
+    projects_current_marker_geometry,
+};
 mod punctuation_slots;
 
 /// 글자겹침(CharOverlap) 렌더링 정보
@@ -43,6 +53,8 @@ pub struct CharOverlapInfo {
 /// 구성된 텍스트 런 (줄 내 동일 스타일 + 동일 언어 구간)
 #[derive(Debug, Clone, Default)]
 pub struct ComposedTextRun {
+    /// 원문 U+2007 리터럴의 숫자 폭 공백 계약이다.
+    pub literal_figure_space: bool,
     /// 텍스트 조각
     pub text: String,
     /// 글자 스타일 ID (ResolvedStyleSet.char_styles 인덱스)
@@ -65,6 +77,8 @@ pub struct ComposedTextRun {
     pub inserted_control_text: bool,
     /// 공백 폭의 출처는 run 분할 뒤에도 줄 채움 결과를 따른다.
     pub space_metric: SpaceMetric,
+    /// 새 줄 구성의 글자 메트릭 출처. 저장 줄의 원래 전진과 구분한다.
+    pub regenerated_font_metrics: bool,
 }
 
 impl ComposedTextRun {
@@ -93,7 +107,14 @@ impl ComposedTextRun {
         if self.supplemental_metrics_blocked {
             style.supplemental_metrics = None;
         }
+        conjoining_jamo::apply_font(self, &mut style);
         self.space_metric.apply_to_style(&mut style);
+        style.regenerated_font_metrics = self.regenerated_font_metrics;
+        style.literal_figure_space = self.literal_figure_space;
+        if self.literal_figure_space {
+            style.literal_figure_space_em =
+                styles.literal_figure_space_em(self.char_style_id, self.lang_index);
+        }
         style
     }
 
@@ -115,9 +136,12 @@ impl ComposedTextRun {
 }
 
 mod auto_number_projection;
+mod conjoining_jamo;
+pub(crate) use conjoining_jamo::project_stored_rows_with_selected_program;
 mod equation_line_metrics;
 mod mapped_symbol_fonts;
 mod stored_row_fragments;
+mod text_metric_origin;
 pub(crate) use stored_row_fragments::crosses_physical_frame as stored_rows_cross_physical_frame;
 pub(crate) mod stored_row_projection;
 pub(crate) mod supplemental_clusters;

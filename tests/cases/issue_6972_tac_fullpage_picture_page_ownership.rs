@@ -93,6 +93,8 @@ fn page_with_paragraph_fragment(start_line: usize, end_line: usize) -> PageConte
         section_index: 0,
         layout: PageLayoutInfo::from_page_def(&a4_page_def(), &ColumnDef::default(), 96.0),
         column_contents: vec![ColumnContent {
+            paragraph_origins: Default::default(),
+            computed_paragraphs: Default::default(),
             column_index: 0,
             start_height: 0.0,
             endnote_flow: false,
@@ -114,6 +116,7 @@ fn page_with_paragraph_fragment(start_line: usize, end_line: usize) -> PageConte
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,

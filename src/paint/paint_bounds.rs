@@ -8,7 +8,7 @@ use super::paint_op::{
 };
 use super::{LayerNode, LayerNodeKind, PageLayerTree, MAX_POSITIONED_CONTROL_MARKS_PER_RUN};
 use crate::model::style::UnderlineType;
-use crate::renderer::composer::expand_pua_display_text;
+use crate::renderer::composer::expand_pua_render_text;
 use crate::renderer::render_tree::{BoundingBox, ShapeTransform, TextRunNode};
 use crate::renderer::{
     clamp_tab_leader_end_x, svg_arc_to_beziers, LineRenderType, LineStyle, PathCommand, ShadowStyle,
@@ -89,7 +89,13 @@ impl PaintOp {
                 kind,
                 trim_trailing_spaces,
                 ..
-            } => decoration_bounds(logical, run, *kind, *trim_trailing_spaces),
+            } => {
+                let (bbox, run) = self.decoration_replay().expect("decoration replay");
+                union(
+                    logical,
+                    decoration_bounds(bbox, &run, *kind, *trim_trailing_spaces),
+                )
+            }
             Self::FootnoteMarker { marker, .. } => expand(logical, marker.base_font_size * 0.15),
             Self::Line { line, .. } => {
                 let base = arrow_bounds(
@@ -151,6 +157,7 @@ impl PaintOp {
             | Self::Placeholder { .. }
             | Self::RawSvg { .. } => logical,
         };
+        let visual = affine_bounds(visual, self.glyph_paint_transform());
         PaintBounds { logical, visual }
     }
 
@@ -214,10 +221,27 @@ fn collect_visual_bounds(
             .map(PaintOp::visual_bounds)
             .filter(|bounds| valid(*bounds))
             .reduce(union),
-        LayerNodeKind::Group { children, .. } => children
-            .iter()
-            .filter_map(|child| collect_visual_bounds(child, clip_enabled, visit))
-            .reduce(union),
+        LayerNodeKind::Group {
+            children,
+            group_kind,
+            ..
+        } => {
+            let bounds = children
+                .iter()
+                .filter_map(|child| collect_visual_bounds(child, clip_enabled, visit))
+                .reduce(union);
+            bounds.map(|bounds| {
+                let transform = match group_kind {
+                    super::layer_tree::GroupKind::Group(g) => g
+                        .paint_transform
+                        .map(|[a, b, c, d, e, f]| LayerAffineTransform { a, b, c, d, e, f }),
+                    _ => None,
+                };
+                affine_bounds(bounds, transform)
+            })
+        }
+        // A conservative visual hull must not pretend that a curved clip is a rectangle.
+        LayerNodeKind::ClipPath { child, .. } => collect_visual_bounds(child, clip_enabled, visit),
         LayerNodeKind::ClipRect { clip, child, .. } => {
             let child = collect_visual_bounds(child, clip_enabled, visit);
             if clip_enabled {
@@ -734,6 +758,25 @@ fn rotate_text(bounds: BoundingBox, logical: BoundingBox, run: &TextRunNode) -> 
 
 fn text_bounds(logical: BoundingBox, run: &TextRunNode) -> BoundingBox {
     let (font_size, _) = effective_text_font_size_and_baseline(run);
+    // Character position moves ink, not the line's logical flow box. Keep both
+    // extents in the conservative paint bounds so clipping/cache invalidation
+    // cannot drop a raised/lowered glyph. Rotation still uses the original box.
+    let position_offset = run.style.effective_font_size()
+        * f64::from(run.style.font_position.unwrap_or_default())
+        / 100.0;
+    let positioned = if position_offset == 0.0 {
+        logical
+    } else {
+        union(
+            logical,
+            BoundingBox::new(
+                logical.x,
+                logical.y + position_offset,
+                logical.width,
+                logical.height,
+            ),
+        )
+    };
     let mut padding: f64 = 0.0;
     if run.style.underline != UnderlineType::None || run.style.strikethrough {
         padding = font_size * 0.2;
@@ -744,13 +787,13 @@ fn text_bounds(logical: BoundingBox, run: &TextRunNode) -> BoundingBox {
     if run.style.emphasis_dot != 0 {
         padding = padding.max(font_size * 0.35);
     }
-    let mut bounds = expand(logical, padding);
+    let mut bounds = expand(positioned, padding);
     if run.style.shadow_type != 0 {
         let offset = BoundingBox::new(
-            logical.x + run.style.shadow_offset_x,
-            logical.y + run.style.shadow_offset_y,
-            logical.width,
-            logical.height,
+            positioned.x + run.style.shadow_offset_x,
+            positioned.y + run.style.shadow_offset_y,
+            positioned.width,
+            positioned.height,
         );
         bounds = union(
             bounds,
@@ -836,7 +879,7 @@ fn decoration_bounds(
             if run.style.underline == UnderlineType::Top {
                 baseline - font_size + 1.0
             } else {
-                baseline + 2.0
+                baseline + font_size * crate::renderer::text_decoration::UNDERLINE_BASELINE_RATIO
             },
             1.0,
         ),
@@ -869,7 +912,7 @@ pub(super) fn bounded_text_prefix(text: &str) -> (String, bool) {
 
 pub(super) fn bounded_display_text_for_run(run: &TextRunNode) -> (String, bool) {
     let (source_prefix, source_complete) = bounded_text_prefix(run.display_or_text());
-    let display_text = expand_pua_display_text(&source_prefix);
+    let display_text = expand_pua_render_text(&source_prefix);
     let (display_prefix, display_complete) = bounded_text_prefix(&display_text);
     (display_prefix, source_complete && display_complete)
 }

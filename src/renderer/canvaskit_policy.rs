@@ -11,7 +11,7 @@ use crate::paint::{
     PaintOp, PaintReplayPlane, RenderProfile, ResolvedImageKind, ResolvedImagePayload,
     TextDecorationKind, TextVariantKind,
 };
-use crate::renderer::composer::expand_pua_display_text;
+use crate::renderer::composer::expand_pua_render_text_in_style;
 use crate::renderer::equation::{
     layout::{LayoutBox, LayoutKind},
     symbols::{DecoKind, FontStyleKind},
@@ -622,7 +622,7 @@ fn count_layer_tree_work_units(
                 }
                 pending.extend(children.iter().rev().map(|child| (child, depth + 1)));
             }
-            LayerNodeKind::ClipRect { child, .. } => {
+            LayerNodeKind::ClipRect { child, .. } | LayerNodeKind::ClipPath { child, .. } => {
                 if minimum_work_exceeds_limit(work_units, pending.len(), 1, max_work_units) {
                     return CanvasKitBoundedWorkCount::Exceeded;
                 }
@@ -662,9 +662,11 @@ fn additional_payload_work_units(bytes: usize) -> usize {
 
 fn paint_op_work_units(op: &PaintOp) -> usize {
     let repeated_visual_units = match op {
-        PaintOp::TextRun { run, .. } => expand_pua_display_text(run.display_or_text())
-            .chars()
-            .count(),
+        PaintOp::TextRun { run, .. } => {
+            expand_pua_render_text_in_style(run.display_or_text(), &run.style)
+                .chars()
+                .count()
+        }
         PaintOp::CharOverlap { run, .. } => run.text.chars().count(),
         PaintOp::TextControlMark { run, .. } => bounded_text_char_count(&run.text),
         PaintOp::TabLeader { run, .. } => {
@@ -775,7 +777,7 @@ fn bounded_display_text_for_visual(run: &TextRunNode) -> (String, bool) {
     let mut source_chars = run.display_or_text().chars();
     let source: String = source_chars.by_ref().take(limit).collect();
     let source_complete = source_chars.next().is_none();
-    let expanded = expand_pua_display_text(&source);
+    let expanded = expand_pua_render_text_in_style(&source, &run.style);
     let mut display_chars = expanded.chars();
     let display: String = display_chars.by_ref().take(limit).collect();
     (display, source_complete && display_chars.next().is_none())
@@ -1388,6 +1390,19 @@ impl CanvasKitReplayPlanBuilder {
                         pending.push((child, format!("{path}/group/{index}"), active_layer));
                     }
                 }
+                LayerNodeKind::ClipPath { child, .. } => {
+                    self.push(CanvasKitReplayItem {
+                        path: format!("{path}/clip"),
+                        op_type: "clipPath",
+                        replay_plane: None,
+                        feature: CanvasKitReplayFeature::Clip,
+                        status: CanvasKitReplayStatus::Direct,
+                        reason: CanvasKitReplayReason::DirectReplaySupported,
+                        compat_overlay_allowed: false,
+                        detail: Some("source text path intersection".into()),
+                    });
+                    pending.push((child, format!("{path}/clip/child"), active_layer));
+                }
                 LayerNodeKind::ClipRect {
                     child, clip_kind, ..
                 } => {
@@ -1440,7 +1455,8 @@ impl CanvasKitReplayPlanBuilder {
             match op {
                 PaintOp::TextRun { run, .. } if text_run_selected => {
                     self.record_required_font_family(&run.style.font_family);
-                    let display_text = expand_pua_display_text(run.display_or_text());
+                    let display_text =
+                        expand_pua_render_text_in_style(run.display_or_text(), &run.style);
                     if crate::renderer::contains_old_hangul_jamo(&display_text) {
                         self.record_required_font_family(OLD_HANGUL_FONT_FAMILY);
                     }
@@ -1689,15 +1705,38 @@ impl CanvasKitReplayPlanBuilder {
                 }
             }
             PaintOp::TextDecoration {
-                bbox, run, kind, ..
+                bbox,
+                run,
+                kind,
+                paint_geometry,
+                ..
             } => {
+                let invalid_placement = paint_geometry.is_some_and(|geometry| {
+                    ![
+                        geometry.bbox.x,
+                        geometry.bbox.y,
+                        geometry.bbox.width,
+                        geometry.bbox.height,
+                        geometry.inline_scale,
+                    ]
+                    .iter()
+                    .all(|value| value.is_finite())
+                        || geometry.inline_scale <= 0.0
+                        || geometry.bbox.width < 0.0
+                        || geometry.bbox.height < 0.0
+                });
                 let (display_text, display_complete) = bounded_display_text_for_visual(run);
                 let detail = if !display_complete {
                     Some("visualItemLimitExceeded")
-                } else if !text_visual_geometry_is_valid(bbox, run, &display_text) {
+                } else if invalid_placement
+                    || !text_visual_geometry_is_valid(bbox, run, &display_text)
+                {
                     Some("invalidGeometry")
                 } else {
-                    None
+                    let (paint_bbox, paint_run) =
+                        op.decoration_replay().expect("decoration replay");
+                    (!text_visual_geometry_is_valid(&paint_bbox, &paint_run, &display_text))
+                        .then_some("invalidGeometry")
                 };
                 if let Some(detail) = detail {
                     let mut item = self.transition_overlay_item(
@@ -1730,6 +1769,12 @@ impl CanvasKitReplayPlanBuilder {
                 TextVariantKind::GlyphOutline,
             ),
         };
+        if !op.glyph_paint_transform_is_valid() {
+            item.status = CanvasKitReplayStatus::Unsupported;
+            item.reason = CanvasKitReplayReason::UnsupportedFeature;
+            item.compat_overlay_allowed = false;
+            item.detail = Some("invalidGlyphPaintTransform".to_string());
+        }
         item.replay_plane = Some(paint_op_replay_plane_with_layer(op, layer));
         item
     }
@@ -2057,9 +2102,18 @@ fn canvaskit_equation_layout_is_supported(layout: &LayoutBox) -> bool {
                 .iter()
                 .all(|(left, right)| child(left, remaining_nodes) && child(right, remaining_nodes)),
             LayoutKind::Paren {
-                left, right, body, ..
+                left,
+                right,
+                body,
+                left_width,
+                right_width,
+                ..
             } => {
-                (left.is_empty() || text_supported(left))
+                left_width.is_finite()
+                    && right_width.is_finite()
+                    && *left_width >= 0.0
+                    && *right_width >= 0.0
+                    && (left.is_empty() || text_supported(left))
                     && (right.is_empty() || text_supported(right))
                     && child(body, remaining_nodes)
             }
@@ -2330,6 +2384,7 @@ fn image_has_replayable_payload(
 fn resolved_image_kind_detail(value: ResolvedImageKind) -> &'static str {
     match value {
         ResolvedImageKind::FormatConverted => "formatConverted",
+        ResolvedImageKind::SourceWindow => "sourceWindow",
         ResolvedImageKind::OutputDevice => "outputDevice",
         ResolvedImageKind::BakedWatermark => "bakedWatermark",
     }
@@ -2389,6 +2444,7 @@ mod tests {
     use crate::model::style::ImageFillMode;
     use crate::paint::{GroupKind, LayerNode, ResolvedImageKind, ResolvedImagePayload};
     use crate::renderer::composer::CharOverlapInfo;
+    use crate::renderer::composer::{expand_pua_display_text, expand_pua_render_text};
     use crate::renderer::equation::layout::{LayoutBox, LayoutKind};
     use crate::renderer::render_tree::{
         BoundingBox, EllipseNode, EquationNode, FieldMarkerType, FootnoteMarkerNode,
@@ -3241,7 +3297,7 @@ mod tests {
             "\u{F012B}".repeat(crate::paint::MAX_POSITIONED_CONTROL_MARKS_PER_RUN / 3 + 1);
         assert!(pua_source.chars().count() <= crate::paint::MAX_POSITIONED_CONTROL_MARKS_PER_RUN);
         assert!(
-            expand_pua_display_text(&pua_source).chars().count()
+            expand_pua_render_text(&pua_source).chars().count()
                 > crate::paint::MAX_POSITIONED_CONTROL_MARKS_PER_RUN
         );
         let mut leader = text_run(&pua_source);
@@ -3289,7 +3345,7 @@ mod tests {
             projected_text.chars().count() < CANVASKIT_DOCUMENT_PREFLIGHT_MAX_WORK_UNITS as usize
         );
         assert!(
-            expand_pua_display_text(&projected_text).chars().count()
+            expand_pua_render_text(&projected_text).chars().count()
                 > CANVASKIT_DOCUMENT_PREFLIGHT_MAX_WORK_UNITS as usize
         );
         let projected_tree =

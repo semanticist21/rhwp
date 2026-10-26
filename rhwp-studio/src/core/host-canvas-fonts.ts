@@ -47,6 +47,10 @@ export class HostCanvasFontSession {
     return { loaded: this.faces.size, pending: this.pending.size, failed: this.failures.size };
   }
 
+  isPrepared(record: LocalFontRecord): boolean {
+    return this.generation === getHostFontState().generation && this.faces.has(localFontFaceKey(record));
+  }
+
   async prepare(records: readonly LocalFontRecord[]): Promise<void> {
     const generation = getHostFontState().generation;
     if (this.generation !== generation) {
@@ -99,9 +103,15 @@ export class HostCanvasFontSession {
     const slant = tokens.includes('italic') ? 'italic' : tokens.includes('oblique') ? 'oblique' : 'normal';
     const families = parseCssFontFamilyList(match[3]);
     if (this.aliases.has(families[0])) return cssFont;
-    const record = families[0] ? resolveRendererLocalFont(families[0], { weight, slant }) : null;
-    const loaded = record?.hostReference ? this.faces.get(localFontFaceKey(record)) : null;
-    return loaded ? `${match[1]}${match[2]} ${formatCssFontFamilyList([loaded.alias, ...families])}` : null;
+    const prepared: string[] = [];
+    for (const family of families) {
+      const record = resolveRendererLocalFont(family, { weight, slant });
+      const loaded = record?.hostReference ? this.faces.get(localFontFaceKey(record)) : null;
+      // 첫 face에 없는 글리프는 뒤 후보가 맡는다. 준비한 host bytes는
+      // 세션 별칭으로만 등록되므로 원래 family 이름만으로는 소비할 수 없다.
+      if (loaded && !prepared.includes(loaded.alias)) prepared.push(loaded.alias);
+    }
+    return prepared.length ? `${match[1]}${match[2]} ${formatCssFontFamilyList([...prepared, ...families])}` : null;
   }
 
   /** The asynchronous metric session receives a scoped synchronous context. */

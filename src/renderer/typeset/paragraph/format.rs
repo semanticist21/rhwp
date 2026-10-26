@@ -141,10 +141,24 @@ pub(in crate::renderer::typeset) fn format_paragraph_for_flow(
         } else {
             None
         };
-        // Stored vpos spans cover line boxes, not the paragraph's outside
-        // spacing. Paint consumes these bands at the accepted flow origin.
+        // 원본 스냅샷이 있다는 사실과 사다리가 실제로 재구성됐다는 사실은
+        // 다르다. 저장 축이 그대로면 span 밖의 앞 간격을 fit에도 예약한다.
+        // 실제로 정규화한 소비 축만 수용한 흐름 원점에서 시작한다.
+        let ladder_rebuilt = para
+            .source_line_seg_vertical_pos
+            .as_ref()
+            .is_some_and(|source| {
+                source.len() != para.line_segs.len()
+                    || source
+                        .iter()
+                        .zip(&para.line_segs)
+                        .any(|(vpos, line)| *vpos != line.vertical_pos)
+            });
         vpos_metric
-            .map(|v| metric.min(spacing_before + v))
+            .map(|v| {
+                let outside_before = if ladder_rebuilt { 0.0 } else { spacing_before };
+                metric.min(outside_before + v)
+            })
             .unwrap_or(metric)
     };
 
@@ -221,9 +235,34 @@ pub(in crate::renderer::typeset) fn format_paragraph_for_flow(
                         && line_spacings[index] == hwpunit_to_px(line.line_spacing, ctx.dpi())
                 })
         });
+    // 원본 줄/개체의 별도 점유가 없는 재조판 본문은 실제 줄 결과를 전달한다.
+    // 측정 메트릭과 다른 구성에는 추정 여백을 제거할 근거가 없다.
+    let computed_paragraph = recomposed
+        .as_ref()
+        .filter(|comp| {
+            crate::renderer::para_has_no_stored_line_segs(para)
+                && para.controls.is_empty()
+                && !para.stored_text_partition_is_dirty()
+                && !para.cell_format_vpos_dirty
+                && !comp.lines.is_empty()
+                && comp.lines.len() == line_heights.len()
+                && comp.lines.len() == line_spacings.len()
+                && comp
+                    .lines
+                    .iter()
+                    .zip(line_heights.iter().zip(&line_spacings))
+                    .all(|(line, (&height, &spacing))| {
+                        (hwpunit_to_px(line.line_height, ctx.dpi()) - height).abs()
+                            <= ctx.dpi() / 7200.0
+                            && (hwpunit_to_px(line.line_spacing, ctx.dpi()) - spacing).abs()
+                                <= ctx.dpi() / 7200.0
+                    })
+        })
+        .cloned();
     FormattedParagraph {
         stored_ladder_is_filler: ctx.uniform_filler_ladder(),
         exact_reflow_text_box,
+        computed_paragraph,
         tail_line_remaining_width,
         computed_host_lines,
         square_host_plan: None,
@@ -656,7 +695,33 @@ fn resolve_line_metrics(
     // 다만 이것은 한글 2020/2022 정합 모델이 아니다. 일부 Paper 앵커 개체는 실제 렌더
     // extent 를 page-local pagination 에 반영해야 하며, #2019 v3 에서 이 부분을 다시
     // 풀어야 한다. 자리차지·tac=true 는 helper 에서 제외되어 예약 유지.
-    if crate::renderer::layout::para_is_floating_overlay_anchor(para) {
+    // [#7840] 이 축소의 전제는 «저장 줄이 떠 있는 개체의 위치 보조값일 뿐 흐름을 밀지
+    // 않는다» 이다. 원본 사다리가 다음 문단을 바로 이 줄의 `줄 높이 + 줄간격` 만큼 전진시켜
+    // 두었으면 한/글은 그 줄 상자를 흐름에 실었다(1150200 1쪽: 글앞 직선 앵커 빈 문단
+    // vpos 1800 → 다음 문단 4700 = 1800 + 1000 + 1900). 그 줄은 축소하지 않는다.
+    // 같은 vpos 에 겹쳐 앉은 앵커들(#2019 74312 다단 구역)은 전진이 없으므로 종전대로다.
+    let stored_ladder_advances_anchor_line = (ctx.profile().hwp5_stored_pagination_layout()
+        || ctx.profile().hwpx_stored_layout())
+        && !ctx.profile().session_edited()
+        && !para.stored_text_partition_is_dirty()
+        && !para.cell_format_vpos_dirty
+        && matches!(para.line_segs.as_slice(), [line]
+        if line.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
+            && line.line_height > 0
+            && line.line_spacing >= 0
+            && ctx.next_stored_vpos().is_some_and(|next| {
+                i64::from(next)
+                    == i64::from(line.vertical_pos)
+                        + i64::from(line.line_height)
+                        + i64::from(line.line_spacing)
+            }));
+    if stored_ladder_advances_anchor_line
+        && crate::renderer::layout::para_is_floating_overlay_anchor(para)
+    {
+        let line = &para.line_segs[0];
+        line_heights = vec![hwpunit_to_px(line.line_height, ctx.dpi())];
+        line_spacings = vec![hwpunit_to_px(line.line_spacing, ctx.dpi())];
+    } else if crate::renderer::layout::para_is_floating_overlay_anchor(para) {
         let (lh, ls) = empty_paragraph_fallback_line_metrics(
             para,
             styles,

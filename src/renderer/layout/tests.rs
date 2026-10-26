@@ -465,29 +465,18 @@ fn stored_layout_relocated_picture_caption_uses_next_saved_flow_anchor() {
         height: 900.0,
     };
 
-    let flow_top = stored_layout_relocated_empty_rowbreak_picture_next_flow_top(
-        true,
-        &host,
-        &table,
-        Some(&next),
-        &col,
-        96.0,
-    )
-    .expect("이월 그림의 다음 저장 anchor");
+    let flow_top =
+        stored_relocated_picture_successor_origin(true, &host, &table, Some(&next), 96.0)
+            .filter(|origin| *origin <= col.height)
+            .map(|origin| col.y + origin)
+            .expect("이월 그림의 다음 저장 원점");
     assert!(
         (flow_top - 488.386_666_7).abs() < 0.001,
         "flow_top={flow_top}"
     );
     assert!(
-        stored_layout_relocated_empty_rowbreak_picture_next_flow_top(
-            false,
-            &host,
-            &table,
-            Some(&next),
-            &col,
-            96.0,
-        )
-        .is_none()
+        stored_relocated_picture_successor_origin(false, &host, &table, Some(&next), 96.0)
+            .is_none()
     );
 }
 
@@ -582,6 +571,8 @@ fn test_build_page_with_paragraph() {
         section_index: 0,
         layout,
         column_contents: vec![ColumnContent {
+            paragraph_origins: Default::default(),
+            computed_paragraphs: Default::default(),
             column_index: 0,
             start_height: 0.0,
             endnote_flow: false,
@@ -599,6 +590,7 @@ fn test_build_page_with_paragraph() {
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,
@@ -667,6 +659,8 @@ fn partial_paragraph_start_line_beyond_lines_does_not_panic() {
         section_index: 0,
         layout,
         column_contents: vec![ColumnContent {
+            paragraph_origins: Default::default(),
+            computed_paragraphs: Default::default(),
             column_index: 0,
             start_height: 0.0,
             endnote_flow: false,
@@ -689,6 +683,7 @@ fn partial_paragraph_start_line_beyond_lines_does_not_panic() {
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,
@@ -750,6 +745,9 @@ fn test_layout_with_composed_styles() {
     let composed: Vec<_> = paragraphs.iter().map(|p| compose_paragraph(p)).collect();
 
     let styles = ResolvedStyleSet {
+        source_program_projection_slots: Default::default(),
+        isolated_jamo_font: None,
+        native_pua_fonts: Default::default(),
         resolved_dpi: None,
         page_number_char_style_id: None,
         page_number_font_is_hft: false,
@@ -786,6 +784,8 @@ fn test_layout_with_composed_styles() {
         section_index: 0,
         layout,
         column_contents: vec![ColumnContent {
+            paragraph_origins: Default::default(),
+            computed_paragraphs: Default::default(),
             column_index: 0,
             start_height: 0.0,
             endnote_flow: false,
@@ -803,6 +803,7 @@ fn test_layout_with_composed_styles() {
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,
@@ -899,6 +900,9 @@ fn test_layout_multi_run_x_position() {
 
     let composed: Vec<_> = paragraphs.iter().map(|p| compose_paragraph(p)).collect();
     let styles = ResolvedStyleSet {
+        source_program_projection_slots: Default::default(),
+        isolated_jamo_font: None,
+        native_pua_fonts: Default::default(),
         resolved_dpi: None,
         page_number_char_style_id: None,
         page_number_font_is_hft: false,
@@ -930,6 +934,8 @@ fn test_layout_multi_run_x_position() {
         section_index: 0,
         layout,
         column_contents: vec![ColumnContent {
+            paragraph_origins: Default::default(),
+            computed_paragraphs: Default::default(),
             column_index: 0,
             start_height: 0.0,
             endnote_flow: false,
@@ -947,6 +953,7 @@ fn test_layout_multi_run_x_position() {
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,
@@ -998,6 +1005,9 @@ fn test_resolved_to_text_style() {
     use crate::renderer::style_resolver::ResolvedCharStyle;
 
     let styles = ResolvedStyleSet {
+        source_program_projection_slots: Default::default(),
+        isolated_jamo_font: None,
+        native_pua_fonts: Default::default(),
         resolved_dpi: None,
         page_number_char_style_id: None,
         page_number_font_is_hft: false,
@@ -1038,6 +1048,9 @@ fn test_resolved_to_text_style_with_ratio() {
     use crate::renderer::style_resolver::ResolvedCharStyle;
 
     let styles = ResolvedStyleSet {
+        source_program_projection_slots: Default::default(),
+        isolated_jamo_font: None,
+        native_pua_fonts: Default::default(),
         resolved_dpi: None,
         page_number_char_style_id: None,
         page_number_font_is_hft: false,
@@ -1329,6 +1342,8 @@ fn test_layout_table_basic() {
         section_index: 0,
         layout,
         column_contents: vec![ColumnContent {
+            paragraph_origins: Default::default(),
+            computed_paragraphs: Default::default(),
             column_index: 0,
             start_height: 0.0,
             endnote_flow: false,
@@ -1352,6 +1367,7 @@ fn test_layout_table_basic() {
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,
@@ -1490,6 +1506,8 @@ fn test_layout_table_cell_positions() {
         section_index: 0,
         layout,
         column_contents: vec![ColumnContent {
+            paragraph_origins: Default::default(),
+            computed_paragraphs: Default::default(),
             column_index: 0,
             start_height: 0.0,
             endnote_flow: false,
@@ -1513,6 +1531,7 @@ fn test_layout_table_cell_positions() {
             stored_column_top_spacings: Default::default(),
             paragraph_float_placements: Default::default(),
             float_pushed_line_spacings: Default::default(),
+            page_band_flow_starts: Default::default(),
         }],
         active_header: None,
         active_footer: None,
@@ -2420,6 +2439,7 @@ fn task1197_paper_nodes_sort_by_plane_z_order_and_stable_index() {
         RenderNode::new(
             id,
             RenderNodeType::Group(GroupNode {
+                paint_transform: None,
                 section_index: Some(0),
                 para_index: Some(0),
                 control_index: Some(control_index),

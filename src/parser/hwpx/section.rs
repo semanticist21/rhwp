@@ -741,14 +741,27 @@ fn parse_paragraph_body(
                     }
                     b"t" => {
                         // 텍스트 읽기 (탭 확장 데이터 포함)
-                        let (parts, tab_exts, nb_space_element) =
-                            read_text_content_with_tabs(reader)?;
-                        text_parts.extend(parts);
-                        para.tab_extended.extend(tab_exts);
+                        let content = read_text_content_with_tabs(reader)?;
+                        if !content.literal_figure_spaces.is_empty() {
+                            let prefix = visible_text_part_len(&text_parts);
+                            para.literal_figure_spaces
+                                .extend(content.literal_figure_spaces.iter().map(|&i| prefix + i));
+                        }
+                        if content.fixed_space_element {
+                            para.control_mask |= 1u32 << 0x001F;
+                        }
+                        text_parts.extend(content.parts);
+                        para.tab_extended.extend(content.tabs);
                         // [#5174] 묶음 빈칸의 출처 표기를 문단에 남긴다 — 직렬화기가 이
                         // 비트로 요소/리터럴을 갈라 원본 표기를 그대로 되돌린다.
-                        if nb_space_element {
+                        if content.nb_space_element {
                             para.control_mask |= 1u32 << 0x1E;
+                        }
+                        // [#7993] 소프트 하이픈도 요소·리터럴 두 표기가 있다. 요소 표기를
+                        // 만나면 HWP5 제어코드 24 자리(비트 24)를 세워 직렬화기가 요소로
+                        // 되돌리게 한다(#4895 의 출처 표기 보존 계약).
+                        if content.hyphen_element {
+                            para.control_mask |= 1u32 << 0x18;
                         }
                     }
                     b"tbl" => {
@@ -2109,8 +2122,9 @@ const PAGE_FOOTER_SLOT_PART: &str = "\u{0002}pf";
 /// <hp:t> 텍스트 컨텐츠를 읽는다.
 /// 탭 확장 데이터도 함께 반환 (HWPX 인라인 탭의 leader/type/width)
 fn read_text_content(reader: &mut Reader<&[u8]>) -> Result<String, HwpxError> {
-    let (parts, _, _) = read_text_content_with_tabs(reader)?;
-    Ok(parts
+    let content = read_text_content_with_tabs(reader)?;
+    Ok(content
+        .parts
         .into_iter()
         .filter(|p| p != TITLE_MARK_PART_IGNORE && p != TITLE_MARK_PART_KEEP)
         .filter(|p| !p.starts_with(MARKPEN_BEGIN_PART_PREFIX) && p.as_str() != MARKPEN_END_PART)
@@ -2133,28 +2147,82 @@ fn decode_xml_general_ref(r: &BytesRef<'_>) -> String {
     }
 }
 
-fn read_text_content_with_tabs(
-    reader: &mut Reader<&[u8]>,
-) -> Result<(Vec<String>, Vec<[u16; 7]>, bool), HwpxError> {
+struct ParsedTextContent {
+    parts: Vec<String>,
+    tabs: Vec<[u16; 7]>,
+    nb_space_element: bool,
+    hyphen_element: bool,
+    fixed_space_element: bool,
+    literal_figure_spaces: Vec<usize>,
+}
+
+fn visible_text_part_len(parts: &[String]) -> usize {
+    parts
+        .iter()
+        .map(|part| match part.as_str() {
+            "\u{0002}"
+            | "\u{0003}"
+            | "\u{0004}"
+            | PAGE_FOOTER_SLOT_PART
+            | TITLE_MARK_PART_IGNORE
+            | TITLE_MARK_PART_KEEP => 0,
+            part if part.starts_with(MARKPEN_BEGIN_PART_PREFIX) || part == MARKPEN_END_PART => 0,
+            part => part.chars().count(),
+        })
+        .sum()
+}
+
+fn append_literal_text(
+    text: &mut String,
+    parts: &[String],
+    literal_spaces: &mut Vec<usize>,
+    addition: &str,
+) {
+    if addition.contains('\u{2007}') {
+        let prefix = visible_text_part_len(parts) + text.chars().count();
+        literal_spaces.extend(
+            addition
+                .chars()
+                .enumerate()
+                .filter_map(|(i, ch)| (ch == '\u{2007}').then_some(prefix + i)),
+        );
+    }
+    text.push_str(addition);
+}
+
+fn read_text_content_with_tabs(reader: &mut Reader<&[u8]>) -> Result<ParsedTextContent, HwpxError> {
     let mut parts: Vec<String> = Vec::new();
     let mut text = String::new();
     let mut tab_ext_buf: Vec<[u16; 7]> = Vec::new();
     let mut saw_nb_space_element = false;
+    let mut saw_hyphen_element = false;
+    let mut saw_fixed_space_element = false;
+    let mut literal_figure_spaces = Vec::new();
     let mut buf = Vec::new();
 
     loop {
         match reader.read_event_into(&mut buf) {
             Ok(Event::Text(ref t)) => {
-                text.push_str(t.as_ref());
+                append_literal_text(&mut text, &parts, &mut literal_figure_spaces, t.as_ref());
             }
             // 본문 런 텍스트가 CDATA 로 저장된 경우. 이 분기가 없으면 `_ => {}` 로
             // 버려져 문단 텍스트가 통째로 소실된다(#2916·#2951·#2974 와 같은 결함
             // 클래스이나, 여기는 수식·덧말이 아닌 일반 <hp:t> 경로다).
             Ok(Event::CData(ref cdata)) => {
-                text.push_str(cdata.as_ref());
+                append_literal_text(
+                    &mut text,
+                    &parts,
+                    &mut literal_figure_spaces,
+                    cdata.as_ref(),
+                );
             }
             Ok(Event::GeneralRef(ref r)) => {
-                text.push_str(&decode_xml_general_ref(r));
+                append_literal_text(
+                    &mut text,
+                    &parts,
+                    &mut literal_figure_spaces,
+                    &decode_xml_general_ref(r),
+                );
             }
             Ok(Event::End(ref e)) => {
                 let tn = e.name();
@@ -2183,7 +2251,10 @@ fn read_text_content_with_tabs(
                         text.push('\u{00A0}');
                         saw_nb_space_element = true;
                     }
-                    b"fwSpace" => text.push('\u{2007}'),
+                    b"fwSpace" => {
+                        text.push('\u{2007}');
+                        saw_fixed_space_element = true;
+                    }
                     // [#6956] 형광펜 표지. 글자 축을 소비하지 않으므로 `text` 에 넣지
                     // 않고 sentinel part 로 위치만 끊어 둔다(`titleMark` 선례).
                     b"markpenBegin" | b"markpenEnd" => {
@@ -2203,8 +2274,14 @@ fn read_text_content_with_tabs(
                         }
                     }
                     // 소프트 하이픈 — 줄바꿈 자리에서만 보인다. 리터럴 '-' 와 구별해야
-                    // 저장 왕복에서 단어가 갈라지지 않는다(ParaList XML schema.xml:291).
-                    b"hyphen" => text.push('\u{00AD}'),
+                    // 저장 왕복에서 단어가 갈라지지 않는다.
+                    // [#7993] 한/글은 이 요소를 `hp:hypen` 으로 적는다(스키마 문서의 `hyphen`
+                    // 과 다르다 — 저장소 한컴 HWPX 표본 `hypen` 17곳 · `hyphen` 0곳). 한/글은
+                    // `hyphen` 을 모르는 요소로 버리므로 쓰기는 `hypen` 만, 읽기는 두 철자를 받는다.
+                    b"hypen" | b"hyphen" => {
+                        text.push('\u{00AD}');
+                        saw_hyphen_element = true;
+                    }
                     // 제목 차례 표시 — 8유닛 슬롯이라 텍스트가 아니라 조각 마커로 끊는다.
                     // 이걸 흘리면 저장본 축이 8유닛 짧아져 한글이 본문을 통째로 버린다.
                     b"titleMark" => {
@@ -2242,7 +2319,14 @@ fn read_text_content_with_tabs(
     if !text.is_empty() || parts.is_empty() {
         parts.push(text);
     }
-    Ok((parts, tab_ext_buf, saw_nb_space_element))
+    Ok(ParsedTextContent {
+        parts,
+        tabs: tab_ext_buf,
+        nb_space_element: saw_nb_space_element,
+        hyphen_element: saw_hyphen_element,
+        fixed_space_element: saw_fixed_space_element,
+        literal_figure_spaces,
+    })
 }
 
 fn parse_tab_extension(e: &quick_xml::events::BytesStart) -> [u16; 7] {
@@ -4929,6 +5013,7 @@ fn parse_shape_object(
             // [Task #1067] HWPX `<hc:pt>` 점들을 PolygonShape::points 로 매핑.
             // 누락 시 polygon path 가 빈 상태로 렌더링되어 도형 미표시 (rhwp-studio + 한컴 둘 다).
             points: polygon_points,
+            affine_edit_reference: None,
             raw_trailing: Vec::new(),
         }),
         b"curve" => ShapeObject::Curve(CurveShape {
@@ -6909,6 +6994,7 @@ fn parse_equation(
         version_info,
         raw_ctrl_data: Vec::new(),
         raw_ctrl_seal: None,
+        unpositioned_host_frame_seal: None,
     };
     Ok(Control::Equation(Box::new(equation)))
 }

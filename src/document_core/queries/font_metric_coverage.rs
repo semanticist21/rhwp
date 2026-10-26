@@ -443,6 +443,7 @@ fn classify_decision(
         ))),
         "clusterContinuation"
         | "figureSpace"
+        | "literalFigureSpace"
         | "hwpPuaFiller"
         | "inlineObjectPlaceholder"
         | "tabAdvance" => {
@@ -454,7 +455,8 @@ fn classify_decision(
             }
             Ok(CoverageClassification::NotApplicable)
         }
-        "kopubTable"
+        "measuredOriginalGlyph"
+        | "kopubTable"
         | "metricHalfwidthPunctuationOverlay"
         | "metricNarrowPunctuationOverlay"
         | "metricSpaceOverlay" => {
@@ -466,7 +468,9 @@ fn classify_decision(
             }
             Ok(CoverageClassification::Category("measured-overlay"))
         }
-        "embeddedMetric" | "metricHalfSpace" => {
+        // 선언된 paint 대체 face의 실제 glyph hit도 해당 face의 메트릭 측정이다.
+        // 원래 face의 결측 때문에 선택됐다는 이유로 집계에서 제외하지 않는다.
+        "embeddedMetric" | "metricHalfSpace" | "declaredGlyphFallbackMetric" => {
             if decision.character_match != "hit" || metric_entry.is_none() {
                 return Err(coverage_error(format!(
                     "metric widthSource requires a metric character hit: {}",
@@ -643,9 +647,25 @@ fn analyze_paragraph(
         while char_cursor < chars.len() && chars[char_cursor].0 < end {
             char_cursor += 1;
         }
+        // 가시 문자 필터 뒤에도 원문 리터럴 공백의 소유를 유지한다.
+        // 같은 U+2007 표시로 읽은 HWP 코드31과 Unicode 리터럴은 다른 전진 계약이다.
+        let mut literal_figure_spaces = Vec::new();
         let segment: Vec<char> = chars[segment_start..char_cursor]
             .iter()
-            .filter_map(|(_, ch)| visible_layout_char(*ch).then_some(*ch))
+            .enumerate()
+            .filter_map(|(index, (_, ch))| {
+                if !visible_layout_char(*ch) {
+                    return None;
+                }
+                literal_figure_spaces.push(
+                    *ch == '\u{2007}'
+                        && para
+                            .literal_figure_spaces
+                            .binary_search(&(segment_start + index))
+                            .is_ok(),
+                );
+                Some(*ch)
+            })
             .collect();
         if segment.is_empty() {
             continue;
@@ -666,7 +686,10 @@ fn analyze_paragraph(
         while group_start < segment.len() {
             let language = language_slots[group_start].0.min(6);
             let mut group_end = group_start + 1;
-            while group_end < segment.len() && language_slots[group_end].0.min(6) == language {
+            while group_end < segment.len()
+                && language_slots[group_end].0.min(6) == language
+                && literal_figure_spaces[group_end] == literal_figure_spaces[group_start]
+            {
                 group_end += 1;
             }
 
@@ -714,8 +737,14 @@ fn analyze_paragraph(
                 alignment,
                 stored_lineseg,
             );
-            let style =
+            let mut style =
                 resolved_to_text_style(&core.styles, shape_ref.char_shape_id as u32, language);
+            style.literal_figure_space = literal_figure_spaces[group_start];
+            if style.literal_figure_space {
+                style.literal_figure_space_em = core
+                    .styles
+                    .literal_figure_space_em(shape_ref.char_shape_id as u32, language);
+            }
             budget.check_dimension(&style.font_family)?;
             let layout_family = Arc::<str>::from(style.font_family.as_str());
             let text: String = segment[group_start..group_end].iter().collect();

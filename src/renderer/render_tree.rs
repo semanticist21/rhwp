@@ -36,16 +36,36 @@ pub const MIDDLE_DOT_RADIUS_EM: f64 = 0.060;
 /// 실측 중앙값 0.3520~0.3559 로 종전 값이 정확해 유지한다.
 pub const MIDDLE_DOT_CY_OFFSET_EM: f64 = 0.35;
 
-/// [#5698 계열] 탭 점선 리더(채움 종류 3)의 점 간격 / em.
-///
-/// 한글 2022 정본 실측 — `samples/KTX.hwp` 2쪽 목차의 점 1,435개를 글자 좌표로 뽑아
-/// 줄마다 이웃 간격을 셌다: 글꼴 14.04pt 줄에서 3.48pt, 15.00pt 줄에서 3.72pt →
-/// **두 크기 모두 0.248 em** 이다(잔여 폭을 채우느라 줄마다 3.48~3.84 로 늘어난다).
-///
-/// 종전 렌더는 `stroke-dasharray="0.1 3"` 로 **폰트 크기와 무관한 3.1px 고정**이라
-/// 14pt 기준 4.64px 여야 할 간격이 33% 촘촘했고, 점 지름도 1.0px 고정이라
-/// 가운뎃점 실측(지름 = 2 × [`MIDDLE_DOT_RADIUS_EM`] = 0.12 em ≈ 2.24px)의 절반이
-/// 안 됐다. 결과적으로 목차 점선이 점이 아니라 가는 실선으로 보였다.
+/// 독립 Print의 전각 한점 리더 잉크. 원 프로그램의 결측을 전각으로
+/// 해소한 공통 전진 결정만 소비하며 실제 공급자의 자연 글리프는 보존한다.
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct PointInk {
+    pub center_x: f64,
+    pub above_baseline: f64,
+    pub radius_x: f64,
+    pub radius_y: f64,
+}
+
+pub(crate) fn fullwidth_onepoint_ink(style: &TextStyle, draw_font_size: f64) -> Option<PointInk> {
+    let advance = super::layout::char_width_decision(&['․'], &[1], 0, style, true);
+    if advance.width_source != "heuristicFullwidth" {
+        return None;
+    }
+    // 한컴 Print T1/T2의 중심(500,347.5)/1000와 대칭 cubic의 극값.
+    // 굵은 프로그램만20/1000 stroke가 있어 반폭10/1000을 더한다.
+    let outline = if style.bold { 0.01 } else { 0.0 };
+    Some(PointInk {
+        center_x: draw_font_size * style.ratio * 0.5,
+        above_baseline: draw_font_size * 0.3475,
+        radius_x: draw_font_size * style.ratio * (0.07575 + outline),
+        radius_y: draw_font_size * (0.0725 + outline),
+    })
+}
+
+/// 이전 payload와 비정상적으로 큰 리더를 위한 점선 근사 간격.
+/// 유효한 일반 리더는 `tab_leader::dot_geometry`의 glyph 원점과 셀 배분을 쓴다.
+/// 과거 KTX의 특정 크기에서 관측한 0.248은 출력 격자가 포함된 근삿값이며
+/// 모든 크기·채움 폭의 일정한 em 간격으로 해석하지 않는다.
 pub const TAB_DOT_LEADER_PITCH_EM: f64 = 0.248;
 
 /// 탭 점선 리더 한 점의 지름 / em — 가운뎃점과 **같은 실측 크기**를 쓴다.
@@ -153,6 +173,13 @@ impl RenderLayerInfo {
 /// 렌더 노드 (페이지 내 렌더링 가능한 요소)
 #[derive(Debug, Clone, Serialize)]
 pub struct RenderNode {
+    /// Cell-owned paint is edited through the cell, not selected as a drawing.
+    /// Keep its source address for paint ordering; the control query omits it.
+    #[serde(skip)]
+    pub(crate) cell_frame_paint: bool,
+    /// Source text clipping in absolute page pixels; not a layout height/cut.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paint_clip: Option<Vec<crate::model::text_clip::TextClipPath>>,
     /// 노드 ID
     pub id: NodeId,
     /// 노드 종류
@@ -202,6 +229,7 @@ impl RenderNode {
         };
         bbox.y += char_offset_y;
         Self {
+            cell_frame_paint: false,
             id,
             node_type,
             bbox,
@@ -213,6 +241,7 @@ impl RenderNode {
             print_bbox: None,
             control_code: ControlCode::Automatic,
             header_footer_source: None,
+            paint_clip: None,
         }
     }
 
@@ -225,6 +254,16 @@ impl RenderNode {
     /// 기존 노드에 레이어 메타데이터를 부여한다.
     pub fn set_layer(&mut self, layer: RenderLayerInfo) {
         self.layer = Some(layer);
+    }
+
+    /// Move absolute source-paint geometry with its content, independently of
+    /// viewport/bbox expansion. The caller owns the subtree's actual movement.
+    pub(crate) fn translate_paint_clip_y(&mut self, dy: f64) {
+        if let Some(paths) = &mut self.paint_clip {
+            for path in paths {
+                *path = path.map(|x, y| (x, y + dy));
+            }
+        }
     }
 
     /// 출력/인쇄 profile에서 제외할 편집 전용 노드로 표시한다.
@@ -1075,6 +1114,11 @@ impl TextRunNode {
         self.display_text.as_deref().unwrap_or(&self.text)
     }
 
+    /// 표시 모양은 display_or_text로, 일대일 투영의 물리 폭은 원문으로 전달한다.
+    pub(crate) fn metric_or_display_text(&self) -> &str {
+        super::composer::display_projection_metric_text(&self.text, self.display_or_text())
+    }
+
     /// Replay 대상 문자열에 대해 layout positions가 안전한 경우에만 빌려준다.
     ///
     /// Backend가 PUA 확장·inline placeholder 제거 등으로 다른 문자열을 그리면
@@ -1206,9 +1250,24 @@ pub struct ShapeTransform {
     pub horz_flip: bool,
     /// 상하 대칭
     pub vert_flip: bool,
+    /// 그림의 회전 전 표시 크기 / 회전 후 선언 프레임 크기.
+    /// 흐름·선택 bbox는 유지하고 모든 paint 소비자가 같은 잉크 상자를 구한다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub image_frame_ratio: Option<[f64; 2]>,
 }
 
 impl ShapeTransform {
+    /// One page-space parent transform for the outline, text, and editor geometry.
+    pub fn matrix_about(&self, bbox: BoundingBox) -> [f64; 6] {
+        let (sin, cos) = self.rotation.to_radians().sin_cos();
+        let sx = if self.horz_flip { -1.0 } else { 1.0 };
+        let sy = if self.vert_flip { -1.0 } else { 1.0 };
+        let (a, b, c, d) = (cos * sx, sin * sx, -sin * sy, cos * sy);
+        let cx = bbox.x + bbox.width / 2.0;
+        let cy = bbox.y + bbox.height / 2.0;
+        [a, b, c, d, cx - a * cx - c * cy, cy - b * cx - d * cy]
+    }
+
     /// 변환이 필요한지 여부
     pub fn has_transform(&self) -> bool {
         self.rotation != 0.0 || self.horz_flip || self.vert_flip
@@ -1223,6 +1282,14 @@ impl ShapeTransform {
     /// bbox 위에 동일 rotation transform 을 적용하면 한컴 정답지와 정합한다.
     /// cx, cy 는 swap 전후 동일하므로 rotate 식 자체는 그대로 둔다.
     pub fn effective_image_bbox(&self, bbox: &BoundingBox) -> BoundingBox {
+        if let Some([width, height]) = self.image_frame_ratio {
+            return BoundingBox::new(
+                bbox.x + bbox.width * (1.0 - width) / 2.0,
+                bbox.y + bbox.height * (1.0 - height) / 2.0,
+                bbox.width * width,
+                bbox.height * height,
+            );
+        }
         let r = self.rotation.rem_euclid(360.0);
         let is_perpendicular = (r - 90.0).abs() < 1.0 || (r - 270.0).abs() < 1.0;
         if !is_perpendicular {
@@ -1247,6 +1314,10 @@ pub struct LineNode {
     pub y2: f64,
     /// 선 스타일
     pub style: LineStyle,
+    /// 공유 경계에서 최종 획보다 먼저 그린 동일 형태의 이웃 획 색상.
+    /// 논리 소유 노드는 하나이며 각 backend는 같은 순서의 paint를 소비한다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub underpaint_color: Option<u32>,
     /// 소속 구역 인덱스
     pub section_index: Option<usize>,
     /// 도형 컨트롤을 소유한 문단 인덱스
@@ -1274,6 +1345,7 @@ impl LineNode {
             x2,
             y2,
             style,
+            underpaint_color: None,
             section_index: None,
             para_index: None,
             control_index: None,
@@ -1282,6 +1354,23 @@ impl LineNode {
             cell_para_index: None,
             outer_table_control_index: None,
         }
+    }
+
+    /// 하나의 논리 선을 원본의 아래 획 → 최종 획 순서로 낮춘다.
+    pub(crate) fn paint_strokes(&self) -> impl Iterator<Item = Self> {
+        let mut primary = self.clone();
+        primary.underpaint_color = None;
+        // 덧그리는 두 획은 하나의 복합 coverage를 만든다. 각 획을 따로
+        // 픽셀 중심에 모으면 아래 획의 원본 가장자리를 과도하게 지운다.
+        if self.underpaint_color.is_some() {
+            primary.style.compound_component = true;
+        }
+        let underpaint = self.underpaint_color.map(|color| {
+            let mut stroke = primary.clone();
+            stroke.style.color = color;
+            stroke
+        });
+        underpaint.into_iter().chain(std::iter::once(primary))
     }
 
     /// 이 선이 실제로 칠하는 **잉크**의 경계 상자. (#6269)
@@ -1323,6 +1412,14 @@ pub struct RectangleNode {
     pub style: ShapeStyle,
     /// 그라데이션 채우기 (style.fill_color보다 우선)
     pub gradient: Option<Box<GradientFillInfo>>,
+    /// Picture outlines are emitted as filled outline polygons by the Print
+    /// driver, including dotted/dashed outlines. Preserve that source role even
+    /// when a backend draws the equivalent outline with a stroke.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub picture_border: bool,
+    /// Source pen이 ROUND인 닫힌 그림 외곽선의 모서리 연결.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub round_stroke_join: bool,
     /// 소속 구역 인덱스
     pub section_index: Option<usize>,
     /// 도형 컨트롤을 소유한 문단 인덱스
@@ -1352,6 +1449,8 @@ impl RectangleNode {
             corner_radius,
             style,
             gradient,
+            picture_border: false,
+            round_stroke_join: false,
             section_index: None,
             para_index: None,
             control_index: None,
@@ -1622,6 +1721,10 @@ impl ImageNode {
 /// 묶음 개체 노드
 #[derive(Debug, Clone, Serialize)]
 pub struct GroupNode {
+    /// Common layer subtree transform [a,b,c,d,e,f], applied before all children.
+    /// None for ordinary groups whose child geometry is already projected.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub paint_transform: Option<[f64; 6]>,
     /// 소속 구역 인덱스
     pub section_index: Option<usize>,
     /// 묶음 개체 컨트롤을 소유한 문단 인덱스
@@ -2255,6 +2358,30 @@ impl PageRenderTree {
                 if plane_a != plane_b {
                     continue;
                 }
+                // Similar x/width is not physical overlap. Adjacent narrow
+                // source crops (e.g. compound stroke pieces) may all be within
+                // the legacy 1px alignment tolerance. They own disjoint ink.
+                // Ignore only floating point roundoff at a shared edge.
+                let epsilon = f64::EPSILON
+                    * 32.0
+                    * [
+                        bbox_a.x.abs(),
+                        bbox_b.x.abs(),
+                        bbox_a.y.abs(),
+                        bbox_b.y.abs(),
+                        bbox_a.width,
+                        bbox_b.width,
+                        bbox_a.height,
+                        bbox_b.height,
+                        1.0,
+                    ]
+                    .into_iter()
+                    .fold(1.0_f64, f64::max);
+                let overlap_x =
+                    (bbox_a.x + bbox_a.width).min(bbox_b.x + bbox_b.width) - bbox_a.x.max(bbox_b.x);
+                if overlap_x <= epsilon {
+                    continue;
+                }
                 // 조건 2/3: x, width 동일 (1px tolerance)
                 if (bbox_a.x - bbox_b.x).abs() > 1.0 {
                     continue;
@@ -2268,7 +2395,7 @@ impl PageRenderTree {
                 }
                 // 조건 5: 세로 겹침 (A.y + A.height > B.y)
                 let a_bottom = bbox_a.y + bbox_a.height;
-                if a_bottom <= bbox_b.y {
+                if a_bottom - bbox_b.y <= epsilon {
                     continue;
                 }
                 // Clip 계산: A 의 new_height = B.y - A.y

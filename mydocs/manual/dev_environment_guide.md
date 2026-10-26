@@ -2,7 +2,7 @@
 kind: guide
 status: active
 canonical: mydocs/manual/dev_environment_guide.md
-last_verified: 2026-10-18
+last_verified: 2026-10-20
 ---
 
 # 개발 환경 가이드
@@ -261,6 +261,14 @@ pkg/public의 동일 해시만으로 source 일치를 판정하지 않는다. �
 추가·제거 내용을 대조하고, 불일치 산출물은 증거에서 제외한 뒤 변경 패키지의 재컴파일을 확인한다.
 공유 cache 전체를 삭제해 해결하지 않는다.
 
+### PDF 이미지 코덱 선택
+
+기본 PDF 빌드의 JBIG2·JPEG 2000은 비활성입니다. 필요한 것만 `--features pdf-jbig2` 또는
+`--features pdf-jpeg2000`으로 추가합니다. 두 코덱은 `--features pdf-jbig2,pdf-jpeg2000`입니다.
+Native Cargo와 `scripts/wasm-pack-locked.sh` 모두 이 feature 인자를 받습니다.
+`native-skia`·`wasm-api` 선택과 코덱 선택을 구분합니다. 실제 명령, 산출물 지원 확인과
+실패 대응은 [PDF 이미지 코덱 가이드](pdf_image_codecs.md)를 따릅니다.
+
 ### Studio에서 PDF 직접 열기
 
 기본 Native·WASM 빌드는 `pdf-import`를 포함한다. Docker와 호스트 빌드 모두 기본 feature로
@@ -345,11 +353,69 @@ CARGO_TARGET_DIR="${rhwp_review_target_dir:?기본 작업공간에서 공용 tar
   scripts/wasm-pack-locked.sh --target web --out-dir pkg --no-opt
 ```
 
+WASM release의 산출물 선택을 비교하는 선택 경로는 다음과 같습니다. 기본 동작은 바뀌지 않습니다.
+
+```bash
+RHWP_WASM_CDYLIB_ONLY=1 CARGO_TARGET_DIR=target/pr-review \
+  scripts/wasm-pack-locked.sh --target web --out-dir pkg --release
+```
+
+이 POSIX wrapper 옵션은 `rhwp`의 WASM `cdylib`만 생성합니다. Rust/Cargo 1.93.1에서 기존
+`rlib+cdylib` 빌드는 `lto=true`여도 cross-crate LTO를 실행하지 않으므로, 이 경로는 명령 범위의
+`profile.release.lto=false`로 그 실효 조건을 유지합니다. manifest의 release 설정 문구를 그대로
+적용하는 경로와는 구분합니다. wasm-pack의 wasm-bindgen·wasm-opt·패키징·Studio 동기화는 유지하며,
+Native/Rust 소비자를 위한 rlib 설정은 바꾸지 않습니다. 별도 profile/config/package 인자를 함께
+넘기지 않습니다. CI에서 채택할 때는 기존 release 캐시와 산출물 선택·프로필 키를 구분해야 합니다.
+PowerShell wrapper의 옵션은 아닙니다. 근거와 검증 범위는
+[빌드 비용 조사](https://github.com/edwardkim/rhwp/blob/7aa36953478812711e671d55c16b5daa11cd7a7a/mydocs/report/task_m100_7473_rust_phases.md)를 참고합니다.
+
 반복·무한 최적화가 발생하면 실행 중인 wasm-pack·wasm-opt와 `pkg/*-opt.wasm` 잔재를 먼저 확인한다.
 실행 중인 파일을 지우거나 공유 cache 전체를 초기화하지 않는다. 종료된 실행의 정확한 임시 잔재와
 도구 환경을 보정한 뒤 최적화 포함 빌드를 다시 완료한다. Windows도 같은 원칙을 따른다.
 
 TypeScript와 CSS는 Vite가 다시 읽지만 Rust 변경은 위 빌드가 끝나야 브라우저에 반영된다.
+
+### 개발·시각 CI·배포의 빌드 경로 (#7473)
+
+| 목적 | WASM 경로 | 책임 |
+| --- | --- | --- |
+| 로컬 반복 확인 | 기존 locked wrapper의 `--no-opt` 또는 `--dev` | 빠른 진단. 배포 최적화 검증과 구분 |
+| Frontend package gate | `wasm-pack build --target web --dev` | 타입·unit·package 계약 |
+| PR Render Diff | `python3 scripts/measure_render_diff_wasm.py --profile release --build-mode standard` | 배포와 같은 release 설정·wasm-opt 산출물로 Canvas/PDF 및 readiness 검사 |
+| Full Renderer Sweep | 기존 `wasm-pack build --target web --release` | 수동 전체 sweep |
+| npm / Pages | PR과 같은 measurement helper의 release+standard | 한 번 빌드한 WASM으로 Canvas·direct PDF 검사 후 같은 파일을 패키징 |
+
+Render Diff는 `output/render-diff-build/build.json`에 source SHA·프로필·도구 명령/버전/해시·
+산출물 해시·Cargo cache 정보를 저장한다. `build.log`와 `summary.md`의 구간 시간은 로그 수신
+경계의 wall 근사이며 다운로드·설치·마무리 비용을 포함한다. 프로세스 자체 시간과 혼동하지 않는다.
+최적화 실행이 관측되지 않은 release 빌드와 실패한 빌드는 성공 manifest로 인정하지 않는다.
+
+`RHWP_WASM_BUILD_MANIFEST`가 설정된 E2E는 앱 초기화 중 Chrome이 실제 받은
+`rhwp_bg.wasm` 응답의 SHA-256을 대조하고 `consumption/`에 증거를 남긴다.
+manifest가 없는 일반 로컬 E2E는 기존 동작을 유지한다. 단순히 같은 URL을 다시 fetch한 결과를
+사용하지 않는다. 큰 dev WASM을 관측할 수 있도록 CDP 응답 버퍼를 산출물 크기에 맞춘다.
+
+비용 비교는 수동 Render Diff의 `wasm-profile=dev|release`와
+`wasm-build-mode=auto|standard|cdylib`로 **동일 ref SHA**에서 실행한다.
+`auto`는 프로필과 무관하게 기존 standard 경로를 선택한다. cdylib는 수동 비교에서 명시적으로
+선택할 때만 사용하며 dev+cdylib는 거부한다. PR 실행은 release+standard이다.
+cdylib 경로는 #7488의 명령 단위 `profile.release.lto=false`를 사용하므로 배포 설정과 구분한다.
+manifest에는 실제 선택한 crate type·LTO 정책, wrapper/manifest hash와 runner CPU·이미지를 함께 남긴다.
+Cargo cache의 exact key와 fallback prefix 모두 profile·crate type·LTO 정책별로 분리하며,
+저장은 기존처럼 신뢰하는 main/devel 수동 실행에서만 허용한다. 이전 무구분 cache는 복원하지 않는다.
+같은 runner 이미지·
+Rust/도구·Chromium·fixture·폰트·캐시 상태를 확인하고 각 조건의 반복 수와 범위를 공개한다.
+cache-hit=false는 부분 복원일 수도 있으므로 matched key/restore 로그를 함께 읽는다.
+전체 job과 시각 검사 시간은 Actions attempt별 jobs API에서 얻고, 기존 다른 소스의 실행이나
+로컬 시간으로 release 전환의 CI 증가분을 대신하지 않는다. 실행은 원격 CI 승인 후 진행한다.
+
+배포 작업의 `verify-release-wasm` action은 이미 만든 패키지만 검사한다. source SHA·standard 설정·
+wasm-opt 실행·JS/WASM 해시를 확인하고, Canvas/direct PDF를 통과한 브라우저의 실제 WASM 응답을
+대조한 뒤 업로드한다. 검사 중 Native PDF 비교용 CLI는 별도로 빌드하지만 WASM은 다시 빌드하지 않는다.
+Pages는 Vite가 만든 `dist/`의 JS/WASM 해시도 업로드 직전에 대조한다. 배포 경로에서는 설치 실패나
+검사 실패를 skip으로 처리하지 않는다. 전체 문서·전체 쪽 검증을 뜻하지 않으며 기존 대표 3문서 각 1쪽의
+검사 범위·허용치는 유지한다. 일반 PR의 실행 범위는 기존 trusted impact classifier를 유지한다.
+
 
 ## 웹한글컨트롤 호환 층
 

@@ -36,9 +36,12 @@ const NATIVE_SKIA_RUST_FILES = new Set([
   'src/cli/outputs/raster.rs',
   // Sixel consumes the same Native Skia pixels; Canvas does not consume this adapter.
   'src/cli/outputs/sixel.rs',
+  'src/cli/outputs/kitty.rs',
+  'tests/cases/issue_8150_kitty_contract.rs',
   'tests/cases/issue_7820_sixel_contract.rs',
   'tests/cases/issue_4961_font_decision_trace.rs',
   'tests/cases/issue_7902_original_frame_and_content.rs',
+  'tests/cases/issue_8160_hwp2022_paragraph_relations.rs',
   'tests/cases/issue_7950_pdf_paint.rs',
   'tests/cases/native_fractional_glyph_origin.rs',
   'tests/cli_exit_codes_native.rs',
@@ -71,6 +74,8 @@ const RUST_TEST_FONT_EXTENSIONS = [
 
 const RENDER_TOOL_PATHS = new Set([
   'scripts/renderer_baseline.py',
+  'scripts/measure_render_diff_wasm.py',
+  'scripts/wasm-pack-locked.sh',
   'scripts/renderer_baseline_manifest.json',
   'scripts/generate_font_glyph_payload_fixture.py',
   'scripts/generate_exact_face_collection_fixture.py',

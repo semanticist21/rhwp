@@ -165,6 +165,9 @@ impl EqLayout {
     }
 
     pub(super) fn row_children(&self, nodes: &[EqNode], fs: f64) -> Vec<LayoutBox> {
+        if self.legacy_equation {
+            return super::legacy::row_children(self, nodes, fs);
+        }
         let significant: Vec<usize> = nodes
             .iter()
             .enumerate()
@@ -176,6 +179,9 @@ impl EqLayout {
             .iter()
             .map(|node| {
                 let mut result = self.layout_node(node, fs);
+                if self.legacy_hft_metrics {
+                    return result;
+                }
                 if matches!(node, EqNode::Space(_) | EqNode::Empty) {
                     return result;
                 }

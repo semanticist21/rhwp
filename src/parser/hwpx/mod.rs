@@ -468,6 +468,12 @@ pub fn parse_hwpx(data: &[u8]) -> Result<Document, HwpxError> {
         .is_some_and(physical_para_margin_units_from_version);
     let (mut doc_info, doc_properties) =
         header::parse_hwpx_header_with_plain_margin_units(&header_xml, physical_plain_margin)?;
+    if let Ok(bytes) = reader.read_file_bytes_limited(
+        crate::model::native_font_program::HWPX_ENTRY,
+        crate::model::native_font_program::MAX_BYTES,
+    ) {
+        crate::model::native_font_program::decode(&mut doc_info, header_xml.as_bytes(), &bytes);
+    }
     resolve_embedded_font_references(&mut doc_info, &package_info.bin_data_items);
 
     // [Task #1608] head version("1.4")은 HWPML **스키마 버전**일 뿐 HWP3→HWPX 변환 지표가
@@ -748,6 +754,7 @@ pub fn parse_hwpx(data: &[u8]) -> Result<Document, HwpxError> {
             hwp3_lineage: false,
             hwpx_lineage: has_hwpx_origin,
             hft_ascii_halfwidth_witnessed: false,
+            stored_rows_before_hancom_2020: false,
         },
     };
     // HWP3-origin 마커가 있으면 계보를 복원한다 — 직파싱 HWP3 와 같은
@@ -764,11 +771,33 @@ pub fn parse_hwpx(data: &[u8]) -> Result<Document, HwpxError> {
     // dir 영역 basename 매칭 영역 image 영역 자동 load. HWP5 parser 와 동일 처리.
     super::populate_link_image_paths(&mut doc);
 
+    // Restore the logical row owners before resolving paint ownership hashes.
+    if let Ok(bytes) = reader.read_file_bytes_limited(
+        crate::model::table_row_grid::HWPX_ENTRY,
+        crate::model::table_row_grid::MAX_BYTES,
+    ) {
+        crate::model::table_row_grid::decode(&mut doc, &bytes);
+    }
+    if let Ok(bytes) = reader.read_file_bytes_limited(
+        crate::model::border_paint::HWPX_ENTRY,
+        crate::model::border_paint::MAX_BYTES,
+    ) {
+        crate::model::border_paint::decode(&mut doc, &bytes);
+    }
+    if let Ok(bytes) = reader.read_file_bytes_limited(
+        crate::model::text_clip::HWPX_ENTRY,
+        crate::model::text_clip::MAX_BYTES,
+    ) {
+        crate::model::text_clip::decode(&mut doc, &bytes);
+    }
     if let Ok(bytes) =
         reader.read_file_bytes_limited(crate::model::hyperlink_format::HWPX_ENTRY, 16 * 1024 * 1024)
     {
         crate::model::hyperlink_format::decode(&mut doc, &bytes);
     }
+    // 개체 번호는 autoNum 필드의 저장 캐시나 필드 개수가 아니라 실제 소유 개체의
+    // numberingType과 순번에서 결정한다. 각주·쪽 번호의 별도 저장 계약은 유지한다.
+    super::auto_numbers::assign_object_numbers(&mut doc);
     Ok(doc)
 }
 

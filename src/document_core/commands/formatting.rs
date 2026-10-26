@@ -964,6 +964,7 @@ impl DocumentCore {
             type_info: None,
             default_name: None,
             subst_font: None,
+            native_program: None,
         };
 
         let font_faces = &mut self.document.doc_info.font_faces;
@@ -1014,6 +1015,7 @@ impl DocumentCore {
             type_info: None,
             default_name: None,
             subst_font: None,
+            native_program: None,
         };
 
         let font_faces = &mut self.document.doc_info.font_faces;

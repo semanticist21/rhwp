@@ -14,6 +14,12 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 
 | 파일 | 분류 | 상태 | 용도 | 샘플 | 배선 | 비고 |
 |------|------|------|------|------|------|------|
+| `ai-panel.test.mjs` | 상시 | active | AI 대화·문서 도구·명령 확인·스트리밍 및 오류 복구 | 합성 문서 | npm e2e:ai-panel | Anthropic 응답 가로채기, 실제 키·외부 API 미사용 |
+| `ai-settings.test.mjs` | 상시 | active | AI 모델·키 설정·동의·암호화 저장·잠금·삭제 | 빈 문서 | npm e2e:ai-settings | Anthropic 응답 가로채기, 실제 키·외부 API 미사용 |
+| `side-panel.test.mjs` | 상시 | active | AI 도우미 패널 열기·닫기·폭·눈금자·선택문 보존 | 합성 문서 | npm e2e:side-panel | 실제 Studio DOM·키 입력 |
+| `canvaskit-periodic-borders-issue7998.test.mjs` | 상시 | active | #7998 주기 괘선의 CanvasKit dash 소비와 투명 프레임 무출력 | issue7998/periodic-borders/native-dot-widths.hwpx | 수동 | 실제 software CanvasKit·독립 Print 주기 대조 |
+| `command-error-contract.test.mjs` | 상시 | active | #8104 오류 복구·호스트 전달 계약 | 빈 문서·실패 주입 | 수동 | 내용·선택·history·dirty·후속 편집·MessagePort·세션 교체 |
+| `cell-target-issue8102.test.mjs` | 상시 | active | #8102 생성·클릭·키보드·undo 진입 선택 삭제, 다중 문단·중첩·인접 셀·invalid target | 편집 API 합성 | npm e2e:issue-8102 | fresh WASM·Studio 실제 입력 |
 | `automation-commands.test.mjs` | 상시 | active | studio 자동화 표면 — 커맨드 질의·실행·메뉴 모델·드리프트 가드·다이얼로그 정책·`insert:field` 매개변수 삽입 | — | npm e2e:automation |  |
 | `enter-caret-reveal-issue7486.test.mjs` | 상시 | active | #7486 본문 Enter 새 쪽의 DOM 캐럿·viewport 및 Undo/Redo, 100%/66% 배율·160/200/300% 줄간격 | 편집 API 합성 | npm e2e:enter-caret | 추가 입력 없이 layout 완료 경계 검사 |
 | `autosave-recovery.test.mjs` | 상시 | active | Task #1448 — 미저장 문서 자동 백업 복구 E2E | — | 수동 |  |
@@ -25,6 +31,10 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 | `canvas-metric-recovery.test.mjs` | 상시 | active | #7084 실제 CanvasView descriptor 오류의 1회 자동 복구·지속 오류 제한·오래된 view 거부·일반 오류 분리 | issue3587/c-form-labnote-001-stage11-filled.hwp/.hwpx | npm e2e:canvas-metric-recovery | 통제 오류 주입, 자연 발생 폰트 장애와 구분 |
 | `canvaskit-font-coverage.test.mjs` | 상시 | active | CanvasKit 번들 폰트와 exact TTC GlyphRun 등록/픽셀 replay 검증 | — | npm+CI |  |
 | `canvaskit-font-preparation-issue7688.test.mjs` | 상시 | active | #7688 명시 CanvasKit의 문서 글꼴 준비·Regular/Bold 실제 outline 선택·자원 실패 Canvas2D fallback | group-drawing-02.hwp, 번들 NotoSerifKR | npm e2e:issue-7688-fonts | software surface, 두 face 공급 순서와 screen/print 대조 |
+| `canvaskit-font-family-fallback-issue7445.test.mjs` | 상시 | active | #7445 선언 글꼴 후보의 glyph coverage·선택 순서·기본 face 소유·결측 진단 | 합성 LayerTree, 공개 NotoSansKR/Pretendard/NanumGothic | npm e2e:issue-7445-font-family | 실제 software CanvasKit의 screen/print를 독립 face 대조군과 비교 |
+| `footnote-marker-replay-contract.mjs` | 유틸 | active | 각주 표식의 저장 기준선과 기존 fallback 소비 계약 | 합성 footnoteMarker | 수동 | `renderer-contract.test.mjs`에서 간접 import |
+| `pattern-image-replay-api.mjs` | 유틸 | active | 반복 이미지 shader의 생성·소유·해제 계약용 API 모형 | 합성 pattern image | 수동 | `renderer-contract.test.mjs`에서 간접 import |
+| `middle-dot-canvas-paint.test.mjs` | 상시 | active | 가운뎃점의 실제 Canvas 원형 경로와 앞뒤 내용 소유 | k-water-rfp.hwp | npm e2e:middle-dot-canvas-paint | 원본 공개 WASM·Canvas paint 소비 검사 |
 | `canvaskit-cropped-contain.test.mjs` | 상시 | active | #7235 crop 이후 이미지 비율과 letterbox의 실제 CanvasKit replay 검사 | 합성 이미지 | 수동 | run-with-vite.mjs 경유 |
 | `glyph-outline-portable-geometry.test.mjs` | 상시 | active | #536 strict outline의 유효 좌표 replay와 f32 범위 초과 시 전체 TextRun fallback 픽셀 보존 | 합성 outline·TextRun | npm e2e:glyph-outline-portable-geometry | Chromium software CanvasKit, run-with-vite.mjs 경유 |
 | `issue-7442-nested-table-pointer.test.mjs` | 상시 | active | #7442 F5 선택 후 드래그·일반 hover/resize·Undo·블록 선택·외곽선 클릭 | basic/issue1994_behindtext_table_20200830.hwp | 수동 | fresh WASM 필수 |
@@ -71,7 +81,8 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 | `hml-equation-embed.test.mjs` | 상시 | hold | 시험지 회귀 실행 제거·파일 보존 | — | — | legacy-name · 사용자 지시로 실행 진입점 제거 |
 | `hml-open.check.mjs` | 상시 | active | Standalone HML browser regression. | — | 수동 | legacy-name |
 | `hwpctl-basic.test.mjs` | 상시 | active | hwpctl 호환 레이어 기본 동작 | — | 수동 |  |
-| `hwp-password-open.test.mjs` | 상시 | active | #3474/#3481/#5986 HWP3·HWP5·HWPX 암호 문서: 대화상자·오답·취소·Enter·저장소 비보존·저장 보호 상태 수명주기, HWP3 A4 144dpi Canvas 경계 | HWP3-password-123456.hwp, hwp3-sample16-hwp5-2024-password-123456.hwp, HWP5-password-123456.hwpx, HWP5-nopassword-123456.hwpx | npm e2e:hwp-password-open | 실제 암호 fixture; 비밀번호와 로컬 E2E 보고서는 비커밋 |
+| `hwp-password-open.test.mjs` | 상시 | active | #3474/#3481/#5986 HWP3·HWPX 암호 문서: 대화상자·오답·취소·Enter·저장소 비보존·저장 보호 상태 수명주기, HWP3 A4 144dpi Canvas 경계 | HWP3-password-123456.hwp, HWP5-password-123456.hwpx, HWP5-nopassword-123456.hwpx | npm e2e:hwp-password-open | 실제 암호 fixture; 비밀번호와 로컬 E2E 보고서는 비커밋 |
+| `issue_8160_password_open.test.mjs` | 상시 | active | #8160 sample16 HWP5 EncryptVersion 4 암호 대화상자·오답·취소·Enter·저장 보호 상태 | hwp3-sample16-hwp5-2024-password-123456.hwp | 기존 e2e:hwp-password-open에서 순차 실행 | 새 이름의 전용 검사, 직접 실행도 가능 |
 | `crlf-insert-history.test.mjs` | 상시 | active | CRLF 입력의 커서·Undo/Redo·HWP 저장 보존 | 합성 본문·셀·중첩 셀 | 수동 | #8001, run-with-vite·fresh WASM 실동작 |
 | `hwpctrl-nested-caret.test.mjs` | 상시 | active | SDK 캐럿 동기화→CreateField의 중첩 셀 부모 문단 소유·Undo | issue1949_giant_cell_nested_tables_perf.hwp | 수동 | 조판 좌표 고정 없음 |
 | `hwpctrl-plugin.test.mjs` | 상시 | active | hwpctrl 플러그인 — studio 문서 공유·배치 편집·좌표 변환·사용자 캐럿 동기화·unload 생존 | — | npm e2e:hwpctrl-plugin |  |
@@ -84,7 +95,6 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 | `issue-2635-rawsvg-first-paint.test.mjs` | 상시 | active | Issue #2635: 순수 RawSvg 차트가 첫 화면에 늦게 표시되는 회귀 | chart/원형/쪼개진원형.hwp | 수동 |  |
 | `issue-270-set-field-persist.test.mjs` | 상시 | active | 이슈 #270 — set_field 후 저장/재오픈 시 필드 값 유실 회귀 | field-01.hwp | 수동 |  |
 | `issue-2809-split-alignment.test.mjs` | 상시 | active | Issue #2809 위·아래 Split 문단 속성 및 WASM/editor 정렬 회귀 | issues/2809/jubo_20260104.hwp | npm e2e:issue-2809 |  |
-| `issue-3820-hwp-hwpx-page-count.test.mjs` | 상시 | active | Issue #3820 — 2025 행정업무운영 편람의 HWP/HWPX 물리 페이지 수와 주요 page owner를 383쪽 기준으로 고정 | 2025 행정업무운영 편람(최종).hwp/.hwpx | npm e2e:issue-3820 | fresh WASM 필수 |
 | `issue-3682-chart-object-probe.test.mjs` | 진단 | active | #3682 차트 개체 P1~P5 행동 현황 수집 프로브 | chart/세로막대형/묶은세로막대형.hwp | 수동 | legacy-name · 최신 devel의 기존 미등재 항목 보완 |
 | `issue-3953-large-document-goto.test.mjs` | 상시 | active | #3953 대형 HWP 후반부 찾아가기, 오류 재입력과 상태 표시줄 진입 | 정책연구용역사업 중간진도보고서(살아있는 간장 기증자의 의학적 선별기준 연구).hwp | 수동 | |
 | `issue-4026-footnote-global-shortcuts.test.mjs` | 상시 | active | #4026 각주 편집 중 Cmd+Z 되돌리기와 Option+G 찾아가기 | footnote-01.hwp | 수동 | |
@@ -99,14 +109,13 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 | `issue-4272-nested-cell-text-selection.test.mjs` | 상시 | active | #4272 중첩 표 안쪽 셀의 전체 cellPath 선택 rect, 실제 마우스 드래그와 Ctrl+C/V | basic/issue2007_nested_cell_pagination_42065.hwp | npm e2e:issue-4272 | 물리 5쪽 `23,504`, `output/4272/nested-cell-*.{json,png}` |
 | `issue-536-boxed-pua-canvas2d.test.mjs` | 상시 | active | #536 실제 HWP의 사각 안 숫자 PUA를 기본 Canvas2D가 결정적으로 합성 | basic/issue2007_nested_cell_pagination_42065.hwp | npm e2e:issue-536 | #4122 17쪽 pagination stack 계약 포함 |
 | `layer-export-issue536.test.mjs` | 상시 | active | #536 JSON/value·v2 compat/strict export, font/image byte 생략 4조합, content-key 재조회·입력 변이 격리·편집 후 자원 계약 | test-image.hwpx, render-p35-font-native-bitmap.hwpx, para-001.hwp | npm e2e:layer-export-issue536 | fresh WASM 필수, Chromium·임시 Vite 자체 기동, 비시각 API 검사 |
-| `local-font-partial-enumeration-issue4741.test.mjs` | 상시 | active | #4741 Local Font Access 부분 열거를 강제해 raw probe·exact Canvas2D face·폭·cache·편람 383쪽 계약 검증 | 2025 행정업무운영 편람(최종).hwp | npm e2e:issue-4741 | KoPub바탕체 Light 설치 호스트 Chrome 전용 |
+| `local-font-partial-enumeration-issue4741.test.mjs` | 상시 | active | #4741 Local Font Access 부분 열거를 강제해 raw probe·exact Canvas2D face·폭·cache 계약 검증 | 합성 Canvas2D 글꼴 표본 | npm e2e:issue-4741 | KoPub바탕체 Light 설치 호스트 Chrome 전용 |
 | `middle-dot-canvas-paint.test.mjs` | 상시 | active | 실제 Canvas 가운뎃점 원형 경로와 앞뒤 본문 소유 보존 | k-water-rfp.hwp | npm e2e:middle-dot-canvas-paint | 독립 Print 근거와 기존 시각 증적은 테스트 주석 참조 |
 | `issue-595.test.mjs` | 진단 | hold | 시험지 회귀 실행 제거·파일 보존 | exam_math.hwp | — | legacy-name · 사용자 지시로 실행 진입점 제거 |
 | `issue-6099-probe.mjs` | 진단 | active | #6099 90° 회전 그림 DOM frame/img 실측과 스크린샷 생성 프로브 | samples 하위 지정 파일 | 수동 | legacy-name · 일회성 실측 프로브 |
 | `issue-6117-cell-underline-canvas2d.test.mjs` | 상시 | active | #6117 표 칸 안 밑줄이 우측 괘선을 넘어 그려지지 않는 Canvas2D 잉크 경계 | issue6117/52690_higher_education_decree.hwp | 수동 | 9쪽 실제 fixture, `output/6117` 증적 |
 | `issue-6202-picture-move-reflow.test.mjs` | 상시 | active | #6202 어울림 그림 이동 뒤 본문 화면 갱신 | 143E433F503322BD33.hwp | 수동 | legacy-name |
 | `line-spacing.test.mjs` | 상시 | active | 줄간격 변경에 따른 페이지 넘김 검증 | — | 수동 |  |
-| `loading-busy-cursor.test.mjs` | 상시 | active | #5740 대형 문서 로딩 중 busy 상태와 wait cursor 표시 계약 | 2025 행정업무운영 편람(최종).hwp | npm e2e:loading-busy-cursor |  |
 | `merged-cell-boundary-drag.test.mjs` | 상시 | active | #6557 세로 병합 셀 표에서 하위 행만 선택하고 열 경계를 드래그 — 선택 필터의 병합 셀 포함·걸친 모든 행의 이웃 보상·균일 결과 무마킹 세 층이 함께 고쳐져야 경계가 전 행에서 같은 x 로 이동 | — | npm e2e:issue-6557-merged-col | dev server 필요 — run-with-vite.mjs 경유 · 증적 [assets/merged-cell-resize-evidence](https://github.com/jeong-sik/rhwp/tree/assets/merged-cell-resize-evidence) |
 | `merged-cell-row-boundary-drag.test.mjs` | 상시 | active | #6557 가로 병합 셀 표의 행 경계 드래그 — 병합 셀이 걸친 모든 열의 아래 이웃이 보상을 받아 표 전체 높이가 보존되는지 검증 | — | npm e2e:issue-6557-merged-row | dev server 필요 — run-with-vite.mjs 경유 · 증적 [assets/merged-cell-resize-evidence](https://github.com/jeong-sik/rhwp/tree/assets/merged-cell-resize-evidence) |
 | `navigation-shortcuts.test.mjs` | 상시 | active | 플랫폼별 navigation shortcut | — | 수동 |  |
@@ -133,13 +142,13 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 | `report-generator.mjs` | 유틸 | active | E2E 테스트 HTML 보고서 생성기 | — | 수동 |  |
 | `responsive.test.mjs` | 상시 | active | #6118 서식 바 경계·문단 더보기, #6138 도구 한 줄 스크롤, #6187 모든 너비·낮은 높이의 눈금자 표시와 grid 정렬 검증 (resize 프레임 공백 검증은 별도) | — | npm e2e:responsive + CI |  |
 | `ruler-document-switch.test.mjs` | 상시 | active | 문서를 바꿔 열면 눈금자가 새 문서의 쪽을 다시 그린다 (`document-view-loaded`) — 문단 여백이 같은 문서를 잇달아 열 때 앞 문서 눈금이 남는 회귀 가드 | 누름틀-2024.hwp · 253E164F57A1BC6934-empty.hwp | npm e2e:ruler-document-switch |  |
-| `ruler-resize.test.mjs` | 유틸 | active | #6187 resize 화면 판독 driver·snapshot helper; 시험지 실행 진입점 제거 | — | 수동 | legacy-name · 파일과 공통 helper 보존 |
 | `page-virtualization-image-failure.test.mjs` | 상시 | active | #6042 실제 Chromium에서 첫 embedded-image decode 실패를 주입하고 PageRenderer fallback 뒤 scheduler·image job·flow layer 정착을 검사 | test-image.hwp | 수동 |  |
 | `run-render-diff.mjs` | 유틸 | active | render-diff CI 러너 (canvas/pdf diff 오케스트레이션) | — | npm+CI |  |
 | `run-with-vite.mjs` | 유틸 | active | Vite dev server 기동 + 임의 명령 실행 공용 러너 (VITE_URL 주입, 종료 코드 전파) | — | npm e2e:undo-depth |  |
 | `save-as-format.test.mjs` | 상시 | active | 저장 출력 포맷 선택 (file:save-as-hwp / file:save-as-hwpx) E2E — #1613 | biz_plan.hwp, hwpx/footnote-01.hwpx | 수동 |  |
 | `select-all-cmd-a.test.mjs` | 상시 | active | 한컴 정합 ⌘A — 본문 전체·셀 내용만·셀 블록 해제·표 하이라이트·포커스 밖 전역 경로·IME 키·전체 삭제 회귀 | 새 문서, hml/formatting_table.hml | npm e2e:select-all-cmd-a | dev server 필요 — run-with-vite.mjs 경유 |
 | `scenario-runner.mjs` | 유틸 | active | 시나리오 실행기 + 렌더 트리 측정기 + 규칙 검증기 | — | 수동 |  |
+| `wasm-artifact-check.mjs` | 유틸 | active | #7473 앱 초기화 중 실제 수신 WASM과 빌드 manifest SHA-256 대조 | — | 수동 | `helpers.mjs`에서 opt-in, `tests/wasm-artifact-check.test.ts`로 실패 경계 검사 |
 | `vite-server.mjs` | 유틸 | active | Vite dev server 기동·종료 공용 헬퍼 — vite Node API(createServer) in-process 기동, 로그는 customLogger 로 target/ 에 유지 | — | 수동 | `run-render-diff.mjs`·`run-with-vite.mjs`에서 import |
 | `shape-inline.test.mjs` | 상시 | active | 도형 인라인 컨트롤 — 커서 이동 및 텍스트 삽입 | — | 수동 |  |
 | `shift-end.test.mjs` | 상시 | active | shift-return.hwp Shift+End 블록 선택 | shift-return.hwp | 수동 |  |
@@ -180,3 +189,5 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 | `host-font-provider-issue7403.test.mjs` | 상시 | active | #7403 호스트 face 선택·동명 교체·실패 복구·저장 이름/dirty 보존 | 새 문서·합성 TTC·번들 Noto·basic/issue2007_nested_cell_pagination_42065.hwp | npm e2e:issue-7403 / e2e:issue-7403-canvas2d | 명시적 CanvasKit/Canvas2D, 측정·paint·SVG 경계 포함 |
 
 | `issue-7593-dyad-display.test.mjs` | 상시 | active | dyad와 복합 수식의 실제 표시·CanvasKit 누락 방지 | `samples/issue7593/` 2개 | 수동 | `VITE_URL=… node e2e/issue-7593-dyad-display.test.mjs --mode=headless`; Native/fresh WASM 전쪽90% 선행 확인; 실제 WASM 바이트·내용·replay 진단 |
+
+| `ruler-resize-support.mjs` | 유틸 | active | 시험지 실행을 제외한 ruler 상태 조회 보조 함수 | — | — | 회귀 실행 진입점 없음 |

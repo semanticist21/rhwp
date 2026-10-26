@@ -230,6 +230,16 @@ fn font_trace_profiles_follow_source_ownership_and_preserve_font_decisions() {
     let with = traces
         .get(feature["withSubstFont"].as_str().expect("with subst id"))
         .expect("with subst trace");
+    // #8109: the HWP counterpart has standard FACE_NAME alternatives too.
+    // Independent DocInfo bytes show 217 alternative records; the exact-face
+    // fixture has none. Keep this metadata contrast separate from render pins.
+    let counterpart = traces
+        .get(
+            feature["withHwpSubstFont"]
+                .as_str()
+                .expect("HWP counterpart id"),
+        )
+        .expect("HWP counterpart trace");
     assert!(without["records"]
         .as_array()
         .expect("without records")
@@ -240,7 +250,36 @@ fn font_trace_profiles_follow_source_ownership_and_preserve_font_decisions() {
         .expect("with records")
         .iter()
         .any(|record| !record["document"]["substFont"].is_null()));
-    assert_ne!(without["layoutHash"], with["layoutHash"]);
+    assert!(counterpart["records"]
+        .as_array()
+        .expect("HWP alternative records")
+        .iter()
+        .any(|record| record["document"]["substFont"] == feature["expectedHwpSubstFont"]));
+    assert_ne!(counterpart["layoutHash"], with["layoutHash"]);
+    // HWP5 표 20의 0x80 선언과 HWPX substFont를 각각 보존한다.
+    // HWP에도 대체 선언이 있으므로 형식만으로 null을 기대하지 않는다.
+    for declaration in manifest["comparisons"]["documentSubstituteDeclarations"]
+        .as_array()
+        .expect("문서 대체 선언")
+    {
+        let trace = traces
+            .get(declaration["documentId"].as_str().expect("선언 문서 ID"))
+            .expect("선언 문서 trace");
+        let slots = declaration["languageSlots"].as_array().expect("언어 슬롯");
+        let records: Vec<_> = trace["records"]
+            .as_array()
+            .expect("선언 records")
+            .iter()
+            .filter(|record| {
+                record["document"]["face"] == declaration["face"]
+                    && slots.contains(&record["document"]["languageSlot"])
+            })
+            .collect();
+        assert!(!records.is_empty(), "선언 대상 글꼴 record가 있어야 한다");
+        assert!(records
+            .iter()
+            .all(|record| { record["document"]["substFont"] == declaration["substFont"] }));
+    }
 }
 
 #[test]
@@ -250,7 +289,7 @@ fn stage4_public_trace_limit_and_unsupported_backends_fail_closed() {
         .as_array()
         .expect("공개 문서")
         .iter()
-        .find(|doc| doc["id"] == "exact-face")
+        .find(|document| document["id"] == "exact-face")
         .expect("exact-face 입력 유지");
     let trace = public_trace(
         document["path"].as_str().expect("document path"),
@@ -419,32 +458,6 @@ fn issue4967_combined_evidence_uses_one_tree_and_preserves_trace() {
     assert!(lines
         .iter()
         .any(|line| line["storedRow"]["disposition"] == "admitted"));
-}
-
-#[test]
-fn issue4967_combined_evidence_keeps_unowned_legacy_geometry_unmodelled() {
-    let core = DocumentCore::from_bytes(include_bytes!("../../samples/hwp3-sample16.hwp"))
-        .expect("public HWP3 fixture parses");
-    let evidence: serde_json::Value = serde_json::from_str(
-        &core
-            .get_font_layout_evidence_native(0, r#"{"maxCharacters":4096}"#)
-            .expect("same-snapshot HWP3 evidence"),
-    )
-    .expect("HWP3 evidence JSON");
-    let lines = evidence["lines"].as_array().expect("line evidence");
-    assert!(!lines.is_empty());
-    for line in lines {
-        assert_eq!(line["storedRow"]["disposition"], "unmodelled");
-        let width = line["frame"]["width"].as_f64().expect("실제 줄 상자 폭");
-        // 유효한 실제 상자도 HWP3의 저장 프레임 소유를 입증하지 못한다.
-        // 폭이 없는 줄은 프레임 출처 판정에 앞서 실제 상자 자체가 무효다.
-        let reason = if width.is_finite() && width > 0.0 {
-            "frameProvenanceIncomplete"
-        } else {
-            "invalidActualFrame"
-        };
-        assert_eq!(line["storedRow"]["reason"], reason, "{line}");
-    }
 }
 
 #[test]

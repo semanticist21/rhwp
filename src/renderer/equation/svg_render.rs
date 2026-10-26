@@ -146,10 +146,18 @@ fn render_box(
                 ));
                 return;
             }
-            svg.push_str(&format!(
+            let scale_x = paint.map_or(1.0, |p| p.scale_x);
+            if scale_x != 1.0 {
+                svg.push_str(&format!(
+                    "<text x=\"0\" y=\"0\" transform=\"translate({:.4},{:.4}) scale({scale_x:.8},1)\" font-size=\"{fs:.4}\" fill=\"{color}\" font-family=\"{}\">{}</text>\n",
+                    x, y + lb.baseline, escape_xml(font_family), escape_xml(text),
+                ));
+            } else {
+                svg.push_str(&format!(
                 "<text x=\"{:.2}\" y=\"{:.2}\" font-size=\"{:.2}\" fill=\"{}\" font-family=\"{}\">{}</text>\n",
                 x, y + lb.baseline, fs, color, escape_xml(font_family), escape_xml(text),
             ));
+            }
         }
         LayoutKind::MathSymbol(text) => {
             // 적분 기호(∫): 공통 공개 글리프 윤곽을 사용한다.
@@ -182,6 +190,8 @@ fn render_box(
             denom,
             axis_height,
             rule_thickness,
+            rule_start,
+            rule_end,
         } => {
             // 분자
             render_box(svg, numer, x, y, color, fs, italic, bold);
@@ -190,8 +200,8 @@ fn render_box(
             let line_thick = rule_thickness;
             svg.push_str(&format!(
                 "<line x1=\"{:.2}\" y1=\"{:.2}\" x2=\"{:.2}\" y2=\"{:.2}\" stroke=\"{}\" stroke-width=\"{:.2}\"/>\n",
-                x + fs * 0.05, line_y,
-                x + lb.width - fs * 0.05, line_y,
+                x + rule_start, line_y,
+                x + rule_end, line_y,
                 color, line_thick,
             ));
             // 분모

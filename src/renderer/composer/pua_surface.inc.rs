@@ -19,7 +19,21 @@ pub fn effective_text_for_metrics(run: &ComposedTextRun) -> &str {
     if run.text.contains('\u{F081C}') {
         return &run.text;
     }
-    run.display_text.as_deref().unwrap_or(&run.text)
+    display_projection_metric_text(&run.text, run.display_text.as_deref().unwrap_or(&run.text))
+}
+
+/// 일대일 표시 투영은 source 프로그램의 메트릭을 유지한다. 필드 값·옛한글
+/// 확장처럼 별도 표시 문자열인 경우는 표시 문자열 자체의 폭을 사용한다.
+pub(crate) fn display_projection_metric_text<'a>(source: &'a str, display: &'a str) -> &'a str {
+    if source
+        .chars()
+        .map(single_scalar_display_char)
+        .eq(display.chars())
+    {
+        source
+    } else {
+        display
+    }
 }
 
 /// PUA Supplementary 영역(U+F0000~) 문자가 테두리 숫자인지 판별한다.
@@ -161,8 +175,8 @@ fn pua_plain_text_display(ch: char) -> Option<&'static str> {
     super::hancom_pua::verified_hancom_pua_display(ch)
 }
 
-/// 일반 텍스트 paint에서 표시하는 검증된 PUA 표면이다.
-fn pua_render_text_display(ch: char) -> Option<&'static str> {
+/// TAC 흐름에서만 채움 기호를 빈 표시로 분류한다. 실제 paint와 구분한다.
+fn pua_flow_text_display(ch: char) -> Option<&'static str> {
     if ch == '\u{F081C}' {
         Some("")
     } else {
@@ -171,9 +185,9 @@ fn pua_render_text_display(ch: char) -> Option<&'static str> {
 }
 
 /// 원본 한 문자와 표시 한 문자의 대응만 replay 경계에 공유한다.
-/// 숨긴 filler·여러 글자 확장·미등록 PUA의 기존 계약은 바꾸지 않는다.
+/// 여러 글자 확장·미등록 PUA의 기존 계약은 바꾸지 않는다.
 fn verified_pua_replay_scalar(ch: char) -> Option<char> {
-    let display = pua_render_text_display(hancom_symbol_display_key(ch))?;
+    let display = pua_plain_text_display(hancom_symbol_display_key(ch))?;
     let mut scalars = display.chars();
     let scalar = scalars.next()?;
     (scalars.next().is_none() && scalar != ch).then_some(scalar)
@@ -204,7 +218,7 @@ pub(crate) fn one_to_one_pua_replay_text(text: &str) -> std::borrow::Cow<'_, str
 ///
 /// **정규화는 표에 값이 있을 때만 한다.** 값이 없으면 원문을 그대로 둬서, 미등록 PUA
 /// 축(#5599)이 관측하는 표면을 이 변경이 흔들지 않게 한다.
-fn hancom_symbol_display_key(ch: char) -> char {
+pub(crate) fn hancom_symbol_display_key(ch: char) -> char {
     let Ok(unit) = u16::try_from(ch as u32) else {
         return ch;
     };
@@ -220,6 +234,22 @@ fn hancom_symbol_display_key(ch: char) -> char {
     } else {
         ch
     }
+}
+
+/// 이미 확정한 단일 표시 기호를 원문 폭 측정에도 전달한다.
+/// 다문자 확장과 글자겹침 숫자는 각 구성 owner의 계약을 유지한다.
+pub(crate) fn single_scalar_display_char(ch: char) -> char {
+    let key = hancom_symbol_display_key(ch);
+    if let Some(display) = pua_plain_text_display(key) {
+        let mut chars = display.chars();
+        if let Some(first) = chars.next() {
+            if chars.next().is_none() {
+                return first;
+            }
+        }
+        return ch;
+    }
+    super::layout::map_pua_bullet_char(key)
 }
 
 /// 한글 방점(U+302E/U+302F)을 렌더용 spacing 가운데 점 글리프로 치환한다. (Task #1735)
@@ -238,25 +268,42 @@ fn tone_mark_display(ch: char) -> Option<char> {
     }
 }
 
-/// 일반 텍스트 렌더링/paint contract 경로에서 한컴 PUA 문자를 표시 문자열로 확장한다.
+/// TAC 흐름 판정용 표시 문자열. 채움 기호가 흐름의 가시 본문이 되지 않는다.
 ///
-/// HWP TAC filler `U+F081C` 는 레이아웃 측정에는 원문으로 남겨 0폭 규칙을
-/// 적용하되, 실제 출력에서는 글리프가 없어 깨진 문자로 보이지 않도록 숨긴다.
+/// 원문·측정 폭은 별도로 보존하며 실제 출력은 expand_pua_render_text를 쓴다.
 ///
 /// Hanyang-PUA 옛한글은 KS X 1026-1:2007 자모 시퀀스로 확장한다.
 ///
 /// CharOverlap 전용 숫자(`U+F02CE..=U+F02E1`)는 여기서 확장하지 않는다.
 /// 해당 문자는 `pua_to_display_text()`가 글자겹침 렌더러에서만 처리한다.
 pub fn expand_pua_display_text(text: &str) -> String {
+    expand_pua_surface(text, None, true)
+}
+
+pub fn expand_pua_render_text_in_style(text: &str, style: &TextStyle) -> String {
+    expand_pua_surface(text, style.native_pua_metrics.as_deref(), false)
+}
+
+fn expand_pua_surface(
+    text: &str,
+    program: Option<&super::native_pua_fonts::NativePuaMetrics>,
+    flow: bool,
+) -> String {
     use super::pua_oldhangul::map_pua_old_hangul;
 
     let mut out = String::with_capacity(text.len());
     for ch in text.chars() {
         // [#5800] HWP5 원시 기호값을 먼저 평면-15 키로 정규화한다.
         let ch = hancom_symbol_display_key(ch);
-        if let Some(dot) = tone_mark_display(ch) {
+        if program.is_some_and(|program| program.advance_em(ch).is_some()) {
+            out.push(ch);
+        } else if let Some(dot) = tone_mark_display(ch) {
             out.push(dot);
-        } else if let Some(replacement) = pua_render_text_display(ch) {
+        } else if let Some(replacement) = if flow {
+            pua_flow_text_display(ch)
+        } else {
+            pua_plain_text_display(ch)
+        } {
             out.push_str(replacement);
         } else if let Some(jamos) = map_pua_old_hangul(ch) {
             out.extend(jamos.iter().copied());
@@ -267,9 +314,9 @@ pub fn expand_pua_display_text(text: &str) -> String {
     out
 }
 
-/// 일반 텍스트 렌더링 경로의 기존 helper 이름.
+/// 실제 paint는 원본 점선 U+F081C도 표시한다. 흐름이 비어도 잉크는 남는다.
 pub fn expand_pua_render_text(text: &str) -> String {
-    expand_pua_display_text(text)
+    expand_pua_surface(text, None, false)
 }
 
 /// PUA 테두리 숫자와 한컴 PUA 기호를 표시 문자열로 변환한다. (렌더러 전용)
@@ -404,6 +451,8 @@ fn convert_pua_enclosed_numbers(composed: &mut ComposedParagraph) {
                             supplemental_metrics_blocked: run.supplemental_metrics_blocked,
                             inserted_control_text: run.inserted_control_text,
                             space_metric: run.space_metric,
+                            regenerated_font_metrics: run.regenerated_font_metrics,
+                            literal_figure_space: run.literal_figure_space,
                         });
                         buf.clear();
                     }
@@ -422,6 +471,8 @@ fn convert_pua_enclosed_numbers(composed: &mut ComposedParagraph) {
                         supplemental_metrics_blocked: run.supplemental_metrics_blocked,
                         inserted_control_text: run.inserted_control_text,
                         space_metric: run.space_metric,
+                        regenerated_font_metrics: run.regenerated_font_metrics,
+                        literal_figure_space: run.literal_figure_space,
                     });
                 } else {
                     buf.push(ch);
@@ -441,6 +492,8 @@ fn convert_pua_enclosed_numbers(composed: &mut ComposedParagraph) {
                     supplemental_metrics_blocked: run.supplemental_metrics_blocked,
                     inserted_control_text: run.inserted_control_text,
                     space_metric: run.space_metric,
+                    regenerated_font_metrics: run.regenerated_font_metrics,
+                    literal_figure_space: run.literal_figure_space,
                 });
             }
         }

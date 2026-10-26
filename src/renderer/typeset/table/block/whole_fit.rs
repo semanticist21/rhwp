@@ -125,7 +125,7 @@ impl TypesetEngine {
         let consumed = prior_line_flow
             || placement::para_offset_consumed_by_page_break(
                 para,
-                &table.common,
+                table,
                 st.base_available_height(),
                 self.dpi,
             );
@@ -319,6 +319,17 @@ impl TypesetEngine {
                     // 글줄 호스트의 상대 원점처럼 page base를 다시 빼지 않는다.
                     0,
                     self.dpi,
+                    st.profile.hwpx_stored_layout(),
+                )
+            })
+            .or_else(|| {
+                crate::renderer::float_placement::stored_float_before_whitespace_line_frame(
+                    paragraphs.get(para_idx.checked_sub(1)?)?,
+                    para,
+                    next,
+                    table,
+                    effective_height,
+                    self.dpi,
                 )
             })
             .or_else(|| {
@@ -425,7 +436,7 @@ impl TypesetEngine {
             && st.current_height < 1.0
             && placement::para_offset_consumed_by_page_break(
                 para,
-                &table.common,
+                table,
                 st.base_available_height(),
                 self.dpi,
             );
@@ -527,27 +538,16 @@ impl TypesetEngine {
                     + measured.cell_spacing * measured.row_heights.len().saturating_sub(1) as f64
             })
         });
-        // 재조판한 온전한 일반 행도 실제 배치 높이로 통째 수용 여부를 정한다.
-        // 원본의 저장 되감김/프레임 원점 조건과 별개이며 중첩 내용 컷은 제외한다.
-        let reflowed_table_uses_painted_whole_rows = if table.row_count > 0
+        // 통째 표는 중첩 셀을 포함한 모든 측정 행을 실제로 그린다.
+        // 부분 컷의 저장 프레임/viewport 술어로 이 전체 footprint를 제외하면
+        // 한 정상 셀 때문에 실제 행 합보다 작은 개체 선언 높이만 수용하게 된다.
+        // 내용 컷이 필요한 경우의 예약·배치는 fragment 경로가 별도로 소유한다.
+        let reflowed_table_uses_painted_whole_rows = table.row_count > 0
             && matches!(
                 table.page_break,
                 crate::model::table::TablePageBreak::RowBreak
             )
-            && self.render_normalization.table_text_reflowed(table)
-        {
-            let layout_engine = crate::renderer::layout::LayoutEngine::new(self.dpi);
-            self.prime_section_cell_context(&layout_engine);
-            layout_engine.set_layout_profile(st.profile);
-            layout_engine.prime_column_layout_env(&st.layout);
-            layout_engine.set_render_normalization_overlay(std::sync::Arc::clone(
-                &self.render_normalization,
-            ));
-            (0..table.row_count as usize)
-                .all(|row| layout_engine.reflowed_fragment_row_uses_measured_height(table, row))
-        } else {
-            false
-        };
+            && self.render_normalization.table_text_reflowed(table);
         let uses_painted_row_footprint_for_whole_fit =
             (stored_rewinding_rowbreak_uses_painted_row_footprint
                 || reflowed_table_uses_painted_whole_rows)
@@ -751,8 +751,10 @@ impl TypesetEngine {
         // 다행 RowBreak 표는 common.height가 첫 fragment만 뜻할 수도 있다. cell
         // 내부 reset 없이 다음 host가 새 물리 page를 명시할 때만, object frame을
         // 현 page 전체를 소유한 frame으로 쓴다.
-        let saved_rowbreak_object_frame = ((st.profile.hwpx_container()
-            || st.profile.native_hwp5_layout())
+        // 전체 저장 프레임은 컨테이너가 아니라 원본 조판 계보의 계약이다.
+        // HWPX에서 저장한 HWP와 HWP5 원본에서 내보낸 HWPX도 같은 근거를 소비한다.
+        let saved_rowbreak_object_frame = ((st.profile.hwpx_stored_layout()
+            || st.profile.hwp5_stored_pagination_layout())
             && !table.common.treat_as_char
             && matches!(
                 table.page_break,
@@ -807,7 +809,8 @@ impl TypesetEngine {
                 // the measured cursor has passed; trailing host spacing must
                 // not split its last row. The frame/one-page/reset guards above
                 // still exclude a first-fragment height of a multi-page table.
-                source_top <= st.current_height && source_bottom <= available
+                source_top <= st.current_height + source_top.abs().max(1.0) * 1e-9
+                    && source_bottom <= available
             } else {
                 native_hwp5_saved_rowbreak_tail_frame_matches(
                     source_top,

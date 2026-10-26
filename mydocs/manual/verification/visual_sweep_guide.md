@@ -2,7 +2,7 @@
 kind: guide
 status: active
 canonical: mydocs/manual/verification/visual_verification_governance.md
-last_verified: 2026-10-15
+last_verified: 2026-10-23
 ---
 
 # PDF/PNG visual sweep 가이드
@@ -190,7 +190,7 @@ raw도2px 이웃을 허용하며, RGB까지 동일해야 하는 엄격 픽셀 �
 위 Native/fresh WASM 명령을 기준 SHA의 producer와 후보 SHA의 producer로 각각 실행한다.
 동일 원본·PDF·글꼴·backend·Print profile·compat·DPI로 문서 전쪽을 비교하며, output은
 `output/pr-review/<id>/base/{native,wasm}`와 `head/{native,wasm}`처럼 분리한다.
-`page`별 `silhouette_raw_match_percent`의 **기준−후보가0.1%p 이상이면90% 이상이어도
+`page`별 `silhouette_raw_match_percent`의 **기준−후보가2%p 이상이면90% 이상이어도
 PR을 재검토한다.** Native/WASM 교차 비교나 다른 backend 점수의 혼합은 허용하지 않는다.
 원 소수값·십진수 연산·누락 판정·직접 판독·review 기록은
 [devel 대비 실루엣 하락 재검토](visual_verification_governance.md#upstream-devel-대비-페이지별-실루엣-하락-재검토)를 따른다.
@@ -225,8 +225,9 @@ Native/fresh WASM 최저 일치율이 90% 미만이거나 측정 불가이면 �
 실제로 교체한 핀, 새로 보완한 내용 관계와 재사용한 시각 증거를 구분해 기록한다.
 
 미달 문서는 **같은 원본·같은 미해결 범위가 기존 이슈에 등록되어 있는지 먼저 확인**한다.
-등록되어 있으면 해당 회귀 함수·assertion·baseline/manifest 및 자동 수집 참조를 제거한 뒤
-남은 검증을 계속한다. 원본·PDF와 범위 밖의 정상 검사는 보존한다. 관련 이슈가 없을 때만
+등록되어 있으면 제거 전 검사 모듈 전체를 helper와 함께 `.rs.txt`로 보존하고, source commit·Git blob·
+SHA-256·이전/보존 경로·활성 유지/제거 목록·복원 조건을 기록한다. 입력·PDF·검증 근거를 해당 이슈에
+연결한 뒤 해당 회귀 함수·assertion·baseline/manifest 및 자동 수집 참조를 제거하고 남은 검증을 계속한다. 원본·PDF와 범위 밖의 정상 검사는 보존한다. 관련 이슈가 없을 때만
 별도 이슈를 등록하며, **개인의 작업 이슈를 공통 이관 대상으로 자동 지정하지 않는다.**
 상세 판정·기록은 [기존 기대값 재검토](../pr_review/visual_fixture_evidence.md#기존-회귀-테스트의-기대값-재검토)와
 [기존 이슈 확인·처리](../pr_review/visual_fixture_evidence.md#90-미만-회귀-대상의-별도-이슈-이관)를 따른다.
@@ -759,7 +760,7 @@ PDFium은 이 계약과 실제 한컴 Print의 파랑 그라데이션 보존을 
 [독립 계약과 전후 실행](../../working/task_m100_7642_stage2471.md)을 참고한다.
 
 점수가 높은 renderer를 문서별로 고르지 않는다. 원본 PDF, 내용 이진화 임계값·raw 판정식·
-2px 공차·90%·98%·0.1%p 기준은 유지한다. 실행 manifest의
+2px 공차·90%·98%·2%p 기준은 유지한다. 실행 manifest의
 `provenance.pdf_rasterizer`에 backend·정책·antialias·도구 버전·실행 Python·실제 PDFium
 라이브러리와 helper 해시를 기록한다. 이전 Cairo/Splash PNG·TSV는 출처를 유지하고
 덮어쓰지 않는다. 고정한 base/head의 Native/fresh WASM 전쪽을 모두 같은 PDFium

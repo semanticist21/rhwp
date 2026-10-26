@@ -18,7 +18,23 @@
 - 지침을 읽었다는 사실은 GitHub 게시, push, merge나 작업 범위 확대의 승인이 아니다.
   실제 사용자 지시와 작업 권한을 따른다.
 
+## 한국어 문서 작성
+
+- 한국어 문서와 작업 기록은 올바른 띄어쓰기로 작성한다. 영문 용어·수치 주변의 단어 경계도
+  확인하며, 코드·경로·SHA·명령은 원문을 보존한다.
+  [문서 작성 언어와 띄어쓰기](mydocs/manual/codex/docs_and_git_workflow.md#document-language)를 따른다.
+- 임시 PDF와 중간 산출물은 처음부터 Git에서 제외된 `output/` 아래에 생성한다.
+  기존 기준 PDF가 없어 검증 자료로 커밋해야 하는 PDF는 `pdf/<issue-or-topic>/` 등 정식 경로에
+  생성하며, untracked 목록에서 숨기려고 `output/`으로 옮기거나 ignore하지 않는다.
+  [임시 산출물과 기준 PDF의 저장 위치](mydocs/manual/codex/docs_and_git_workflow.md#임시-산출물과-기준-pdf의-저장-위치)를 따른다.
+
 ## PR 제출 전 검증과 Draft 제한
+
+새 PR 준비·생성 전에는 본인 계정의 열린 PR을 조회한다. **이미 리뷰어가 지정된 PR은 우선
+처리 대상에서 제외**하고 임의로 갱신하지 않는다. 나머지 기존 PR의 lint 실패부터 해결한다.
+충돌·base 문제는 최신 `upstream/devel`로 rebase한 뒤 보정·커밋·재검증하고, 같은 PR의 최신
+head CI와 충돌 해소를 확인한 뒤 신규 PR을 진행한다. 메인터너 보정 요청과 원격 승인 등은
+[새 PR 생성 전에 확인할 항목](mydocs/manual/codex/docs_and_git_workflow.md#새-pr-생성-전에-확인할-항목)을 따른다.
 
 기여자·메인터너·콜라보레이터 모두 [로컬 사전 검증](mydocs/manual/pr_review/local_validation.md)
 4.3과 해당 보조 절차의 필수 검증을 빠짐없이 완료한 뒤 일반 Open PR을 제출한다. 실패·미실행을
@@ -26,6 +42,17 @@ PR CI나 Draft로 우회하지 않는다. Draft는 특별한 조기 논의·WIP 
 승인한 경우만 허용하고 목적·미완료 항목·완료 계획을 본문에 적는다. 번호 확보·CI 대기는 사유가 아니다.
 Docker는 필수 설치 조건이 아니며 [환경별 fresh WASM 경로](mydocs/manual/pr_review/local_validation.md#환경에-따른-fresh-wasm-검증)의
 Docker 또는 호스트 빌드를 선택해 동일한 필수 검증을 완료한다.
+
+## 리뷰어 지정 후 추가 커밋 제한
+
+리뷰어 지정 후 기여자와 그 대행 자동화는 해당 PR에 임의로 추가 커밋을 push하지 않는다.
+문서 전용 변경·devel merge·rebase·amend·force-push도 포함한다. 단, **메인터너가 머지를
+보류하고 보정·재작업을 요청하면 해당 요청 범위의 추가 커밋·push를 허용한다.** 그 요청으로
+보정과 새 head 제출이 허용되므로 별도 허가를 반복해서 묻지 않는다. 필요한 devel 동기화·충돌
+해소와 rebase·amend·force-push도 정본 절차에 따라 처리하고 새 head에서 재검증·재리뷰한다.
+메인터너·콜라보레이터는 기존 권한·승인 절차에 따라 보정·검토 기록·trailing 커밋을 추가할 수 있다.
+변경 전후 SHA를 기록하고 새 head의 필수 검증을 확인한다.
+[reviewer 지정 후 커밋 규칙](mydocs/manual/pr_review/intake_and_review.md#211-리뷰어-지정-후-추가-커밋-제한)을 따른다.
 
 ## 리베이스 후 기능 보존
 
@@ -137,14 +164,17 @@ Native/fresh WASM 양쪽 raw 일치율의 최솟값이 **100% → 99%대 → 98%
 실제로 교체한 핀, 새로 보완한 내용 관계와 재사용한 시각 증거를 구분해 기록한다.
 
 미달 문서는 **같은 원본·같은 미해결 범위가 기존 이슈에 등록되어 있는지 먼저 확인**한다.
-등록되어 있으면 해당 회귀 함수·assertion·baseline/manifest 및 자동 수집 참조를 제거한 뒤
-남은 검증을 계속한다. 원본·PDF와 범위 밖의 정상 검사는 보존한다. 관련 이슈가 없을 때만
+등록되어 있으면 제거 전 검사 모듈 전체를 helper와 함께 `.rs.txt`로 보존하고, source commit·Git blob·
+SHA-256·이전/보존 경로·활성 유지/제거 목록·복원 조건을 기록한다. 입력·PDF·검증 근거를 해당 이슈에
+연결한 뒤 해당 회귀 함수·assertion·baseline/manifest 및 자동 수집 참조를 제거하고 남은 검증을 계속한다. 원본·PDF와 범위 밖의 정상 검사는 보존한다. 관련 이슈가 없을 때만
 별도 이슈를 등록하며, **개인의 작업 이슈를 공통 이관 대상으로 자동 지정하지 않는다.**
 상세 판정·기록은 [기존 기대값 재검토](mydocs/manual/pr_review/visual_fixture_evidence.md#기존-회귀-테스트의-기대값-재검토)와
 [기존 이슈 확인·처리](mydocs/manual/pr_review/visual_fixture_evidence.md#90-미만-회귀-대상의-별도-이슈-이관)를 따른다.
 
 - 증상이 발생한 계층과 원인을 추적한다. 렌더링·조판 수정과 그 PR review에는
   [공통 조판 원칙](AGENTS.md#조판-수정과-검토-원칙)을 적용한다.
+- 특별한 예외 상황을 제외하고 원인은 공통 로직에서 수정한다. 예외는
+  [구현 근거와 범위](AGENTS.md#구현-근거와-범위)의 독립 근거·적용 범위·반례·검증 조건을 따른다.
 - 저장 조판 정보를 바꾸면 [유효성 확인](AGENTS.md#저장-조판-정보의-유효성-확인)을 구현 전에 수행하고
   입력 생성 방식·독립 기준·관측값을 기대 결과에 연결한다.
 - 성공 사례뿐 아니라 변경 조건이 적용되면 안 되는 반례와 관련 경계를 정한다.

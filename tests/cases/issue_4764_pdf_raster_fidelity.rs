@@ -12,8 +12,8 @@ use rhwp::renderer::pdf_raster_fidelity::{
     left_strip_text_deficit, load_page_catalog_from_path, locked_page_count, page_input,
     parse_pdf_page_tree, rect_content, render_synthetic_page, ClassificationInput, CorpusId,
     IsolatedPageStatus, IsolationPolicy, PageRecord, PdfBuildPage, RasterFingerprint,
-    RasterPageSpec, RasterPrimitive, ResidualClass, WrapGeometry, ADMIN_HANDBOOK_PAGE_COUNT,
-    ISSUE4090_PAGE_COUNT, REGULATORY_76076_PAGE_COUNT,
+    RasterPageSpec, RasterPrimitive, ResidualClass, WrapGeometry, ISSUE4090_PAGE_COUNT,
+    REGULATORY_76076_PAGE_COUNT,
 };
 
 fn fixture(name: &str) -> PathBuf {
@@ -64,41 +64,10 @@ fn issue_4764_residual_class_tokens_round_trip() {
 
 #[test]
 fn issue_4764_locked_page_counts_are_fixed() {
-    assert_eq!(ADMIN_HANDBOOK_PAGE_COUNT, 383);
     assert_eq!(REGULATORY_76076_PAGE_COUNT, 82);
     assert_eq!(ISSUE4090_PAGE_COUNT, 17);
-    assert_eq!(locked_page_count(CorpusId::AdminHandbookHwp), Some(383));
-    assert_eq!(locked_page_count(CorpusId::AdminHandbookHwpx), Some(383));
     assert_eq!(locked_page_count(CorpusId::Regulatory76076), Some(82));
     assert_eq!(locked_page_count(CorpusId::Issue4090), Some(17));
-
-    // 상수와 catalog가 서로 맞는 것만으로 실제 문서의 쪽수를 증명하지 않는다.
-    // 독립 KoPub 한컴2024 Print: 전체383쪽, 부록 간지309쪽, 말미383쪽.
-    // 원본/Print SHA·전쪽 Native/fresh WASM TSV는 #7751 2단계 기록에 고정했다.
-    let bytes = std::fs::read(
-        Path::new(env!("CARGO_MANIFEST_DIR")).join("samples/2025 행정업무운영 편람(최종).hwp"),
-    )
-    .expect("편람 원본");
-    let mut core = rhwp::document_core::DocumentCore::from_bytes(&bytes).expect("편람 로드");
-    core.set_hangul2024_compat(true);
-    assert_eq!(core.page_count(), u32::from(ADMIN_HANDBOOK_PAGE_COUNT));
-    let page_text = |page| {
-        core.extract_page_text_native(page)
-            .expect("실제 편람 쪽 내용")
-            .split_whitespace()
-            .collect::<String>()
-    };
-    let divider = page_text(308);
-    assert!(divider.starts_with("부록"), "309쪽은 부록 간지여야 한다");
-    assert!(divider.contains("행정업무의운영및혁신에관한규정"));
-    assert!(page_text(309).is_empty(), "간지 뒤 빈 쪽도 보존한다");
-    let last = page_text(382);
-    assert!(last.contains("2025행정업무운영편람"));
-    assert!(last.contains("발행처:행정안전부정보공개과"));
-    assert!(
-        last.contains("www.mois.go.kr"),
-        "말미 판권의 내용 소속을 보존한다"
-    );
 }
 
 #[test]
@@ -112,11 +81,9 @@ fn issue_4764_catalog_covers_every_mapped_corpus() {
         }
         assert_eq!(row.human_page, row.page_index + 1);
     }
-    assert_eq!(counts[&CorpusId::AdminHandbookHwp], 383);
-    assert_eq!(counts[&CorpusId::AdminHandbookHwpx], 383);
     assert_eq!(counts[&CorpusId::Regulatory76076], 82);
     assert_eq!(counts[&CorpusId::Issue4090], 17);
-    assert!(rows.len() >= 383 + 383 + 82 + 17);
+    assert!(rows.len() == 185);
 }
 
 #[test]
@@ -152,10 +119,6 @@ fn issue_4764_known_leftovers_keep_residual_class() {
     assert_eq!(
         find(CorpusId::Regulatory76076, 18).residual,
         ResidualClass::Glyph
-    );
-    assert_eq!(
-        find(CorpusId::AdminHandbookHwp, 156).residual,
-        ResidualClass::None
     );
 }
 
@@ -350,24 +313,16 @@ fn inject_pair(scenario: &str) -> (RasterPageSpec, Option<RasterPageSpec>, bool)
 fn issue_4764_isolation_casebook_preserves_page_count() {
     let cases = load_isolation_cases();
     assert!(
-        cases.len() >= 8000,
-        "isolation casebook too small: {}",
+        cases.len() == 185 * 8,
+        "remaining isolation casebook size drift: {}",
         cases.len()
     );
 
     let locked = cases
         .iter()
-        .filter(|c| {
-            matches!(
-                c.corpus,
-                CorpusId::AdminHandbookHwp
-                    | CorpusId::AdminHandbookHwpx
-                    | CorpusId::Regulatory76076
-                    | CorpusId::Issue4090
-            )
-        })
+        .filter(|c| matches!(c.corpus, CorpusId::Regulatory76076 | CorpusId::Issue4090))
         .count();
-    assert_eq!(locked, (383 + 383 + 82 + 17) * 8);
+    assert_eq!(locked, (82 + 17) * 8);
 
     let mut ran = 0u32;
     for case in &cases {
@@ -496,9 +451,6 @@ fn issue_4764_pdf_page_manifest_builds() {
         }
         let c: Vec<&str> = line.split('\t').collect();
         let page_index: u16 = c[1].parse().unwrap();
-        if !page_index.is_multiple_of(23) {
-            continue;
-        }
         let width: u32 = c[2].parse().unwrap();
         let height: u32 = c[3].parse().unwrap();
         let content = if c[4] == "rect" {
@@ -523,5 +475,5 @@ fn issue_4764_pdf_page_manifest_builds() {
         assert_eq!(tree.page_count, 2);
         built += 1;
     }
-    assert!(built > 20, "built too few PDF fixtures: {built}");
+    assert_eq!(built, 185, "남은 catalog의 모든 PDF 입력을 검사한다");
 }

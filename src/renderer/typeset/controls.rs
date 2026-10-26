@@ -95,12 +95,46 @@ pub(super) fn place_decoration_table(
     para: &Paragraph,
     table: &Table,
     next_para: Option<&Paragraph>,
+    paragraphs: &[Paragraph],
     dpi: f64,
     anchor_origin: Option<f64>,
     format: impl FnOnce(bool) -> FormattedTable,
     engine: &super::TypesetEngine,
     styles: &ResolvedStyleSet,
 ) {
+    if anchor_origin.is_none()
+        && !st.profile.session_edited()
+        && (st.profile.hwp5_stored_pagination_layout() || st.profile.hwpx_stored_layout())
+        && st.col_count == 1
+        && st.current_zone_y_offset.abs() < f64::EPSILON
+        && st.current_items.iter().skip(1).all(|item| {
+            matches!(item, crate::renderer::pagination::PageItem::FullParagraph { para_index }
+                if st.hidden_empty_paras.contains(para_index))
+        })
+    {
+        let anchor = st.current_items.first().and_then(|item| match item {
+            crate::renderer::pagination::PageItem::PartialTable {
+                para_index,
+                is_continuation: true,
+                ..
+            } => Some(*para_index),
+            _ => None,
+        });
+        let placement = anchor.and_then(|anchor| {
+            crate::renderer::float_placement::ParagraphFloatPlacement::from_stored_overlay_guide_chain(
+                paragraphs, anchor, para_idx, st.current_height,
+                st.layout.body_area.height, styles, dpi,
+            )
+        });
+        if let Some(placement) = placement {
+            st.align_flow_to(placement.anchor_y);
+            let base = para.line_segs.first().map(|line| {
+                line.vertical_pos - crate::renderer::px_to_hwpunit(placement.anchor_y, dpi)
+            });
+            st.record_vpos_lazy_origin(base);
+            st.record_paragraph_float_placement((para_idx, ctrl_idx), placement);
+        }
+    }
     st.emit_decoration_table(para_idx, ctrl_idx);
     // [#4568] 현재 쪽을 넘는 잔여 행만 다음 쪽 대기열에 남긴다.
     // 포맷은 Shape 발행 뒤, 앵커/가용 영역 조회 전에 수행한다.
@@ -358,7 +392,21 @@ pub(super) fn place_table_host_shape(
     if st.defer_table_host_ole_to_next_column(para_idx, ctrl_idx, ctrl, dpi) {
         return;
     }
-    if flow.needs_advance(st.table_host_shape_page(), || st.available_height()) {
+    while flow.needs_advance(st.table_host_shape_page(), || st.available_height()) {
+        // 단 기준 개체가 다음 단에 들어가면 개체만 이월한다. 뒤 본문은 남은
+        // 현재 단을 채우며, 저장 줄의 단 경계에서 예약 개체 뒤로 이어진다.
+        let common = match ctrl {
+            Control::Shape(shape) => Some(shape.common()),
+            Control::Picture(picture) => Some(&picture.common),
+            _ => None,
+        };
+        let column_frame = common.is_some_and(|common| {
+            matches!(common.horz_rel_to, crate::model::shape::HorzRelTo::Column)
+                && common.width as f64 <= st.layout.column_width_hu() as f64
+        });
+        if column_frame && st.defer_table_host_shape_to_next_column(para_idx, ctrl_idx, flow) {
+            return;
+        }
         st.advance_column_or_new_page();
     }
     let accepted_frame = flow.accepted_shape_frame(ctrl, st.current_height);
@@ -376,11 +424,14 @@ pub(super) fn try_place_empty_para_float_table(
     table: &crate::model::table::Table,
     ft: &FormattedTable,
     composed: Option<&ComposedParagraph>,
+    prev_para: Option<&Paragraph>,
     next_para: Option<&Paragraph>,
     styles: &ResolvedStyleSet,
     para_start_height: f64,
     lanes: &mut FloatLaneSet,
+    paragraphs: &[Paragraph],
     table_reflowed: bool,
+    preceding_fragment_reflowed: bool,
     dpi: f64,
 ) -> bool {
     let Some(placement) = empty_float::prepare(
@@ -390,12 +441,14 @@ pub(super) fn try_place_empty_para_float_table(
         table,
         ft,
         composed,
+        prev_para,
         next_para,
         styles,
         para_start_height,
         lanes,
-        st.empty_float_page(),
+        st.empty_float_page(paragraphs),
         table_reflowed,
+        preceding_fragment_reflowed,
         || st.empty_float_available_height(ft.table_footnote_height, ft.table_footnote_count),
         dpi,
     ) else {
@@ -476,8 +529,13 @@ pub(super) fn try_place_stored_tac_paragraph(
         para_idx,
         para,
         paragraphs.get(para_idx + 1),
+        paragraphs
+            .get(para_idx + 1)
+            .and_then(|next| styles.para_styles.get(next.para_shape_id as usize))
+            .map_or(0.0, |style| style.spacing_before),
         fmt,
         measured_tables,
+        styles,
         st.stored_tac_page(paragraphs),
         || st.available_height(),
         dpi,
@@ -505,6 +563,7 @@ pub(super) fn try_place_stored_tac_paragraph(
                     para,
                     table,
                     paragraphs.get(para_idx + 1),
+                    paragraphs,
                     dpi,
                     Some(host_origin),
                     |is_column_top| {
@@ -566,6 +625,7 @@ pub(super) fn try_place_stored_tac_paragraph(
         para,
         fmt,
         measured_tables,
+        styles,
         st.stored_tac_page(paragraphs),
         shared_spacing_before,
         para_idx

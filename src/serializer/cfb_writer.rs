@@ -240,6 +240,20 @@ fn serialize_hwp_inner(
     // 6. CFB 컨테이너 조립
     let mut content_loss = ContentLossReport::new(SerializedFormat::Hwp);
     let mut extra_streams = doc.extra_streams.clone();
+    extra_streams.retain(|(path, _)| path != crate::model::border_paint::HWP_STREAM);
+    if let Some(bytes) =
+        crate::model::border_paint::encode(doc).map_err(SerializeError::UnsupportedInput)?
+    {
+        extra_streams.push((crate::model::border_paint::HWP_STREAM.into(), bytes));
+        content_loss.record(crate::model::border_paint::native_editing_loss());
+    }
+    extra_streams.retain(|(path, _)| path != crate::model::text_clip::HWP_STREAM);
+    if let Some(bytes) =
+        crate::model::text_clip::encode(doc).map_err(SerializeError::UnsupportedInput)?
+    {
+        extra_streams.push((crate::model::text_clip::HWP_STREAM.into(), bytes));
+        content_loss.record(crate::model::text_clip::native_visibility_loss());
+    }
     // HWPX에 보존한 재정렬 요청도 HWP 저장·재열기에서 같은 계약을 유지한다.
     if doc.layout_profile().hwp3_external_realign()
         && !extra_streams
@@ -250,6 +264,10 @@ fn serialize_hwp_inner(
             crate::model::document::HWP3_EXTERNAL_REALIGN_STREAM_PATH.to_string(),
             b"1".to_vec(),
         ));
+    }
+    extra_streams.retain(|(path, _)| path != crate::model::native_font_program::HWP_STREAM);
+    if let Some(bytes) = crate::model::native_font_program::encode(&doc.doc_info, &doc_info_bytes) {
+        extra_streams.push((crate::model::native_font_program::HWP_STREAM.into(), bytes));
     }
     extra_streams.retain(|(path, _)| path != crate::model::hyperlink_format::HWP_STREAM);
     if let Some(bytes) = crate::model::hyperlink_format::encode(doc) {

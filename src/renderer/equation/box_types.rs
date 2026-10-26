@@ -49,7 +49,7 @@ pub enum LayoutKind {
         font_family: &'static str,
         /// 표시 글꼴의 차이를 배치 단계에서 해소한 공통 공개 윤곽.
         outline: Option<Vec<super::GlyphOutlineCommand>>,
-        /// 일반 윤곽의 fill+stroke 계약. 없는 경우 기존 채우기 경로다.
+        /// 윤곽의 fill+stroke 또는 글꼴 글리프의 가로 변환. 없는 경우 원 배율이다.
         #[serde(skip_serializing_if = "Option::is_none")]
         paint: Option<FontGlyphPaint>,
     },
@@ -65,6 +65,9 @@ pub enum LayoutKind {
         axis_height: f64,
         /// 실제 수식 face의 괘선 두께. 출력 경로가 일반 MATH 비율로 덮어쓰지 않는다.
         rule_thickness: f64,
+        /// 피연산자의 등록 여백과 구분한 괘선의 수평 시작·끝. 모든 paint가 공유한다.
+        rule_start: f64,
+        rule_end: f64,
     },
     /// 위아래 배치 (분수선 없음)
     Atop {

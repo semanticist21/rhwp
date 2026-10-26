@@ -21,6 +21,8 @@ export interface PageInfo {
   pageNumber?: number;
   width: number;
   height: number;
+  /** 공통 Print paint가 발행한 종이 크기. 원본 편집 크기와 구분하며 구 WASM에는 없다. */
+  printSize?: { width: number; height: number };
   sectionIndex: number;
   /** 왼쪽 여백 (px) */
   marginLeft: number;
@@ -202,6 +204,8 @@ export interface CursorRect {
   x: number;
   y: number;
   height: number;
+  /** Clockwise angle of the composed TextBox caret about its top endpoint. */
+  rotation?: number;
   /** 표 셀 내부 커서일 때만 제공되는 가시 셀 bbox */
   cellBounds?: { x: number; y: number; w: number; h: number };
   /** 원래 TextRun 좌표가 셀 bbox를 벗어나 보정됐는지 여부 */
@@ -450,6 +454,8 @@ export interface BorderLineInfo {
 
 /** WASM getCellProperties() 반환 타입 — HWPUNIT 원본값 */
 export interface CellProperties {
+  /** Explicit source-paint replacement intent: left, right, top, bottom. */
+  borderPaintSides?: boolean[];
   width: number;
   height: number;
   paddingLeft: number;
@@ -1033,6 +1039,7 @@ export interface LayerTextV2Envelope {
 export type LayerNodeV2 =
   | (Omit<LayerGroupNode, 'children'> & { children: LayerNodeV2[] })
   | (Omit<LayerClipNode, 'child'> & { child: LayerNodeV2 })
+  | (Omit<LayerPathClipNode, 'child'> & { child: LayerNodeV2 })
   | (Omit<LayerLeafNode, 'ops'> & { ops: Array<LayerPaintOp | LayerTextV2Envelope> });
 export type PageLayerTreeV2 = Omit<PageLayerTree, 'root'> & { root: LayerNodeV2 };
 
@@ -1091,7 +1098,7 @@ export interface LayerInfo {
   masterPage?: boolean;
 }
 
-export type LayerNode = LayerGroupNode | LayerClipNode | LayerLeafNode;
+export type LayerNode = LayerGroupNode | LayerClipNode | LayerPathClipNode | LayerLeafNode;
 
 export interface LayerGroupNode {
   kind: 'group';
@@ -1111,6 +1118,12 @@ export interface LayerClipNode {
   layer?: LayerInfo;
   clip: LayerBounds;
   clipKind: 'body' | 'tableCell' | 'textBox' | 'generic';
+  child: LayerNode;
+}
+
+export interface LayerPathClipNode {
+  kind: 'clipPath'; bounds: LayerBounds; visualBounds?: LayerBounds; layer?: LayerInfo;
+  paths: { commands: ({Move:[number,number]} | {Line:[number,number]} | {Cubic:[number,number,number,number,number,number]} | 'Close')[]; even_odd: boolean }[];
   child: LayerNode;
 }
 
@@ -1174,6 +1187,8 @@ export interface LayerTextStyle {
   color?: string;
   bold?: boolean;
   italic?: boolean;
+  /** 실제 기울임 face가 없을 때 Rust가 지정한 paint 변환. */
+  syntheticItalicSkew?: number;
   ratio?: number;
   underline?: string;
   underlineShape?: number;
@@ -1210,6 +1225,9 @@ export interface LayerTabLeader {
   startX: number;
   endX: number;
   fillType: number;
+  /** 공통 glyph 원점과 채움 폭에서 만든 run 상대 점 중심·반지름. */
+  dotCenters?: number[];
+  dotRadius?: number;
 }
 
 export type LayerTextControlMarkKind = 'space' | 'tab' | 'paragraphEnd' | 'lineBreakEnd';
@@ -1225,6 +1243,8 @@ export interface LayerTextControlMark {
 }
 
 export interface LayerTextRunOp {
+  /** Glyph-only output frame; source bbox/placement stay logical. */
+  paintTransform?: LayerAffineTransform;
   type: 'textRun';
   bbox: LayerBounds;
   text: string;
@@ -1282,7 +1302,11 @@ export interface LayerLineStyle {
   color?: string;
   width?: number;
   dash?: LayerStrokeDash;
+  /** Physical on/off lengths supplied by the shared border layout. */
+  dashPattern?: number[];
   lineType?: string;
+  /** A decomposed multiple/overpainted stroke keeps its parent's subpixel geometry. */
+  compoundComponent?: boolean;
   startArrow?: string;
   endArrow?: string;
   startArrowSize?: number;
@@ -1330,6 +1354,8 @@ export interface LayerLineOp {
 export interface LayerRectangleOp {
   type: 'rectangle';
   bbox: LayerBounds;
+  transform?: LayerPathTransform;
+  strokeJoin?: 'round';
   cornerRadius?: number;
   style?: LayerShapeStyle;
   gradient?: LayerGradientFill;
@@ -1378,10 +1404,14 @@ export interface LayerPathOp {
 export interface LayerImageOp {
   type: 'image';
   bbox: LayerBounds;
+  /** Shared producer result before rotation; bbox remains the occupied frame. */
+  imagePaintBBox?: LayerBounds;
   /** Explicit source sampling; absent preserves the output profile policy. */
   imageInterpolation?: 'nearest' | 'linear';
   /** 실제 Print 색 전달 payload의 축소 재구성 계약. */
   imageReconstruction?: 'catmullRom';
+  imageAnisotropicReduction?: boolean;
+  imagePrintFrame?: number[];
   mime?: string;
   base64?: string;
   imageRef?: number | string;
@@ -1480,10 +1510,10 @@ export type LayerEquationLayoutKind =
   | { type: 'text'; text: string }
   | { type: 'number'; text: string }
   | { type: 'symbol'; text: string }
-  | { type: 'fontGlyph'; text: string; fontFamily: string; outlineGeometry?: LayerFontGlyphGeometry }
+  | { type: 'fontGlyph'; text: string; fontFamily: string; glyphScaleX?: number; outlineGeometry?: LayerFontGlyphGeometry }
   | { type: 'mathSymbol'; text: string; integralGeometry?: LayerIntegralGeometry }
   | { type: 'function'; name: string }
-  | { type: 'fraction'; numer: LayerEquationLayoutBox; denom: LayerEquationLayoutBox; axisHeight: number; ruleThickness?: number }
+  | { type: 'fraction'; numer: LayerEquationLayoutBox; denom: LayerEquationLayoutBox; axisHeight: number; ruleThickness?: number; ruleStart?: number; ruleEnd?: number }
   | { type: 'atop'; top: LayerEquationLayoutBox; bottom: LayerEquationLayoutBox }
   | { type: 'sqrt'; body: LayerEquationLayoutBox; index?: LayerEquationLayoutBox }
   | { type: 'superscript'; base: LayerEquationLayoutBox; sup: LayerEquationLayoutBox }
@@ -1587,6 +1617,8 @@ export interface LayerTabLeaderOp {
 }
 
 export interface LayerCharOverlapOp {
+  /** Glyph-only output frame; source bbox/placement stay logical. */
+  paintTransform?: LayerAffineTransform;
   type: 'charOverlap';
   bbox: LayerBounds;
   text: string;
@@ -1601,6 +1633,8 @@ export interface LayerCharOverlapOp {
 }
 
 export interface LayerGlyphRunOp {
+  /** Glyph-only output frame; source bbox/placement stay logical. */
+  paintTransform?: LayerAffineTransform;
   type: 'glyphRun';
   bbox: LayerBounds;
   source: LayerTextSourceSpan;
@@ -1621,6 +1655,8 @@ export interface LayerGlyphRunOp {
 }
 
 export interface LayerGlyphOutlineOp {
+  /** Glyph-only output frame; source bbox/placement stay logical. */
+  paintTransform?: LayerAffineTransform;
   type: 'glyphOutline';
   bbox: LayerBounds;
   variant?: LayerTextVariantMeta;

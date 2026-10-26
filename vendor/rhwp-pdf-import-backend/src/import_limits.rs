@@ -85,6 +85,8 @@ pub struct PdfImportLimits {
     pub stream_bytes: usize,
     /// Maximum requested bytes in one private codec scratch allocation.
     pub codec_allocation_bytes: usize,
+    /// Maximum cumulative work units in opted-in image decoders.
+    pub codec_work_units: usize,
     /// Cumulative decoded/copy/predictor bytes, including failed attempts.
     pub decoded_bytes: usize,
     /// Maximum number of filters in one pipeline.
@@ -129,6 +131,7 @@ impl Default for PdfImportLimits {
             input_bytes: DEFAULT_INPUT_BYTES,
             stream_bytes: 32 * 1024 * 1024,
             codec_allocation_bytes: 32 * 1024 * 1024,
+            codec_work_units: 1_000_000_000,
             decoded_bytes: 256 * 1024 * 1024,
             filters: 8,
             nesting: 16,
@@ -180,6 +183,8 @@ pub struct ImportBudgetSnapshot {
     pub decoded_bytes: usize,
     /// Cumulative private codec storage requested, including released blocks.
     pub codec_allocated_bytes: usize,
+    /// Work units consumed by opted-in image decoders, not CPU time.
+    pub codec_work_units: usize,
     /// Parsed object values charged by this request.
     pub parsed_objects: usize,
     /// Collection and xref entries charged by this request.
@@ -217,6 +222,7 @@ pub struct ImportBudget {
     span_limit: AtomicUsize,
     entry_limit: AtomicUsize,
     codec_allocated: AtomicUsize,
+    codec_work: AtomicUsize,
     objects: AtomicUsize,
     entries: AtomicUsize,
     operators: AtomicUsize,
@@ -226,8 +232,10 @@ pub struct ImportBudget {
     cmap_scanned: AtomicUsize,
     font_entries: AtomicUsize,
     reference_visits: AtomicUsize,
+    reference_limit: AtomicUsize,
     active_references: AtomicUsize,
     xobject_visits: AtomicUsize,
+    xobject_limit: AtomicUsize,
     failed: AtomicBool,
     failure_reason: std::sync::Mutex<Option<ImportLimitFailure>>,
     content_parse_calls: AtomicUsize,
@@ -245,6 +253,7 @@ impl ImportBudget {
             limits.input_bytes,
             limits.stream_bytes,
             limits.codec_allocation_bytes,
+            limits.codec_work_units,
             limits.decoded_bytes,
             limits.filters,
             limits.nesting,
@@ -276,6 +285,7 @@ impl ImportBudget {
             span_limit: AtomicUsize::new(limits.spans),
             entry_limit: AtomicUsize::new(limits.entries),
             codec_allocated: AtomicUsize::new(0),
+            codec_work: AtomicUsize::new(0),
             objects: AtomicUsize::new(0),
             entries: AtomicUsize::new(0),
             operators: AtomicUsize::new(0),
@@ -285,8 +295,10 @@ impl ImportBudget {
             cmap_scanned: AtomicUsize::new(0),
             font_entries: AtomicUsize::new(0),
             reference_visits: AtomicUsize::new(0),
+            reference_limit: AtomicUsize::new(limits.reference_visits),
             active_references: AtomicUsize::new(0),
             xobject_visits: AtomicUsize::new(0),
+            xobject_limit: AtomicUsize::new(limits.xobject_visits),
             codec_scratch: CodecScratch(std::sync::Mutex::new(None)),
             failed: AtomicBool::new(false),
             failure_reason: std::sync::Mutex::new(None),
@@ -330,6 +342,30 @@ impl ImportBudget {
             0,
             self.entry_limit.load(Ordering::Relaxed),
             "collection entries",
+        )
+    }
+
+    /// Narrow traversal work after page selection without forgiving already
+    /// consumed page-tree/object visits. Explicit host limits can never rise.
+    pub fn restrict_traversal_limits(&self, references: usize, xobjects: usize) -> Result<()> {
+        self.check()?;
+        if references == 0 || xobjects == 0 {
+            return Err(self.reject("zero traversal budget"));
+        }
+        self.reference_limit
+            .fetch_min(references, Ordering::Relaxed);
+        self.xobject_limit.fetch_min(xobjects, Ordering::Relaxed);
+        self.charge(
+            &self.reference_visits,
+            0,
+            self.reference_limit.load(Ordering::Relaxed),
+            "reference visits",
+        )?;
+        self.charge(
+            &self.xobject_visits,
+            0,
+            self.xobject_limit.load(Ordering::Relaxed),
+            "XObject visits",
         )
     }
 
@@ -400,6 +436,7 @@ impl ImportBudget {
         ImportBudgetSnapshot {
             decoded_bytes: read(&self.decoded),
             codec_allocated_bytes: read(&self.codec_allocated),
+            codec_work_units: read(&self.codec_work),
             parsed_objects: read(&self.objects),
             collection_entries: read(&self.entries),
             operators: read(&self.operators),
@@ -477,6 +514,11 @@ impl ImportBudget {
         {
             *slot = Some(buffer);
         }
+    }
+
+    #[cfg(any(feature = "jbig2", feature = "jpeg2000"))]
+    pub(crate) fn charge_codec_work(&self, units: usize) -> Result<()> {
+        self.charge(&self.codec_work, units, self.limits.codec_work_units, "codec work units")
     }
 
     pub(crate) fn charge_codec_allocation(&self, amount: usize) -> Result<()> {
@@ -602,7 +644,12 @@ impl ImportBudget {
     }
 
     fn charge_reference_visit(&self) -> Result<()> {
-        self.charge(&self.reference_visits, 1, self.limits.reference_visits, "reference visits")
+        self.charge(
+            &self.reference_visits,
+            1,
+            self.reference_limit.load(Ordering::Relaxed),
+            "reference visits",
+        )
     }
 
     pub(crate) fn enter_reference(&self) -> Result<ReferenceGuard<'_>> {
@@ -617,7 +664,12 @@ impl ImportBudget {
     }
 
     pub(crate) fn xobject_visit(&self) -> Result<()> {
-        self.charge(&self.xobject_visits, 1, self.limits.xobject_visits, "XObject visits")
+        self.charge(
+            &self.xobject_visits,
+            1,
+            self.xobject_limit.load(Ordering::Relaxed),
+            "XObject visits",
+        )
     }
 
     pub(crate) fn form_depth(&self, depth: usize) -> Result<()> {

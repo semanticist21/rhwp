@@ -17,11 +17,16 @@ pub struct ResolvedCharStyle {
     /// HFT 는 한/글이 자기 글리프로 그리고, 대체된 이름은
     /// 다른 글꼴의 표를 빌려 오므로 표에 적힌 폭이 그 글꼴의 폭이라는 보장이 없다.
     pub font_families_metric_trusted: Vec<bool>,
+    /// 명시한 glyphFallbacks의 전진 선택. 원 face 전체의 신뢰와 구분한다.
+    pub font_families_glyph_fallback_advance_explicit: Vec<bool>,
     /// [#7051] 언어 슬롯별로 선언 글꼴이 **HFT 한글 전용 face** 여서 치환됐는지.
     /// 그런 글꼴의 ASCII 는 한컴이 반각으로 전진시킨다(측정 전용).
     pub font_families_hft_hangul: Vec<bool>,
     /// 대체 여부와 무관하게 보존하는 원본 프로그램 종류다.
     pub font_families_source_hft: Vec<bool>,
+    pub font_families_hft_print_frame: Vec<bool>,
+    /// 세션이 명시적으로 선택한 프로그램의 자연 윤곽 폭을 보존한다.
+    pub font_families_preserve_glyph_ink: Vec<bool>,
     /// 언어 슬롯이 대체되지 않은 원본 HFT 기호 전각 폭을 갖는지.
     pub font_families_hft_fullwidth_dot: Vec<bool>,
     /// [#7418] 한/글이 한글 뒤 ASCII 구두점도 **영문 슬롯** 글꼴로 재고 그리는가.
@@ -34,6 +39,8 @@ pub struct ResolvedCharStyle {
     /// 한글 글꼴 그대로 둔다(`hwp3-sample16-hwp5` 정본: 한글 뒤 구두점 41건 모두 같은 글꼴).
     /// 한글 슬롯이 바탕·맑은 고딕처럼 ASCII 를 가진 TTF 인 문서도 대부분 한글 글꼴 그대로다.
     pub ascii_punct_latin_slot: bool,
+    /// 명시 환경이 선택한 원본 영문 슬롯의 구두점 소유.
+    pub explicit_latin_slot: bool,
     /// [#7391] 언어 슬롯별로, 폭을 **선언 face 자신의 표**로 재야 하는 경우의 그 이름.
     ///
     /// legacy-latin 치환은 표시할 글꼴이 없는 환경의 폴백이라 라틴 face 를 한글 face 로
@@ -54,6 +61,7 @@ pub struct ResolvedCharStyle {
     /// `HCI Poppy` 가 그 경우이며, 그 치환(`Palatino Linotype`)은 정본 ASCII 24,662자
     /// 대조에서 중앙 오차 0.0040 em 으로 이미 맞다 — 건드리지 않는다.
     pub font_families_metric_face: Vec<Option<String>>,
+    pub font_families_original_glyph_metric_face: Vec<Option<String>>,
     /// [#7387] 처음에는 `CharShape.use_font_space`가 켜진 run의 **영문 슬롯**(1)
     /// 공백 글리프 폭이다. 저장 문서 프로필에서 독립 출력에 맞게 보정할 수 있다.
     /// `None`이면 일반 글꼴 측정 규칙을 따른다.
@@ -127,11 +135,16 @@ impl Default for ResolvedCharStyle {
             font_family: String::new(),
             font_families: Vec::new(),
             font_families_metric_trusted: Vec::new(),
+            font_families_glyph_fallback_advance_explicit: Vec::new(),
             font_families_hft_hangul: Vec::new(),
             font_families_source_hft: Vec::new(),
+            font_families_hft_print_frame: Vec::new(),
+            font_families_preserve_glyph_ink: Vec::new(),
             font_families_hft_fullwidth_dot: Vec::new(),
             ascii_punct_latin_slot: false,
+            explicit_latin_slot: false,
             font_families_metric_face: Vec::new(),
+            font_families_original_glyph_metric_face: Vec::new(),
             font_space_em: None,
             font_size: 12.0,
             font_sizes: Vec::new(),
@@ -195,6 +208,20 @@ impl ResolvedCharStyle {
             .unwrap_or(false)
     }
 
+    pub fn glyph_fallback_advance_explicit_for_lang(&self, lang_index: usize) -> bool {
+        let slot = if lang_index < self.font_families.len()
+            && !self.font_families[lang_index].is_empty()
+        {
+            lang_index
+        } else {
+            0
+        };
+        self.font_families_glyph_fallback_advance_explicit
+            .get(slot)
+            .copied()
+            .unwrap_or(false)
+    }
+
     /// [#7051] 지정 언어 카테고리의 글꼴이 HFT 한글 전용 face 라서 치환됐는지.
     /// `font_family_for_lang` 과 같은 폴백(이름이 비면 한국어 0번)을 따른다.
     pub fn hft_hangul_face_for_lang(&self, lang_index: usize) -> bool {
@@ -226,6 +253,20 @@ impl ResolvedCharStyle {
             .unwrap_or(false)
     }
 
+    pub fn hft_print_frame_for_lang(&self, lang_index: usize) -> bool {
+        let slot = if lang_index < self.font_families.len()
+            && !self.font_families[lang_index].is_empty()
+        {
+            lang_index
+        } else {
+            0
+        };
+        self.font_families_hft_print_frame
+            .get(slot)
+            .copied()
+            .unwrap_or(false)
+    }
+
     /// 대체되지 않은 HFT 기호 슬롯의 원본 전각 전진을 보존한다.
     pub fn hft_fullwidth_dot_for_lang(&self, lang_index: usize) -> bool {
         let slot = if lang_index < self.font_families.len()
@@ -251,6 +292,19 @@ impl ResolvedCharStyle {
             0
         };
         self.font_families_metric_face
+            .get(slot)
+            .and_then(Option::as_deref)
+    }
+
+    pub fn original_glyph_metric_face_for_lang(&self, lang_index: usize) -> Option<&str> {
+        let slot = if lang_index < self.font_families.len()
+            && !self.font_families[lang_index].is_empty()
+        {
+            lang_index
+        } else {
+            0
+        };
+        self.font_families_original_glyph_metric_face
             .get(slot)
             .and_then(Option::as_deref)
     }
@@ -334,6 +388,7 @@ pub struct ResolvedParaStyle {
     /// 커스텀 탭 정지 목록 (position 오름차순)
     pub tab_stops: Vec<TabStop>,
     /// 문단 오른쪽 끝 자동 탭 여부
+    pub auto_tab_left: bool,
     pub auto_tab_right: bool,
     /// HWPX paraPr condense / HWP ParaShape attr1 bits 9..15.
     /// Spec name: minimum spacing value, 0..75%.
@@ -373,6 +428,7 @@ impl Default for ResolvedParaStyle {
             border_ignore_margin: false,
             default_tab_width: 0.0,
             tab_stops: Vec::new(),
+            auto_tab_left: false,
             auto_tab_right: false,
             condense_min_space: 0,
             english_break_unit: 0,
@@ -449,8 +505,16 @@ impl Default for ResolvedBorderStyle {
 /// 해소된 스타일 세트 (DocInfo에서 변환)
 #[derive(Debug, Default, Clone)]
 pub struct ResolvedStyleSet {
+    /// 문서 지정 대체가 있어도 현재 선택은 자기 메트릭을 가진 원본 TTF인 슬롯.
+    /// 값은 문서가 선언한 대체 프로그램의 해소 결과다. 저장 줄 전체가 이 대체
+    /// 프로그램의 채움과 일치하고 현재 원본 프로그램과 다른 경우에만 사용한다.
+    pub(crate) source_program_projection_slots:
+        std::collections::HashMap<(u32, usize), ResolvedCharStyle>,
+    pub(crate) native_pua_fonts: std::sync::Arc<crate::renderer::native_pua_fonts::NativePuaFonts>,
     /// px 형태의 해소된 스타일을 원본 HWPUNIT으로 환산할 때의 배율.
     pub(crate) resolved_dpi: Option<f64>,
+    /// 한컴 2020의 독립 자모 프로그램. 문서의 글꼴 선언과 구분한다.
+    pub(crate) isolated_jamo_font: Option<&'static str>,
     /// 문서의 `쪽 번호` 스타일이 참조하는 글자 모양. 자동 쪽번호는 본문
     /// 기본 글꼴이 아닌 이 스타일로 출력된다.
     pub page_number_char_style_id: Option<usize>,
@@ -487,4 +551,41 @@ pub struct ResolvedStyleSet {
     /// remains dormant until the composition-owner handoff qualifies.
     pub(crate) horizontal_shaping_context:
         Option<std::sync::Arc<crate::renderer::shaping_context::HorizontalShapingContext>>,
+}
+
+impl ResolvedStyleSet {
+    pub(crate) fn literal_figure_space_em(
+        &self,
+        char_style_id: u32,
+        lang_index: usize,
+    ) -> Option<f64> {
+        self.kerning_measurement_context
+            .as_ref()
+            .and_then(|context| {
+                context.literal_figure_space_em(crate::renderer::kerning::ExactFontSlot::new(
+                    char_style_id,
+                    lang_index,
+                ))
+            })
+            .or_else(|| {
+                let style = self.char_styles.get(char_style_id as usize)?;
+                self.native_pua_fonts.literal_space_em(
+                    style.font_family_for_lang(lang_index),
+                    style.bold,
+                    style.italic,
+                )
+            })
+    }
+
+    /// 명시/내장 슬롯의 실제 프로그램을 외부 family 캐시로 대체하지 않는다.
+    pub(crate) fn has_exact_font_source(&self, char_style_id: u32, lang_index: usize) -> bool {
+        self.kerning_measurement_context
+            .as_ref()
+            .is_some_and(|context| {
+                context.has_font_source(crate::renderer::kerning::ExactFontSlot::new(
+                    char_style_id,
+                    lang_index,
+                ))
+            })
+    }
 }

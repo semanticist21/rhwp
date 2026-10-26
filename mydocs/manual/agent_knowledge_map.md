@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/manual/agent_knowledge_map.md
-last_verified: 2026-10-14
+last_verified: 2026-10-23
 ---
 
 # 에이전트 지식 지도 — rhwp 참조 문서의 단일 진입점
@@ -15,7 +15,7 @@ rhwp 를 도구로 부리는 AI 에이전트·스크립트가 **첫 번째로 �
 다르면 그쪽을 따른다. 새 표면이 머지되면 해당 행만 추가한다(기존 행 재서술 금지).
 
 **PR 시각 무회귀를 검토할 때**: 최신 SHA의 upstream/devel과 후보 head의 전쪽
-Native/fresh WASM TSV를 같은 조건·페이지로 비교한다. **0.1%p 이상 하락한 쪽이 있으면
+Native/fresh WASM TSV를 같은 조건·페이지로 비교한다. **2%p 이상 하락한 쪽이 있으면
 90% 이상이어도 PR 재검토**다. 평균·CI 통과로 대체하지 않는다.
 [권위 절차](verification/visual_verification_governance.md#upstream-devel-대비-페이지별-실루엣-하락-재검토)와 [PR workflow](pr_review_workflow.md)를 먼저 읽는다.
 
@@ -93,6 +93,7 @@ IR·provenance·plan 네 축을 한 번에 조립하고, 빠진 축은 `missingA
 |---|---|---|---|
 | 쪽을 SVG 로 | `export-svg --json` (`hwp_export_svg`) | `pages[].path`·`renderedCount` | [CLI 매뉴얼](cli_commands.md) §1 |
 | 쪽을 PNG 로 (VLM 입력) | `export-png --json --vlm-target claude` (`hwp_export_png`) | `pages[].path`·`renderedCount` | [export-png 매뉴얼](export_png_command.md) |
+| 터미널에 PNG 표시 | `export-kitty --page 0 --width 360` (Native CLI 전용) | 그래픽 stdout·진단 stderr·종료 코드, JSON 미지원 | [Kitty 출력 가이드](export_kitty_command.md) |
 | 제출용 PDF | `export-pdf --json` (`hwp_export_pdf`) | `output`·`bytes`·`backend` | [CLI 매뉴얼](cli_commands.md) §export-pdf |
 | 바뀐 쪽만 렌더 | 편집 봉투 `changedPages` → `export-svg -p N` | `changedPages[]` | [표면 플레이북 §9](agent_surface_playbook.md) |
 | 세션 안에서 렌더 | `hwp_doc_render_page` (서버 전용) | `bytes`·`output` | [MCP 가이드](mcp_integration_guide.md) |

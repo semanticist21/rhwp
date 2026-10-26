@@ -9,7 +9,7 @@ use crate::renderer::typeset::{
 use host_placement::HostPlacementConstraint;
 
 mod entry;
-mod host_placement;
+pub(in crate::renderer::typeset) mod host_placement;
 mod prepare;
 mod whole_fit;
 
@@ -44,6 +44,7 @@ struct SplitTableEntry<'a> {
     declared_object_total: f64,
     native_hwp5_internal_reset_rewind_needs_anchor_resync: bool,
     placement_para_start_height: f64,
+    source_host_origin: Option<f64>,
     source_anchor_splits_here: bool,
     stored_rewinding_rowbreak_uses_painted_row_footprint: bool,
     closed_source_frame_placement:

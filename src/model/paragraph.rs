@@ -46,6 +46,10 @@ pub struct Paragraph {
     /// 텍스트 문자별 UTF-16 코드 유닛 위치 (LineSeg/CharShapeRef 위치와 매핑용)
     /// char_offsets[i] = text[i]에 해당하는 원본 UTF-16 코드 유닛 인덱스
     pub char_offsets: Vec<u32>,
+    /// 리터럴 U+2007의 문자 인덱스. 같은 표시 문자인 HWP 코드31과 구분한다.
+    /// 파일 표기 출처이며 원문 문자·UTF-16 축은 바꾸지 않는다.
+    #[serde(skip_serializing)]
+    pub literal_figure_spaces: Vec<usize>,
     /// 글자 모양 변경 위치 목록
     pub char_shapes: Vec<CharShapeRef>,
     /// 줄 레이아웃 정보
@@ -530,6 +534,32 @@ pub fn tab_ext_is_placeholder(ext: &[u16; 7]) -> bool {
 pub const TAB_EXT_PLACEHOLDER: [u16; 7] = [0, 0, 0, 0, 0, 0, 0x0009];
 
 impl Paragraph {
+    /// 새 캡션의 접두어 뒤에 원시 8유닛 자동번호 자리와 문단 끝을 만든다.
+    pub(crate) fn new_auto_number_caption(
+        prefix: &str,
+        auto_number: super::control::AutoNumber,
+    ) -> Self {
+        let mut paragraph = Self::new_empty();
+        let mut raw_offset = 0u32;
+        paragraph.char_offsets = prefix
+            .chars()
+            .map(|ch| {
+                let offset = raw_offset;
+                raw_offset += ch.len_utf16() as u32;
+                offset
+            })
+            .collect();
+        // 번호는 모델 공백 한 글자로 남지만 HWP 문자 축에서는 8유닛을 점유한다.
+        paragraph.char_offsets.push(raw_offset);
+        paragraph.text = format!("{prefix} ");
+        paragraph.char_count = raw_offset + CTRL_CHAR_CODE_UNITS + 1;
+        paragraph.char_count_msb = true;
+        paragraph.control_mask = 1u32 << 0x12;
+        paragraph.controls.push(Control::AutoNumber(auto_number));
+        paragraph.ctrl_data_records.push(None);
+        paragraph
+    }
+
     /// 한컴 2022 실측: 종류 2, 하위 24비트는 COLORREF(BGR), 끝 위치는 exclusive.
     pub(crate) fn import_markpen_range_tags(&mut self) {
         self.markpen_marks = self
@@ -937,20 +967,21 @@ impl Paragraph {
         }
     }
 
-    /// 마지막 글자가 문단 끝 자동 번호의 자리표면 그 번호의 컨트롤 번호를 돌려준다.
-    ///
-    /// 파서는 자동 번호(0x12) 자리에 공백 한 글자를 남기고, 그 글자가 번호의 8유닛을 함께
-    /// 차지한다. 문단 가운데 자리표는 다음 글자가 8 뒤에 있어 [`Self::control_text_positions`]
-    /// 가 번호를 자리표 자리에 두지만, 마지막 글자는 다음 글자가 없어 번호가 문단 끝(글자 수)에
-    /// 놓인다. 직렬화기(#2740)와 같은 규칙으로, 문단 끝에 놓인 첫 컨트롤이 자동 번호이고 마지막
-    /// 글자가 공백이면 그 공백을 자리표로 본다.
+    /// 마지막 공백이 자동 번호의 원시 8유닛을 소유하면 그 컨트롤을 반환한다.
+    /// 저장 파서/새 캡션은 자리표 인덱스를, 구형 편집 모델은 문단 끝을
+    /// 전달할 수 있다. 양쪽 표현 모두 병합·삽입·분할에서 같은 슬롯 끝을 소비한다.
     fn trailing_auto_number(&self, control_positions: &[usize]) -> Option<usize> {
-        if !self.text.ends_with(' ') {
+        let chars: Vec<_> = self.text.chars().collect();
+        if chars.last() != Some(&' ') {
             return None;
         }
-        let text_len = self.text.chars().count();
-        let index = control_positions.iter().position(|&at| at >= text_len)?;
-        matches!(self.controls.get(index), Some(Control::AutoNumber(_))).then_some(index)
+        control_positions.iter().enumerate().find_map(|(ci, &at)| {
+            (matches!(self.controls.get(ci), Some(Control::AutoNumber(_)))
+                && (at >= chars.len()
+                    || (at + 1 == chars.len()
+                        && self.control_owns_char(ci, at, &chars, &self.char_offsets))))
+            .then_some(ci)
+        })
     }
 
     /// `idx` 번째 글자가 끝나는 스트림 위치. 문단 끝 자동 번호의 자리표(마지막 글자)는 번호의
@@ -1263,17 +1294,18 @@ impl Paragraph {
         let trailing_number = self.trailing_auto_number(&control_positions);
         let char_end = |idx: usize| self.char_stream_end(&text_chars, idx, trailing_number);
         let is_inline_object = |ctrl: &Control| {
-            matches!(
-                ctrl,
-                Control::Shape(_)
-                    | Control::Table(_)
-                    | Control::Picture(_)
-                    | Control::Equation(_)
-                    | Control::Footnote(_)
-                    | Control::Endnote(_)
-                    | Control::CharOverlap(_)
-                    | Control::AutoNumber(_)
-            )
+            !super::border_paint::is_cell_frame_paint(ctrl)
+                && matches!(
+                    ctrl,
+                    Control::Shape(_)
+                        | Control::Table(_)
+                        | Control::Picture(_)
+                        | Control::Equation(_)
+                        | Control::Footnote(_)
+                        | Control::Endnote(_)
+                        | Control::CharOverlap(_)
+                        | Control::AutoNumber(_)
+                )
         };
         // 이 자리 컨트롤 가운데 첫 개체의 차례 — 그 앞에 놓인 같은 자리 컨트롤 수와 같다.
         // 문단 끝 자동 번호는 자리표 글자가 8유닛을 차지하므로 이 자리 컨트롤로 세지 않는다.
@@ -1379,6 +1411,19 @@ impl Paragraph {
         // 새 텍스트의 UTF-16 총 길이
         let new_chars: Vec<char> = new_text.chars().collect();
         let utf16_delta: u32 = new_chars.iter().map(|c| Self::char_stream_len(*c)).sum();
+
+        for position in &mut self.literal_figure_spaces {
+            if *position >= char_offset {
+                *position += new_chars.len();
+            }
+        }
+        self.literal_figure_spaces.extend(
+            new_chars
+                .iter()
+                .enumerate()
+                .filter_map(|(i, ch)| (*ch == '\u{2007}').then_some(char_offset + i)),
+        );
+        self.literal_figure_spaces.sort_unstable();
 
         for mark in &mut self.markpen_marks {
             if mark.char_idx >= char_offset {
@@ -1505,6 +1550,14 @@ impl Paragraph {
             .map(|c| Self::char_stream_len(*c))
             .sum();
         let utf16_end = utf16_start + utf16_delta;
+
+        self.literal_figure_spaces
+            .retain(|&position| position < char_offset || position >= del_end);
+        for position in &mut self.literal_figure_spaces {
+            if *position >= del_end {
+                *position -= del_end - char_offset;
+            }
+        }
 
         for mark in &mut self.markpen_marks {
             mark.char_idx = if mark.char_idx >= del_end {
@@ -1675,6 +1728,15 @@ impl Paragraph {
         let byte_offset: usize = text_chars[..split_pos].iter().map(|c| c.len_utf8()).sum();
         let new_text = self.text[byte_offset..].to_string();
         self.text.truncate(byte_offset);
+
+        let new_literal_figure_spaces = self
+            .literal_figure_spaces
+            .iter()
+            .filter(|&&position| position >= split_pos)
+            .map(|&position| position - split_pos)
+            .collect();
+        self.literal_figure_spaces
+            .retain(|&position| position < split_pos);
 
         // 2. char_offsets 분할
         let new_char_offsets: Vec<u32> = self.char_offsets[split_pos..]
@@ -1949,6 +2011,7 @@ impl Paragraph {
         let mut new_para = Paragraph {
             text: new_text,
             char_offsets: new_char_offsets,
+            literal_figure_spaces: new_literal_figure_spaces,
             char_shapes: new_char_shapes,
             line_segs: new_line_segs,
             layout_space_metrics: Vec::new(),
@@ -2031,6 +2094,12 @@ impl Paragraph {
 
         // 1. 텍스트 결합
         self.text.push_str(&other.text);
+        self.literal_figure_spaces.extend(
+            other
+                .literal_figure_spaces
+                .iter()
+                .map(|&position| position + self_text_len),
+        );
 
         // 2. char_offsets 결합 (other의 오프셋에 utf16_end 추가)
         for &off in &other.char_offsets {
@@ -2320,6 +2389,13 @@ impl Paragraph {
         let deleted = delete_count.min(len - at);
         let inserted = text.chars().count();
         let mut positions = self.control_text_positions();
+        // Cell-frame paint has a paragraph-start anchor, including in an empty
+        // cell whose other controls use synthetic logical slot positions.
+        for (ci, at) in positions.iter_mut().enumerate() {
+            if super::border_paint::is_cell_frame_paint(&self.controls[ci]) {
+                *at = 0;
+            }
+        }
         // 문단 끝 자동 번호는 갭 슬롯이 아니라 자리표 글자(마지막 글자)를 차지한다. 그 글자
         // 자리로 두어야 끝에 친 글자가 번호 앞 갭으로 들어가지 않고, 다시 셀 때 빈 슬롯이 생기지 않는다.
         if let Some(ci) = self.trailing_auto_number(&positions) {
@@ -2399,7 +2475,7 @@ impl Paragraph {
                 })
                 .collect();
             let object = |slot: &Slot| {
-                matches!(slot, Slot::Control(ci) if matches!(
+                matches!(slot, Slot::Control(ci) if !super::border_paint::is_cell_frame_paint(&self.controls[*ci]) && matches!(
                     self.controls[*ci],
                     Control::Shape(_)
                         | Control::Table(_)
@@ -2485,6 +2561,53 @@ impl Paragraph {
         deleted
     }
 
+    /// [#7866] 글자 `char_offset..+delete_count` 를 `text` 로 바꾸되, 새 글자가 지운 글자의
+    /// 글자 모양을 **자리대로** 잇는다: i번째 새 글자는 i번째 지운 글자의 모양, 지운 글자
+    /// 수를 넘는 꼬리는 마지막 지운 글자의 모양이다. 한/글 2024 찾아 바꾸기 실측
+    /// (`samples/issue7866/*_before.hwpx` → `*_after.hwpx`): 「굵게」의 첫 글자만 굵으면
+    /// 「새말」의 「새」만 굵고, 「굵(굵게)게(빨강)」→「일이삼」은 「일」 굵게·「이삼」 빨강이다.
+    ///
+    /// 지우고 넣는 두 단계만 거치면 낱말이 모양 구간을 통째로 차지할 때 그 구간이 사라져
+    /// 새 글자가 앞 글자의 모양에 붙는다. 지울 글자가 없거나 넣을 글자가 없으면 각각
+    /// 넣기·지우기와 같다. 반환값은 실제로 지운 글자 수.
+    pub fn replace_text_inheriting_char_shapes(
+        &mut self,
+        char_offset: usize,
+        delete_count: usize,
+        text: &str,
+    ) -> usize {
+        let len = self.text.chars().count();
+        let at = char_offset.min(len);
+        let old_end = at.saturating_add(delete_count).min(len);
+        let old_ids: Vec<u32> = (at..old_end)
+            .map(|offset| self.char_shape_id_at(offset).unwrap_or(0))
+            .collect();
+        let deleted = self.delete_text_at(at, delete_count);
+        let inserted_at = self.insert_text_at(at, text);
+        let new_len = text.chars().count();
+        let Some(&last_id) = old_ids.last() else {
+            return deleted;
+        };
+        if new_len == 0 {
+            return deleted;
+        }
+        let mut runs: Vec<CharShapeRun> = Vec::new();
+        for i in 0..new_len {
+            let id = old_ids.get(i).copied().unwrap_or(last_id);
+            let offset = inserted_at + i;
+            match runs.last_mut() {
+                Some(run) if run.char_shape_id == id => run.end_offset = offset + 1,
+                _ => runs.push(CharShapeRun {
+                    start_offset: offset,
+                    end_offset: offset + 1,
+                    char_shape_id: id,
+                }),
+            }
+        }
+        self.restore_char_shape_runs(inserted_at, inserted_at + new_len, &runs);
+        deleted
+    }
+
     /// 주어진 문자 오프셋(char index)에 해당하는 CharShapeRef의 char_shape_id를 반환한다.
     ///
     /// char_shapes가 비어있으면 None을 반환한다.
@@ -2547,9 +2670,9 @@ impl Paragraph {
 
     /// 인라인 컨트롤이 텍스트의 어느 character 인덱스에 위치하는지 반환한다.
     ///
-    /// 일반 경로에서는 `char_offsets` 갭 (인라인 컨트롤당 8 UTF-16 코드 유닛) 의 길이만으로
-    /// position 을 분배한다 — 컨트롤 variant 를 보지 않으므로 각주·미주, 그림, 표, 수식,
-    /// 자동번호 등 모든 inline 컨트롤이 동일하게 character offset 을 부여받는다.
+    /// 일반 경로에서는 `char_offsets` 갭에서 부수 마커를 제외한 8 UTF-16 유닛 슬롯을
+    /// 분배한다. FIELD_END·제목 차례 표시는 원시 슬롯을 차지하지만 `controls[]`의
+    /// 개체가 아니므로 뒤 개체의 위치를 가져가면 안 된다.
     ///
     /// `char_offsets` 가 비어있는 폴백 경로에서는 본문 흐름에서 1칸을 차지하는
     /// Shape/Table/Picture/Equation/Footnote/Endnote 만 폭 1을 가산하고,
@@ -2606,26 +2729,26 @@ impl Paragraph {
 
         let chars: Vec<char> = self.text.chars().collect();
         let mut positions = Vec::with_capacity(total_controls);
-        // 누름틀 끝·다단락 누름틀 끝·제목 차례 표시는 컨트롤 없이 8유닛 슬롯을 차지하고,
-        // 모두 자기 글자 바로 앞 갭에 있다. 그 갭에서 이 수만큼은 컨트롤에 나눠 주지 않는다.
-        // 나눠 주면 뒤 컨트롤이 한 갭씩 앞 글자로 당겨진다.
-        let hidden_slots_before = |char_idx: usize| {
-            field_ends_at(char_idx)
-                + self
-                    .orphan_field_ends
-                    .iter()
-                    .filter(|o| o.char_idx == char_idx)
-                    .count()
-                + self
-                    .title_marks
-                    .iter()
-                    .filter(|m| m.char_idx == char_idx)
-                    .count()
+        // 파서가 보존한 본문 문자 축으로 갭의 부수 슬롯을 구분한다.
+        // 같은 위치에 여러 필드 종료가 있어도 각각 원시 8유닛을 소비한다.
+        // 필드 끝 수는 호출부가 정한 슬롯 기준(field_ends_at)을 따른다.
+        let mut auxiliary_slots = std::collections::HashMap::<usize, usize>::new();
+        for position in self
+            .orphan_field_ends
+            .iter()
+            .map(|end| end.char_idx)
+            .chain(self.title_marks.iter().map(|mark| mark.char_idx))
+        {
+            *auxiliary_slots.entry(position).or_default() += 1;
+        }
+        let auxiliary_slots_at = |char_idx: usize| {
+            field_ends_at(char_idx) + auxiliary_slots.get(&char_idx).copied().unwrap_or(0)
         };
 
         // 첫 문자 이전의 갭: 확장 컨트롤이 텍스트 시작 전에 있는 경우
         let gap_before = offsets[0] as usize;
-        let n_ctrls_before = (gap_before / 8).saturating_sub(hidden_slots_before(0));
+        let n_ctrls_before =
+            (gap_before / 8).saturating_sub(auxiliary_slots_at(0));
         for _ in 0..n_ctrls_before {
             if positions.len() >= total_controls {
                 break;
@@ -2661,7 +2784,8 @@ impl Paragraph {
             }
             if next_off > current_off + char_width {
                 let gap = next_off - current_off - char_width;
-                let n_ctrls = (gap / 8).saturating_sub(hidden_slots_before(i + 1));
+                let n_ctrls =
+                    (gap / 8).saturating_sub(auxiliary_slots_at(i + 1));
                 for _ in 0..n_ctrls {
                     if positions.len() >= total_controls {
                         break;
@@ -2669,6 +2793,28 @@ impl Paragraph {
                     positions.push(i + 1); // 현재 문자 다음에 삽입
                 }
             }
+        }
+
+        // 마지막 자동 번호 자리에는 다음 문자가 없어 stride를 읽을 수 없다.
+        // 문단 끝 마커 전의 원시 8유닛이 확인되면 마지막 공백 자체가 번호 슬롯이다.
+        // 새 번호의 순수 갭이나 일반 말미 공백은 번호 자리로 소비하지 않는다.
+        if positions.len() < total_controls
+            && offsets.len() == chars.len()
+            && matches!(
+                self.controls.get(positions.len()),
+                Some(Control::AutoNumber(_))
+            )
+            && offsets
+                .last()
+                .zip(chars.last())
+                .is_some_and(|(offset, ch)| {
+                    *ch == ' '
+                        && offset
+                            .checked_add(CTRL_CHAR_CODE_UNITS)
+                            .is_some_and(|end| end <= self.char_count.saturating_sub(1))
+                })
+        {
+            positions.push(chars.len() - 1);
         }
 
         // 갭 분석으로 발견되지 않은 컨트롤의 위치를 텍스트의 `\u{FFFC}` marker
@@ -2746,11 +2892,25 @@ impl Paragraph {
                         .checked_sub(1)
                         .and_then(|i| self.char_offsets.get(i).zip(text_chars.get(i)))
                         .map_or(0, |(start, ch)| *start + ch.len_utf16() as u32);
+                    // A retained number placeholder owns its eight source units;
+                    // its offset is the control start, not the end of a preceding
+                    // gap. Keep this consistent with control_text_positions and
+                    // slot editing so display projection consumes that same slot.
+                    let owned_number_slot = matches!(
+                        self.controls.get(group_start),
+                        Some(Control::AutoNumber(_) | Control::NewNumber(_))
+                    ) && self.control_owns_char(
+                        group_start,
+                        text_position,
+                        &text_chars,
+                        &self.char_offsets,
+                    );
                     // Some inputs retain a one-unit visible object marker rather
                     // than an eight-unit gap. Its own source offset is the anchor.
                     if count == 1
-                        && text_chars.get(text_position) == Some(&'\u{FFFC}')
-                        && offset.saturating_sub(previous_end) < CTRL_CHAR_CODE_UNITS
+                        && (owned_number_slot
+                            || (text_chars.get(text_position) == Some(&'\u{FFFC}')
+                                && offset.saturating_sub(previous_end) < CTRL_CHAR_CODE_UNITS))
                     {
                         offset
                     } else {

@@ -1,6 +1,7 @@
 import init, { HwpDocument, version } from '@wasm/rhwp.js';
 import { CanvasMetricSession, withPortableMetrics } from './canvas-metric-session';
 import { HostCanvasFontSession, scopedHostCanvasFont, withHostCanvasFonts } from './host-canvas-fonts';
+import { NativePuaFontSession, type NativePuaFontDocument } from './native-pua-font-session';
 import { CanvasFontResolutionScope } from './canvas-font-resolution-scope';
 import { MetafileFontSession, type MetafileFontDocument } from './metafile-font-session';
 import { hasHostFontProvider, prepareHostFontCatalog, getHostFontState, localFontFaceKey, type LocalFontRecord } from './local-fonts';
@@ -219,6 +220,7 @@ export interface DeferredPaginationResult {
 
 import {
   fontFamilyCandidatesForDisplay,
+  documentSubstituteFamilies,
   formatCssFontFamilyList,
   parseCssFontFamilyList,
   resolveFont,
@@ -257,7 +259,10 @@ function substituteCssFontFamily(cssFont: string): string {
   const primary = incoming[0];
   if (!primary) return cssFont;
 
-  const studioChain = fontFamilyCandidatesForDisplay(primary, 0, 0);
+  // 같은 원 이름의 언어 슬롯에 다른 대체가 있으면 엔진이 지정한 체인을 따른다.
+  const declaredTargets = documentSubstituteFamilies(primary).filter(target => incoming.includes(target));
+  const studioChain = fontFamilyCandidatesForDisplay(primary, 0, 0,
+    declaredTargets.length ? { documentFallbackFamilies: declaredTargets } : {});
   const merged: string[] = [];
   const seen = new Set<string>();
   const push = (name: string) => {
@@ -312,10 +317,19 @@ function installCanvasFontSubstitution(): void {
   canvasFontSubstitutionInstalled = true;
 }
 
+import { prepareDeclaredFontPrograms, type DocumentFontSelectionPlan } from './declared-font-environment';
+
+interface DocumentFontEnvironmentApi {
+  getDocumentFontSelectionPlan(): string;
+  buildFontEnvironmentFromAvailablePrograms(snapshot: string): string;
+  setFontEnvironment(environment?: string): boolean;
+}
+
 export class WasmBridge {
   private doc: HwpDocument | null = null;
   private canvasMetrics = new CanvasMetricSession();
   private readonly hostCanvasFonts = new HostCanvasFontSession();
+  private readonly nativePuaFonts = new NativePuaFontSession();
   private readonly metafileFonts = new MetafileFontSession();
   private canvasFontGeneration = 0;
 
@@ -326,6 +340,7 @@ export class WasmBridge {
   }
 
   invalidateCanvasMetricFonts(): void {
+    this.nativePuaFonts.clear(this.doc as unknown as NativePuaFontDocument | null);
     this.canvasFontGeneration += 1;
     this.invalidateCanvasMetrics();
   }
@@ -356,12 +371,20 @@ export class WasmBridge {
             selected.set(localFontFaceKey(record), record);
           }
         }
+        for (const record of this.nativePuaFonts.records(doc as unknown as NativePuaFontDocument | null)) {
+          selected.set(localFontFaceKey(record), record);
+        }
         return [...selected.values()];
       });
       await this.hostCanvasFonts.prepare(records);
       if (!current() || generation !== getHostFontState().generation) return false;
+      const puaFontGeneration = this.canvasFontGeneration;
+      if (!await this.nativePuaFonts.prepare(doc as unknown as NativePuaFontDocument | null,
+        puaFontGeneration, record => this.hostCanvasFonts.isPrepared(record),
+        () => current() && this.canvasFontGeneration === puaFontGeneration)) return false;
     } else {
       this.hostCanvasFonts.reset();
+      this.nativePuaFonts.clear(doc as unknown as NativePuaFontDocument | null);
     }
     const metricDoc = this.canvasMetricDocument();
     if (!metricDoc || !current()) return false;
@@ -942,6 +965,34 @@ export class WasmBridge {
     }
   }
 
+  /** 기본 브라우저의 실제 local 프로그램을 측정·paint의 같은 환경으로 선택한다. */
+  async prepareDeclaredFontEnvironment(backend = 'canvas2d'): Promise<boolean> {
+    const doc = this.doc;
+    // CanvasKit/host는 CSS local() 프로그램을 소비하지 않으므로 이 증명으로 선택하지 않는다.
+    if (!doc || backend !== 'canvas2d' || hasHostFontProvider()) return false;
+    const api = doc as unknown as Partial<DocumentFontEnvironmentApi>;
+    if (typeof api.getDocumentFontSelectionPlan !== 'function'
+      || typeof api.buildFontEnvironmentFromAvailablePrograms !== 'function'
+      || typeof api.setFontEnvironment !== 'function') return false;
+    const generation = this._documentGeneration;
+    const current = () => this.doc === doc && this._documentGeneration === generation;
+    const plan = JSON.parse(api.getDocumentFontSelectionPlan()) as DocumentFontSelectionPlan;
+    // 사용자 명시 환경을 자동 선택으로 덮어쓰지 않는다.
+    if (plan.environmentId !== null) return false;
+    const programs = await prepareDeclaredFontPrograms(plan, current);
+    if (!current()) return false;
+    try {
+      const environment = api.buildFontEnvironmentFromAvailablePrograms(JSON.stringify(programs));
+      const changed = environment !== 'null' && api.setFontEnvironment(environment);
+      this.invalidateCanvasMetricFonts();
+      return changed;
+    } catch (error) {
+      // 유효하지 않은 공급 snapshot으로 문서 로드를 중단하거나 기존 환경을 바꾸지 않는다.
+      console.warn('[WasmBridge] 선언 글꼴 환경을 적용하지 못했습니다', error);
+      return false;
+    }
+  }
+
   getDocumentInfo(): DocumentInfo {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
     return JSON.parse(this.doc.getDocumentInfo());
@@ -1216,7 +1267,7 @@ export class WasmBridge {
       throw new Error(`[WasmBridge] PageLayerTree JSON shape 오류 (page=${pageNum}): root.kind가 없습니다`);
     }
     const rootKind = (tree.root as { kind?: unknown }).kind;
-    if (rootKind !== 'group' && rootKind !== 'clipRect' && rootKind !== 'leaf') {
+    if (rootKind !== 'group' && rootKind !== 'clipRect' && rootKind !== 'clipPath' && rootKind !== 'leaf') {
       throw new Error(`[WasmBridge] PageLayerTree JSON shape 오류 (page=${pageNum}): 알 수 없는 root.kind=${String(rootKind)}`);
     }
     if (tree.profile !== profile) {
@@ -1963,6 +2014,7 @@ export class WasmBridge {
     }>;
     borderFillLenBefore?: number;
     docInfoDirtyBefore?: boolean;
+    borderPaintUndoId?: number | null;
   } {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
     return JSON.parse(this.doc.setCellProperties(sec, parentPara, controlIdx, cellIdx, JSON.stringify(props)));
@@ -1993,6 +2045,7 @@ export class WasmBridge {
         endCol: number;
         id: number | null;
       }>;
+      borderPaintUndoIds?: number[];
     },
   ): { ok: boolean } {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
@@ -2000,6 +2053,11 @@ export class WasmBridge {
       applyCellBorderFillIds(sec: number, parentPara: number, controlIdx: number, json: string): string;
     };
     return JSON.parse(doc.applyCellBorderFillIds(sec, parentPara, controlIdx, JSON.stringify(payload)));
+  }
+
+  discardBorderPaintUndo(id: number): void {
+    const doc = this.doc as unknown as { discardBorderPaintUndo?: (id: number) => void };
+    doc?.discardBorderPaintUndo?.(id);
   }
 
   /**

@@ -116,16 +116,8 @@ impl DocumentCore {
                     suffix_char: '.',
                     ..Default::default()
                 };
-                let mut para = Paragraph::new_empty();
                 // 한컴 그림/OLE 캡션은 AutoNumber 앞에 "그림" 접두어를 함께 표시한다.
-                para.text = "그림  ".to_string();
-                para.char_count = 13;
-                para.char_count_msb = true;
-                para.control_mask = 1u32 << 0x12;
-                para.char_offsets = vec![0, 1, 2, 11];
-                para.controls
-                    .push(crate::model::control::Control::AutoNumber(auto_number));
-                para.ctrl_data_records.push(None);
+                let para = Paragraph::new_auto_number_caption("그림 ", auto_number);
                 caption.paragraphs.push(para);
                 *caption_slot = Some(caption);
                 created = true;
@@ -629,6 +621,8 @@ impl DocumentCore {
             }
         }
 
+        super::common::update_changed_polygon_geometry(shape, transform_before);
+
         if caption_changed {
             crate::parser::assign_auto_numbers(&mut self.document);
         }
@@ -972,6 +966,7 @@ impl DocumentCore {
                 group.shape_attr.raw_rendering = Vec::new();
             }
         }
+        super::common::update_changed_polygon_geometry(shape, transform_before);
         caption_changed
     }
     /// 글상자(Shape) 삭제 (네이티브).
@@ -1297,7 +1292,7 @@ impl DocumentCore {
         let has_textbox = shape_type == "textbox";
         let has_fill = shape_type != "line" && !is_connector;
 
-        let drawing = DrawingObjAttr {
+        let mut drawing = DrawingObjAttr {
             shape_attr: ShapeComponentAttr {
                 ctrl_id,
                 is_two_ctrl_id: true,
@@ -1336,6 +1331,7 @@ impl DocumentCore {
             },
             text_box: if has_textbox {
                 Some(TextBox {
+                    paint_clip: None,
                     list_attr: 0x20,
                     vertical_all: false,
                     text_margin_explicit: false,
@@ -1355,6 +1351,7 @@ impl DocumentCore {
             inst_id: (instance_id & 0x3FFFFFFF) + 1,
             ..Default::default()
         };
+        drawing.sync_text_box_storage_bit();
 
         let shape_obj = match shape_type {
             "line"
@@ -1466,6 +1463,7 @@ impl DocumentCore {
                     common,
                     drawing,
                     points,
+                    affine_edit_reference: None,
                     raw_trailing: Vec::new(),
                 })
             }

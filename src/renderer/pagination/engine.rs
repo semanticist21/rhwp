@@ -1181,7 +1181,7 @@ impl Paginator {
         Option<crate::model::control::PageNumberPos>,
     ) {
         let mut hf_entries = Vec::new();
-        let mut page_number_pos = None;
+        let page_number_pos = crate::renderer::pagination::collect_page_number_pos(paragraphs);
         for (pi, para) in paragraphs.iter().enumerate() {
             for (ci, control) in para.controls.iter().enumerate() {
                 match control {
@@ -1203,7 +1203,6 @@ impl Paginator {
                         };
                         hf_entries.push((pi, r, false, f.apply_to));
                     }
-                    Control::PageNumberPos(pos) => page_number_pos = Some(pos.clone()),
                     Control::Table(table) => {
                         crate::renderer::pagination::collect_nested_header_footer_controls(
                             table,
@@ -2853,6 +2852,7 @@ impl Paginator {
                         straddle_row_relief: Vec::new(),
                         straddle_page_bands: Vec::new(),
                         fragment_row_heights: None,
+                        fragment_block_frames: Vec::new(),
                         end_row_owns_stored_frame: false,
                     });
                     // 마지막 부분 표: spacing_after도 포함 (레이아웃과 일치)
@@ -2880,6 +2880,7 @@ impl Paginator {
                 straddle_row_relief: Vec::new(),
                 straddle_page_bands: Vec::new(),
                 fragment_row_heights: None,
+                fragment_block_frames: Vec::new(),
                 end_row_owns_stored_frame: false,
             });
             st.advance_column_or_new_page();
@@ -2966,11 +2967,13 @@ impl Paginator {
             page.active_header = active_header;
             page.active_footer = active_footer;
 
-            if !assigner.should_hide_page_number() {
+            if !events.positions.is_empty() {
+                page.page_number_pos = events.active_position(i).cloned();
+            } else if !assigner.should_hide_page_number() {
                 page.page_number_pos = page_number_pos.clone();
             }
             // 한 컨트롤의 감추기는 소스 위치가 매핑된 한 쪽에만 적용한다.
-            if let Some((_, hide)) = events.hides.iter().find(|(target, _)| *target == i) {
+            if let Some((_, hide)) = events.hides.iter().rev().find(|(target, _)| *target == i) {
                 page.page_hide = Some(hide.clone());
             }
 

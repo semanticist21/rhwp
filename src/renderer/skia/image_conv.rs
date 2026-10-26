@@ -15,12 +15,18 @@ use crate::model::style::ImageFillMode;
 use crate::renderer::image_resolver::{detect_image_mime_type, grayscale_jpeg_bytes_to_png_bytes};
 
 const MAX_SVG_FRAGMENT_BYTES: usize = 4 * 1024 * 1024;
+// 완결된 WMF/EMF/EPS 그림은 내장 래스터를 data URI로 포함한다.
+// 조각과 별도 예산을 사용하며 EPS 변환기의 16MiB 출력 범위도 수용한다.
+// 조각 상한과 래스터 픽셀 상한은 유지한다.
+const MAX_SVG_DOCUMENT_BYTES: usize = 16 * 1024 * 1024;
 const MAX_SVG_RASTER_PIXELS: u64 = 67_108_864;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ImageSampling {
     filter_mode: FilterMode,
     mipmap_mode: MipmapMode,
+    profile: crate::paint::RenderProfile,
+    paper_grid: Option<crate::renderer::bitmap_raster::PrintPaperGrid>,
 }
 
 impl ImageSampling {
@@ -28,6 +34,8 @@ impl ImageSampling {
         Self {
             filter_mode: FilterMode::Nearest,
             mipmap_mode: MipmapMode::None,
+            profile: crate::paint::RenderProfile::Screen,
+            paper_grid: None,
         }
     }
 
@@ -35,6 +43,8 @@ impl ImageSampling {
         Self {
             filter_mode: FilterMode::Linear,
             mipmap_mode: MipmapMode::Linear,
+            profile: crate::paint::RenderProfile::Screen,
+            paper_grid: None,
         }
     }
 
@@ -42,7 +52,29 @@ impl ImageSampling {
         Self {
             filter_mode: FilterMode::Linear,
             mipmap_mode: MipmapMode::None,
+            profile: crate::paint::RenderProfile::Screen,
+            paper_grid: None,
         }
+    }
+
+    pub fn for_profile(profile: crate::paint::RenderProfile) -> Self {
+        Self {
+            profile,
+            ..Self::linear()
+        }
+    }
+
+    pub(super) fn with_profile(mut self, profile: crate::paint::RenderProfile) -> Self {
+        self.profile = profile;
+        self
+    }
+
+    pub(super) fn with_paper_grid(
+        mut self,
+        grid: Option<crate::renderer::bitmap_raster::PrintPaperGrid>,
+    ) -> Self {
+        self.paper_grid = grid;
+        self
     }
 
     pub(super) fn options(self) -> SamplingOptions {
@@ -218,6 +250,13 @@ pub(super) fn draw_image_bytes(
     if !is_valid_destination_rect(x, y, width, height) {
         return false;
     }
+    if effect == ImageEffect::RealPic
+        && brightness == 0
+        && contrast == 0
+        && super::metafile_print::draw(canvas, bytes)
+    {
+        return true;
+    }
     // [#3460] HWPX BinData 는 SVG 를 그대로 담는다(`<hc:img>` → `Format="svg"`). skia 디코더는
     // SVG 를 읽지 못해 종전에는 회색 자리표시자만 남았다. 같은 모듈의 resvg 로 목적지 크기에
     // 맞춰 먼저 래스터화하면 이후 크롭·채움·효과 경로를 그대로 탈 수 있다.
@@ -227,18 +266,59 @@ pub(super) fn draw_image_bytes(
         matches!(effect, ImageEffect::BlackWhite | ImageEffect::Pattern8x8).then_some(effect);
     // 같은 원본의 중립 캐시가 색조 변환을 우회하지 않도록 변환 조건도 구분한다.
     let tone = (brightness != 0 || contrast != 0).then_some((effect, brightness, contrast));
-    let key = byte_key(b"decoded-image", bytes, &(svg_size, binary_effect, tone));
+    // 목적지를 늘려 채우는 SVG는 장치 픽셀 격자에서 바로 래스터화한다. 목적지 크기 래스터를
+    // 소수 좌표에 다시 놓으면 재표본이 0.5px 선과 작은 글자를 이웃 두 픽셀로 흐린다.
+    // crop·타일·정렬 배치와 원본 픽셀을 바꾸는 이진·색조 효과는 기존 경로를 유지한다.
+    let svg_device_window = svg_size
+        .filter(|_| !is_raster_only_svg(bytes))
+        .filter(|_| {
+            binary_effect.is_none()
+                && tone.is_none()
+                && matches!(
+                    fill_mode.unwrap_or(ImageFillMode::FitToSize),
+                    ImageFillMode::FitToSize | ImageFillMode::Total
+                )
+        })
+        .and_then(|(_, _, scale)| {
+            SvgDeviceWindow::new(
+                &canvas.local_to_device_as_3x3(),
+                Rect::from_xywh(x, y, width, height),
+                scale,
+            )
+        })
+        .filter(|window| {
+            // 원본 전체를 고른 자르기 값은 아래 배치 경로의 판정과 같이 자르지 않은 것으로 본다.
+            crop.is_none_or(|crop_rect| {
+                let (src_x, src_y, src_w, src_h) = crate::renderer::svg::compute_image_crop_src(
+                    crop_rect,
+                    crop_reference_size,
+                    f64::from(window.width),
+                    f64::from(window.height),
+                );
+                src_x <= 0.5
+                    && src_y <= 0.5
+                    && (src_w - f64::from(window.width)).abs() <= 1.0
+                    && (src_h - f64::from(window.height)).abs() <= 1.0
+            })
+        });
+    let key = byte_key(
+        b"decoded-image",
+        bytes,
+        &(svg_size, svg_device_window, binary_effect, tone),
+    );
     let cached = cache.get(key, binary_effect.is_some());
-    let (image, binary_preprocessed) = if let Some(CachedImageResource::Decoded {
+    let (image, binary_preprocessed, encoded) = if let Some(CachedImageResource::Decoded {
         image,
+        encoded,
         binary_preprocessed,
         ..
     }) = cached
     {
-        (image, binary_preprocessed)
+        (image, binary_preprocessed, encoded)
     } else {
-        let svg_raster = svg_size.and_then(|(width, height, scale)| {
-            rasterize_svg_document_to_png(bytes, width, height, scale)
+        let svg_raster = svg_size.and_then(|(width, height, scale)| match svg_device_window {
+            Some(window) => rasterize_svg_document_in_device_window(bytes, window),
+            None => rasterize_svg_document_to_png(bytes, width, height, scale),
         });
         let bytes = svg_raster.as_deref().unwrap_or(bytes);
         let normalized_bytes = if detect_image_mime_type(bytes) == "image/jpeg" {
@@ -278,7 +358,10 @@ pub(super) fn draw_image_bytes(
         // raster-specific dither cannot leak to a differently sized placement.
         let binary_png = binary_effect.and_then(|effect| binary_effect_png(encoded_bytes, effect));
         let encoded_bytes = binary_png.as_deref().unwrap_or(encoded_bytes);
-        let Some(image) = Image::from_encoded(Data::new_copy(encoded_bytes)) else {
+        // 디코더와 캐시가 같은 immutable Data를 공유한다. 캐시 hit도 실제
+        // 정규화·전처리된 바이트를 전달해 원본/색조 전 바이트로 되돌리지 않는다.
+        let encoded = Data::new_copy(encoded_bytes);
+        let Some(image) = Image::from_encoded(encoded.clone()) else {
             if binary_effect.is_some() {
                 cache.record_preprocessing(None);
             }
@@ -301,13 +384,14 @@ pub(super) fn draw_image_bytes(
                 key,
                 CachedImageResource::Decoded {
                     image: image.clone(),
+                    encoded: encoded.clone(),
                     binary_requested: binary_effect.is_some(),
                     binary_preprocessed: binary_png.is_some(),
                 },
                 cost,
             );
         }
-        (image, binary_png.is_some())
+        (image, binary_png.is_some(), encoded)
     };
 
     // Interpolation after source-pixel thresholding would reintroduce gray
@@ -391,6 +475,13 @@ pub(super) fn draw_image_bytes(
     });
 
     let draw_image_rect = |src: Option<Rect>, dst: Rect| {
+        if sampling.mipmap_mode == MipmapMode::Linear && src.is_none() && !binary_preprocessed {
+            if let Some(frame) = super::super::print_raster::PrintRasterFrame::read(bytes) {
+                if super::anisotropic_image::draw_print_frame(canvas, &image, frame, &paint) {
+                    return;
+                }
+            }
+        }
         let matrix = canvas.local_to_device_as_3x3();
         let scale_x = matrix.scale_x().hypot(matrix.skew_y());
         let scale_y = matrix.skew_x().hypot(matrix.scale_y());
@@ -408,14 +499,68 @@ pub(super) fn draw_image_bytes(
             sampling
         } else {
             match interpolation {
-                Some(false) => ImageSampling::nearest(),
-                Some(true) => ImageSampling::linear(),
+                Some(false) => ImageSampling::nearest().with_profile(sampling.profile),
+                Some(true) => ImageSampling::linear().with_profile(sampling.profile),
                 None => sampling,
             }
         };
+        if sampling.mipmap_mode == MipmapMode::Linear
+            && src.is_none()
+            && !binary_preprocessed
+            && super::super::image_resolver::png_sampling::print_jpeg_transfer(bytes)
+            && super::anisotropic_image::draw(canvas, &image, dst, &paint)
+        {
+            return;
+        }
+        let transform = canvas.local_to_device_as_3x3();
+        // SVG는 위에서 이미 실제 장치 크기로 raster했다. 이를 다시 bitmap
+        // 축소 경로에 넣으면 벡터의 가는 선까지 두 번 필터링하게 된다.
+        let prepared = (src.is_none()
+            && svg_size.is_none()
+            && !binary_preprocessed
+            && !matrix.has_perspective()
+            && sampling.filter_mode != FilterMode::Nearest)
+            .then(|| {
+                crate::renderer::bitmap_raster::prepare_bitmap(
+                    encoded.as_bytes(),
+                    crate::renderer::render_tree::BoundingBox::new(
+                        dst.x() as f64,
+                        dst.y() as f64,
+                        dst.width() as f64,
+                        dst.height() as f64,
+                    ),
+                    [
+                        transform.scale_x() as f64,
+                        transform.skew_y() as f64,
+                        transform.skew_x() as f64,
+                        transform.scale_y() as f64,
+                        transform.translate_x() as f64,
+                        transform.translate_y() as f64,
+                    ],
+                    sampling.profile,
+                    sampling.paper_grid,
+                )
+            })
+            .flatten();
+        let filtered = prepared
+            .as_ref()
+            .and_then(|prepared| Image::from_encoded(Data::new_copy(prepared.bytes.as_slice())));
+        let (image, dst) = match (filtered.as_ref(), prepared.as_ref()) {
+            (Some(image), Some(prepared)) => (
+                image,
+                Rect::from_xywh(
+                    prepared.bbox.x as f32,
+                    prepared.bbox.y as f32,
+                    prepared.bbox.width as f32,
+                    prepared.bbox.height as f32,
+                ),
+            ),
+            _ => (&image, dst),
+        };
         // 전체 원본의 축소에는 가는 선을 보존하는 저역 통과를 적용한다.
         // crop의 strict 경계와 binary·빠른 미리보기의 명시적 nearest를 유지한다.
-        let cubic = sampling.mipmap_mode == MipmapMode::Linear
+        let cubic = filtered.is_none()
+            && sampling.mipmap_mode == MipmapMode::Linear
             && src.is_none()
             && !binary_preprocessed
             && super::super::image_resolver::png_sampling::print_bitmap_reconstruction(bytes)
@@ -431,7 +576,8 @@ pub(super) fn draw_image_bytes(
                     f64::from(dst.height() * scale_y),
                 ),
             );
-        let reduced = (!cubic
+        let reduced = (filtered.is_none()
+            && !cubic
             && sampling.filter_mode != FilterMode::Nearest
             && src.is_none()
             && !binary_preprocessed
@@ -442,8 +588,10 @@ pub(super) fn draw_image_bytes(
                 || image.height() as f32 > dst.height() * scale_y))
             .then(|| image.with_default_mipmaps())
             .flatten();
-        let actual_image = reduced.as_ref().unwrap_or(&image);
-        let options = if cubic {
+        let actual_image = reduced.as_ref().unwrap_or(image);
+        let options = if filtered.is_some() {
+            SamplingOptions::new(FilterMode::Nearest, MipmapMode::None)
+        } else if cubic {
             SamplingOptions::from(CubicResampler::catmull_rom())
         } else if reduced.is_some() {
             SamplingOptions::new(FilterMode::Linear, MipmapMode::Linear)
@@ -463,6 +611,20 @@ pub(super) fn draw_image_bytes(
         }
     };
 
+    if let Some(window) = svg_device_window {
+        // 래스터 한 픽셀이 장치 한 픽셀이다. 다시 표본하지 않고 창의 정수 원점에 놓는다.
+        canvas.save();
+        canvas.reset_matrix();
+        canvas.draw_image_rect_with_sampling_options(
+            &image,
+            None,
+            window.device_rect(),
+            SamplingOptions::new(FilterMode::Nearest, MipmapMode::None),
+            &paint,
+        );
+        canvas.restore();
+        return true;
+    }
     if matches!(mode, ImageFillMode::FitToSize | ImageFillMode::Total) {
         draw_image_rect(crop_src, dst);
         return true;
@@ -654,7 +816,10 @@ pub(super) fn draw_image_bytes(
 /// [#3460] 캔버스 변환에서 래스터 배율을 얻는다 (확대 출력에서 SVG 가 뭉개지지 않게).
 fn canvas_raster_scale(canvas: &skia_safe::Canvas) -> f32 {
     let matrix = canvas.local_to_device_as_3x3();
-    let scale = matrix.scale_x().abs().max(matrix.scale_y().abs());
+    // Host canvases can rotate or shear the page. Diagonal entries alone lose
+    // that scale (a quarter turn has zero diagonals); use the largest stretch
+    // while preserving the existing bounded SVG document rasterization policy.
+    let scale = matrix.max_scale();
     if scale.is_finite() && scale > 0.0 {
         scale.clamp(1.0, 4.0)
     } else {
@@ -673,7 +838,7 @@ fn rasterize_svg_document_to_png(
     raster_scale: f32,
 ) -> Option<Vec<u8>> {
     if bytes.is_empty()
-        || bytes.len() > MAX_SVG_FRAGMENT_BYTES
+        || bytes.len() > MAX_SVG_DOCUMENT_BYTES
         || !width.is_finite()
         || !height.is_finite()
         || !raster_scale.is_finite()
@@ -699,25 +864,158 @@ fn rasterize_svg_document_to_png(
         return None;
     }
 
+    let transform = tiny_skia::Transform::from_scale(
+        raster_width as f32 / size.width(),
+        raster_height as f32 / size.height(),
+    );
     if let Some(png) = super::svg_bitmap_mask::rasterize_before_reduction(
         &tree,
         raster_width as u32,
         raster_height as u32,
+        transform,
         MAX_SVG_RASTER_PIXELS,
     ) {
         return Some(png);
     }
 
-    let transform = tiny_skia::Transform::from_scale(
-        raster_width as f32 / size.width(),
-        raster_height as f32 / size.height(),
-    );
     rasterize_svg_with_mask_coverage(
         &tree,
         raster_width as u32,
         raster_height as u32,
         transform,
         raster_scale,
+    )
+}
+
+/// 실제 paint가 래스터 그림뿐이면 기존 비트맵 재표본 경로를 유지한다.
+/// 설명·미사용 정의·그룹 유무로 작은 로고의 표본 위상을 바꾸지 않는다.
+fn is_raster_only_svg(bytes: &[u8]) -> bool {
+    if bytes.len() > MAX_SVG_DOCUMENT_BYTES {
+        return false;
+    }
+    let Ok(xml) = std::str::from_utf8(bytes) else {
+        return false;
+    };
+    let Ok(document) = roxmltree::Document::parse(xml) else {
+        return false;
+    };
+    let root = document.root_element();
+    if root.tag_name().name() != "svg" {
+        return false;
+    }
+    let mut work = vec![root];
+    let mut has_raster = false;
+    while let Some(node) = work.pop() {
+        match node.tag_name().name() {
+            "svg" | "g" => work.extend(node.children().filter(|child| child.is_element())),
+            // use와 별도 vector paint는 아래에서 제외하므로 미사용 정의는 내용이 아니다.
+            "defs" | "title" | "desc" | "metadata" | "style" => {}
+            "image" => {
+                let href = node
+                    .attribute("href")
+                    .or_else(|| node.attribute(("http://www.w3.org/1999/xlink", "href")))
+                    .unwrap_or_default();
+                if ![
+                    "data:image/png;base64,",
+                    "data:image/jpeg;base64,",
+                    "data:image/gif;base64,",
+                    "data:image/webp;base64,",
+                ]
+                .iter()
+                .any(|prefix| href.starts_with(prefix))
+                    || node.children().any(|child| child.is_element())
+                {
+                    return false;
+                }
+                has_raster = true;
+            }
+            _ => return false,
+        }
+    }
+    has_raster
+}
+
+/// 축 정렬 캔버스에서 그림 목적지를 덮는 장치 픽셀 창과 그 안의 소수 위상.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct SvgDeviceWindow {
+    left: f32,
+    top: f32,
+    width: u32,
+    height: u32,
+    phase_x: f32,
+    phase_y: f32,
+    device_width: f32,
+    device_height: f32,
+    raster_scale: f32,
+}
+
+impl SvgDeviceWindow {
+    fn new(matrix: &Matrix, dst: Rect, raster_scale: f32) -> Option<Self> {
+        // 장치 픽셀이 CSS 픽셀보다 거친 캔버스(direct PDF의 pt 좌표 등)는 기존 해상도 하한을 지킨다.
+        if !matrix.is_scale_translate() || matrix.scale_x() < 1.0 || matrix.scale_y() < 1.0 {
+            return None;
+        }
+        let (device, _) = matrix.map_rect(dst);
+        let (left, top) = (device.left.floor(), device.top.floor());
+        let (width, height) = (device.right.ceil() - left, device.bottom.ceil() - top);
+        let valid = [left, top, width, height, device.width(), device.height()]
+            .iter()
+            .all(|value| value.is_finite())
+            && device.width() > 0.0
+            && device.height() > 0.0
+            && (width as f64) * (height as f64) <= MAX_SVG_RASTER_PIXELS as f64;
+        valid.then(|| Self {
+            left,
+            top,
+            width: width as u32,
+            height: height as u32,
+            phase_x: device.left - left,
+            phase_y: device.top - top,
+            device_width: device.width(),
+            device_height: device.height(),
+            raster_scale,
+        })
+    }
+
+    fn device_rect(&self) -> Rect {
+        Rect::from_xywh(self.left, self.top, self.width as f32, self.height as f32)
+    }
+}
+
+/// 완결된 SVG 문서를 장치 목적지 크기로 늘리고 창 안의 소수 위상만큼 옮겨 래스터화한다.
+fn rasterize_svg_document_in_device_window(
+    bytes: &[u8],
+    window: SvgDeviceWindow,
+) -> Option<Vec<u8>> {
+    if bytes.is_empty() || bytes.len() > MAX_SVG_FRAGMENT_BYTES {
+        return None;
+    }
+    let options = svg_parse_options();
+    let tree = usvg::Tree::from_data(bytes, &options).ok()?;
+    let size = tree.size();
+    if !(size.width() > 0.0 && size.height() > 0.0) {
+        return None;
+    }
+    let transform = tiny_skia::Transform::from_scale(
+        window.device_width / size.width(),
+        window.device_height / size.height(),
+    )
+    .post_translate(window.phase_x, window.phase_y);
+    if let Some(png) = super::svg_bitmap_mask::rasterize_before_reduction(
+        &tree,
+        window.width,
+        window.height,
+        transform,
+        MAX_SVG_RASTER_PIXELS,
+    ) {
+        return Some(png);
+    }
+    rasterize_svg_with_mask_coverage(
+        &tree,
+        window.width,
+        window.height,
+        transform,
+        window.raster_scale,
     )
 }
 

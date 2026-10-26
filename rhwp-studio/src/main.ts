@@ -1,8 +1,9 @@
+import { installCommandErrorGlobalRouting, StudioCommandError, inspectCommandError, type CommandErrorV1 } from '@/core/command-error';
 import { setHostFontProvider, onHostFontsChanged, hasHostFontProvider, prepareHostFontCatalog, getHostFontState, localFontFaceKey, type LocalFontRecord } from '@/core/local-fonts';
-import { collectHostFontRequests } from '@/core/host-font-requests';
+import { collectHostFontRequests, collectDocumentCanvasKitFontUsage, resolveDocumentCanvasKitFontUsage, type DocumentCanvasKitFontUsage } from '@/core/host-font-requests';
 import { WasmBridge } from '@/core/wasm-bridge';
 import { installDocumentTitle } from '@/ui/document-title';
-import type { DocumentInfo, PageInfo } from '@/core/types';
+import type { CanvasKitDocumentPreflight, DocumentInfo, PageInfo } from '@/core/types';
 import { EventBus } from '@/core/event-bus';
 import { assertRemoteDocumentBytes } from '@/core/document-signature';
 import { CanvasView } from '@/view/canvas-view';
@@ -111,6 +112,8 @@ import type { EmbedRendererRuntimeRequestV1 } from '@/embed/rpc-router';
 import { enrichFontDecisionTrace } from '@/core/font-decision-trace';
 import { DocumentAgentController } from '@/document-agent/controller';
 import { initI18n, t } from '@/i18n/index.ts';
+import { SidePanelController, createDomSidePanelView } from '@/view/side-panel-host';
+import { navigateToSearchHit } from '@/ui/find-dialog';
 
 // 언어팩 초기화 — 정적 마크업의 라벨을 결정된 로케일로 갱신한다. 카탈로그에 없는 키는
 // 원문(ko)으로 물러나므로 번역이 없는 상태에서도 화면은 도입 전과 같다.
@@ -120,6 +123,14 @@ const wasm = new WasmBridge();
 installDocumentTitle(wasm);
 const eventBus = new EventBus();
 const documentState = new DocumentDirtyState(eventBus);
+installCommandErrorGlobalRouting(window);
+// WKWebView 등 직접 호스트는 EventTarget을 구독하고 이 조회로 현재 문서 세션을 확인한다.
+Object.defineProperty(window, 'rhwpCommandErrors', { value: Object.freeze({
+  capability: 'command-error-v1',
+  isHandledError: (error: unknown) => error instanceof StudioCommandError,
+  inspect: inspectCommandError,
+  getState: () => inputHandler?.getCommandErrorState() ?? null,
+}), configurable: true });
 documentState.installBeforeUnload(window);
 const autosaveManager = new AutosaveManager({
   exportBytes: () => wasm.exportHwp(),
@@ -312,11 +323,27 @@ async function resolvePlugin(id: string): Promise<StudioPlugin> {
     // 번들에 있는 이름만 허용한다. 동적 import 라 올리지 않으면 코드도 로드되지 않는다.
     return (await import('@rhwp/hwpctrl/studio-plugin')).hwpctrlStudioPlugin as StudioPlugin;
   }
+  // `RHWP_WITHOUT_AI=1` 빌드에서는 이 분기와 AI 청크·SDK 가 통째로 사라진다.
+  if (__RHWP_AI__ && id === 'ai-assistant') {
+    return (await import('@/ai/plugin')).aiAssistantPlugin;
+  }
   if (import.meta.env.DEV && id === 'dev-probe') {
     return (await import('@/plugin/dev-probe-plugin')).devProbePlugin;
   }
   throw new Error(`허용되지 않은 플러그인: ${id}`);
 }
+
+/**
+ * 오른쪽 패널 자리. embed 모드에는 두지 않는다 — 문서를 어디로 보낼지는 embed 호스트가 정한다.
+ */
+const sidePanelRoot = document.getElementById('side-panel-host');
+const sidePanels = chromeMode !== 'embed' && sidePanelRoot
+  ? new SidePanelController(createDomSidePanelView(
+    sidePanelRoot,
+    t('ui.sidePanel.close'),
+    () => document.getElementById('scroll-container')?.focus(),
+  ))
+  : undefined;
 
 const plugins = new PluginHostRegistry({
   wasm,
@@ -324,8 +351,30 @@ const plugins = new PluginHostRegistry({
   eventBus,
   getInputHandler: () => inputHandler,
   loadDocument: (bytes, fileName) => loadBytes(bytes, fileName ?? 'document.hwp', null),
-  createBlankDocument: () => { void createNewDocument(); },
+  createBlankDocument: async (options) => {
+    if (options?.confirmUnsaved && !await canReplaceCurrentDocument()) return false;
+    await createNewDocument();
+    return true;
+  },
   resolve: resolvePlugin,
+  sidePanels,
+  selectTextRange: (range) => {
+    if (!inputHandler) return false;
+    navigateToSearchHit(inputHandler, {
+      found: true,
+      sec: range.section,
+      para: range.paragraph,
+      charOffset: range.charOffset,
+      length: range.length,
+      ...(range.cell ? {
+        cellContext: {
+          parentPara: range.cell.parentPara, ctrlIdx: range.cell.controlIndex,
+          cellIdx: range.cell.cellIndex, cellPara: range.cell.cellPara,
+        },
+      } : {}),
+    });
+    return true;
+  },
 });
 (window as any).rhwpStudio.plugins = plugins;
 
@@ -522,6 +571,25 @@ async function initialize(): Promise<void> {
     const canvaskitMode = canvaskitModeRequest.mode;
     const canvaskitSurfaceRequest = resolveCanvasKitSurfaceRequest(window.location.search);
     const renderProfile = resolveRenderProfile(window.location.search);
+    // Each renderer decision owns a fresh report (document/edit/resource revision).
+    // Share declarations only; local/host availability is resolved again after preparation.
+    const documentFontUsage = new WeakMap<CanvasKitDocumentPreflight, DocumentCanvasKitFontUsage[]>();
+    const documentFontRequirements = (report: CanvasKitDocumentPreflight) => {
+      const required = report.requiredFontFamilies;
+      if (!report.complete || required.length === 0) return required;
+      let usage = documentFontUsage.get(report);
+      if (!usage) {
+        if (!wasm.getDocumentInfo().fontSubstitutions?.length) return required;
+        function* pageTrees() {
+          for (let page = 0; page < wasm.pageCount; page++) {
+            yield wasm.getPageLayerTreeObject(page, renderProfile);
+          }
+        }
+        usage = collectDocumentCanvasKitFontUsage(pageTrees());
+        documentFontUsage.set(report, usage);
+      }
+      return resolveDocumentCanvasKitFontUsage(required, usage);
+    };
     const diagnosticsBackendRequest: EmbedRendererRuntimeRequestV1['backend'] =
       renderBackendRequest.backend === 'auto'
         ? { ...renderBackendRequest, backend: 'canvas2d' }
@@ -557,15 +625,16 @@ async function initialize(): Promise<void> {
       },
       {
         transformCanvasKitPreflight(report) {
+          if (!report.complete) return report;
           const plan = resolveCanvasKitFontPlan(
-            report.requiredFontFamilies,
+            documentFontRequirements(report),
             extensionViewerSettings,
           );
           const blockers = plan.unavailableFonts.map(font => `fontUnavailable:${font}`);
-          return withCanvasKitSurfaceBlockers(
-            report,
-            blockers,
-          );
+          const transformed = withCanvasKitSurfaceBlockers(report, blockers);
+          const usage = documentFontUsage.get(report);
+          if (usage) documentFontUsage.set(transformed, usage);
+          return transformed;
         },
         async prepareCanvasKitDocument(renderer, report) {
           if (hasHostFontProvider()) {
@@ -589,15 +658,13 @@ async function initialize(): Promise<void> {
           if (!fontRequirements.complete) {
             throw new Error('CanvasKit 문서 글꼴 요구 목록이 완전하지 않습니다');
           }
-          const plan = resolveCanvasKitFontPlan(
-            fontRequirements.requiredFontFamilies,
-            extensionViewerSettings,
-          );
+          let requiredFontFamilies: readonly string[] = fontRequirements.requiredFontFamilies;
           try {
             // 저장된 Local Font Access 권한이 있으면 첫 replay부터 원 face의 SFNT bytes를
             // CanvasKit에 전달한다. CSS local()에서 EBDT face가 두부로 바뀌는 경로를 타지 않는다.
             await loadStoredLocalFonts();
-            await renderer.prepareLocalFonts(fontRequirements.requiredFontFamilies);
+            requiredFontFamilies = documentFontRequirements(fontRequirements);
+            await renderer.prepareLocalFonts(requiredFontFamilies);
           } catch (error) {
             // 로컬 권한이 만료됐거나 face 읽기에 실패해도 portable bundled face로 계속 연다.
             console.warn(
@@ -605,6 +672,10 @@ async function initialize(): Promise<void> {
               error,
             );
           }
+          const plan = resolveCanvasKitFontPlan(
+            requiredFontFamilies,
+            extensionViewerSettings,
+          );
           const unavailableFonts = plan.unavailableFonts.filter(
             family => !renderer.hasPreparedFontFamily(family),
           );
@@ -649,6 +720,18 @@ async function initialize(): Promise<void> {
       canvasView.getVirtualScroll(),
       canvasView.getViewportManager(),
     );
+    inputHandler.configureCommandErrors({
+      isDirty: () => documentState.isDirty(),
+      render: () => canvasView!.refreshDocumentAgentMutation(),
+      publish: (payload: CommandErrorV1) => {
+        window.dispatchEvent(new CustomEvent('rhwp-command-error', { detail: payload }));
+        eventBus.emit('command-error', payload);
+        if (payload.documentSessionId !== inputHandler?.getCommandErrorState()?.documentSessionId) return;
+        showToast({ message: payload.recovery === 'succeeded'
+          ? '명령을 완료하지 못했습니다. 편집 상태를 복구했습니다.'
+          : '편집 상태를 확인할 수 없습니다. 문서를 다시 열어 주세요.' });
+      },
+    });
     inputHandler.setEditMode(editMode);
     documentAgent?.dispose();
     documentAgent = new DocumentAgentController({
@@ -1378,21 +1461,26 @@ async function initializeDocument(
 ): Promise<void> {
   const msg = sbMessage();
   try {
+    // 이미 승인된 snapshot을 권한 prompt 없이 준비한 뒤 프로그램을 선택한다.
+    await loadStoredLocalFonts();
+    // 실제 프로그램을 먼저 확정한 뒤 같은 문서 정보로 공급과 view를 준비한다.
+    await wasm.prepareDeclaredFontEnvironment(canvasView?.getRenderBackend());
+    docInfo = wasm.getDocumentInfo();
     setDocumentFontSubstitutions(docInfo.fontSubstitutions);
-    currentDocumentFonts = [...(docInfo.fontsUsed ?? [])];
+    currentDocumentFonts = [...new Set([
+      ...(docInfo.fontsUsed ?? []),
+      ...(docInfo.fontSubstitutions ?? []).map(([, target]) => target),
+    ])];
     lastAppliedLocalFontGeneration = null;
     console.log('[initDoc] 1. 폰트 로딩 시작');
     await updateLoadProgress(55, '폰트 준비 중...');
-    if (docInfo.fontsUsed?.length) {
-      await loadWebFonts(docInfo.fontsUsed, (loaded, total) => {
+    if (currentDocumentFonts.length) {
+      await loadWebFonts(currentDocumentFonts, (loaded, total) => {
         const fontPercent = total > 0 ? 55 + Math.round((loaded / total) * 20) : 65;
         msg.textContent = `파일 로딩 ${fontPercent}% - 폰트 로딩 중... (${loaded}/${total})`;
       }, extensionViewerSettings);
     }
     console.log('[initDoc] 2. 폰트 로딩 완료');
-    // 저장 snapshot은 권한 prompt 없이 읽을 수 있다. Canvas2D 첫 paint의 family 해소가
-    // 이미 승인된 exact local face를 놓치지 않도록 문서 view보다 먼저 준비한다 (#4739).
-    await loadStoredLocalFonts();
     await updateLoadProgress(75, '문서 상태 적용 중...');
     totalSections = docInfo.sectionCount ?? 1;
     sbSection().textContent = t('ui.sbSection.text', { p1: 1, p2: totalSections });
@@ -2017,11 +2105,18 @@ const initPromise = initialize();
 void initPromise.then(() => {
   if (!rendererInitialized) return;
   maybeShowSkinOnboarding();
+  // 내장 AI 도우미. 최상위 창의 studio 에서만 자동으로 올린다 — iframe 으로 넣은 studio 는
+  // 호스트가 고른 플러그인만 가진다(`plugins.load('ai-assistant')` 로 직접 올릴 수는 있다).
+  // 실패해도 편집기는 그대로 쓸 수 있어야 하므로 로그만 남긴다.
+  if (__RHWP_AI__ && sidePanels && window.parent === window) {
+    plugins.load('ai-assistant').catch((error) => console.error('[main] AI 도우미 로드 실패', error));
+  }
 });
 
 installEmbedRuntime({
   hostWindow: window,
   parentWindow: window.parent,
+  subscribeCommandError: (listener) => eventBus.on('command-error', listener),
   subscribeDocumentChanged: (listener) => eventBus.on('document-agent-changed', listener),
   subscribeFieldChanged: (listener) => {
     // 연결마다 새로 센다 — 직전 누름틀 기억이 다른 세션으로 새지 않게.
@@ -2045,6 +2140,10 @@ installEmbedRuntime({
       }
       await loadBytes(data, fileName, null, undefined, { suppressDialogs });
       return { pageCount: wasm.pageCount };
+    },
+    async getCommandErrorState() {
+      await initPromise;
+      return inputHandler?.getCommandErrorState() ?? null;
     },
     async pageCount() {
       await initPromise;

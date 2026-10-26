@@ -1,4 +1,4 @@
-//! 저장 줄이 없는 인라인 표 호스트의 개체 슬롯을 프레임 입력으로 투영한다.
+//! 재조판하는 인라인 호스트의 개체 슬롯을 프레임 입력으로 투영한다.
 //! 원본 텍스트·제어문은 바꾸지 않고 원시 UTF-16 경계를 그대로 발행한다.
 
 use super::*;
@@ -15,6 +15,8 @@ pub(super) fn project(
         .zip(source.control_text_positions())
         .zip(source.control_utf16_positions())
         .filter_map(|((control, position), raw)| {
+            // 공통 크기는 그림 본체와 바깥여백을 이미 포함한다.
+            // 투영 슬롯은 같은 점유를 소비하며 여백을 다시 합산하지 않는다.
             let (width, height) = inline_control_occupied_size_hwp(control, styles, dpi)?;
             // 글자 없는 원시 문단의 제어문은 서로 다른 UTF-16 슬롯을 갖지만
             // 가시 문자 축에서는 모두 유일한 빈 경계에 속한다. 순차 인덱스
@@ -50,6 +52,7 @@ pub(super) fn project(
                 width_hwp: width,
                 height_hwp: height,
                 baseline_distance_hwp: flow_inline_baseline_hwp(control, height),
+                spacing_height_hwp: inline_control_spacing_height_hwp(control),
             });
             scalar_index += 1;
             represented |= chars.get(position) == Some(&'\u{FFFC}')

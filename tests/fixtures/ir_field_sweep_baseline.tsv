@@ -5,9 +5,6 @@ hwp5rb	156457624_210622 7월부터 해외직구 구매대행업체 등록제 시
 hwp5rb	156636617_240617 2024년 5월 월간 수출입 현황(확정치).hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	1330
 hwp5rb	2010-01-06.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	120
 hwp5rb	2022년 국립국어원 업무계획.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	244
-hwp5rb	2025 행정업무운영 편람(최종).hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	3754
-hwp5rb	2025 행정업무운영 편람(최종).hwp	sections[].paragraphs[].controls[].cells[].paragraphs[].controls[].cells[].list_header_width_ref	754
-hwp5rb	2025 행정업무운영 편람(최종).hwp	sections[].paragraphs[].controls[].cells[].paragraphs[].controls[].cells[].paragraphs[].controls[].cells[].list_header_width_ref	18
 hwp5rb	20250130-hongbo.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	18
 hwp5rb	20250130-hongbo_saved.hwp	doc_info.bullet_count	1
 hwp5rb	20250130-hongbo_saved.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	18
@@ -67,21 +64,6 @@ hwp5rb	hwp3-sample11-hwp5.hwp	sections[].paragraphs[].controls[].children[].chil
 hwp5rb	hwp3-sample11-hwp5.hwp	sections[].paragraphs[].controls[].children[][].drawing.fill.solid	39
 hwp5rb	hwp3-sample11-hwp5.hwp	sections[].paragraphs[].controls[][].drawing.fill.solid	3
 hwp5rb	hwp3-sample11-hwp5.hwp	sections[].paragraphs[].line_segs[].vertical_pos	12
-hwp5rb	hwp3-sample16-hwp5-2010.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	2697
-hwp5rb	hwp3-sample16-hwp5-2010.hwp	sections[].paragraphs[].controls[][].drawing.fill.solid	3
-hwp5rb	hwp3-sample16-hwp5-2010.hwp	sections[].paragraphs[].line_segs[].vertical_pos	926
-hwp5rb	hwp3-sample16-hwp5-2018.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	2697
-hwp5rb	hwp3-sample16-hwp5-2018.hwp	sections[].paragraphs[].controls[][].drawing.fill.solid	3
-hwp5rb	hwp3-sample16-hwp5-2018.hwp	sections[].paragraphs[].line_segs[].vertical_pos	1106
-hwp5rb	hwp3-sample16-hwp5-2022.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	2697
-hwp5rb	hwp3-sample16-hwp5-2022.hwp	sections[].paragraphs[].controls[][].drawing.fill.solid	3
-hwp5rb	hwp3-sample16-hwp5-2022.hwp	sections[].paragraphs[].line_segs[].vertical_pos	927
-hwp5rb	hwp3-sample16-hwp5-2024.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	2697
-hwp5rb	hwp3-sample16-hwp5-2024.hwp	sections[].paragraphs[].controls[][].drawing.fill.solid	3
-hwp5rb	hwp3-sample16-hwp5-2024.hwp	sections[].paragraphs[].line_segs[].vertical_pos	1106
-hwp5rb	hwp3-sample16-hwp5.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	2697
-hwp5rb	hwp3-sample16-hwp5.hwp	sections[].paragraphs[].controls[][].drawing.fill.solid	3
-hwp5rb	hwp3-sample16-hwp5.hwp	sections[].paragraphs[].line_segs[].vertical_pos	926
 hwp5rb	hwp3-sample19-hwp5.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	1
 hwp5rb	hwp_table_test-m.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	56
 hwp5rb	hwp_table_test.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	46
@@ -280,6 +262,8 @@ hwp5rb	issue6921/148733091-briefing-stenographic-record.hwp	sections[].paragraph
 hwp5rb	issue6921/148733091-briefing-stenographic-record.hwp	sections[].section_def.raw_ctrl_extra.len	1
 hwp5rb	issue6924/148751598-briefing.hwp	sections[].paragraphs[].controls[].cells[].paragraphs[].controls[].img_dim[]	2
 hwp5rb	issue6924/148751598-briefing.hwp	sections[].paragraphs[].controls[].cells[].paragraphs[].controls[].raw_picture_extra.len	1
+hwp5rb	issue7840/1150200_youth_vision2030_application.hwp	sections[].paragraphs[].controls[].section_def.raw_ctrl_extra.len	1
+hwp5rb	issue7840/1150200_youth_vision2030_application.hwp	sections[].section_def.raw_ctrl_extra.len	1
 hwp5rb	issue_1133.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	15
 hwp5rb	issues/2809/jubo_20260104.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	174
 hwp5rb	k-water-rfp-2024.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	457

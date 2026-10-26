@@ -4,6 +4,9 @@
 //! opt-in direct backend records PageLayerTree replay into a Skia PDF canvas.
 //! Both backends support single and multiple pages and are native-only.
 
+// 같은 판정 소스를 각 usvg 버전이 실제 선택한 face에 적용한다.
+use usvg as style_usvg;
+
 #[cfg(not(target_arch = "wasm32"))]
 #[path = "pdf_synthetic_bold.rs"]
 mod synthetic_bold;
@@ -294,6 +297,12 @@ fn validate_direct_pdf_tree(
                 for child in children {
                     validate_node(child, page_index)?;
                 }
+            }
+            LayerNodeKind::ClipPath { paths, child } => {
+                if !crate::model::text_clip::valid(paths) {
+                    return Err("invalid text clip path".into());
+                }
+                validate_node(child, page_index)?;
             }
             LayerNodeKind::ClipRect { clip, child, .. } => {
                 validate_bbox(*clip, page_index, "clip")?;

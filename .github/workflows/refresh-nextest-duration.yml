@@ -62,11 +62,16 @@ jobs:
             exit 0
           fi
 
+          measurement_args=()
+          for label in b c d e; do
+            measurement="${DURATION_DIR}/duration-${label}/target-durations-${label}.json"
+            if [[ -f "$measurement" ]]; then
+              measurement_args+=(--measurement "$measurement")
+            fi
+          done
           node scripts/refresh-nextest-target-duration-policy.mjs \
             --policy tests/suites/nextest-target-duration-policy.json \
-            --measurement "${DURATION_DIR}/duration-b/target-durations-b.json" \
-            --measurement "${DURATION_DIR}/duration-c/target-durations-c.json" \
-            --measurement "${DURATION_DIR}/duration-d/target-durations-d.json" \
+            "${measurement_args[@]}" \
             --output "${OUTPUT_POLICY}"
 
           if git ls-remote --exit-code origin "refs/heads/${METRICS_BRANCH}" >/dev/null 2>&1; then

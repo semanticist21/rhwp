@@ -2,7 +2,7 @@
 kind: guide
 status: active
 canonical: mydocs/manual/pr_review_workflow.md
-last_verified: 2026-10-18
+last_verified: 2026-10-23
 ---
 
 # PR 접수와 리뷰 기록
@@ -65,6 +65,34 @@ gh api "repos/edwardkim/rhwp/pulls/$pr_number/requested_reviewers" \
 `gh pr edit --add-reviewer`를 사용했더라도 같은 API 재확인을 수행한다. Projects classic GraphQL 오류 등으로
 CLI 편집이 실패하면 위 REST POST 경로를 사용한다. reviewer login과 확인 결과를 검토 기록에 남기며,
 인증 토큰은 출력하지 않는다.
+
+### 2.1.1 리뷰어 지정 후 추가 커밋 제한
+
+개인 또는 팀 reviewer가 지정되면 **그 시점의 PR head SHA를 검토 기준으로 고정**한다. reviewer와
+지정 시각, head repository·branch·SHA를 기존 review 기록에 함께 남긴다.
+
+- 기여자와 그 대행 자동화는 해당 PR head 브랜치에 임의로 추가 커밋을 push하지 않는다.
+  문서 전용 커밋, 최신 devel merge·rebase, amend·force-push도 이 제한에 포함한다.
+- **메인터너가 머지를 보류하고 보정·재작업을 요청한 경우에는 기여자와 그 대행 자동화도
+  요청 범위의 추가 커밋을 같은 PR head 브랜치에 push할 수 있다.** 해당 요청 자체를 보정과
+  새 head 제출의 허용으로 보며, 커밋·push 허가를 별도로 다시 받을 필요는 없다.
+  요청한 보정에 필요한 코드·테스트·문서·검증 증적과 devel 동기화·충돌 해소를 포함하며,
+  필요한 rebase·amend·force-push도 허용한다. 요청과 무관한 변경까지 허용하는 것은 아니다.
+  PR 설명이나 응답 댓글에 요청 링크, 변경 전후 SHA, 보정·충돌 해소 범위와 새 head의 검증
+  결과를 남긴다. reviewer는 새 head SHA를 검토 기준으로 다시 고정하고 필수 검증·최신 CI와
+  보류 해제 조건을 확인해 재리뷰한다. 보정 요청은 승인·merge 허용을 뜻하지 않는다.
+- 메인터너·콜라보레이터는 기존 권한·작업지시자 승인 절차에 따라 같은 PR에 보정 코드·검토
+  기록·trailing 커밋을 추가할 수 있다. 별도 통합 PR을 강제하지 않으며 역할별 절차를 따른다.
+  변경 전후 SHA와 보정 범위를 기록하고 새 head의 필수 검증·최신 CI를 확인한다.
+- 리뷰 제출 뒤 `requested_reviewers`가 비거나 reviewer 지정을 해제해도 기여자의 임의 push를
+  허용한 것으로 보지 않는다. 규칙을 우회하려고 기존 reviewer를 제거하지 않는다.
+- fetch·로컬 체리픽·통합 브랜치 보정은 원 PR head를 변경하지 않으므로 계속할 수 있다.
+  예기치 않은 새 head가 발견되면 이전/새 SHA·추가 커밋·기존 증적의 유효 범위를 기록한다.
+  이전 SHA의 검증을 새 head의 통과로 표시하지 않는다.
+
+위 예외는 [PR #8116의 보정 제출 댓글](https://github.com/edwardkim/rhwp/pull/8116#issuecomment-6334757341)과
+[메인터너의 추가 커밋 허용 안내](https://github.com/edwardkim/rhwp/pull/8116#issuecomment-6356232138)에
+따른다.
 
 ## 2.2 기본 metadata
 
@@ -160,7 +188,7 @@ PR review의 공통 항목**이다. 작성자·역할·PR 크기로 생략하지
 | --- | --- | --- |
 | 제출 전 로컬 검증과 PR 상태 | [로컬 사전 검증](local_validation.md) 4.3 및 해당 보조 절차의 필수 실행·결과·head/base SHA, 환경에 맞는 Docker/호스트 fresh WASM 경로; 일반 Open PR 제출 여부 또는 예외 Draft의 특별한 목적·승인·완료 계획 | 충족/미충족/미검증/비해당 |
 | 기존 이슈·해결 PR의 선행 분석 | [선행 분석 절차](../codex/docs_and_git_workflow.md#기존-이슈와-해결-pr의-선행-분석)의 원 이슈·해결 PR·실제 통합/후속 보정 SHA, 원래 계약·독립 증거와 현재 base/head 관측; 조사 대상 실패별로 확인 | 충족/미충족/미검증/비해당 |
-| 구현 근거와 일반성 | 위반된 규칙의 독립 출처, 원인 계층, 새 분기의 필요 조건과 반례; 샘플 전용 조건·clamp·출력 은폐 여부 | 충족/미충족/미검증/비해당 |
+| 구현 근거와 일반성 | 위반된 규칙의 독립 출처, 원인 계층, 새 분기의 필요 조건과 반례, 공통 로직에서의 수정 여부; 예외가 있으면 공통 처리가 부적절한 독립 근거·적용/비적용 범위·반례·수정 전후 및 정상 대조군 결과; 샘플 전용 조건·clamp·출력 은폐 여부 | 충족/미충족/미검증/비해당 |
 | 측정·배치 일관성 | 같은 줄 구성·메트릭을 생성·소비하는 코드 위치와 호출 경로, backend 적용 조건·좌표계 | 충족/미충족/미검증/비해당 |
 | 리베이스 반영 PR의 기능 보존 | [리베이스 후 검증](local_validation.md#리베이스로-반영한-pr의-기능-보존-검증)의 반영 PR 목록·기능, 새 base/후보 SHA, 실제 기능·출력 비교와 유지/개선/후퇴/미검증; 현재 작업과 반영 PR 양쪽의 보정·재검증 근거 | 충족/미충족/미검증/비해당 |
 | 최종 출력 소비 계약 | [출력 백엔드 소비 경로 검증](../verification/renderer_backend_verification.md)에 따른 실제 Canvas/SVG/Native PNG 등의 적용 경로·font/resource·metric context와 최종 화면/파일; 한 경로의 성공으로 다른 경로를 입증하지 않음 | 충족/미충족/미검증/비해당 |

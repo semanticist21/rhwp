@@ -26,6 +26,7 @@ pub(in crate::renderer::typeset) struct RowBlockQuery<'a> {
     pub(in crate::renderer::typeset) cut_row_h: &'a [f64],
     pub(in crate::renderer::typeset) rowspan_touched: &'a [bool],
     pub(in crate::renderer::typeset) cs: f64,
+    pub(in crate::renderer::typeset) carried_row_box: Option<(usize, f64)>,
     pub(in crate::renderer::typeset) straddle_page_bands:
         &'a [crate::renderer::pagination::StraddleCellCarry],
 }
@@ -81,8 +82,14 @@ impl RowBlockQuery<'_> {
                 None
             };
         let rowbreak_has_internal_hard_break = rowbreak_hard_break_row.is_some();
+        // RowBreak의 텍스트 병합 칸은 일반 행의 내용 컷과 물리 잔여를
+        // 함께 소비한다. 그림·중첩 표 유닛만 일반 행 컷으로 표현되지 않아
+        // 블록 셀 순서의 컷을 유지한다. 저장 재시작은 아래 블록 경로 소유다.
         let protected = block_has_protectable_rowspan
-            && (!mt.allows_row_break_split() || !rowbreak_has_internal_hard_break);
+            && (!mt.allows_row_break_split()
+                || (!rowbreak_has_internal_hard_break
+                    && layout_engine
+                        .row_block_has_spanning_object_units(table, b_start, b_end, styles)));
         // [Task #1086] RowBreak 표는 행 경계 분할 정책이라 보호 블록
         // snap 은 피하지만, rowspan label 이 걸친 블록 안의 큰 row_span==1
         // 셀은 셀 내부 hard-break(vpos reset) 기준으로 쪼갤 수 있어야 한다.
@@ -174,26 +181,47 @@ impl RowBlockQuery<'_> {
         start: &[usize],
         end: &[usize],
     ) -> f64 {
-        self.layout_engine
-            .row_block_cut_physical_height(
-                self.table,
-                (block.b_start, block.b_end),
-                (row, self.mt.row_heights[row]),
-                start,
-                end,
-                self.styles,
-            )
-            .unwrap_or_else(|| {
-                self.layout_engine.row_block_cut_row_content_height(
+        let height = if !start.is_empty()
+            && end.is_empty()
+            && self
+                .mt
+                .fragment_block_frames
+                .contains(&(block.b_start, block.b_end))
+        {
+            self.mt.row_heights[row]
+        } else {
+            self.layout_engine
+                .row_block_cut_physical_height(
                     self.table,
-                    block.b_start,
-                    block.b_end,
-                    row,
+                    (block.b_start, block.b_end),
+                    (row, self.mt.row_heights[row]),
                     start,
                     end,
                     self.styles,
                 )
-            })
+                .unwrap_or_else(|| {
+                    self.layout_engine.row_block_cut_row_content_height(
+                        self.table,
+                        block.b_start,
+                        block.b_end,
+                        row,
+                        start,
+                        end,
+                        self.styles,
+                    )
+                })
+        };
+        // 내용 컷은 앞 조각에서 소비한 유닛만 나타낸다. 그 조각이 넘긴
+        // 물리 잔여 상자는 현재 첫 행이 완결될 때도 소유하므로, 행 원점·
+        // 블록 요구 높이·흐름 예약이 그리기와 같은 높이를 사용한다.
+        // 다시 잘리는 행은 끝 컷이 수용한 상자만 사용한다.
+        if !start.is_empty() && end.is_empty() {
+            self.carried_row_box
+                .filter(|(owner, _)| *owner == row)
+                .map_or(height, |(_, physical)| height.max(physical))
+        } else {
+            height
+        }
     }
 
     pub(in crate::renderer::typeset) fn fragment_height(

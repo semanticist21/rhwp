@@ -148,6 +148,7 @@ test('every CLI output adapter belongs to one explicit impact bucket', () => {
     nativeOnly: [
       'src/cli/outputs/raster.rs',
       'src/cli/outputs/sixel.rs',
+      'src/cli/outputs/kitty.rs',
     ],
     plainRust: [
       'src/cli/outputs/doclang.rs',
@@ -238,8 +239,10 @@ test('every direct CLI page renderer caller has an explicit workflow-consumer de
 test('Native Skia integration test and support changes run Rust and Native Skia without Canvas', () => {
   for (const filename of [
     'tests/cases/issue_7820_sixel_contract.rs',
+    'tests/cases/issue_8150_kitty_contract.rs',
     'tests/cases/issue_4961_font_decision_trace.rs',
     'tests/cases/issue_7902_original_frame_and_content.rs',
+    'tests/cases/issue_8160_hwp2022_paragraph_relations.rs',
     'tests/cases/issue_7950_pdf_paint.rs',
     'tests/cases/native_fractional_glyph_origin.rs',
     'tests/cli_exit_codes_native.rs',
@@ -291,6 +294,8 @@ test('frontend font assets and render tooling do not over-enable the Rust lane',
   for (const filename of [
     'assets/fonts/NotoSansKR-Regular.woff2',
     'scripts/generate_exact_face_collection_fixture.py',
+    'scripts/measure_render_diff_wasm.py',
+    'scripts/wasm-pack-locked.sh',
     'scripts/generate_exact_kerning_fixture.py',
     'mydocs/tech/text-ir-v2.md',
   ]) {

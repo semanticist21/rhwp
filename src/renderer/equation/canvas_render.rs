@@ -152,7 +152,16 @@ fn render_box(
             ctx.set_font(&format!("{fs:.1}px {font_family}"));
             ctx.set_fill_style_str(color);
             ctx.set_text_align("start");
-            let _ = ctx.fill_text(text, x, y + lb.baseline);
+            let scale_x = paint.map_or(1.0, |p| p.scale_x);
+            if scale_x != 1.0 {
+                ctx.save();
+                let _ = ctx.translate(x, y + lb.baseline);
+                let _ = ctx.scale(scale_x, 1.0);
+                let _ = ctx.fill_text(text, 0.0, 0.0);
+                ctx.restore();
+            } else {
+                let _ = ctx.fill_text(text, x, y + lb.baseline);
+            }
         }
         LayoutKind::MathSymbol(text) => {
             // [Issue #900] svg_render.rs MathSymbol arm 과 동기화 (commit 292dbbef).
@@ -178,6 +187,8 @@ fn render_box(
             denom,
             axis_height,
             rule_thickness,
+            rule_start,
+            rule_end,
         } => {
             render_box(ctx, numer, x, y, color, fs, italic, bold);
             // 분수선 — baseline에서 axis_height 위에 배치 (SVG 경로와 동일)
@@ -186,8 +197,8 @@ fn render_box(
             ctx.set_stroke_style_str(color);
             ctx.set_line_width(line_thick);
             ctx.begin_path();
-            ctx.move_to(x + fs * 0.05, line_y);
-            ctx.line_to(x + lb.width - fs * 0.05, line_y);
+            ctx.move_to(x + rule_start, line_y);
+            ctx.line_to(x + rule_end, line_y);
             ctx.stroke();
             render_box(ctx, denom, x, y, color, fs, italic, bold);
         }
