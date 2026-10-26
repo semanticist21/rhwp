@@ -1686,6 +1686,8 @@ impl SvgRenderer {
                 color_to_svg(stroke),
                 style.stroke_width
             ));
+            // 타원 테두리도 직선·사각형·패스와 같은 선 종류 패턴을 쓴다.
+            stroke_pattern::append_attrs(&mut attrs, style.stroke_dash, style.stroke_width);
         }
 
         if style.opacity < 1.0 {

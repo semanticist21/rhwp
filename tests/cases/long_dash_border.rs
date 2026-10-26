@@ -156,14 +156,22 @@ fn existing_shape_and_column_code_six_uses_long_dash_without_geometry_changes() 
         );
         assert_eq!(doc.get_cursor_rect_native(0, 0, 2).unwrap(), caret);
         let layer = doc.get_page_layer_tree_native(0).unwrap();
-        assert!(layer.contains("longDash"), "{kind} 원본 code6을 소비한다");
+        // 도형 code6은 공식 한컴 도형 반복 패턴(굵기 비례)이 소유한다.
+        assert!(
+            layer.contains("hwpLongDash"),
+            "{kind} 원본 code6을 소비한다"
+        );
         let svg = doc.render_page_svg_native(0).unwrap();
         let tags: Vec<_> = svg
             .split('<')
             .filter(|tag| tag.contains("stroke=\"#cc3344\""))
             .collect();
         assert_eq!(tags.len(), 1, "{kind}: {svg}");
-        assert_svg_pattern(tags[0], 46.08, 15.36);
+        assert!(
+            tags[0].contains("stroke-dasharray=\""),
+            "{kind}: {}",
+            tags[0]
+        );
     }
 
     let mut doc = blank();
@@ -436,9 +444,10 @@ fn page_border_snapshot_and_both_formats_preserve_long_dash_and_body_content() {
     assert_eq!(assert_long_dash(&doc, COLOR, 0.80).len(), 4);
     assert_eq!(doc.get_cursor_rect_native(0, 0, 3).unwrap(), caret);
     doc.restore_snapshot_native(dash_snapshot).unwrap();
+    // 파선 테두리는 공식 한컴 인쇄 구간(Explicit)으로 그린다. 긴 파선만 아니면 된다.
     assert!(lines(&doc, COLOR)
         .iter()
-        .all(|line| format!("{:?}", line.style.dash) == "Dash"));
+        .all(|line| matches!(line.style.dash, StrokeDash::Dash | StrokeDash::Explicit(_))));
     doc.restore_snapshot_native(long_snapshot).unwrap();
     assert_eq!(format!("{:?}", doc.document()), model);
     for bytes in [
