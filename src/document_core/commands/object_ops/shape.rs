@@ -1536,9 +1536,7 @@ impl DocumentCore {
         }
         self.shift_active_field_for_control_insert(section_idx, para_idx, insert_ctrl_idx);
 
-        // 수식·그림 삽입처럼 개체가 든 줄을 다시 짠다. 저장 줄을 그대로 두면 첫 편집이
-        // 줄을 다시 짜며 뒤 문단 위치가 바뀌고, 되돌려도 삽입 직후 배치로 돌아가지 않는다.
-        self.reflow_paragraph(section_idx, para_idx);
+        // 리플로우 + 페이지네이션
         self.recompose_section(section_idx);
         self.paginate_if_needed();
 
