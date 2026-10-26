@@ -5725,9 +5725,51 @@ pub(crate) fn recalculate_section_vpos(
         height.saturating_add(ls.line_spacing)
     };
     let seg_end = |p: &Paragraph| -> Option<i32> {
-        p.line_segs
-            .last()
-            .map(|ls| ls.vertical_pos.saturating_add(seg_advance(ls)))
+        let last = p.line_segs.last()?;
+        let end = last.vertical_pos.saturating_add(seg_advance(last));
+        // 새 빈 자리차지 표의 호스트 줄도 실제 표·캡션·바깥 여백의 점유 끝을 발행한다.
+        // 원본 저장 사다리나 여러 개체의 독립 흐름에는 이 합성 줄 해석을 적용하지 않는다.
+        if !p.text.is_empty()
+            || p.line_segs.len() != 1
+            || last.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
+        {
+            return Some(end);
+        }
+        let mut block_table = None;
+        for control in &p.controls {
+            match control {
+                Control::Table(table)
+                    if block_table.is_none()
+                        && !table.common.treat_as_char
+                        && table.common.text_wrap
+                            == crate::model::shape::TextWrap::TopAndBottom
+                        && table.common.vert_rel_to == crate::model::shape::VertRelTo::Para
+                        && table.common.vert_align == crate::model::shape::VertAlign::Top =>
+                {
+                    block_table = Some(table);
+                }
+                control if crate::renderer::control_is_body_flow_neutral_marker(control) => {}
+                _ => return Some(end),
+            }
+        }
+        let Some(table) = block_table else {
+            return Some(end);
+        };
+        let measured = crate::renderer::height_measurer::HeightMeasurer::new(dpi)
+            .with_session_edited(true)
+            .measure_table(table, 0, 0, styles);
+        let body_height = crate::renderer::float_placement::table_body_height_with_declared_floor(
+            table,
+            measured.total_height,
+            dpi,
+        );
+        let occupied = round_px_to_hwpunit(body_height, dpi)
+            .saturating_add(i32::from(table.outer_margin_top))
+            .saturating_add(i32::from(table.outer_margin_bottom))
+            .saturating_add(
+                crate::renderer::float_placement::captioned_table_flow_vertical_offset_hu(table),
+            );
+        Some(end.max(last.vertical_pos.saturating_add(occupied)))
     };
     let is_ignored = |pi: usize| {
         ignore_reset_range
