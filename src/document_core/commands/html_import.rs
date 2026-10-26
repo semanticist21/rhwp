@@ -455,7 +455,15 @@ impl DocumentCore {
             }
 
             for i in para_idx..=last_para_idx {
-                self.reflow_paragraph(section_idx, i);
+                let paragraph = &self.document.sections[section_idx].paragraphs[i];
+                // 새 빈 블록 표에는 글줄을 합성하지 않고 공통 표 포맷 상자를 유지한다.
+                let empty_block_host = paragraph.controls.iter().any(|control| {
+                    matches!(control, Control::Table(table)
+                        if crate::renderer::float_placement::reflow_empty_table_host(paragraph, table))
+                });
+                if !empty_block_host {
+                    self.reflow_paragraph(section_idx, i);
+                }
             }
             // [Task #2299] 삽입 문단들의 vpos 를 흐름에 연결한다 — 클론/placeholder
             // 좌표를 방치하면 이후 편집의 vpos 재계산이 저장 단/쪽 리셋으로 오인해

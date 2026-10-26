@@ -226,6 +226,54 @@ fn partial_text_table_and_picture_html_copy_survive_both_formats() {
             .unwrap()
     };
     assert_eq!(cell_text(&pasted), "셀 글");
+    let (table_host, table) = pasted.document().sections[0]
+        .paragraphs
+        .iter()
+        .find_map(|para| match para.controls.as_slice() {
+            [Control::Table(table)] => Some((para, table)),
+            _ => None,
+        })
+        .unwrap();
+    assert!(
+        table_host.line_segs.is_empty(),
+        "빈 블록 표에 원문에 없던 글줄을 만들지 않는다"
+    );
+    let layout: Value =
+        serde_json::from_str(&pasted.get_page_text_layout_native(0).unwrap()).unwrap();
+    let body_y = |paragraph: usize| {
+        layout["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|run| run["paraIdx"] == paragraph && run["cellPath"].is_null())
+            .unwrap()["y"]
+            .as_f64()
+            .unwrap()
+    };
+    let (images, tables) = nodes(&pasted);
+    let first_line = &pasted.document().sections[0].paragraphs[0].line_segs[0];
+    let empty_line = &pasted.document().sections[0].paragraphs[2].line_segs[0];
+    let px = |hu: i32| hu as f64 / 75.0;
+    assert!(
+        (tables[0].y
+            - body_y(0)
+            - px(first_line.line_height + first_line.line_spacing)
+            - px(i32::from(table.outer_margin_top)))
+        .abs()
+            < 0.1,
+        "표 위 바깥 여백을 한 번 소비한다"
+    );
+    assert!(
+        (body_y(2) - tables[0].y - tables[0].height - px(i32::from(table.outer_margin_bottom)))
+            .abs()
+            < 0.1,
+        "표 아래 바깥 여백 뒤에 실제 빈 문단을 배치한다"
+    );
+    assert!(
+        (images[0].y - body_y(2) - px(empty_line.line_height + empty_line.line_spacing)).abs()
+            < 0.1,
+        "빈 문단의 한 줄 전진을 그림 앞에서 한 번 소비한다"
+    );
     assert_roundtrip(&pasted, 1, true);
     for bytes in [
         pasted.export_hwp_native().unwrap(),

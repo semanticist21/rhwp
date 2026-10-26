@@ -1053,12 +1053,11 @@ impl DocumentCore {
         // 정상 파일에서 표 문단의 instance_id = 0x80000000
         let mut table_raw_header_extra = vec![0u8; 10];
         table_raw_header_extra[0..2].copy_from_slice(&1u16.to_le_bytes()); // n_char_shapes=1
-                                                                           // [2..4] n_range_tags=0, [4..6] n_line_segs=1
-        table_raw_header_extra[4..6].copy_from_slice(&1u16.to_le_bytes());
-        // [6..10] instance_id=0x80000000
+                                                                           // [2..4] n_range_tags=0, [4..6] n_line_segs는 실제 줄을 만들 때 설정한다.
+                                                                           // [6..10] instance_id=0x80000000
         table_raw_header_extra[6..10].copy_from_slice(&0x80000000u32.to_le_bytes());
 
-        let table_para = Paragraph {
+        let mut table_para = Paragraph {
             text: String::new(),
             char_count: 9, // 확장 제어문자(8 code units) + 문단끝(1 code unit)
             control_mask: 0x00000800, // DrawTableObject (bit 11)
@@ -1067,18 +1066,7 @@ impl DocumentCore {
                 start_pos: 0,
                 char_shape_id: default_char_shape_id,
             }],
-            line_segs: vec![crate::model::paragraph::LineSeg {
-                text_start: 0,
-                line_height: total_height.min(i32::MAX as u32) as i32,
-                text_height: total_height.min(i32::MAX as u32) as i32,
-                baseline_distance: (total_height as f64 * 0.85).min(i32::MAX as f64) as i32,
-                line_spacing: 600,
-                segment_width: total_width.min(i32::MAX as u32) as i32,
-                // HTML에서 만든 호스트 줄은 원문 저장 사다리의 좌표 증거가 아니다.
-                tag: crate::model::paragraph::LineSeg::TAG_SINGLE_SEGMENT_LINE
-                    | crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY,
-                ..Default::default()
-            }],
+            line_segs: Vec::new(),
             // 표 문단은 style 없는 붙인 문단처럼 기본 문단 모양(0)을 쓴다. 다른 문단의 모양을
             // 빌리면(빈 문서의 1번은 왼쪽 여백 15pt 인 "본문") HTML 에 없는 여백만큼 표가 밀려
             // 본문 오른쪽 끝을 넘는다.
@@ -1094,6 +1082,26 @@ impl DocumentCore {
             char_count_msb: false,
             ..Default::default()
         };
+        // 빈 블록 표는 글줄 대신 표 포맷 상자가 바깥 여백과 점유 끝을 소유한다.
+        // 임시 글줄을 만들면 HWPX가 합성 줄을 생략한 뒤 서로 다른 배치 경로를 탄다.
+        let Control::Table(table) = &table_para.controls[0] else {
+            unreachable!()
+        };
+        if !crate::renderer::float_placement::reflow_empty_table_host(&table_para, table) {
+            table_para.line_segs.push(crate::model::paragraph::LineSeg {
+                text_start: 0,
+                line_height: total_height.min(i32::MAX as u32) as i32,
+                text_height: total_height.min(i32::MAX as u32) as i32,
+                baseline_distance: (total_height as f64 * 0.85).min(i32::MAX as f64) as i32,
+                line_spacing: 600,
+                segment_width: total_width.min(i32::MAX as u32) as i32,
+                // HTML에서 만든 호스트 줄은 원문 저장 사다리의 좌표 증거가 아니다.
+                tag: crate::model::paragraph::LineSeg::TAG_SINGLE_SEGMENT_LINE
+                    | crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY,
+                ..Default::default()
+            });
+            table_para.raw_header_extra[4..6].copy_from_slice(&1u16.to_le_bytes());
+        }
 
         paragraphs.push(table_para);
         Ok(())
