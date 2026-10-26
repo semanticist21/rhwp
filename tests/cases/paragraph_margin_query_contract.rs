@@ -71,3 +71,31 @@ fn spacing_before_moves_stored_lines_immediately_and_restores_by_shape_id() {
     core.set_para_shape_id_native(0, 1, shape).unwrap();
     assert_eq!([cursor(&core, 1), cursor(&core, 2)], before);
 }
+
+#[test]
+fn fractional_css_margins_keep_physical_units_after_both_formats() {
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.paste_html_native(0, 0, 0,
+        r#"<p style="margin-left:19.7px;margin-right:7.3px;text-indent:-5.1px;margin-top:9.9px;margin-bottom:3.7px">문단</p>"#,
+    ).unwrap();
+    let expected = [
+        ("marginLeft", 14.6),
+        ("marginRight", 7.3),
+        ("indent", -5.1),
+        ("spacingBefore", 9.9),
+        ("spacingAfter", 3.7),
+    ];
+    for bytes in [
+        core.export_hwp_native().unwrap(),
+        core.export_hwpx_native().unwrap(),
+    ] {
+        let saved = DocumentCore::from_bytes(&bytes).unwrap();
+        for document in [&core, &saved] {
+            let values = props(document, 0);
+            for (key, expected) in expected {
+                assert_eq!(values[key], expected, "{key}: {values}");
+            }
+        }
+    }
+}
