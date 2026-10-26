@@ -1906,9 +1906,10 @@ impl DocumentCore {
                     run.bbox_x
                 }
             };
+            // 클릭과 키보드 이동은 같은 기준선·글자 크기의 캐럿을 쓴다.
             let cursor_rect = format!(
                 ",\"cursorRect\":{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"height\":{:.1}}}",
-                page_num, cursor_x, run.bbox_y, run.bbox_h
+                page_num, cursor_x, run.caret_y, run.caret_h
             );
             if let Some(ref ctx) = run.cell_context {
                 let outer = ctx.path.first();
