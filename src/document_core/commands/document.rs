@@ -1,5 +1,6 @@
 //! 문서 생성/로딩/저장/설정 관련 native 메서드
 
+mod grown_table_heights;
 mod hft_outline_fonts;
 mod initial_fields;
 mod metafile_fonts;
@@ -2224,7 +2225,10 @@ impl DocumentCore {
         // [#7114] 어댑터 없는 경로도 같은 저장 프레임을 낸다 — 두 진입점이 다른 조판을
         // 저장하면 «저장본을 다시 열면 배치가 달라진다» 가 경로마다 갈린다.
         // 재래핑된 표가 없으면 복제 없이 live IR 을 그대로 쓴다.
-        if self.render_normalization.text_reflowed_tables.is_empty()
+        let grown_tables = self.grown_table_heights();
+        let grows_tables = grown_tables.iter().any(Option::is_some);
+        if !grows_tables
+            && self.render_normalization.text_reflowed_tables.is_empty()
             && (self.file_name.is_empty()
                 || !super::header_footer_ops::has_header_footer_file_name_fields(&self.document))
         {
@@ -2232,6 +2236,7 @@ impl DocumentCore {
                 .map_err(|e| HwpError::RenderError(e.to_string()));
         }
         let mut snapshot = self.document.clone();
+        grown_table_heights::apply_grown_table_heights(&mut snapshot, &grown_tables);
         self.writeback_reflowed_table_frames(&mut snapshot);
         super::header_footer_ops::refresh_header_footer_file_name_fields(
             &mut snapshot,
@@ -2565,6 +2570,7 @@ impl DocumentCore {
         use crate::document_core::converters::hwpx_to_hwp::convert_if_hwpx_source;
 
         let mut snapshot = self.document.clone();
+        grown_table_heights::apply_grown_table_heights(&mut snapshot, &self.grown_table_heights());
         self.writeback_reflowed_table_frames(&mut snapshot);
         let _report = convert_if_hwpx_source(&mut snapshot, self.source_format);
         super::header_footer_ops::refresh_header_footer_file_name_fields(
@@ -2733,8 +2739,11 @@ impl DocumentCore {
             super::header_footer_ops::refresh_header_footer_file_name_fields(doc, &self.file_name);
             super::header_footer_ops::lower_header_footer_field_markers(doc, &self.file_name, true)
         };
+        let grown_tables = self.grown_table_heights();
+        let grows_tables = grown_tables.iter().any(Option::is_some);
         let serialized = if matches!(self.source_format, crate::parser::FileFormat::Hwp) {
             let mut doc = self.document.clone();
+            grown_table_heights::apply_grown_table_heights(&mut doc, &grown_tables);
             if let Some((_, value)) = doc
                 .hwpx_aux_entries
                 .iter_mut()
@@ -2764,6 +2773,7 @@ impl DocumentCore {
                 && super::header_footer_ops::has_header_footer_file_name_fields(&self.document))
         {
             let mut doc = self.document.clone();
+            grown_table_heights::apply_grown_table_heights(&mut doc, &grown_tables);
             if let Some((_, value)) = doc
                 .hwpx_aux_entries
                 .iter_mut()
@@ -2775,6 +2785,10 @@ impl DocumentCore {
                 Self::push_hwp3_origin_marker(&mut doc);
             }
             lower_markers(&mut doc);
+            serialize(&doc)
+        } else if grows_tables {
+            let mut doc = self.document.clone();
+            grown_table_heights::apply_grown_table_heights(&mut doc, &grown_tables);
             serialize(&doc)
         } else {
             serialize(&self.document)
