@@ -1751,7 +1751,7 @@ mod html_table_geometry_tests {
     use super::*;
     use crate::model::table::Table;
 
-    #[derive(Debug, PartialEq)]
+    #[derive(Debug, Clone, PartialEq)]
     struct Geometry {
         rows: u16,
         cols: u16,
@@ -1925,13 +1925,28 @@ mod html_table_geometry_tests {
             ),
             expected.height,
         );
+        // 한컴처럼 저장 표 높이는 조판한 행 높이 합이다. 내용이 선언보다 크면 그만큼 커진다.
+        let (paragraph, control) = {
+            let (paragraph, control, _) = super::html_table_geometry_tests::table(&core);
+            (paragraph, control)
+        };
+        let laid_out = core.measured_tables[0]
+            .iter()
+            .find(|m| m.para_index == paragraph && m.control_index == control)
+            .and_then(|m| m.cumulative_heights.last().copied())
+            .map(|px| crate::renderer::px_to_hwpunit(px, core.dpi).max(0) as u32)
+            .unwrap_or(0);
+        let mut saved_expected = expected.clone();
+        if laid_out > expected.height + 10 {
+            saved_expected.height = laid_out;
+        }
         let saved = [
             core.export_hwp_with_adapter().expect("save HWP"),
             core.export_hwpx_native().expect("save HWPX"),
         ];
         for bytes in saved {
             let reopened = DocumentCore::from_bytes(&bytes).expect("reopen saved table");
-            assert_eq!(&geometry(&reopened), expected);
+            assert_eq!(geometry(&reopened), saved_expected);
         }
     }
 
@@ -1970,9 +1985,10 @@ mod html_table_geometry_tests {
         assert_eq!(expected.height, 2564);
         assert!(expected.cells.iter().all(|cell| cell.5 == 282));
         // 기본 표는 대상 문단 가용 폭을 넘는다. 너비 제한과 원래 세로 여유를 구분한다.
-        expected.width = 40454;
+        // 가용 폭은 단 폭 42520에서 바깥 여백 283×2를 뺀 값이다.
+        expected.width = 41954;
         for cell in &mut expected.cells {
-            cell.4 = 20227;
+            cell.4 = 20977;
         }
         assert_saved_geometry(import(&exact_html(&source)), &expected);
     }
@@ -2009,9 +2025,9 @@ mod html_table_geometry_tests {
 
         let wide = fixture(&[3003, 4004], &[25001, 35002], false);
         let mut expected = geometry(&wide);
-        expected.width = 40454;
+        expected.width = 41954;
         for cell in &mut expected.cells {
-            cell.4 = if cell.1 == 0 { 16855 } else { 23599 };
+            cell.4 = if cell.1 == 0 { 17480 } else { 24474 };
         }
         assert_saved_geometry(import(&exact_html(&wide)), &expected);
 
@@ -2023,9 +2039,9 @@ mod html_table_geometry_tests {
             .unwrap();
         let mut expected = geometry(&wide);
         assert_eq!(expected.width, 61003);
-        expected.width = 40454;
+        expected.width = 41954;
         // 선언 폭이 넓은 행별 다른 칸은 비례 축소하고, 공유 열과 같은 칸은 기존 반올림을 쓴다.
-        for (cell, width) in expected.cells.iter_mut().zip([16579, 23212, 17242, 22548]) {
+        for (cell, width) in expected.cells.iter_mut().zip([17194, 24073, 17881, 23384]) {
             cell.4 = width;
         }
         assert_saved_geometry(import(&exact_html(&wide)), &expected);
@@ -2036,7 +2052,8 @@ mod html_table_geometry_tests {
         let html = r#"<table style="height:5pt"><tr><td style="width:10pt;height:10pt"></td><td style="width:20pt;height:10pt"></td></tr><tr><td style="width:15pt;height:10pt"></td><td style="width:15pt;height:10pt"></td></tr></table>"#;
         let target = import(html);
         let expected = geometry(&target);
-        assert_eq!((expected.width, expected.height), (3500, 2000));
+        // 빈 줄 하나와 칸 여백(1282)보다 낮은 행은 내용 높이로 늘어난다.
+        assert_eq!((expected.width, expected.height), (3500, 2564));
         assert_eq!(
             expected.cells.iter().map(|cell| cell.4).collect::<Vec<_>>(),
             [1500, 2000, 1500, 2000]
@@ -2077,7 +2094,7 @@ mod html_table_geometry_tests {
                     .map(|cell| u64::from(cell.4))
                     .sum();
                 assert!(width <= u64::from(expected.width));
-                assert!(width <= 40454);
+                assert!(width <= 41954);
             }
             assert_saved_geometry(target, &expected);
         }
@@ -2271,9 +2288,12 @@ mod html_table_geometry_tests {
         );
         assert!(parsed_table.cells[0].apply_inner_margin);
         assert_eq!(parsed_table.cells[0].padding.left, 0);
-        assert_eq!(
-            parsed_table.cells[0].paragraphs[0].line_segs[0].segment_width,
-            parsed_table.cells[0].width as i32
+        // 칸 여백이 0이면 줄이 칸 폭을 다 쓴다(px 왕복 반올림 2 HU 이내).
+        assert!(
+            (parsed_table.cells[0].paragraphs[0].line_segs[0].segment_width
+                - parsed_table.cells[0].width as i32)
+                .abs()
+                <= 2
         );
 
         for invalid in ["-1pt", "NaNpt", "infpt", "1e308pt", "autopt"] {
