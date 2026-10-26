@@ -465,14 +465,17 @@ impl DocumentCore {
             .map(|margin| i64::from(margin.left.max(0)) + i64::from(margin.right.max(0)))
             .unwrap_or(0)
             .max(i64::from(outer_margin) * 2);
+        // 저장값의 단위 비트(#7816 홀수=글자)는 해소된 문단 스타일이 이미 반영한다.
+        // 가져오기가 방금 만든 문단 모양도 포함하도록 지금 문서로 해소한다.
         let paragraph_margin = self
-            .document
-            .doc_info
-            .para_shapes
+            .resolve_render_styles()
+            .para_styles
             .get(table_para_shape_id as usize)
-            .map(|shape| {
-                (shape.margin_left as i64 + shape.margin_right as i64 + shape.indent.max(0) as i64)
-                    / 2
+            .map(|style| {
+                i64::from(crate::renderer::px_to_hwpunit(
+                    style.margin_left + style.margin_right + style.indent.max(0.0),
+                    self.dpi,
+                ))
             })
             .unwrap_or(0);
         // 떠 있는 표는 글줄 너비를 소비하지 않는다. 유효한 원문 배치 정보에만 적용한다.

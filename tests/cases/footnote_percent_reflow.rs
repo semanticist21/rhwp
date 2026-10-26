@@ -170,7 +170,8 @@ fn check_format(hwpx: bool) {
         core.get_para_properties_in_footnote_native(0, 0, ci, 0)
             .unwrap(),
     );
-    assert_eq!(old_props["lineSpacing"].as_f64(), Some(160.0));
+    // 한컴 새 문서의 각주 줄 간격은 130%다.
+    assert_eq!(old_props["lineSpacing"].as_f64(), Some(130.0));
     core.apply_para_format_in_footnote_native(
         0,
         0,
@@ -183,9 +184,9 @@ fn check_format(hwpx: bool) {
     let new_lines = lines(&after);
     let new_gap =
         new_lines[1]["bbox"]["y"].as_f64().unwrap() - new_lines[0]["bbox"]["y"].as_f64().unwrap();
-    // 백분율의 독립 계약: 같은 글자·줄 구성에서는 줄 전진이 240/160 배가 된다.
+    // 백분율의 독립 계약: 같은 글자·줄 구성에서는 줄 전진이 240/130 배가 된다.
     assert!(
-        (new_gap - old_gap * 1.5).abs() < 0.2,
+        (new_gap - old_gap * 240.0 / 130.0).abs() < 0.2,
         "첫 적용 줄 전진: {old_gap} → {new_gap}"
     );
     assert_eq!(new_lines.len(), old_lines.len());

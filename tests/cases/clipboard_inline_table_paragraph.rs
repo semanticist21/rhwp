@@ -85,7 +85,8 @@ fn assert_inline(core: &DocumentCore, paragraph: &Paragraph, exact_dimensions: b
                 assert_eq!(table.cells.len(), 1);
                 assert_eq!(table.cells[0].paragraphs.len(), 1);
                 if exact_dimensions {
-                    let expected = if at == 4 { (2003, 1207) } else { (3005, 1509) };
+                    // 선언 높이(1207·1509)보다 내용이 길면 한컴처럼 표 높이만 내용에 맞춰 커진다.
+                    let expected = if at == 4 { (2003, 2882) } else { (3005, 2882) };
                     assert_eq!((table.common.width, table.common.height), expected);
                 }
                 Some(("table", at, table.cells[0].paragraphs[0].text.clone()))
@@ -409,7 +410,9 @@ fn marked_table_at_start_keeps_alignment_without_changing_a_nonempty_host() {
 
 #[test]
 fn marked_paragraph_table_width_respects_its_own_margins_and_rolls_back_no_space() {
-    for margin in ["400pt", "500pt"] {
+    // 새 표는 한컴처럼 바깥 여백 283×2를 둔다. 남은 폭이 "표" 한 글자 칸(1992)보다 넓도록
+    // 문단 여백 390pt를 쓴다.
+    for margin in ["390pt", "500pt"] {
         let mut core = blank();
         let before = core.export_hwp_native().unwrap();
         let html = format!(
@@ -427,7 +430,11 @@ fn marked_paragraph_table_width_respects_its_own_margins_and_rolls_back_no_space
                     table.common.width
                         + table.outer_margin_left as u32
                         + table.outer_margin_right as u32
-                        <= 42520 - 40000
+                        <= 42520 - 39000,
+                    "표 폭 {} + 바깥 여백 {} {}",
+                    table.common.width,
+                    table.outer_margin_left,
+                    table.outer_margin_right
                 );
                 assert_eq!(saved.document().sections[0].paragraphs[0].text, "앞뒤");
             }
