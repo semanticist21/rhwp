@@ -90,20 +90,15 @@ fn table_box(node: &RenderNode) -> Option<BoundingBox> {
     node.children.iter().find_map(table_box)
 }
 
-/// 첫 문단의 `char_idx`번 글자를 그린 런의 상자.
-fn char_box(node: &RenderNode, char_idx: usize) -> Option<BoundingBox> {
+/// 첫 문단에서 글자 `ch`를 그린 런의 상자. 런의 `char_start`는 개체 자리를 한 칸으로 센
+/// 논리 위치라 텍스트 번호와 다르므로, 문단 안에서 한 번만 나오는 글자로 찾는다.
+fn char_box(node: &RenderNode, ch: char) -> Option<BoundingBox> {
     if let RenderNodeType::TextRun(run) = &node.node_type {
-        if run.para_index == Some(0) && run.cell_context.is_none() {
-            if let Some(start) = run.char_start {
-                if (start..start + run.text.chars().count()).contains(&char_idx) {
-                    return Some(node.bbox);
-                }
-            }
+        if run.para_index == Some(0) && run.cell_context.is_none() && run.text.contains(ch) {
+            return Some(node.bbox);
         }
     }
-    node.children
-        .iter()
-        .find_map(|child| char_box(child, char_idx))
+    node.children.iter().find_map(|child| char_box(child, ch))
 }
 
 fn assert_rows(doc: &HwpDocument, label: &str) {
@@ -122,7 +117,7 @@ fn assert_rows(doc: &HwpDocument, label: &str) {
 
     let tree = doc.build_page_render_tree(0).unwrap();
     let table = table_box(&tree.root).expect("표");
-    let [ga, da, ra] = [3, 5, 6].map(|i| char_box(&tree.root, i).expect("글자 런"));
+    let [ga, da, ra] = ['가', '다', '라'].map(|ch| char_box(&tree.root, ch).expect("글자 런"));
     assert!(
         (da.y - ga.y).abs() < 0.5,
         "{label}: '다'는 '가'와 같은 줄이다 — 가 {ga:?}, 다 {da:?}"
