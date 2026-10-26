@@ -856,6 +856,41 @@ impl DocumentCore {
         let result = self
             .parse_html_to_paragraphs_at_depth(html, 0, width)
             .and_then(|mut paragraphs| {
+                // 자식의 최소 폭을 부모 열에 모두 예약한 뒤 최상위 글줄 예산만 검사한다.
+                // 중첩 단계에서 거절하면 부모 열로 올릴 수 있는 정상 자식 폭도 잃는다.
+                for paragraph in &paragraphs {
+                    let margin = self
+                        .document
+                        .doc_info
+                        .para_shapes
+                        .get(paragraph.para_shape_id as usize)
+                        .map_or(0.0, |shape| {
+                            [shape.margin_left, shape.margin_right, shape.indent.max(0)]
+                                .into_iter()
+                                .map(|raw| {
+                                    crate::renderer::style_resolver::paragraph_margin_hwpunit(
+                                        raw,
+                                        &self.document.doc_info,
+                                    )
+                                })
+                                .sum::<f64>()
+                        });
+                    for control in &paragraph.controls {
+                        if let Control::Table(table) = control {
+                            let occupied = u64::from(table.common.width)
+                                + table.outer_margin_left.max(0) as u64
+                                + table.outer_margin_right.max(0) as u64;
+                            if table.common.treat_as_char
+                                && occupied as f64 > f64::from(width) - margin
+                            {
+                                return Err(HwpError::RenderError(
+                                    "표를 넣을 가로 공간이 부족합니다. 문단이나 셀의 여백을 줄여 주세요"
+                                        .into(),
+                                ));
+                            }
+                        }
+                    }
+                }
                 let mut parsed_count = 0;
                 crate::model::identity::walk::walk(&mut paragraphs, |node| {
                     if let crate::model::identity::walk::Node::Control(control) = node {
