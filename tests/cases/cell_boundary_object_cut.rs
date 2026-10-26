@@ -717,6 +717,33 @@ fn assert_inline_run_axis(
         doc.get_cursor_rect_native(0, pi, logical_end).unwrap()
     }).unwrap();
     if path.is_some() {
+        if caret["cellOverflowed"] != false {
+            eprintln!("{case}, pi={pi}: 원문 문단 {paragraph:#?}");
+            for node in &runs {
+                if let RenderNodeType::TextRun(run) = &node.node_type {
+                    eprintln!(
+                        "실제 런 text={:?}, start={:?}, bbox={:?}, baseline={}, font={}, offset_y={}",
+                        run.text, run.char_start, node.bbox, run.baseline,
+                        run.style.font_size, node.char_offset_y
+                    );
+                }
+            }
+            let mut paragraphs = doc.document().sections[0].paragraphs.as_slice();
+            let mut parent = 1;
+            for (depth, &(control, index, cell_para)) in path.unwrap().iter().enumerate() {
+                let Control::Table(table) = &paragraphs[parent].controls[control] else {
+                    panic!("좌표 fixture의 조상 표 없음")
+                };
+                let cell = &table.cells[index];
+                eprintln!(
+                    "조상 {depth}: table={}x{}, cell={}x{}, cell_padding={:?}, table_padding={:?}, common={:?}",
+                    table.common.width, table.common.height, cell.width, cell.height,
+                    cell.padding, table.padding, table.common,
+                );
+                paragraphs = &cell.paragraphs;
+                parent = cell_para;
+            }
+        }
         assert_eq!(
             caret["cellOverflowed"], false,
             "{case}, pi={pi}, path={path:?}: 겹친 칸을 제외한 좌표 fixture: {caret}"
