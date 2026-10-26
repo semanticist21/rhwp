@@ -514,7 +514,11 @@ fn preceding_text_edits_preserve_no_lineseg_object_bridge_and_saved_geometry() {
         reset.sections[0].paragraphs[2].column_type = rhwp::model::paragraph::ColumnBreakType::Page;
         reset.sections[0].raw_stream = None;
         core.set_document(reset);
-        let reset_origins = origins(&core);
+        let mut reset_origins = origins(&core);
+        // 쪽 경계 앞의 개체 문단은 새 간격을 따르고, 재시작 문단부터 원점을 보존한다.
+        for vpos in &mut reset_origins[1] {
+            *vpos += 750;
+        }
         core.apply_para_format_native(0, 0, r#"{"spacingAfter":1500}"#)
             .unwrap();
         assert_eq!(origins(&core), reset_origins, "{format}: 원본 쪽 경계 보존");
