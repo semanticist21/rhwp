@@ -772,7 +772,8 @@ fn assert_inline_text_order(core: &DocumentCore) {
         "텍스트 누락/중복 금지"
     );
     assert_eq!(runs.len(), 2, "표 anchor에서 텍스트 경계 보존");
-    assert_eq!((runs[0].0, runs[1].0), (0, 1));
+    // 렌더 시작은 논리 칸이다. 두 글자 사이의 인라인 표가 한 칸을 차지한다.
+    assert_eq!((runs[0].0, runs[1].0), (0, 2));
     let (_, table) = boxes(core);
     let before = runs[0].2;
     let after = runs[1].2;

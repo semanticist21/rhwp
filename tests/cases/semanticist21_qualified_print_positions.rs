@@ -380,24 +380,24 @@ fn check_body_fields(
         assert_eq!(count, page_pins.len(), "선정한 쪽의 필드 누락·중복 없음");
         for pin in page_pins {
             let source = &core.document().sections[0].paragraphs[pin.paragraph];
-            assert!(
-                source
-                    .controls
-                    .iter()
-                    .zip(source.control_text_positions())
-                    .any(|(control, at)| matches!(
-                        control,
-                        rhwp::model::control::Control::AutoNumber(_)
-                    ) && at == pin.scalar),
-                "원본 자동번호가 소유한 모델 자리표"
-            );
+            let control_index = source
+                .controls
+                .iter()
+                .zip(source.control_text_positions())
+                .position(|(control, at)| {
+                    matches!(control, rhwp::model::control::Control::AutoNumber(_))
+                        && at == pin.scalar
+                })
+                .expect("원본 자동번호가 소유한 모델 자리표");
+            // 원문 자리표 번호는 유지하고, 그 앞 그림·주석 칸을 센 렌더 소속과 대조한다.
+            let logical = source.logical_control_positions()[control_index];
             let fields: Vec<_> = nodes
                 .iter()
                 .filter_map(|node| match &node.node_type {
                     RenderNodeType::TextRun(run)
                         if run.section_index == Some(0)
                             && run.para_index == Some(pin.paragraph)
-                            && run.char_start == Some(pin.scalar)
+                            && run.char_start == Some(logical)
                             && run.display_text.as_deref() == Some(pin.value) =>
                     {
                         Some((*node, run))
@@ -420,7 +420,7 @@ fn check_body_fields(
                     RenderNodeType::TextRun(run)
                         if run.section_index == Some(0)
                             && run.para_index == Some(pin.paragraph)
-                            && run.char_start == Some(pin.scalar + 1)
+                            && run.char_start == Some(logical + 1)
                             && run.text.starts_with(pin.following) =>
                     {
                         Some((*node, run))
