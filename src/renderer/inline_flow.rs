@@ -505,6 +505,10 @@ pub(crate) fn plan(
                 let row_horizontal =
                     paragraph_row_horizontal(&horizontal, style, result.boxes.is_empty());
                 let row_width = row_horizontal.end - row_horizontal.start;
+                // 폭 없는 문단 끝 표시는 앞 개체와 같은 줄에 속한다.
+                // 이미 전폭을 넘는 개체 뒤에서도 새 줄을 예약하지 않는다.
+                let paragraph_end = matches!(&item.content, InlineFlowContent::Text { range, .. }
+                    if range.is_empty() && range.start == chars.len());
                 // 개체 앞 작성 공백 그룹의 첫 공백만 우단 밖으로 전진한다.
                 // 그룹의 후속 공백이 처음 넘쳤다는 이유로 hanging하지 않는다.
                 let object_separator = matches!(&item.content, InlineFlowContent::Text { range, .. }
@@ -556,7 +560,7 @@ pub(crate) fn plan(
                         .unwrap_or_else(|| RowMetrics::default().with(&item)),
                     _ => RowMetrics::default().with(&item),
                 };
-                let moves_existing_row = if row.is_empty() {
+                let moves_existing_row = if row.is_empty() || paragraph_end {
                     false
                 } else {
                     let old = row_geometry(
@@ -578,6 +582,7 @@ pub(crate) fn plan(
                     next.1 > old.1 + 0.01
                 };
                 if !row.is_empty()
+                    && !paragraph_end
                     && ((row_metrics.width + lookahead.width > row_width + 0.01
                         && !first_overhang_space)
                         || moves_existing_row)

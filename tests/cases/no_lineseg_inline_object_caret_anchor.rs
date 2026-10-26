@@ -95,3 +95,55 @@ fn text_after_inline_picture_keeps_logical_char_start_without_line_cache() {
         vec![("가".to_string(), 0), ("나".to_string(), 2)]
     );
 }
+
+#[test]
+fn overwide_inline_picture_keeps_the_paragraph_end_on_its_own_row() {
+    let mut core = document("");
+    let page = &core.document().sections[0].section_def.page_def;
+    let width = page.width - page.margin_left - page.margin_right;
+    let control = core.document().sections[0].paragraphs[0]
+        .controls
+        .iter()
+        .position(|control| matches!(control, rhwp::model::control::Control::Picture(_)))
+        .unwrap();
+    // 본문 전폭 그림은 들여쓴 첫 줄의 가용 폭을 넘는다. 끝 표시는 폭을 더하지 않는다.
+    core.set_picture_properties_native(
+        0,
+        0,
+        control,
+        &format!(r#"{{"width":{width},"height":6000}}"#),
+    )
+    .unwrap();
+    core.apply_para_format_native(0, 0, r#"{"indent":6000}"#)
+        .unwrap();
+    let reopened = DocumentCore::from_bytes(&core.export_hwpx_native().unwrap()).unwrap();
+    assert!(reopened.document().sections[0].paragraphs[0]
+        .line_segs
+        .is_empty());
+    let layout: Value =
+        serde_json::from_str(&reopened.get_page_control_layout_native(0).unwrap()).unwrap();
+    let pictures = layout["controls"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|control| control["type"] == "image")
+        .collect::<Vec<_>>();
+    assert_eq!(pictures.len(), 1, "그림을 한 번만 그린다");
+    let picture = pictures[0];
+    let end: Value =
+        serde_json::from_str(&reopened.get_cursor_rect_native(0, 0, 1).unwrap()).unwrap();
+    assert_eq!(runs(&reopened), vec![(String::new(), 1, 13.3)]);
+    assert!(
+        (end["x"].as_f64().unwrap()
+            - picture["x"].as_f64().unwrap()
+            - picture["w"].as_f64().unwrap())
+        .abs()
+            <= 0.1,
+        "끝 캐럿은 새 줄 왼쪽이 아니라 그림 오른쪽에 놓인다: {end}, {picture}"
+    );
+    assert!(
+        end["y"].as_f64().unwrap() + end["height"].as_f64().unwrap()
+            <= picture["y"].as_f64().unwrap() + picture["h"].as_f64().unwrap() + 0.1,
+        "문단 끝 표시가 그림 아래에 빈 줄을 예약하지 않는다: {end}, {picture}"
+    );
+}
