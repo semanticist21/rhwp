@@ -2426,6 +2426,36 @@ impl Paragraph {
             positions[ci] = len - 1;
         }
         let ranges = self.field_ranges.clone();
+        // 끝 번호 뒤에 보이는 글자가 없으면 원시 입력점 대신 기존 필드 글자의 모양을 잇는다.
+        let field_tail_shape = ranges
+            .iter()
+            .find(|range| {
+                inserted > 0
+                    && Some(range.control_idx) == active
+                    && range.start_char_idx < range.end_char_idx
+                    && at >= range.start_char_idx
+                    && range.end_char_idx >= at
+                    && at + deleted >= range.end_char_idx
+                    && self.controls.iter().enumerate().any(|(ci, control)| {
+                        matches!(control, Control::AutoNumber(_) | Control::NewNumber(_))
+                            && positions.get(ci) == Some(&range.end_char_idx)
+                            && (range.end_char_idx == len
+                                || (range.end_char_idx + 1 == len
+                                    && self.control_owns_char(
+                                        ci,
+                                        range.end_char_idx,
+                                        &chars,
+                                        &self.char_offsets,
+                                    )))
+                    })
+            })
+            .and_then(|range| {
+                self.char_shape_id_at(if deleted > 0 {
+                    at
+                } else {
+                    range.end_char_idx - 1
+                })
+            });
 
         // 넣기는 그 자리 갭의 슬롯 가운데 새 글자 앞에 남을 수(`left`)를 고른다.
         let mut gap = Vec::new();
@@ -2583,6 +2613,17 @@ impl Paragraph {
             .map(|(ci, &p)| place(p, Slot::Control(ci)))
             .collect();
         self.rebuild_char_offsets(&moved);
+        if let Some(char_shape_id) = field_tail_shape {
+            self.restore_char_shape_runs(
+                at,
+                at + inserted,
+                &[CharShapeRun {
+                    start_offset: at,
+                    end_offset: at + inserted,
+                    char_shape_id,
+                }],
+            );
+        }
         deleted
     }
 
