@@ -376,3 +376,15 @@ fn test_task576_times_followed_by_space() {
     let tokens = tokenize("rmA SIM C");
     assert_eq!(values(&tokens), vec!["rm", "A", "SIM", "C"]);
 }
+
+#[test]
+fn long_identifier_checks_only_keyword_length_prefixes() {
+    // 8,000자 식별자는 키워드 접두사가 아니므로 한 토큰이다. 모든 접두사를 해시하지 않는다.
+    let script = "x".repeat(8001);
+    let started = std::time::Instant::now();
+    let tokens = tokenize(&script);
+    assert_eq!(values(&tokens), vec![script.as_str()]);
+    assert!(started.elapsed() < std::time::Duration::from_secs(2));
+    // 키워드 길이 안의 접두사 분리는 그대로다.
+    assert_eq!(values(&tokenize("alphabet")), vec!["alpha", "bet"]);
+}
