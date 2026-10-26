@@ -7661,7 +7661,16 @@ impl HwpDocument {
         }
 
         // ParaShape 수정
-        if !para_mods_json.is_empty() && para_mods_json != "{}" {
+        if !para_mods_json.is_empty()
+            && para_mods_json != "{}"
+            && self
+                .core
+                .document
+                .doc_info
+                .para_shapes
+                .get(old_psid as usize)
+                .is_some()
+        {
             let mut para_mods = parse_para_shape_mods(para_mods_json);
             // 탭 정의와 테두리/배경은 문단 모양 적용 경로처럼 찾거나 만들어 달고, 테두리 간격도
             // 넣는다. 탭은 스타일의 지금 탭 정의에서 바뀐 항목만 덮어쓴다.
