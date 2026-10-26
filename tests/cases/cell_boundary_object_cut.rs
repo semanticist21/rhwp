@@ -716,7 +716,7 @@ fn assert_inline_run_axis(
     } else {
         doc.get_cursor_rect_native(0, pi, logical_end).unwrap()
     }).unwrap();
-    if path.is_some() {
+    if let Some(path) = path {
         if caret["cellOverflowed"] != false {
             eprintln!("{case}, pi={pi}: 원문 문단 {paragraph:#?}");
             for node in &runs {
@@ -730,7 +730,7 @@ fn assert_inline_run_axis(
             }
             let mut paragraphs = doc.document().sections[0].paragraphs.as_slice();
             let mut parent = 1;
-            for (depth, &(control, index, cell_para)) in path.unwrap().iter().enumerate() {
+            for (depth, &(control, index, cell_para)) in path.iter().enumerate() {
                 let Control::Table(table) = &paragraphs[parent].controls[control] else {
                     panic!("좌표 fixture의 조상 표 없음")
                 };
