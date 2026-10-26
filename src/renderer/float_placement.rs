@@ -2660,7 +2660,7 @@ pub(crate) fn stored_empty_control_table_frame(
     let anchor_vpos = ladder_vpos(host, 0, anchor.vertical_pos);
     let next_vpos = ladder_vpos(successor, 0, next.vertical_pos);
     // 한 단 선언은 좌표계를 소유하며 별도 물리 높이를 만들지 않는다.
-    // 다른 개체와 다단 선언은 순수한 단일 표 상자로 해석하지 않는다.
+    // 다른 흐름 개체와 다단 선언은 순수한 단일 표 상자로 해석하지 않는다.
     let single_column = host
         .controls
         .iter()
@@ -2674,6 +2674,13 @@ pub(crate) fn stored_empty_control_table_frame(
         && host.controls.iter().all(|control| {
             matches!(control, Control::Table(_) | Control::SectionDef(_))
                 || matches!(control, Control::ColumnDef(column) if column.column_count == 1)
+                // 종이 좌표의 떠 있는 그림은 표가 소유한 저장 흐름 상자를 바꾸지 않는다.
+                || matches!(control, Control::Picture(picture)
+                    if !picture.common.treat_as_char
+                        && picture.common.vert_rel_to == VertRelTo::Paper
+                        && picture.common.horz_rel_to == HorzRelTo::Paper
+                        && picture.common.text_wrap == TextWrap::Square
+                        && picture.caption.is_none())
         });
     if !host.text.trim().is_empty()
         || !single_table_host
