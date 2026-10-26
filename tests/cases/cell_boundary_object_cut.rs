@@ -644,6 +644,7 @@ fn assert_inline_run_axis(
     paragraph: &Paragraph,
     path: Option<&Path>,
     pi: usize,
+    case: &str,
 ) {
     fn collect<'a>(
         node: &'a RenderNode,
@@ -718,7 +719,7 @@ fn assert_inline_run_axis(
     if path.is_some() {
         assert_eq!(
             caret["cellOverflowed"], false,
-            "겹친 칸을 제외한 좌표 fixture: {caret}"
+            "{case}, pi={pi}, path={path:?}: 겹친 칸을 제외한 좌표 fixture: {caret}"
         );
     }
     let last = runs.last().unwrap();
@@ -778,6 +779,14 @@ fn inline_axis_fixture(flat: bool, tables: bool) -> (HwpDocument, Path) {
                 table.raw_ctrl_data.clear();
                 table.raw_ctrl_seal = None;
                 table.common.ctrl_id = rhwp::parser::tags::CTRL_TABLE;
+                // 그림 크기의 빈 표는 그 크기에 맞는 한 칸으로 만든다.
+                // 두 칸 template의 큰 grid를 작은 공통 상자에 남기면 overflow 검사가 섞인다.
+                table.col_count = 1;
+                table.row_sizes = vec![1];
+                table.cells.truncate(1);
+                table.cells[0].width = table.common.width;
+                table.cells[0].height = table.common.height;
+                table.rebuild_grid();
             }
         }
     }
@@ -892,7 +901,13 @@ fn styled_inline_objects_keep_first_and_last_cell_paragraph_logical_offsets() {
                 ));
                 let before = serde_json::to_value(&doc.document().sections[0].paragraphs).unwrap();
                 for pi in [0, 2] {
-                    assert_inline_run_axis(&doc, &cell(doc.document(), &path)[pi], Some(&path), pi);
+                    assert_inline_run_axis(
+                        &doc,
+                        &cell(doc.document(), &path)[pi],
+                        Some(&path),
+                        pi,
+                        &format!("flat={flat}, tables={tables}, format={format}"),
+                    );
                 }
                 assert_eq!(
                     serde_json::to_value(&doc.document().sections[0].paragraphs).unwrap(),
@@ -922,7 +937,13 @@ fn styled_inline_objects_keep_body_run_logical_offsets() {
             }
             let before = serde_json::to_value(&doc.document().sections[0].paragraphs).unwrap();
             for pi in [1, 3] {
-                assert_inline_run_axis(&doc, &doc.document().sections[0].paragraphs[pi], None, pi);
+                assert_inline_run_axis(
+                    &doc,
+                    &doc.document().sections[0].paragraphs[pi],
+                    None,
+                    pi,
+                    &format!("body, tables={tables}, format={format}"),
+                );
             }
             assert_eq!(
                 serde_json::to_value(&doc.document().sections[0].paragraphs).unwrap(),
@@ -952,7 +973,13 @@ fn styled_inline_objects_keep_logical_offsets_across_line_breaks() {
                 };
                 doc = HwpDocument::from_bytes(&bytes).unwrap();
             }
-            assert_inline_run_axis(&doc, &cell(doc.document(), &path)[0], Some(&path), 0);
+            assert_inline_run_axis(
+                &doc,
+                &cell(doc.document(), &path)[0],
+                Some(&path),
+                0,
+                &format!("flat={flat}"),
+            );
         }
     }
 }
