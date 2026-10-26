@@ -25882,6 +25882,25 @@ impl LayoutEngine {
         let header = self.nested_continuation_header_height(cell, &units, first_index, styles);
         visible_height += header;
         flow_height += header;
+        let last_index = units
+            .iter()
+            .rposition(|unit| std::ptr::eq(unit, last_unit))?;
+        if units[first_index..=last_index].iter().any(|unit| {
+            unit.nested_table_fragment
+                .as_ref()
+                .is_some_and(|fragment| fragment.is_block)
+        }) {
+            // 부모가 예약한 같은 자식 컷의 물리 끝에서 뒤 문단을 시작한다.
+            let extra = self.mixed_nested_flow_extra_from_cut(
+                cell,
+                table,
+                styles,
+                first_index,
+                last_index + 1,
+            );
+            visible_height += extra;
+            flow_height += extra;
+        }
         let first_row = first_unit.nested_row?;
         let last_row = last_unit.nested_row?;
         let end_row = last_unit
