@@ -18402,8 +18402,8 @@ fn test_parse_table_html_save() {
     );
     assert_eq!(
         table_para.line_segs[0].tag,
-        LineSeg::TAG_SINGLE_SEGMENT_LINE,
-        "DIFF-8: tag=LineSeg::TAG_SINGLE_SEGMENT_LINE"
+        LineSeg::TAG_SINGLE_SEGMENT_LINE | LineSeg::TAG_IMPLEMENTATION_PROPERTY,
+        "DIFF-8: HTML 호스트는 단일 합성 줄이다"
     );
 
     // 삽입 및 저장
