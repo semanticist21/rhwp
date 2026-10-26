@@ -26357,7 +26357,21 @@ impl LayoutEngine {
         // 부모가 별도로 합산하는 시작 띠도 이 예약 합에 한 번 포함한다.
         let reserved = selected.iter().map(|unit| unit.height).sum::<f64>()
             + self.nested_continuation_header_height(cell, units, start, styles);
-        Some(physical - reserved)
+        let extra = physical - reserved;
+        // 병합 블록의 원본 전진은 내용 컷의 여유가 아니다. 실점유가 작아도 새 글 수용량으로 돌려주지 않는다.
+        Some(
+            if matches!(purpose, row_physical_band::CutHeight::Capacity)
+                && selected.iter().any(|unit| {
+                    unit.nested_table_fragment
+                        .as_ref()
+                        .is_some_and(|fragment| fragment.is_block)
+                })
+            {
+                extra.max(0.0)
+            } else {
+                extra
+            },
+        )
     }
 
     /// Recursive reflow projects source units, rather than a stored physical
