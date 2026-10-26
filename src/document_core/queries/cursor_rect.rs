@@ -80,6 +80,7 @@ struct CellCursorHit {
     y: f64,
     height: f64,
     char_offset_y: f64,
+    at_run_end: bool,
 }
 
 /// 렌더 노드 트리에서 대상 셀의 bbox 를 찾는다 (legacy/fast 공유).
@@ -127,6 +128,7 @@ fn find_cursor_in_cell_node(
     page_index: u32,
 ) -> Option<CellCursorHit> {
     use crate::renderer::render_tree::RenderNodeType;
+    let mut end_fallback = None;
     if let RenderNodeType::TextRun(ref text_run) = node.node_type {
         let matches_cell = text_run.cell_context.as_ref().map_or(false, |ctx| {
             // path.len()==1 가드가 없으면 중첩 표 *내부* 셀의 run 도
@@ -161,13 +163,18 @@ fn find_cursor_in_cell_node(
                 let font_size = text_run.style.font_size;
                 let ascent = font_size * 0.8;
                 let caret_y = node.bbox.y + text_run.baseline - ascent;
-                return Some(CellCursorHit {
+                let hit = CellCursorHit {
                     page_index,
                     x: node.bbox.x + x_in_run,
                     y: caret_y,
                     height: font_size,
                     char_offset_y: node.char_offset_y,
-                });
+                    at_run_end: offset > char_start && offset == char_start + char_count,
+                };
+                if !hit.at_run_end {
+                    return Some(hit);
+                }
+                end_fallback = Some(hit);
             }
         }
     }
@@ -181,10 +188,14 @@ fn find_cursor_in_cell_node(
             offset,
             page_index,
         ) {
-            return Some(hit);
+            // 앞 런 끝과 다음 런 시작이 같으면 실제 다음 글자의 원점을 쓴다.
+            if !hit.at_run_end {
+                return Some(hit);
+            }
+            end_fallback.get_or_insert(hit);
         }
     }
-    None
+    end_fallback
 }
 
 fn format_cursor_rect_json(
@@ -3887,7 +3898,8 @@ impl DocumentCore {
             current_table_ctx: Option<CellContext>,
             current_cell_ctx: Option<CellContext>,
             current_cell_bounds: Option<CellCursorBounds>,
-        ) -> Option<(u32, f64, f64, f64, f64, Option<CellCursorBounds>)> {
+        ) -> Option<(CellCursorHit, Option<CellCursorBounds>)> {
+            let mut end_fallback = None;
             let table_ctx =
                 table_ctx_from_node(node, current_table_ctx.as_ref(), current_cell_ctx.as_ref());
             let mut child_cell_ctx = current_cell_ctx.clone();
@@ -3933,14 +3945,18 @@ impl DocumentCore {
                         } else {
                             0.0
                         };
-                        return Some((
-                            page,
-                            node.bbox.x + xr,
-                            node.bbox.y,
-                            node.bbox.height,
-                            node.char_offset_y,
-                            child_cell_bounds,
-                        ));
+                        let hit = CellCursorHit {
+                            page_index: page,
+                            x: node.bbox.x + xr,
+                            y: node.bbox.y,
+                            height: node.bbox.height,
+                            char_offset_y: node.char_offset_y,
+                            at_run_end: offset > cs && offset == cs + cc,
+                        };
+                        if !hit.at_run_end {
+                            return Some((hit, child_cell_bounds));
+                        }
+                        end_fallback = Some((hit, child_cell_bounds));
                     }
                 }
             }
@@ -3957,10 +3973,13 @@ impl DocumentCore {
                     child_cell_ctx.clone(),
                     child_cell_bounds,
                 ) {
-                    return Some(hit);
+                    if !hit.0.at_run_end {
+                        return Some(hit);
+                    }
+                    end_fallback.get_or_insert(hit);
                 }
             }
-            None
+            end_fallback
         }
 
         for &page_num in &pages {
@@ -3975,7 +3994,7 @@ impl DocumentCore {
             ) {
                 return Ok(hit);
             }
-            if let Some((pi, x, y, h, char_offset_y, cell_bounds)) = find_cursor_by_path(
+            if let Some((hit, cell_bounds)) = find_cursor_by_path(
                 self,
                 &tree.root,
                 section_idx,
@@ -3988,11 +4007,11 @@ impl DocumentCore {
                 None,
             ) {
                 return Ok(format_cursor_rect_json(
-                    pi,
-                    x,
-                    y,
-                    h,
-                    char_offset_y,
+                    hit.page_index,
+                    hit.x,
+                    hit.y,
+                    hit.height,
+                    hit.char_offset_y,
                     cell_bounds,
                 ));
             }

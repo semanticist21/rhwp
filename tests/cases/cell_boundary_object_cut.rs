@@ -787,6 +787,74 @@ fn inline_axis_fixture(flat: bool, tables: bool) -> (HwpDocument, Path) {
 }
 
 #[test]
+fn cell_caret_prefers_the_next_run_origin_but_keeps_the_slot_before_an_object() {
+    fn run_at<'a>(node: &'a RenderNode, path: &Path, start: usize) -> Option<&'a RenderNode> {
+        if let RenderNodeType::TextRun(run) = &node.node_type {
+            let matches_path = run.cell_context.as_ref().is_some_and(|context| {
+                context.parent_para_index == 1
+                    && context.path.len() == path.len()
+                    && context.path.iter().zip(path).all(|(actual, expected)| {
+                        actual.control_index == expected.0
+                            && actual.cell_index == expected.1
+                            && actual.cell_para_index == expected.2
+                    })
+            });
+            if matches_path && run.char_start == Some(start) && !run.text.is_empty() {
+                return Some(node);
+            }
+        }
+        node.children
+            .iter()
+            .find_map(|child| run_at(child, path, start))
+    }
+
+    for flat in [true, false] {
+        let (doc, path) = inline_axis_fixture(flat, false);
+        let entries: Vec<_> = path
+            .iter()
+            .map(|&(control, cell, para)| {
+                serde_json::json!({
+                    "controlIndex": control, "cellIndex": cell, "cellParaIndex": para
+                })
+            })
+            .collect();
+        let path_json = serde_json::to_string(&entries).unwrap();
+        let tree = doc.build_page_render_tree(0).unwrap();
+        let next = run_at(&tree.root, &path, 3).expect("이모지 뒤 글자 런");
+        let before = run_at(&tree.root, &path, 0).expect("개체 앞 글자 런");
+        let RenderNodeType::TextRun(before_run) = &before.node_type else {
+            unreachable!()
+        };
+        let before_x = before.bbox.x
+            + before_run
+                .replay_positions_for(&before_run.text)
+                .last()
+                .copied()
+                .unwrap();
+        // 연속 런 경계는 다음 글자 원점, 개체 앞 칸은 앞 글자 끝을 유지한다.
+        for (offset, expected) in [(3, next.bbox.x), (1, before_x)] {
+            let mut rects = vec![doc
+                .get_cursor_rect_by_path(0, 1, &path_json, offset)
+                .unwrap()];
+            if flat {
+                rects.push(
+                    doc.get_cursor_rect_in_cell_native(0, 1, 0, 0, 0, offset as usize)
+                        .unwrap(),
+                );
+            }
+            for rect in rects {
+                let rect: serde_json::Value = serde_json::from_str(&rect).unwrap();
+                let actual = rect["x"].as_f64().unwrap();
+                assert!(
+                    (actual - expected).abs() < 0.1,
+                    "flat={flat}, offset={offset}: {actual} != {expected}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn styled_inline_objects_keep_first_and_last_cell_paragraph_logical_offsets() {
     for flat in [true, false] {
         for tables in [false, true] {

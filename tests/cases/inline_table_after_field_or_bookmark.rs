@@ -122,7 +122,11 @@ fn assert_rows(doc: &HwpDocument, label: &str) {
 
     let tree = doc.build_page_render_tree(0).unwrap();
     let table = table_box(&tree.root).expect("표");
-    let [ga, da, ra] = [3, 5, 6].map(|i| char_box(&tree.root, i).expect("글자 런"));
+    // 런 시작은 논리 칸이다. 같은 글자 앞의 표 칸을 지난 실제 글자 자리를 찾는다.
+    let [ga, da, ra] = [3, 5, 6].map(|i| {
+        let logical = doc.text_to_logical_offset(0, 0, i + 1).unwrap() as usize - 1;
+        char_box(&tree.root, logical).expect("글자 런")
+    });
     assert!(
         (da.y - ga.y).abs() < 0.5,
         "{label}: '다'는 '가'와 같은 줄이다 — 가 {ga:?}, 다 {da:?}"
