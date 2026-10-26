@@ -2197,6 +2197,7 @@ impl DocumentCore {
             node: &RenderNode,
             sec: usize,
             para: usize,
+            render_para: &Paragraph,
             target: Option<SelectionCellTarget<'_>>,
             starts: &mut Vec<usize>,
         ) {
@@ -2214,6 +2215,55 @@ impl DocumentCore {
                 if line.caption_owner.is_some() {
                     return;
                 }
+                // 빈 양식 줄의 종단 TextRun은 가시 글자 시작을 갖지 않는다.
+                // 그 줄에 실제로 놓인 양식의 논리 칸으로 줄 시작을 확인한다.
+                let cell_line_owned = node.children.iter().any(|child| {
+                    let RenderNodeType::TextRun(run) = &child.node_type else {
+                        return false;
+                    };
+                    run.section_index == Some(sec)
+                        && run.cell_context.as_ref().is_some_and(|ctx| match target {
+                            Some(SelectionCellTarget::Flat {
+                                parent_para_idx,
+                                control_idx,
+                                cell_idx,
+                            }) => flat_cell_ctx_matches(
+                                ctx,
+                                parent_para_idx,
+                                control_idx,
+                                cell_idx,
+                                para,
+                            ),
+                            Some(SelectionCellTarget::Path {
+                                parent_para_idx,
+                                path,
+                            }) => path_cell_ctx_matches(ctx, parent_para_idx, path, para),
+                            None => false,
+                        })
+                });
+                let positions = find_logical_control_positions(render_para);
+                let form_start = node
+                    .children
+                    .iter()
+                    .filter_map(|child| {
+                        let RenderNodeType::FormObject(form) = &child.node_type else {
+                            return None;
+                        };
+                        (form.section_index == sec
+                            && form.para_index == para
+                            && if target.is_none() {
+                                form.cell_location.is_none()
+                            } else {
+                                form.cell_location.is_some() && cell_line_owned
+                            }
+                            && render_para
+                                .controls
+                                .get(form.control_index)
+                                .is_some_and(Control::is_treat_as_char_object))
+                        .then_some(positions.get(form.control_index).copied())
+                        .flatten()
+                    })
+                    .min();
                 let start = node
                     .children
                     .iter()
@@ -2250,15 +2300,20 @@ impl DocumentCore {
                                     })
                             }
                         };
-                        owned.then_some(run.char_start).flatten()
+                        (owned && (!run.text.is_empty() || form_start.is_none()))
+                            .then_some(run.char_start)
+                            .flatten()
                     })
+                    .min()
+                    .into_iter()
+                    .chain(form_start)
                     .min();
                 if let Some(start) = start {
                     starts.push(start);
                 }
             }
             for child in &node.children {
-                collect_rendered_line_starts(child, sec, para, target, starts);
+                collect_rendered_line_starts(child, sec, para, render_para, target, starts);
             }
         }
 
@@ -2510,6 +2565,7 @@ impl DocumentCore {
                         &tree.root,
                         section_idx,
                         para_idx,
+                        para,
                         cell_target,
                         &mut rendered_starts,
                     );
