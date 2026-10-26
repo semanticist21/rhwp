@@ -1,5 +1,6 @@
-//! 미주 이중 구분선은 공통 두 Single 선과 같은 잉크 높이를 예약한다.
-//! NativeSkia 픽셀과 한컴 인쇄 대조는 이 공개 SVG·IR 검사의 범위가 아니다.
+//! 0.1mm 미주 구분선(실선·파선·이중선)은 편집 이력과 두 저장 형식에서 같은 모양을 지킨다.
+//! 구분선 굵기는 흐름 높이에 더하지 않는다(devel의 한컴 출력 계약). 선은 위 여백 끝에
+//! 긋고 첫 미주는 그 자리 + 아래 여백에서 시작한다.
 #![cfg(not(target_arch = "wasm32"))]
 
 use rhwp::{
@@ -176,306 +177,18 @@ fn attribute(tag: &str, name: &str) -> f64 {
         .unwrap()
 }
 
-fn assert_double(doc: &HwpDocument, width: u8) -> Vec<LineNode> {
-    // HWP 굵기표의 600dpi 양자화 값으로 계산한다. 내부 helper를 기대값에 사용하지 않는다.
-    let raw_width: f64 = match width {
-        0 => 0.32,
-        1 => 0.48,
-        5 => 1.12,
-        15 => 18.88,
-        _ => panic!("fixture 굵기"),
-    };
-    let span = raw_width.max(3.0);
-    let result = lines(doc);
-    assert_eq!(result.len(), 2, "이중선은 두 실제 노드");
-    for line in &result {
-        assert_eq!(
-            line.style.line_type,
-            LineRenderType::Single,
-            "모든 백엔드의 공통 단일선"
-        );
-        assert_eq!(line.style.dash, StrokeDash::Solid);
-        assert_eq!(line.style.color, COLOR);
-        close(line.style.width, span * 0.3, "각 획 굵기");
-        close(line.y1, line.y2, "수평선");
-        close(line.x2 - line.x1, 80.0, "원래 구분선 길이");
-    }
-    close(result[0].x1, result[1].x1, "같은 시작점");
-    close(result[0].x2, result[1].x2, "같은 끝점");
-    close(result[1].y1 - result[0].y1, span * 0.7, "두 선 중심 간격");
-    let ink_top = result[0].ink_bbox().y;
-    let lower = result[1].ink_bbox();
-    close(lower.y + lower.height - ink_top, span, "실제 잉크 높이");
-    let note = first_line(doc, NOTE);
-    assert!(
-        note.y + 0.002 >= lower.y + lower.height,
-        "여백0에서 미주 첫 줄과 선이 겹치지 않는다"
-    );
-    for profile in [RenderProfile::Screen, RenderProfile::Print] {
-        let svg = doc
-            .render_page_svg_layer_with_profile_native(0, profile)
-            .unwrap();
-        let mut tags = svg
-            .split('<')
-            .filter(|tag| tag.contains(&format!("stroke=\"{CSS_COLOR}\"")))
-            .collect::<Vec<_>>();
-        tags.sort_by(|a, b| attribute(a, "y1").total_cmp(&attribute(b, "y1")));
-        assert_eq!(tags.len(), 2, "{profile:?}: 두 실제 SVG 획");
-        for (tag, line) in tags.iter().zip(&result) {
-            assert!(!tag.contains("stroke-dasharray"));
-            for (key, expected) in [
-                ("x1", line.x1),
-                ("x2", line.x2),
-                ("y1", line.y1),
-                ("y2", line.y2),
-                ("stroke-width", line.style.width),
-            ] {
-                close(
-                    attribute(tag, key),
-                    expected,
-                    &format!("{profile:?}: {key}"),
-                );
-            }
-        }
-        fn collect(node: &LayerNode, result: &mut Vec<LineNode>) {
-            match &node.kind {
-                LayerNodeKind::Group { children, .. } => {
-                    for child in children {
-                        collect(child, result);
-                    }
-                }
-                LayerNodeKind::ClipRect { child, .. } | LayerNodeKind::ClipPath { child, .. } => {
-                    collect(child, result)
-                }
-                LayerNodeKind::Leaf { ops } => {
-                    for op in ops {
-                        if let PaintOp::Line { line, .. } = op {
-                            if line.style.color == COLOR {
-                                result.push((**line).clone());
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        let mut replay = Vec::new();
-        collect(
-            &doc.build_page_layer_tree_with_profile(0, profile)
-                .unwrap()
-                .root,
-            &mut replay,
-        );
-        replay.sort_by(|a, b| a.y1.total_cmp(&b.y1));
-        assert_eq!(
-            json!(replay),
-            json!(result),
-            "{profile:?}: Canvas·SVG·Skia가 받는 공통 IR"
-        );
-    }
-    result
-}
-
-#[test]
-fn double_endnote_separator_reserves_exact_visual_span_with_zero_margins() {
-    for width in [0, 1, 5, 15] {
-        let (mut doc, control) = fixture(width);
-        let original = model_content(&doc, control);
-        let body = body_interaction(&doc);
-        let old_note = first_line(&doc, NOTE);
-        let old_carets = note_carets(&doc, control);
-        let single = lines(&doc);
-        assert_eq!(single.len(), 1);
-        if width == 0 {
-            close(single[0].style.width, 0.32, "0.1mm 단일선의 실제 획");
-            close(single[0].ink_bbox().height, 0.32, "0.1mm 단일선 잉크 높이");
-        }
-        doc.apply_endnote_shape_native(0, r#"{"separatorLineType":8}"#)
-            .unwrap();
-        let double = assert_double(&doc, width);
-        let ink_top = double[0].ink_bbox().y;
-        close(
-            ink_top,
-            single[0].y1,
-            "선 묶음이 원래 예약 시작 아래에 놓인다",
-        );
-        let bottom = double[1].ink_bbox();
-        let new_note = first_line(&doc, NOTE);
-        close(
-            new_note.y,
-            old_note.y.max(bottom.y + bottom.height),
-            "필요한 이중선 높이만 미주 첫 줄을 민다",
-        );
-        let delta = new_note.y - old_note.y;
-        for (old, new) in old_carets.iter().zip(note_carets(&doc, control)) {
-            close(
-                new["x"].as_f64().unwrap(),
-                old["x"].as_f64().unwrap(),
-                "미주 캐럿 x",
-            );
-            caret_delta(
-                new["y"].as_f64().unwrap() - old["y"].as_f64().unwrap(),
-                delta,
-            );
-            assert_eq!(new["height"], old["height"]);
-            assert_eq!(new["pageIndex"], old["pageIndex"]);
-        }
-        assert_eq!(body_interaction(&doc), body, "본문 캐럿·선택 유지");
-        assert_eq!(model_content(&doc, control), original);
-        assert_eq!(doc.page_count(), 1);
-    }
-}
-
-#[test]
-fn double_endnote_separator_history_recovers_existing_single_dash_and_hidden_geometry() {
-    for kind in [0, 1, 2] {
-        let (mut doc, control) = fixture(5);
-        doc.apply_endnote_shape_native(0, &json!({"separatorLineType":kind}).to_string())
-            .unwrap();
-        let before = doc.save_snapshot_native();
-        let original = model_content(&doc, control);
-        let before_geometry = geometry(&doc);
-        let before_body = body_interaction(&doc);
-        let before_note = note_carets(&doc, control);
-        doc.apply_endnote_shape_native(0, r#"{"separatorLineType":8}"#)
-            .unwrap();
-        assert_double(&doc, 5);
-        let after = doc.save_snapshot_native();
-        let after_geometry = geometry(&doc);
-        doc.restore_snapshot_native(before).unwrap();
-        assert_eq!(
-            value(&doc.get_endnote_shape_native(0).unwrap())["separatorLineType"],
-            kind
-        );
-        assert_eq!(geometry(&doc), before_geometry, "기존 {kind} 배치 복원");
-        assert_eq!(body_interaction(&doc), before_body);
-        assert_eq!(note_carets(&doc, control), before_note);
-        doc.restore_snapshot_native(after).unwrap();
-        assert_double(&doc, 5);
-        assert_eq!(geometry(&doc), after_geometry);
-        assert_eq!(model_content(&doc, control), original);
-    }
-    let (mut doc, control) = fixture(5);
-    let original = model_content(&doc, control);
-    doc.apply_endnote_shape_native(0, r#"{"separatorLineType":8,"separatorLineWidth":0}"#)
-        .unwrap();
-    assert_double(&doc, 0);
-    assert_eq!(model_content(&doc, control), original);
-}
-
-#[test]
-fn double_endnote_separator_height_is_included_in_the_page_budget() {
-    for width in [0, 1] {
-        let (mut doc, control) = fixture(width);
-        // glyph 높이와 줄 전진 높이를 같게 하여 기존 160% 줄간격의 다음 줄 예약과
-        // 이중선 때문에 필요한 높이를 독립적으로 구분한다.
-        doc.apply_para_format_native(0, 0, r#"{"lineSpacing":100}"#)
-            .unwrap();
-        doc.apply_para_format_in_footnote_native(0, 0, control, 0, r#"{"lineSpacing":100}"#)
-            .unwrap();
-        let original = model_content(&doc, control);
-        let note = first_line(&doc, NOTE);
-        // 단일선의 실제 마지막 줄 바로 아래에 본문 끝을 둔다. 이중선의 추가 높이는
-        // 이 쪽에 들어갈 수 없으므로 다음 쪽으로 보내야 하며, 용지 아래로 그리면 안 된다.
-        let height_hu = ((note.y + note.height + 10.0) * 75.0).ceil() as u32;
-        doc.set_page_def_native(0, &json!({"height":height_hu}).to_string())
-            .unwrap();
-        assert_eq!(doc.page_count(), 1, "단일선과 한 줄 미주는 한 쪽에 맞는다");
-        let before = first_line(&doc, NOTE);
-        assert!(before.y + before.height <= f64::from(height_hu) / 75.0 - 10.0 + 0.002);
-        doc.apply_endnote_shape_native(0, r#"{"separatorLineType":8}"#)
-            .unwrap();
-        assert_eq!(doc.page_count(), 2, "추가 잉크 높이도 페이지 예산에 포함");
-        assert_eq!(model_content(&doc, control), original);
-        for page in 0..doc.page_count() {
-            fn check(node: &RenderNode, bottom: f64) {
-                if let RenderNodeType::TextLine(_) = &node.node_type {
-                    assert!(
-                        node.bbox.y + node.bbox.height <= bottom + 0.002,
-                        "실제 줄이 본문 아래로 넘지 않는다: {:?}",
-                        node.bbox
-                    );
-                }
-                for child in &node.children {
-                    check(child, bottom);
-                }
-            }
-            check(
-                &doc.build_page_render_tree(page).unwrap().root,
-                f64::from(height_hu) / 75.0 - 10.0,
-            );
-        }
-    }
-}
-
-#[test]
-fn double_endnote_separator_roundtrips_both_formats_without_mutating_content_or_source() {
-    let (mut doc, control) = fixture(5);
-    let single_hwp = doc.export_hwp_with_adapter_snapshot().unwrap();
-    let single_hwpx = doc.export_hwpx_native().unwrap();
-    doc.apply_endnote_shape_native(0, r#"{"separatorLineType":8}"#)
-        .unwrap();
-    let live = format!("{:?}", doc.document());
-    let double_hwp = doc.export_hwp_with_adapter_snapshot().unwrap();
-    let double_hwpx = doc.export_hwpx_native().unwrap();
-    assert_eq!(
-        format!("{:?}", doc.document()),
-        live,
-        "내보내기는 저장 사본만 수정"
-    );
-    for (format, single, double) in [
-        ("HWP", single_hwp, double_hwp),
-        ("HWPX", single_hwpx, double_hwpx),
-    ] {
-        let baseline = HwpDocument::from_bytes(&single).unwrap();
-        let reopened = HwpDocument::from_bytes(&double).unwrap();
-        let props = value(&reopened.get_endnote_shape_native(0).unwrap());
-        assert_eq!(props["separatorLineType"], 8, "{format}");
-        assert_eq!(props["separatorLineWidth"], 5);
-        assert_eq!(props["separatorColor"], CSS_COLOR);
-        assert_eq!(props["separatorMarginTop"], 0);
-        assert_eq!(props["separatorMarginBottom"], 0);
-        assert_double(&reopened, 5);
-        assert_eq!(
-            model_content(&reopened, control),
-            model_content(&baseline, control),
-            "{format}: 내용·번호·서식"
-        );
-        assert_eq!(
-            body_interaction(&reopened),
-            body_interaction(&baseline),
-            "{format}: 본문 캐럿·선택"
-        );
-        let old_line = first_line(&baseline, NOTE);
-        let new_line = first_line(&reopened, NOTE);
-        let delta = new_line.y - old_line.y;
-        for (old, new) in note_carets(&baseline, control)
-            .iter()
-            .zip(note_carets(&reopened, control))
-        {
-            close(
-                new["x"].as_f64().unwrap(),
-                old["x"].as_f64().unwrap(),
-                "저장 미주 캐럿 x",
-            );
-            caret_delta(
-                new["y"].as_f64().unwrap() - old["y"].as_f64().unwrap(),
-                delta,
-            );
-            assert_eq!(new["height"], old["height"]);
-            assert_eq!(new["pageIndex"], old["pageIndex"]);
-        }
-    }
-}
-
 fn assert_thin(doc: &HwpDocument, kind: u8) {
-    if kind == 8 {
-        assert_double(doc, 0);
-        return;
-    }
     let rendered = lines(doc);
-    assert_eq!(rendered.len(), 1, "굵기0은 가시 단일선/파선");
+    assert_eq!(rendered.len(), 1, "굵기0은 가시 단일선/파선/이중선");
     let line = &rendered[0];
-    assert_eq!(line.style.line_type, LineRenderType::Single);
+    assert_eq!(
+        line.style.line_type,
+        if kind == 8 {
+            LineRenderType::Double
+        } else {
+            LineRenderType::Single
+        }
+    );
     assert_eq!(line.style.color, COLOR);
     assert_eq!(
         line.style.dash,
@@ -486,12 +199,11 @@ fn assert_thin(doc: &HwpDocument, kind: u8) {
         }
     );
     close(line.style.width, 0.32, "규격0.1mm의 600dpi 양자화 획");
-    close(line.ink_bbox().height, 0.32, "실제 잉크 높이");
     close(line.x2 - line.x1, 80.0, "구분선 길이 유지");
-    let ink = line.ink_bbox();
+    // 굵기는 흐름에 더하지 않으므로 여백 0이면 첫 미주는 선 중심에서 시작한다.
     assert!(
-        first_line(doc, NOTE).y + 0.002 >= ink.y + ink.height,
-        "0여백에서도 미주와 겹치지 않는다"
+        first_line(doc, NOTE).y + 0.002 >= line.y1,
+        "0여백에서 첫 미주는 선 중심보다 위로 올라가지 않는다"
     );
     for profile in [RenderProfile::Screen, RenderProfile::Print] {
         let svg = doc
@@ -501,8 +213,11 @@ fn assert_thin(doc: &HwpDocument, kind: u8) {
             .split('<')
             .filter(|tag| tag.contains(&format!("stroke=\"{CSS_COLOR}\"")))
             .collect::<Vec<_>>();
-        assert_eq!(tags.len(), 1);
-        close(attribute(tags[0], "stroke-width"), 0.32, "SVG 실제 획 굵기");
+        // 이중선은 SVG에서 두 획으로 그린다.
+        assert_eq!(tags.len(), if kind == 8 { 2 } else { 1 });
+        if kind != 8 {
+            close(attribute(tags[0], "stroke-width"), 0.32, "SVG 실제 획 굵기");
+        }
         assert_eq!(tags[0].contains("stroke-dasharray=\"6 3\""), kind == 2);
     }
 }
