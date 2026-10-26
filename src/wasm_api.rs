@@ -7661,18 +7661,25 @@ impl HwpDocument {
         }
 
         // ParaShape 수정
-        if !para_mods_json.is_empty() && para_mods_json != "{}" {
+        // 유효한 문단 모양이 있을 때만 탭 정의·테두리를 만들어 단다. 없는 모양에 만들면
+        // 아무도 쓰지 않는 정의만 문서에 남는다.
+        let old_ps = self
+            .core
+            .document
+            .doc_info
+            .para_shapes
+            .get(old_psid as usize)
+            .cloned();
+        if let Some(ps) = old_ps.filter(|_| !para_mods_json.is_empty() && para_mods_json != "{}") {
             let mut para_mods = parse_para_shape_mods(para_mods_json);
             // 탭 정의와 테두리/배경은 문단 모양 적용 경로처럼 찾거나 만들어 달고, 테두리 간격도
             // 넣는다. 탭은 스타일의 지금 탭 정의에서 바뀐 항목만 덮어쓴다.
             if json_has_tab_keys(para_mods_json) {
-                let doc_info = &self.core.document.doc_info;
-                let base_tab_def_id = doc_info
-                    .para_shapes
-                    .get(old_psid as usize)
-                    .map_or(0, |ps| ps.tab_def_id);
-                let tab_def =
-                    build_tab_def_from_json(para_mods_json, base_tab_def_id, &doc_info.tab_defs);
+                let tab_def = build_tab_def_from_json(
+                    para_mods_json,
+                    ps.tab_def_id,
+                    &self.core.document.doc_info.tab_defs,
+                );
                 para_mods.tab_def_id = Some(self.core.document.find_or_create_tab_def(tab_def));
             }
             if json_has_border_keys(para_mods_json) {
@@ -7682,18 +7689,10 @@ impl HwpDocument {
             if let Some(spacing) = parse_json_i16_array(para_mods_json, "borderSpacing", 4) {
                 para_mods.border_spacing = Some([spacing[0], spacing[1], spacing[2], spacing[3]]);
             }
-            if let Some(ps) = self
-                .core
-                .document
-                .doc_info
-                .para_shapes
-                .get(style.para_shape_id as usize)
-            {
-                let new_ps = para_mods.apply_to(ps);
-                self.core.document.doc_info.para_shapes.push(new_ps);
-                let new_id = (self.core.document.doc_info.para_shapes.len() - 1) as u16;
-                self.core.document.doc_info.styles[style_id as usize].para_shape_id = new_id;
-            }
+            let new_ps = para_mods.apply_to(&ps);
+            self.core.document.doc_info.para_shapes.push(new_ps);
+            let new_id = (self.core.document.doc_info.para_shapes.len() - 1) as u16;
+            self.core.document.doc_info.styles[style_id as usize].para_shape_id = new_id;
         }
 
         // raw_data 무효화
