@@ -1186,6 +1186,13 @@ impl DocumentCore {
             }
         }
 
+        // 표·그림 앵커와 줄바꿈으로 만든 빈 문단도 저장본과 같은 기본 글자 모양을 쓴다.
+        for para in &mut paragraphs {
+            if para.text.is_empty() && para.char_shapes.is_empty() {
+                para.set_single_char_shape(self.css_to_char_shape_id(""));
+            }
+        }
+
         Ok(paragraphs)
     }
 
