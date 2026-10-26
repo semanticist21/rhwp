@@ -9,8 +9,8 @@ use crate::document_core::DocumentCore;
 use crate::error::HwpError;
 use crate::model::event::DocumentEvent;
 use crate::renderer::composer::{
-    paragraph_flow_end, recalculate_section_vpos, reflow_line_segs, restamp_indentation,
-    ParagraphBox,
+    paragraph_flow_end, paragraph_flow_state, recalculate_section_vpos, reflow_line_segs,
+    restamp_indentation, ParagraphBox,
 };
 use crate::renderer::page_layout::PageLayoutInfo;
 use crate::renderer::style_resolver::ResolvedStyleSet;
@@ -1566,7 +1566,8 @@ impl DocumentCore {
             )));
         }
 
-        let stored_end = paragraph_flow_end(&self.document.sections[sec_idx].paragraphs[para_idx]);
+        let stored_end =
+            paragraph_flow_state(&self.document.sections[sec_idx].paragraphs[para_idx]);
         let mut mods = parse_para_shape_mods(props_json);
 
         // 탭 설정 변경 처리: TabDef 생성 → tab_def_id 세팅
@@ -1688,7 +1689,8 @@ impl DocumentCore {
                 old.spacing_before != new.spacing_before || old.spacing_after != new.spacing_after
             })
         };
-        let stored_end = paragraph_flow_end(&self.document.sections[sec_idx].paragraphs[para_idx]);
+        let stored_end =
+            paragraph_flow_state(&self.document.sections[sec_idx].paragraphs[para_idx]);
         let styles = self.resolve_render_styles();
         let available_box = {
             let section = &self.document.sections[sec_idx];
@@ -2280,6 +2282,8 @@ impl DocumentCore {
             .ok_or_else(|| {
                 HwpError::RenderError(format!("문단 {}/{} 범위 초과", sec_idx, para_idx))
             })?;
+        let stored_flow =
+            paragraph_flow_state(&self.document.sections[sec_idx].paragraphs[para_idx]);
         let old_style = self
             .document
             .doc_info
@@ -2339,6 +2343,17 @@ impl DocumentCore {
         }
 
         self.reflow_body_paragraph(sec_idx, para_idx);
+        let styles = self.resolve_render_styles();
+        let hwp3 = self.document.layout_profile().hwp3_layout();
+        recalculate_section_vpos(
+            &mut self.document.sections[sec_idx].paragraphs,
+            para_idx,
+            None,
+            stored_flow,
+            &styles,
+            self.dpi,
+            hwp3,
+        );
         self.document.sections[sec_idx].raw_stream = None;
         self.rebuild_section(sec_idx);
         self.event_log.push(DocumentEvent::ParaFormatChanged {

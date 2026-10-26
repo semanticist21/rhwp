@@ -5704,31 +5704,36 @@ pub(crate) fn recalculate_section_vpos(
     paragraphs: &mut [Paragraph],
     start_para: usize,
     ignore_reset_range: Option<std::ops::Range<usize>>,
-    start_stored_end: Option<i32>,
+    start_stored_end: impl Into<ParagraphFlowState>,
     styles: &ResolvedStyleSet,
     dpi: f64,
     is_hwp3_variant: bool,
 ) {
+    let previous = start_stored_end.into();
+    let start_stored_end = previous.end;
     if paragraphs.is_empty() || start_para >= paragraphs.len() {
         return;
     }
 
     // 문단 경계 gap (HWPUNIT) = 앞 문단 spacing_after + 뒤 문단 spacing_before.
     // recalculate_cell_paragraph_vpos 의 boundary_gaps 와 동일 산식.
-    let boundary_gap = |prev: &Paragraph, curr: &Paragraph| -> i32 {
+    let boundary_gap_for_shapes = |prev: u16, curr: u16| -> i32 {
         let spacing_after = styles
             .para_styles
-            .get(prev.para_shape_id as usize)
+            .get(prev as usize)
             .map(|style| style.spacing_after)
             .unwrap_or(0.0);
         let spacing_before = styles
             .para_styles
-            .get(curr.para_shape_id as usize)
+            .get(curr as usize)
             .map(|style| style.spacing_before)
             .unwrap_or(0.0);
         let spacing_before =
             crate::renderer::hwp3_variant_flow_spacing_before(spacing_before, is_hwp3_variant);
         px_to_hwpunit(spacing_after + spacing_before, dpi)
+    };
+    let boundary_gap = |prev: &Paragraph, curr: &Paragraph| {
+        boundary_gap_for_shapes(prev.para_shape_id, curr.para_shape_id)
     };
 
     // 줄 전진량 — 로드 경로와 동일한 TAC th-관례. saturating: 조작 파일의 극단
@@ -5816,7 +5821,14 @@ pub(crate) fn recalculate_section_vpos(
                 .any(|paragraph| !paragraph.controls.is_empty());
         let bridge_delta = start_stored_end
             .filter(|_| unchanged_object_bridge)
-            .map(|end| next_vpos.saturating_sub(end));
+            .map(|end| {
+                let gap_delta = previous.para_shape_id.map_or(0, |old_shape| {
+                    let following = paragraphs[start_para + 1].para_shape_id;
+                    boundary_gap_for_shapes(paragraphs[start_para].para_shape_id, following)
+                        .saturating_sub(boundary_gap_for_shapes(old_shape, following))
+                });
+                next_vpos.saturating_sub(end).saturating_add(gap_delta)
+            });
         let delta = if is_reset {
             // 단/쪽 리셋 경계 — 저장 좌표 유지.
             0
@@ -5860,6 +5872,28 @@ pub(crate) fn recalculate_section_vpos(
 /// 편집 호출자가 reflow 이전에 캡처해 `recalculate_section_vpos` 의
 /// `start_stored_end` 로 전달하기 위한 헬퍼 — reflow 가 end 를 덮은 뒤에는 저장
 /// 좌표를 복원할 수 없다.
+pub(crate) struct ParagraphFlowState {
+    end: Option<i32>,
+    para_shape_id: Option<u16>,
+}
+
+impl From<Option<i32>> for ParagraphFlowState {
+    fn from(end: Option<i32>) -> Self {
+        Self {
+            end,
+            para_shape_id: None,
+        }
+    }
+}
+
+// 재시작 판별의 저장 끝점과 바뀌기 전 문단 간격은 서로 다른 증거다.
+pub(crate) fn paragraph_flow_state(para: &Paragraph) -> ParagraphFlowState {
+    ParagraphFlowState {
+        end: paragraph_flow_end(para),
+        para_shape_id: Some(para.para_shape_id),
+    }
+}
+
 pub(crate) fn paragraph_flow_end(para: &Paragraph) -> Option<i32> {
     para.line_segs.last().map(|ls| {
         let height = if ls.line_height > ls.text_height && ls.text_height > 0 {
