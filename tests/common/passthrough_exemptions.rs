@@ -33,12 +33,6 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "원문·셀 삭제 경계를 공통 함수로 넘긴다. 공통 함수가 대상 구역의 raw_stream을 비운 뒤 삭제를 적용한다.",
     ),
     (
-        "commands/text_editing.rs",
-        "delete_range_logical_native",
-        Exempt::DelegatesTo("delete_range_with_boundaries"),
-        "논리 캐럿을 원문·개체 경계로 변환한 뒤 공통 삭제 함수에 위임한다. 공통 함수가 대상 구역의 raw_stream을 무효화한다.",
-    ),
-    (
         "commands/formatting.rs",
         "reflow_body_paragraph_range_native",
         Exempt::DelegatesTo("refresh_section_native"),
