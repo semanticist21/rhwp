@@ -3201,41 +3201,6 @@ impl LayoutEngine {
                     BoundingBox::new(x, y, item.width, item.height),
                 ));
             }
-            // 글 없이 개체로 끝나는 마지막 줄도 저장 줄 경로처럼 문단 끝 캐럿 앵커를 둔다.
-            // 앵커가 없으면 저장 줄을 생략한 HWPX를 다시 열 때 개체 뒤 캐럿의 글꼴 높이를 잃는다.
-            if line_index + 1 == plan.rows.len()
-                && !line.children.iter().any(|child| {
-                    matches!(&child.node_type, RenderNodeType::TextRun(run) if run.is_para_end)
-                })
-            {
-                let (text_style, char_shape_id) =
-                    paragraph_active_text_style(styles, Some(para), chars.len());
-                let x = col_area.x + row.x + row.width;
-                line.children.push(RenderNode::new(
-                    tree.next_id(),
-                    RenderNodeType::TextRun(TextRunNode {
-                        text: String::new(),
-                        style: text_style,
-                        char_shape_id,
-                        para_shape_id: Some(para.para_shape_id),
-                        section_index: Some(section_index),
-                        para_index: Some(para_index),
-                        char_start: Some(logical_start(chars.len())),
-                        cell_context: None,
-                        is_para_end: true,
-                        is_line_break_end: false,
-                        rotation: 0.0,
-                        is_vertical: false,
-                        char_overlap: None,
-                        border_fill_id: 0,
-                        baseline: row.baseline,
-                        field_marker: FieldMarkerType::None,
-                        layout_positions: None,
-                        display_text: None,
-                    }),
-                    BoundingBox::new(x, col_area.y + row.y, 0.0, row.height),
-                ));
-            }
             let anchor = (!line.children.is_empty()).then_some((line.id, line.bbox.y));
             let top = col_area.y + row.y;
             let bottom = col_area.y
