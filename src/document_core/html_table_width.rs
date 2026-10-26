@@ -142,6 +142,11 @@ pub(super) fn reserve_content_heights(table: &mut Table, styles: &ResolvedStyleS
 
 /// 내용이 선언 크기보다 길면 넘친 만큼만 표 높이를 키운다. 칸 높이는 바꾸지 않는다.
 pub(super) fn grow_to_content_height(table: &mut Table, styles: &ResolvedStyleSet, dpi: f64) {
+    // ponytail: 병합 행이 엇갈리면 측정기의 행 배분이 선언 크기와 어긋나 넘침을
+    // 가려낼 수 없다. 칸 단위 내용 높이 비교가 생기면 병합 표에도 적용한다.
+    if table.cells.iter().any(|cell| cell.row_span > 1) {
+        return;
+    }
     // px 왕복 반올림 오차는 넘침으로 보지 않는다.
     const ROUNDING_HU: i64 = 10;
     let total = |session_edited: bool| -> i64 {
