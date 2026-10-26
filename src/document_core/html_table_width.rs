@@ -140,17 +140,24 @@ pub(super) fn reserve_content_heights(table: &mut Table, styles: &ResolvedStyleS
     table.sync_ctrl_height(heights.iter().sum());
 }
 
-/// 내용이 선언 크기보다 길면 표 높이만 실제 내용 높이로 키운다. 칸 높이는 바꾸지 않는다.
+/// 내용이 선언 크기보다 길면 넘친 만큼만 표 높이를 키운다. 칸 높이는 바꾸지 않는다.
 pub(super) fn grow_to_content_height(table: &mut Table, styles: &ResolvedStyleSet, dpi: f64) {
-    let measured = crate::renderer::height_measurer::HeightMeasurer::new(dpi)
-        .with_session_edited(true)
-        .measure_table(table, 0, 0, styles);
-    let content: u32 = measured
-        .row_heights
-        .iter()
-        .map(|height| px_to_hwpunit(*height, dpi).max(0) as u32)
-        .sum();
-    if content > table.common.height {
-        table.sync_ctrl_height(content);
+    // px 왕복 반올림 오차는 넘침으로 보지 않는다.
+    const ROUNDING_HU: i64 = 10;
+    let total = |session_edited: bool| -> i64 {
+        crate::renderer::height_measurer::HeightMeasurer::new(dpi)
+            .with_session_edited(session_edited)
+            .measure_table(table, 0, 0, styles)
+            .row_heights
+            .iter()
+            .map(|height| i64::from(px_to_hwpunit(*height, dpi)))
+            .sum()
+    };
+    // 선언 크기 측정과 내용 재조판 측정의 차이만 넘침이다. 병합 행 배분 같은
+    // 측정 자체의 차이는 두 측정에 똑같이 들어 있다.
+    let overflow = total(true) - total(false);
+    if overflow > ROUNDING_HU {
+        let height = i64::from(table.common.height) + overflow;
+        table.sync_ctrl_height(height.min(i64::from(u32::MAX)) as u32);
     }
 }
