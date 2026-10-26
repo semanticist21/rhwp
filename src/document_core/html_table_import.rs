@@ -1074,7 +1074,9 @@ impl DocumentCore {
                 baseline_distance: (total_height as f64 * 0.85).min(i32::MAX as f64) as i32,
                 line_spacing: 600,
                 segment_width: total_width.min(i32::MAX as u32) as i32,
-                tag: crate::model::paragraph::LineSeg::TAG_SINGLE_SEGMENT_LINE,
+                // HTML에서 만든 호스트 줄은 원문 저장 사다리의 좌표 증거가 아니다.
+                tag: crate::model::paragraph::LineSeg::TAG_SINGLE_SEGMENT_LINE
+                    | crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY,
                 ..Default::default()
             }],
             // 표 문단은 style 없는 붙인 문단처럼 기본 문단 모양(0)을 쓴다. 다른 문단의 모양을
