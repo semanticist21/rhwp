@@ -1034,6 +1034,14 @@ impl DocumentCore {
                 &self.resolve_render_styles(),
                 self.dpi,
             );
+        } else {
+            // 정확한 크기로 붙여도 내용이 칸보다 길면 한컴처럼 표 높이(sz)만 키운다.
+            // 칸 높이(cellSz)는 원래 선언값을 지킨다.
+            super::html_table_width::grow_to_content_height(
+                &mut table,
+                &self.resolve_render_styles(),
+                self.dpi,
+            );
         }
         let total_height = table.common.height;
 
