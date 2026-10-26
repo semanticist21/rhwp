@@ -99,3 +99,26 @@ fn fractional_css_margins_keep_physical_units_after_both_formats() {
         }
     }
 }
+
+#[test]
+fn oversized_or_nonfinite_css_margins_do_not_overflow_or_replace_valid_defaults() {
+    for css in [
+        "margin-left:1e100pt;text-indent:-1e100px;margin-right:infpx;margin-top:NaNpx;margin-bottom:1e100cm",
+        "margin-left:1e7pt;text-indent:1e7pt",
+    ] {
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().unwrap();
+        core.paste_html_native(0, 0, 0, &format!("<p style=\"{css}\">문단</p>"))
+            .unwrap();
+        for bytes in [core.export_hwp_native().unwrap(), core.export_hwpx_native().unwrap()] {
+            let saved = DocumentCore::from_bytes(&bytes).unwrap();
+            let values = props(&saved, 0);
+            for key in ["marginLeft", "marginRight", "indent", "spacingBefore", "spacingAfter"] {
+                assert_eq!(values[key], 0.0, "{key}: {values}");
+            }
+            let caret = cursor(&saved, 0);
+            assert!(caret["x"].as_f64().unwrap().is_finite());
+            assert!(caret["y"].as_f64().unwrap().is_finite());
+        }
+    }
+}

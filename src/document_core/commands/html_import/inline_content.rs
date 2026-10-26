@@ -401,12 +401,20 @@ impl DocumentCore {
             };
             let n: f64 = num.trim().parse().ok()?;
             // 마지막 ×2 가 위에서 말한 ParaShape IR 스케일이다.
-            Some(match unit {
-                "px" => (n * 72.0 / 96.0 * 100.0).round() as i32 * 2,
-                "cm" => (n * 72.0 / 2.54 * 100.0).round() as i32 * 2,
-                "mm" => (n * 72.0 / 25.4 * 100.0).round() as i32 * 2,
-                _ => (n * 100.0).round() as i32 * 2,
-            })
+            let physical = match unit {
+                "px" => n * 72.0 / 96.0 * 100.0,
+                "cm" => n * 72.0 / 2.54 * 100.0,
+                "mm" => n * 72.0 / 25.4 * 100.0,
+                _ => n * 100.0,
+            }
+            .round();
+            if !physical.is_finite()
+                || physical < f64::from(i32::MIN / 2)
+                || physical > f64::from(i32::MAX / 2)
+            {
+                return None;
+            }
+            Some(physical as i32 * 2)
         };
         let css_margin_left =
             parse_css_value(&css_lower, "margin-left").and_then(|v| css_len_to_hwpunit(&v));
@@ -423,10 +431,12 @@ impl DocumentCore {
             // 따라서 left = margin-left + text-indent(첫 줄 위치), indent = text-indent 로 옮긴다.
             let ml = css_margin_left.unwrap_or(0);
             let ti = css_text_indent.unwrap_or(0);
-            ps.margin_left = (ml + ti).max(0);
-            ps.indent = ti;
-            // 평문 표기를 유지하되, 여백은 직렬화기가 공통 IR에서 물리 단위로 되돌린다.
-            ps.hwpx_plain_para_margin = true;
+            if let Some(left) = ml.checked_add(ti) {
+                ps.margin_left = left.max(0);
+                ps.indent = ti;
+                // 평문 표기를 유지하되, 여백은 직렬화기가 공통 IR에서 물리 단위로 되돌린다.
+                ps.hwpx_plain_para_margin = true;
+            }
         }
         if let Some(v) = parse_css_value(&css_lower, "margin-top") {
             if let Some(hu) = css_len_to_hwpunit(&v) {
