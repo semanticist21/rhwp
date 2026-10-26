@@ -48,6 +48,7 @@ impl LayoutEngine {
                 child,
                 row,
                 &fragment.start_cut,
+                fragment.is_block,
                 styles,
             );
         }
@@ -57,11 +58,16 @@ impl LayoutEngine {
         let Some(cut) = self
             .mixed_nested_split_from_cut(cell, table, styles, index, index + 1, unit.para_idx)
             .and_then(|split| split.recursive_cut)
-            .filter(|cut| !cut.start_cut_is_block && !cut.is_block_split)
         else {
             return false;
         };
-        self.stored_nested_source_cut_frame_break(child, cut.start_row, &cut.start_cut, styles)
+        self.stored_nested_source_cut_frame_break(
+            child,
+            cut.start_row,
+            &cut.start_cut,
+            cut.start_cut_is_block,
+            styles,
+        )
     }
 
     fn stored_nested_source_cut_frame_break(
@@ -69,19 +75,26 @@ impl LayoutEngine {
         table: &Table,
         row: usize,
         cut: &[usize],
+        is_block: bool,
         styles: &ResolvedStyleSet,
     ) -> bool {
-        Self::row_cut_cell_order(table, row)
-            .into_iter()
-            .enumerate()
-            .any(|(order, cell_index)| {
-                let Some(&start) = cut.get(order) else {
-                    return false;
-                };
-                let Some(cell) = table.cells.get(cell_index) else {
-                    return false;
-                };
-                self.stored_nested_source_unit_frame_break(cell, table, start, styles)
-            })
+        let mut cells = if is_block {
+            let block = super::super::table_partial::rowspan_block_range(table, row);
+            Self::row_block_cells(table, block.0, block.1)
+        } else {
+            Self::row_cut_cell_order(table, row)
+                .into_iter()
+                .filter_map(|index| table.cells.get(index))
+                .collect()
+        };
+        if is_block {
+            cells.sort_by_key(|cell| (cell.row, cell.col));
+        }
+        cells.into_iter().enumerate().any(|(order, cell)| {
+            let Some(&start) = cut.get(order) else {
+                return false;
+            };
+            self.stored_nested_source_unit_frame_break(cell, table, start, styles)
+        })
     }
 }
