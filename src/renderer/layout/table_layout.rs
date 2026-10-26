@@ -26147,18 +26147,21 @@ impl LayoutEngine {
                 } else {
                     &[]
                 };
-                let rows = (row..block.1.min(cut.end_row))
+                let painted_end = block.1.min(cut.end_row);
+                let rows = (row..painted_end)
                     .map(|block_row| {
                         self.row_block_cut_row_content_height(
                             child, block.0, block.1, block_row, start_cut, end_cut, styles,
                         )
                     })
                     .sum::<f64>();
+                // 이미 소비한 빈 행 사이에도 부분 표가 그리는 간격은 남는다.
                 physical +=
                     rows.max(self.row_block_content_height(
                         child, block.0, block.1, start_cut, end_cut, styles,
-                    ));
-                row = block.1.min(cut.end_row);
+                    )) + hwpunit_to_px(child.cell_spacing as i32, self.dpi)
+                        * painted_end.saturating_sub(row + 1) as f64;
+                row = painted_end;
                 if row < cut.end_row {
                     physical += hwpunit_to_px(child.cell_spacing as i32, self.dpi);
                 }
