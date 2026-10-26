@@ -381,22 +381,13 @@ fn invalid_or_zero_css_dimensions_fall_back_and_oversized_grids_or_heights_fail(
 
 fn appearance(core: &DocumentCore) -> serde_json::Value {
     let (paragraph, control, table) = table(core);
-    let props: serde_json::Value = serde_json::from_str(
-        &core
-            .get_table_properties_native(0, paragraph, control)
-            .unwrap(),
-    )
-    .unwrap();
-    let mut table_values = serde_json::Map::new();
-    for key in [
-        "cellSpacing",
-        "paddingLeft",
-        "paddingRight",
-        "paddingTop",
-        "paddingBottom",
-    ] {
-        table_values.insert(key.to_string(), props[key].clone());
-    }
+    let table_values = serde_json::json!({
+        "cellSpacing": table.cell_spacing,
+        "paddingLeft": table.padding.left,
+        "paddingRight": table.padding.right,
+        "paddingTop": table.padding.top,
+        "paddingBottom": table.padding.bottom,
+    });
     let cells: Vec<_> = (0..table.cells.len())
         .map(|cell| {
             let props: serde_json::Value = serde_json::from_str(
