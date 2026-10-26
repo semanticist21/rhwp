@@ -819,33 +819,24 @@ impl DocumentCore {
             )
         };
 
-        // [Task #1037 + para-unit regression] dialog 표시 한컴 정합:
-        // - margin/indent 는 raw_ps 직접 사용 (variant_div 미적용)
-        // - HWP3 native 만 raw margin_left 가 continuation 라인 position 이므로
-        //   한컴 dialog "왼쪽 여백" 을 effective first-line position 으로 보정한다.
-        // - HWP5/HWPX 및 HWP3→HWP5 변환본은 raw margin_left 가 dialog 의 왼쪽 여백 의미다.
-        let (raw_left_hu, raw_right_hu, raw_indent_hu) = raw_ps
+        // 문단 조회도 조판과 같은 물리·글자 단위 해석을 쓴다.
+        let margin_px = |raw| {
+            crate::renderer::style_resolver::paragraph_margin_hwpunit(raw, &self.document.doc_info)
+                * self.dpi
+                / crate::renderer::HWPUNIT_PER_INCH
+        };
+        let (raw_left, raw_right, raw_indent) = raw_ps
             .map(|r| (r.margin_left, r.margin_right, r.indent))
             .unwrap_or((0, 0, 0));
-        // parser_architecture.md §47: 공통 편집 레이어에서 header.version 직접
-        // 비교를 새로 만들지 않고 layout_profile() 질의로 판정한다.
-        // `version.major==3 && !hwp3_layout()` 은 hwp3_native_layout() 과 동치다:
-        // native HWP3 는 format=Hwp3·hwp3_lineage=false·major=3, 변환본은
-        // format=Hwp5·hwp3_lineage=true·major=5 이므로 4개 출처 모두 결과가 같다.
-        let is_hwp3_native = self.document.layout_profile().hwp3_native_layout();
-        let effective_left_hu = if is_hwp3_native {
-            raw_left_hu + raw_indent_hu.min(0)
-        } else {
-            raw_left_hu
-        };
-        // [Issue #1172] ParaShape margin/indent 의 IR 값은 2× 스케일이다
-        // (HWP5 바이너리 원본 스케일, HWPX 도 parser 의 val2x 로 통일 — header.rs).
-        // 즉 1pt = 200 HWPUNIT. 한컴 편집기 정답: para-001 margin 2000 → 10.0pt.
-        // dialog 표시(px→pt by frontend pxToPt)와 정합하려면 표준 hwpunit_to_px(7200/inch,
-        // 1× 가정) 적용 전에 2× 스케일을 1× 로 환산(÷2)해야 한다. (종전: ÷2 누락 → 2배 표시)
-        let dialog_margin_left_px = crate::renderer::hwpunit_to_px(effective_left_hu / 2, self.dpi);
-        let dialog_margin_right_px = crate::renderer::hwpunit_to_px(raw_right_hu / 2, self.dpi);
-        let dialog_indent_px = crate::renderer::hwpunit_to_px(raw_indent_hu / 2, self.dpi);
+        let dialog_indent_px = margin_px(raw_indent);
+        // HWP3 원본의 왼쪽 여백은 이어지는 줄 기준이므로 첫 줄 위치로 표시한다.
+        let dialog_margin_left_px = margin_px(raw_left)
+            + if self.document.layout_profile().hwp3_native_layout() {
+                dialog_indent_px.min(0.0)
+            } else {
+                0.0
+            };
+        let dialog_margin_right_px = margin_px(raw_right);
 
         match ps {
             Some(ps) => {
@@ -896,10 +887,8 @@ impl DocumentCore {
                     align_str,
                     ps.line_spacing, ps.line_spacing_type,
                     dialog_margin_left_px, dialog_margin_right_px, dialog_indent_px,
-                    // spacing_before/after는 원본 HWPUNIT → px (1x) 변환 (Task #9)
-                    // ResolvedParaStyle은 /2.0이 적용되어 UI 표시에 부적합
-                    raw_ps.map(|r| crate::renderer::hwpunit_to_px(r.spacing_before, self.dpi)).unwrap_or(ps.spacing_before),
-                    raw_ps.map(|r| crate::renderer::hwpunit_to_px(r.spacing_after, self.dpi)).unwrap_or(ps.spacing_after),
+                    raw_ps.map(|r| margin_px(r.spacing_before)).unwrap_or(ps.spacing_before),
+                    raw_ps.map(|r| margin_px(r.spacing_after)).unwrap_or(ps.spacing_after),
                     para_shape_id,
                     head_str, ps.para_level, ps.numbering_id,
                     widow_orphan, keep_with_next, keep_lines, page_break_before,
@@ -1577,6 +1566,7 @@ impl DocumentCore {
             )));
         }
 
+        let stored_end = paragraph_flow_end(&self.document.sections[sec_idx].paragraphs[para_idx]);
         let mut mods = parse_para_shape_mods(props_json);
 
         // 탭 설정 변경 처리: TabDef 생성 → tab_def_id 세팅
@@ -1638,6 +1628,21 @@ impl DocumentCore {
             );
         }
 
+        // 저장 줄의 문단 간격도 즉시 갱신해 다음 입력·undo 때 뒤늦게 움직이지 않게 한다.
+        if mods.spacing_before.is_some() || mods.spacing_after.is_some() {
+            let styles = self.resolve_render_styles();
+            let hwp3 = self.document.layout_profile().hwp3_layout();
+            recalculate_section_vpos(
+                &mut self.document.sections[sec_idx].paragraphs,
+                para_idx,
+                None,
+                stored_end,
+                &styles,
+                self.dpi,
+                hwp3,
+            );
+        }
+
         self.document.sections[sec_idx].raw_stream = None;
         self.rebuild_section(sec_idx);
         self.event_log.push(DocumentEvent::ParaFormatChanged {
@@ -1675,6 +1680,15 @@ impl DocumentCore {
             )));
         }
 
+        let old_id = self.document.sections[sec_idx].paragraphs[para_idx].para_shape_id;
+        let spacing_changed = {
+            let shapes = &self.document.doc_info.para_shapes;
+            shapes.get(old_id as usize).is_none_or(|old| {
+                let new = &shapes[para_shape_id as usize];
+                old.spacing_before != new.spacing_before || old.spacing_after != new.spacing_after
+            })
+        };
+        let stored_end = paragraph_flow_end(&self.document.sections[sec_idx].paragraphs[para_idx]);
         let styles = self.resolve_render_styles();
         let available_box = {
             let section = &self.document.sections[sec_idx];
@@ -1698,6 +1712,19 @@ impl DocumentCore {
             para.para_shape_id = para_shape_id;
             restamp_indentation(&mut para.line_segs, old_indent, new_indent);
             reflow_line_segs(para, available_box, &styles, self.dpi);
+        }
+
+        if spacing_changed {
+            let hwp3 = self.document.layout_profile().hwp3_layout();
+            recalculate_section_vpos(
+                &mut self.document.sections[sec_idx].paragraphs,
+                para_idx,
+                None,
+                stored_end,
+                &styles,
+                self.dpi,
+                hwp3,
+            );
         }
 
         self.document.sections[sec_idx].raw_stream = None;
