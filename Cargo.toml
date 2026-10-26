@@ -562,6 +562,3 @@ codegen-units = 16
 # 그대로 보존된다(원 작성자 planet6897, 이관 동의 완료).
 #
 
-[[example]]
-name = "probe_pic"
-path = "tools/diagnostics/probe_pic.rs"
