@@ -52,7 +52,9 @@ fn layer_cells<'a>(node: &'a LayerNode, result: &mut Vec<&'a TableCellNode>) {
                 layer_cells(child, result);
             }
         }
-        LayerNodeKind::ClipRect { child, .. } => layer_cells(child, result),
+        LayerNodeKind::ClipRect { child, .. } | LayerNodeKind::ClipPath { child, .. } => {
+            layer_cells(child, result)
+        }
         LayerNodeKind::Leaf { .. } => {}
     }
 }

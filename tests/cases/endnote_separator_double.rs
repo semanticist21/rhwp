@@ -244,7 +244,9 @@ fn assert_double(doc: &HwpDocument, width: u8) -> Vec<LineNode> {
                         collect(child, result);
                     }
                 }
-                LayerNodeKind::ClipRect { child, .. } => collect(child, result),
+                LayerNodeKind::ClipRect { child, .. } | LayerNodeKind::ClipPath { child, .. } => {
+                    collect(child, result)
+                }
                 LayerNodeKind::Leaf { ops } => {
                     for op in ops {
                         if let PaintOp::Line { line, .. } = op {

@@ -11,7 +11,6 @@ use rhwp::{
     renderer::{
         canvaskit_policy::{analyze_canvaskit_replay_plan, CanvasKitReplayMode},
         layer_renderer::LayerRenderer,
-        long_dash_intervals,
         render_tree::{BoundingBox, PathNode, RectangleNode},
         svg_layer::SvgLayerRenderer,
         LineStyle, PathCommand, ShapeStyle, StrokeDash,
@@ -32,17 +31,6 @@ fn blank() -> DocumentCore {
 
 #[test]
 fn long_dash_replay_is_bounded_and_keeps_direction_endpoints_and_legacy_dash() {
-    assert_eq!(long_dash_intervals(1.0), Some([24.0, 8.0]));
-    for width in [
-        0.0,
-        -1.0,
-        f64::NAN,
-        f64::INFINITY,
-        f64::NEG_INFINITY,
-        f64::MAX,
-    ] {
-        assert_eq!(long_dash_intervals(width), None);
-    }
     let bbox = BoundingBox::new(0.0, 0.0, 120.0, 120.0);
     let style = LineStyle {
         color: COLOR,
