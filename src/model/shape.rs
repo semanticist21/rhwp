@@ -32,7 +32,8 @@ pub(crate) mod common_obj_offsets {
 pub struct CommonObjAttr {
     /// Producer-owned paint anchored to a cell frame, independent of text edits.
     /// Persisted by the bounded cell-paint sidecar, not by an invented HWP bit.
-    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    // 기록하지 않은 false를 클립보드 배치 정보에서 다시 읽을 수 있어야 한다.
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub cell_frame_paint: bool,
     /// Retained drawing's proven cell-border role; visible geometry stays native.
     #[serde(skip_serializing_if = "Option::is_none")]
