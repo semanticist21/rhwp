@@ -128,6 +128,18 @@ fn assert_roundtrip(core: &DocumentCore, expected_tables: usize, no_lineseg_hwpx
             );
         }
         let (saved_images, saved_tables) = nodes(&reopened);
+        if saved_images.iter().zip(&images).any(|(saved, original)| {
+            (saved.x - original.x).abs() >= 0.1 || (saved.y - original.y).abs() >= 0.1
+        }) {
+            eprintln!(
+                "{format}: 원문 문단 {:#?}",
+                core.document().sections[0].paragraphs
+            );
+            eprintln!(
+                "{format}: 재열기 문단 {:#?}",
+                reopened.document().sections[0].paragraphs
+            );
+        }
         assert_eq!(
             saved_images.len(),
             1,

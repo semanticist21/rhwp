@@ -91,7 +91,8 @@ fn fractional_css_margins_keep_physical_units_after_both_formats() {
         core.export_hwpx_native().unwrap(),
     ] {
         let saved = DocumentCore::from_bytes(&bytes).unwrap();
-        for document in [&core, &saved] {
+        let repeated = DocumentCore::from_bytes(&saved.export_hwpx_native().unwrap()).unwrap();
+        for document in [&core, &saved, &repeated] {
             let values = props(document, 1);
             for (key, expected) in expected {
                 assert_eq!(values[key], expected, "{key}: {values}");

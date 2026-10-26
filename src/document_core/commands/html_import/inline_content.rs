@@ -344,6 +344,9 @@ impl DocumentCore {
         // CharShape 쪽과 동일 — 원본 PARA_SHAPE 바이트를 비우지 않으면 정렬·줄간격 변경이
         // 저장 시 사라진다(ParaShapeMods::apply_to 와 같은 처리).
         ps.raw_data = None;
+        // 새 HTML 모양에는 원본 HWPX 표기가 없다. 패키지 버전에 맞는 공통 단위 출력을 쓴다.
+        ps.hwpx_plain_para_margin = false;
+        ps.hwpx_plain_para_margin_physical = false;
 
         let css_lower = css.to_lowercase();
 
@@ -434,20 +437,16 @@ impl DocumentCore {
             if let Some(left) = ml.checked_add(ti) {
                 ps.margin_left = left.max(0);
                 ps.indent = ti;
-                // 평문 표기를 유지하되, 여백은 직렬화기가 공통 IR에서 물리 단위로 되돌린다.
-                ps.hwpx_plain_para_margin = true;
             }
         }
         if let Some(v) = parse_css_value(&css_lower, "margin-top") {
             if let Some(hu) = css_len_to_hwpunit(&v) {
                 ps.spacing_before = hu.max(0);
-                ps.hwpx_plain_para_margin = true;
             }
         }
         if let Some(v) = parse_css_value(&css_lower, "margin-bottom") {
             if let Some(hu) = css_len_to_hwpunit(&v) {
                 ps.spacing_after = hu.max(0);
-                ps.hwpx_plain_para_margin = true;
             }
         }
 
