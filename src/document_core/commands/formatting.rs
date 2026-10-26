@@ -2342,8 +2342,14 @@ impl DocumentCore {
             para.set_single_char_shape(new_char_shape_id);
         }
 
-        self.reflow_body_paragraph(sec_idx, para_idx);
         let styles = self.resolve_render_styles();
+        let paragraph_box =
+            body_paragraph_box_for_para_shape(self, sec_idx, new_para_shape_id, &styles);
+        let (old_indent, new_indent) = self.para_shape_indents(current_psid, new_para_shape_id);
+        let para = &mut self.document.sections[sec_idx].paragraphs[para_idx];
+        // 스타일 재조판도 저장 원점과 태그를 이어받아 HWPX 캐시의 출처를 보존한다.
+        restamp_indentation(&mut para.line_segs, old_indent, new_indent);
+        reflow_line_segs(para, paragraph_box, &styles, self.dpi);
         let hwp3 = self.document.layout_profile().hwp3_layout();
         recalculate_section_vpos(
             &mut self.document.sections[sec_idx].paragraphs,
