@@ -120,14 +120,7 @@ fn check(broken: &mut Vec<String>, label: &str, core: &DocumentCore, para: usize
             para,
             &mut owners,
         );
-        let number_at = want.1.iter().find(|(kind, _)| *kind == "번호").unwrap().1;
-        // 런의 char_start는 앞선 개체 자리를 한 칸씩 센 논리 위치다.
-        let objects_before = want
-            .1
-            .iter()
-            .filter(|(kind, at)| *kind != "번호" && *at <= number_at)
-            .count();
-        let expected_owner = number_at + objects_before;
+        let expected_owner = want.1.iter().find(|(kind, _)| *kind == "번호").unwrap().1;
         if owners != [Some(expected_owner)] {
             broken.push(format!(
                 "{label} → {state}: 표시 필드의 모델 소속 {owners:?}, 원본 자리표 {expected_owner}"
