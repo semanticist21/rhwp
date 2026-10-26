@@ -158,6 +158,11 @@ impl DocumentCore {
                 });
         }
 
+        // 새 HTML 문단의 기본 글자 모양도 저장해 재열기 때 12px 폴백으로 달라지지 않게 한다.
+        if para.char_shapes.is_empty() {
+            para.set_single_char_shape(self.css_to_char_shape_id(block_style));
+        }
+
         // 그림은 확장 제어문자 8칸을 차지한다. 그 자리를 char_offsets 의 갭으로 남겨야
         // control_text_positions 가 그림을 글 사이에 되짚는다.
         for (char_idx, pic) in pictures {
@@ -397,10 +402,10 @@ impl DocumentCore {
             let n: f64 = num.trim().parse().ok()?;
             // 마지막 ×2 가 위에서 말한 ParaShape IR 스케일이다.
             Some(match unit {
-                "px" => (n * 72.0 / 96.0 * 200.0).round() as i32,
-                "cm" => (n * 72.0 / 2.54 * 200.0).round() as i32,
-                "mm" => (n * 72.0 / 25.4 * 200.0).round() as i32,
-                _ => (n * 200.0).round() as i32,
+                "px" => (n * 72.0 / 96.0 * 100.0).round() as i32 * 2,
+                "cm" => (n * 72.0 / 2.54 * 100.0).round() as i32 * 2,
+                "mm" => (n * 72.0 / 25.4 * 100.0).round() as i32 * 2,
+                _ => (n * 100.0).round() as i32 * 2,
             })
         };
         let css_margin_left =
