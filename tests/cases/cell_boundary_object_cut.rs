@@ -784,6 +784,105 @@ fn assert_inline_run_axis(
 }
 
 fn inline_axis_fixture(flat: bool, tables: bool) -> (HwpDocument, Path) {
+    fn max_id(paragraphs: &[Paragraph]) -> u32 {
+        paragraphs
+            .iter()
+            .flat_map(|p| &p.controls)
+            .map(|control| match control {
+                Control::Table(table) => table.common.instance_id.max(
+                    table
+                        .cells
+                        .iter()
+                        .map(|cell| max_id(&cell.paragraphs))
+                        .max()
+                        .unwrap_or(0),
+                ),
+                Control::Picture(picture) => picture.common.instance_id.max(picture.instance_id),
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn fit_frames(paragraphs: &mut [Paragraph], available: u32, next_id: &mut u32) -> u32 {
+        let mut flow = 0u32;
+        for paragraph in paragraphs {
+            let mut objects = 0u32;
+            for control in &mut paragraph.controls {
+                match control {
+                    Control::Table(table) => {
+                        table.common.instance_id = *next_id;
+                        *next_id += 1;
+                        table.raw_ctrl_data.clear();
+                        table.raw_ctrl_seal = None;
+                        let outer = u32::from(table.outer_margin_left.max(0) as u16)
+                            + u32::from(table.outer_margin_right.max(0) as u16);
+                        let width = table
+                            .common
+                            .width
+                            .min(available.checked_sub(outer).unwrap());
+                        let columns = table.get_column_widths();
+                        let total = columns.iter().map(|&width| u64::from(width)).sum::<u64>();
+                        let mut assigned = 0;
+                        let widths: Vec<_> = columns
+                            .iter()
+                            .enumerate()
+                            .map(|(index, &column)| {
+                                let next = if index + 1 == columns.len() {
+                                    width - assigned
+                                } else {
+                                    (u64::from(column) * u64::from(width) / total) as u32
+                                };
+                                assigned += next;
+                                next
+                            })
+                            .collect();
+                        assert_eq!(assigned, width);
+                        let old: Vec<_> = table.cells.iter().map(|cell| cell.width).collect();
+                        table.set_column_widths(&widths).unwrap();
+                        for (cell, old) in table.cells.iter_mut().zip(old) {
+                            cell.shift_text_area_width(i64::from(cell.width) - i64::from(old));
+                            let padding = cell.effective_padding(&table.padding);
+                            let horizontal =
+                                padding.left.max(0) as u32 + padding.right.max(0) as u32;
+                            let content =
+                                fit_frames(&mut cell.paragraphs, cell.width - horizontal, next_id);
+                            cell.height =
+                                content + padding.top.max(0) as u32 + padding.bottom.max(0) as u32;
+                        }
+                        table.set_column_widths(&widths).unwrap();
+                        objects += table.common.height
+                            + table.outer_margin_top.max(0) as u32
+                            + table.outer_margin_bottom.max(0) as u32;
+                    }
+                    Control::Picture(picture) => {
+                        objects += picture.common.height
+                            + picture.common.margin.top.max(0) as u32
+                            + picture.common.margin.bottom.max(0) as u32;
+                    }
+                    _ => {}
+                }
+            }
+            // 직접 복제한 본문 줄의 절대 vpos·고정 높이는 새 셀의 저장 프레임이 아니다.
+            // 각 글줄과 모든 자식 개체를 담는 명시적 여유 프레임을 아래에서 위로 만든다.
+            let origin = paragraph
+                .line_segs
+                .first()
+                .map_or(0, |line| line.vertical_pos);
+            let advance = paragraph.line_segs.last().map_or(1600, |line| {
+                (line.vertical_pos - origin + line.line_height + line.line_spacing).max(0) as u32
+            });
+            for line in &mut paragraph.line_segs {
+                line.vertical_pos = line.vertical_pos - origin + flow as i32;
+                line.column_start = 0;
+                line.segment_width = (available / 4 * 4) as i32;
+                line.tag |= rhwp::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY;
+            }
+            flow += advance + objects;
+        }
+        flow
+    }
+
     let (core, path) = paste_fixture(flat, tables, true, 0);
     let mut document = core.document().clone();
     let mut paragraphs = &mut document.sections[0].paragraphs;
@@ -817,6 +916,18 @@ fn inline_axis_fixture(flat: bool, tables: bool) -> (HwpDocument, Path) {
             }
         }
     }
+    let Control::Table(outer) = &document.sections[0].paragraphs[1].controls[0] else {
+        unreachable!()
+    };
+    let available = outer.common.width
+        + outer.outer_margin_left.max(0) as u32
+        + outer.outer_margin_right.max(0) as u32;
+    let mut next_id = max_id(&document.sections[0].paragraphs) + 1;
+    fit_frames(
+        &mut document.sections[0].paragraphs,
+        available,
+        &mut next_id,
+    );
     let mut doc = HwpDocument::create_empty();
     doc.set_document(document);
     (doc, path)
