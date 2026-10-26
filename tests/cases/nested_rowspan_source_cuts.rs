@@ -82,6 +82,7 @@ fn fixture(
         }),
         ..Default::default()
     };
+    child.common.instance_id = 2;
     child.common.width = 20_000;
     child.common.height = 2400;
     child.common.flow_with_text = true;
@@ -116,6 +117,7 @@ fn fixture(
         ],
         ..Default::default()
     };
+    parent.common.instance_id = 1;
     parent.common.width = 30_000;
     parent.common.height = 1200;
     parent.common.flow_with_text = true;
