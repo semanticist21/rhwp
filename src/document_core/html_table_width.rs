@@ -139,3 +139,18 @@ pub(super) fn reserve_content_heights(table: &mut Table, styles: &ResolvedStyleS
     }
     table.sync_ctrl_height(heights.iter().sum());
 }
+
+/// 내용이 선언 크기보다 길면 표 높이만 실제 내용 높이로 키운다. 칸 높이는 바꾸지 않는다.
+pub(super) fn grow_to_content_height(table: &mut Table, styles: &ResolvedStyleSet, dpi: f64) {
+    let measured = crate::renderer::height_measurer::HeightMeasurer::new(dpi)
+        .with_session_edited(true)
+        .measure_table(table, 0, 0, styles);
+    let content: u32 = measured
+        .row_heights
+        .iter()
+        .map(|height| px_to_hwpunit(*height, dpi).max(0) as u32)
+        .sum();
+    if content > table.common.height {
+        table.sync_ctrl_height(content);
+    }
+}
