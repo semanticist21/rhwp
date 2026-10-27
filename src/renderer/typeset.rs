@@ -5093,6 +5093,25 @@ impl TypesetEngine {
             && is_first_table
             && pre_height <= 0.0
             && (fmt.square_host_plan.is_some() || no_lineseg_square_band.is_some());
+        // 저장 줄이 없는 **빈** host 의 전폭 Square 표: 표는 오프셋·바깥여백 위 아래에
+        // 놓이고 host 빈 줄은 표 아래로 내려간다(layout 과 같은 helper).
+        let empty_square_host_geometry = (is_wrap_around_table && is_first_table)
+            .then(|| {
+                let col_w_px = st
+                    .layout
+                    .column_areas
+                    .get(st.current_column as usize)
+                    .map_or(st.layout.body_area.width, |area| area.width);
+                crate::renderer::unstored_empty_square_table_host_geometry_px(
+                    para,
+                    table,
+                    col_w_px,
+                    styles,
+                    styles.para_styles.get(para.para_shape_id as usize),
+                    self.dpi,
+                )
+            })
+            .flatten();
         if no_lineseg_band_host {
             let v_off_px = crate::renderer::hwpunit_to_px(signed_vertical_offset, self.dpi);
             let host_h = if fmt.square_host_plan.is_some() {
@@ -5111,6 +5130,8 @@ impl TypesetEngine {
                 plan.relative_to(0.0, -host_origin);
                 st.record_square_host_flow(para_idx, plan);
             }
+        } else if let Some((table_top, below)) = empty_square_host_geometry {
+            st.advance_flow_by(pre_height + table_top + table_total_height + below);
         } else if page_anchored_square {
             // [#7548] 쪽·종이 기준 어울림 표는 앵커 흐름 밖(절대 위치)에 놓인다 — 흐름에는
             // host 본문만 전진하고 표 높이를 예약하지 않는다(layout 의 절대 배치와 짝).

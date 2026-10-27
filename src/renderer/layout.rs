@@ -9479,12 +9479,26 @@ impl LayoutEngine {
                             >= 2
                     })
                     .unwrap_or(false);
-                let same_owner_table_precedes = owner_has_coanchored_stack
-                    && col_content.items[..item_ordinal].iter().any(|previous| {
-                        matches!(previous,
+                let own_table_precedes = col_content.items[..item_ordinal].iter().any(|previous| {
+                    matches!(previous,
                             PageItem::Table { para_index, .. }
                                 | PageItem::PartialTable { para_index, .. }
                                 if *para_index == item_para)
+                });
+                let same_owner_table_precedes = owner_has_coanchored_stack && own_table_precedes;
+                // 저장 줄 없는 host 의 첫 글줄이 자기 자리차지 표 아래에서 시작하는 형상은
+                // 그 표의 exclusion 바닥에서 줄을 놓는다(typeset 과 같은 판별). 저장 줄이
+                // 없어 잉크 probe 가 0 이므로 겹침 판정 대신 바닥으로 바로 보낸다.
+                let owner_line_below_own_table = own_table_precedes
+                    && matches!(
+                        item,
+                        PageItem::FullParagraph { .. }
+                            | PageItem::PartialParagraph { start_line: 0, .. }
+                    )
+                    && paragraphs.get(item_para).is_some_and(|owner| {
+                        crate::renderer::unstored_host_text_follows_topbottom_table(
+                            owner, styles, self.dpi,
+                        )
                     });
                 // [#4613 · #4599 밴드-플로우] 잉크 없는(공백 전용·컨트롤 없음) 문단은 밴드와
                 // 충돌할 잉크가 없다 — 한글 2022 는 이런 빈 줄을 자리차지 표 밴드에
@@ -11314,6 +11328,28 @@ impl LayoutEngine {
                     return (y_offset, false);
                 }
                 if let Some(para) = paragraphs.get(*para_index) {
+                    // 저장 줄 없는 빈 글앞/글뒤 표 host 는 typeset(decoration_host)이
+                    // `앞간격 + em 줄 + 뒤간격` 으로 계상한다. 공백 글자가 있어도 그리지 않고
+                    // 같은 메트릭으로 전진한다 — 표는 뒤 Shape 항목이 그린다.
+                    if crate::renderer::para_is_unstored_empty_overlay_table_host(para) {
+                        let style_id = composed
+                            .get(*para_index)
+                            .map(|c| c.para_style_id as usize)
+                            .unwrap_or(para.para_shape_id as usize);
+                        let para_style = styles.para_styles.get(style_id);
+                        let metrics = crate::renderer::unstored_overlay_table_host_line_metrics(
+                            para, styles, para_style,
+                        );
+                        if let Some((lh, ls)) = metrics {
+                            // 앞 Shape 항목이 기록한 시작점은 앞 문단 자리차지 표의 배제
+                            // 구간을 건너뛰기 전 값이다 — 이 줄이 실제로 놓이는 y 로 덮는다.
+                            para_start_y.insert(*para_index, y_offset);
+                            let (sb, sa) = para_style
+                                .map(|st| (st.spacing_before, st.spacing_after))
+                                .unwrap_or((0.0, 0.0));
+                            return (y_offset + sb.max(0.0) + lh + ls + sa.max(0.0), false);
+                        }
+                    }
                     if let Some(shape_host) = textless_shape_host::classify(
                         page_content,
                         paragraphs,
@@ -12555,8 +12591,27 @@ impl LayoutEngine {
                 .iter()
                 .map(|reference| reference.4)
                 .sum();
+            // 저장 줄 없는 빈 host 의 전폭 어울림 표: typeset 과 같은 helper 로 표 상단과
+            // 표 아래 host 줄을 정한다.
+            let empty_square_host_geometry = (!is_tac && tbl_is_square)
+                .then(|| {
+                    crate::renderer::unstored_empty_square_table_host_geometry_px(
+                        para,
+                        t,
+                        col_area.width,
+                        styles,
+                        styles.para_styles.get(para.para_shape_id as usize),
+                        self.dpi,
+                    )
+                })
+                .flatten();
             let tbl_inline_x = if let Some((ix, _)) = inline_pos {
                 Some(ix)
+            } else if empty_square_host_geometry.is_some()
+                && matches!(t.common.horz_rel_to, crate::model::shape::HorzRelTo::Column)
+            {
+                // 왼쪽 정렬 오프셋은 바깥여백 상자의 왼끝이다(#6887 과 같은 규칙, 단 기준).
+                Some(col_area.x + hwpunit_to_px(t.outer_margin_left as i32, self.dpi))
             } else if !is_tac
                 && tbl_is_square
                 && matches!(t.common.horz_rel_to, crate::model::shape::HorzRelTo::Para)
@@ -13281,6 +13336,10 @@ impl LayoutEngine {
                             .flatten()
                         {
                             tail_top
+                        } else if let Some((table_top, _)) = empty_square_host_geometry {
+                            // 빈 host 전폭 어울림 표의 상단은 typeset 이 흐름에 예약한
+                            // `세로 오프셋 + 위 바깥여백` 아래다.
+                            y_offset + table_top
                         } else if let Some(om_top) = square_float_outer_margin_top_hu(t)
                             .filter(|_| !para_has_visible_text(para))
                         {
@@ -13800,6 +13859,9 @@ impl LayoutEngine {
                     // [#4533 ⑥] 표는 예약 공간(앵커 위)에 이미 놓였다 — 흐름은
                     // 전진하지 않는다(앵커·후속 문단이 사다리 위치 유지).
                     table_y_before
+                } else if empty_square_host_geometry.is_some() {
+                    // typeset 과 같이 아래 바깥여백까지 흐름을 전진한다.
+                    table_flow_end + hwpunit_to_px(t.outer_margin_bottom as i32, self.dpi)
                 } else {
                     empty_rowbreak_flow_end.unwrap_or(table_flow_end)
                 };

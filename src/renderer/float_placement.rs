@@ -7576,17 +7576,31 @@ pub(crate) fn empty_topbottom_sibling_host(para: &Paragraph, table: &Table) -> b
         }).take(2).count() >= 2
 }
 
+/// 글앞·글뒤의 비-TAC 그림·도형은 보이지만 흐름을 전진시키지 않는 장식이다.
+pub(crate) fn is_non_flow_decoration(control: &Control) -> bool {
+    let common = match control {
+        Control::Shape(shape) => shape.common(),
+        Control::Picture(picture) => &picture.common,
+        _ => return false,
+    };
+    !common.treat_as_char
+        && matches!(
+            common.text_wrap,
+            TextWrap::BehindText | TextWrap::InFrontOfText
+        )
+}
+
 /// With no line box, an empty block host places its sole flow table
 /// inside the before/after space already reserved by table formatting. Text and
 /// whitespace hosts retain their own line boxes; negative/absolute positions
 /// and saved frames have different origins.
 pub(crate) fn reflow_empty_table_host(para: &Paragraph, table: &Table) -> bool {
     // 구역·단 설정은 표 앵커와 함께 저장되지만 가시 글줄이나 개체가 아니다.
+    // 글앞·글뒤 장식도 흐름을 점유하지 않는다.
     // 실제 표 하나만 이 빈 호스트의 포맷 상자를 소유한다.
-    let mut objects = para
-        .controls
-        .iter()
-        .filter(|control| !control_leaves_table_anchor_empty(control));
+    let mut objects = para.controls.iter().filter(|control| {
+        !control_leaves_table_anchor_empty(control) && !is_non_flow_decoration(control)
+    });
     let only_table = matches!(objects.next(), Some(Control::Table(_))) && objects.next().is_none();
     para.text.is_empty()
         // An implementation-tagged LineSeg still describes a computed line.
