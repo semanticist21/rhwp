@@ -120,14 +120,26 @@ impl TypesetEngine {
             // rowspan 블록은 hard-break(vpos reset)를 만난 경우에만 중간
             // 분할을 허용해 일반 RowBreak 행 경계 정책의 blast radius 를 줄인다.
             let budget = (avail_for_rows - consumed - cs_before).max(0.0);
-            let res = layout_engine.advance_row_block_cut_with_mixed_nested_reserve(
-                table,
-                (b_start, b_end),
-                blk_start_cut,
-                budget,
-                &block_row_offsets,
-                styles,
-            );
+            let res = if rowbreak_use_row_offsets {
+                layout_engine.advance_row_block_cut_with_row_offsets(
+                    table,
+                    b_start,
+                    b_end,
+                    blk_start_cut,
+                    budget,
+                    &block_row_offsets,
+                    styles,
+                )
+            } else {
+                layout_engine.advance_row_block_cut(
+                    table,
+                    b_start,
+                    b_end,
+                    blk_start_cut,
+                    budget,
+                    styles,
+                )
+            };
             // [Task #1025] 블록이 fresh 페이지에도 안 들어가야(진짜 page-larger)
             // 페이지 중간에서 분할한다. fresh 페이지엔 들어가면(잔여 공간만
             // 부족) 통째로 다음 페이지로 미뤄 잔여 overflow 를 피한다(기존 동작).
@@ -187,9 +199,10 @@ impl TypesetEngine {
             let mut complete_row_frame = None;
             if cut_query.retries_band(allow_block_split, can_intra_split, block_h, budget) {
                 let offsets = block_query.row_offsets_for_cut(&block, blk_start_cut);
-                let res2 = layout_engine.advance_row_block_cut_with_mixed_nested_reserve(
+                let res2 = layout_engine.advance_row_block_cut_with_row_offsets(
                     table,
-                    (b_start, b_end),
+                    b_start,
+                    b_end,
                     blk_start_cut,
                     budget,
                     &offsets,

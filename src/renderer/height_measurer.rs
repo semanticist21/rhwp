@@ -2758,8 +2758,8 @@ impl HeightMeasurer {
     /// max 가 "가장 큰 중첩 표 하나"로 축소된다. 그 경우 줄높이 누적합에 이 값을
     /// 가산해야 한컴 배치와 맞는다.
     ///
-    /// 문단의 저장 `line_height`가 표 높이를 품으면 텍스트 성장으로 넘친 높이만 더한다.
-    /// 한 셀 안에서도 문단별로 다르다(실측: 같은 셀에서
+    /// 문단의 저장 `line_height` 가 품은 중첩 표 높이를 이미 담고 있으면 가산 대상이
+    /// 아니다 — 더하면 이중 계상이다. 한 셀 안에서도 문단별로 다르다(실측: 같은 셀에서
     /// `lh 2535 ⊇ 표 1965` 는 흡수, `lh 900` vs `표 30270` 은 미흡수). 0.7.13
     /// `e16a6070` 의 "이미 표 높이를 담은 LINE_SEG 가 있으면 보정 생략" 과 같은 규약.
     fn unabsorbed_nested_tables_height(
@@ -2805,23 +2805,11 @@ impl HeightMeasurer {
                 if para_max_lh >= nested.common.height as i32 {
                     // [#7419] 합성 줄은 중첩 표 선언만 담으므로 실제 성장분을 더한다.
                     // 유효한 저장 줄의 기존 흡수 계약은 유지한다.
+                    if !crate::renderer::para_has_no_stored_line_segs(p) {
+                        return None;
+                    }
                     let stretch = self.render_normalization.nested_table_width_scale(nested);
                     let mt = self.measure_table_impl(nested, 0, 0, styles, depth + 1, stretch);
-                    if !crate::renderer::para_has_no_stored_line_segs(p) {
-                        if !measured_table_has_grown_text_row(&mt, nested, self.dpi) {
-                            return None;
-                        }
-                        // 저장 줄이 품은 높이는 유지하고, 텍스트 성장으로 넘친 몫만 더한다.
-                        let om = hwpunit_to_px(nested.outer_margin_top as i32, self.dpi)
-                            + hwpunit_to_px(nested.outer_margin_bottom as i32, self.dpi);
-                        let height =
-                            crate::renderer::float_placement::table_body_height_with_declared_floor(
-                                nested,
-                                mt.total_height,
-                                self.dpi,
-                            ) + om;
-                        return Some((height - hwpunit_to_px(para_max_lh, self.dpi)).max(0.0));
-                    }
                     let grown = mt.total_height - hwpunit_to_px(para_max_lh, self.dpi);
                     return (grown > 0.5).then_some(grown);
                 }
