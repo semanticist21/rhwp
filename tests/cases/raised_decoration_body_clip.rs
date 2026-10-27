@@ -605,10 +605,10 @@ fn assert_round_run_boundaries(doc: &HwpDocument, position: UnderlineType) {
 
 #[test]
 fn dashed_top_underline_phase_stays_with_its_contiguous_line() {
-    assert_dashed_phase_boundaries(UnderlineType::Top);
+    assert_dashed_phase_boundaries(UnderlineType::Top, 1);
 }
 
-fn assert_dashed_phase_boundaries(position: UnderlineType) {
+fn assert_dashed_phase_boundaries(position: UnderlineType, shape: u8) {
     use rhwp::paint::{LayerBuilder, RenderProfile};
     use rhwp::renderer::render_tree::PageRenderTree;
 
@@ -646,7 +646,7 @@ fn assert_dashed_phase_boundaries(position: UnderlineType) {
         }
     }
     let original = find(
-        &probe("top-probe-shape-1")
+        &probe(&format!("top-probe-shape-{shape}"))
             .build_page_render_tree(0)
             .unwrap()
             .root,
@@ -699,7 +699,13 @@ fn assert_dashed_phase_boundaries(position: UnderlineType) {
                     "double-chain" => 4,
                     "long" => 5,
                     "round" => 6,
-                    _ => 2,
+                    _ => {
+                        if shape == 2 {
+                            1
+                        } else {
+                            2
+                        }
+                    }
                 };
             }
             _ => {}
@@ -1005,7 +1011,7 @@ fn hancom_solid_bottom_underline_keeps_print_width_position_and_ink() {
 
 #[test]
 fn hancom_dashed_bottom_underline_keeps_print_geometry_across_font_runs() {
-    assert_dashed_phase_boundaries(UnderlineType::Bottom);
+    assert_dashed_phase_boundaries(UnderlineType::Bottom, 1);
     // 같은 독립 Print PDF의 9~48pt 아래 파선 실측(em·96dpi px)이다.
     assert_pattern_probe(
         "top-probe-shape-1",
@@ -1025,6 +1031,48 @@ fn hancom_dashed_bottom_underline_keeps_print_geometry_across_font_runs() {
     let plain = fixture("");
     let underlined =
         fixture(r##"{"underlineType":"Bottom","underlineShape":1,"underlineColor":"#0000cc"}"##);
+    let clip = body_clip(&underlined);
+    let plain_clip = body_clip(&plain);
+    assert_eq!(
+        (clip.x, clip.y, clip.width, clip.height),
+        (
+            plain_clip.x,
+            plain_clip.y,
+            plain_clip.width,
+            plain_clip.height
+        ),
+        "글줄 상자 보존"
+    );
+    for pos in [0, TEXT.chars().count()] {
+        assert_eq!(
+            underlined.get_cursor_rect_native(0, 0, pos).unwrap(),
+            plain.get_cursor_rect_native(0, 0, pos).unwrap()
+        );
+    }
+}
+
+#[test]
+fn hancom_dotted_bottom_underline_keeps_print_geometry_across_font_runs() {
+    assert_dashed_phase_boundaries(UnderlineType::Bottom, 2);
+    // 독립 Print PDF의 9~48pt 아래 점선 실측(em·96dpi px)이다.
+    assert_pattern_probe(
+        "top-probe-shape-2",
+        UnderlineType::Bottom,
+        [
+            (0.16000, 0.04004, 0.64000, 1.60000, 153.83733, 26),
+            (0.16861, 0.03618, 0.80000, 2.07867, 165.67067, 26),
+            (0.17001, 0.04004, 0.96000, 2.39867, 176.06533, 27),
+            (0.16797, 0.04004, 1.12000, 2.87867, 191.57733, 28),
+            (0.17331, 0.04004, 1.44000, 3.67867, 206.76933, 26),
+            (0.16998, 0.04000, 1.76000, 4.47733, 236.03333, 28),
+            (0.16999, 0.04002, 2.71867, 6.87600, 301.11867, 28),
+            (0.16749, 0.04002, 3.67867, 9.27600, 358.20800, 27),
+        ],
+        None,
+    );
+    let plain = fixture("");
+    let underlined =
+        fixture(r##"{"underlineType":"Bottom","underlineShape":2,"underlineColor":"#0000cc"}"##);
     let clip = body_clip(&underlined);
     let plain_clip = body_clip(&plain);
     assert_eq!(

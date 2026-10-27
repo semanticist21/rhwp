@@ -118,7 +118,7 @@ pub(crate) fn underline_lines(
 ) -> Option<impl Iterator<Item = (f64, f64)>> {
     let lines: &[(f64, f64)] = match shape {
         0..=5 if underline == crate::model::style::UnderlineType::Top => &[(-0.87, 0.04)],
-        0..=1 if underline == crate::model::style::UnderlineType::Bottom => {
+        0..=2 if underline == crate::model::style::UnderlineType::Bottom => {
             &[(UNDERLINE_BASELINE_RATIO, 0.04)]
         }
         7 => &[(0.160, 0.032), (0.250, 0.032)],
@@ -197,7 +197,7 @@ pub(crate) fn underline_round_dots(
     }))
 }
 
-/// 한컴 Print의 위 파선·점선·쇄선과 아래 파선은 글꼴별 run 경계에서도 획과 간격을 잇는다.
+/// 한컴 Print의 위 파선·점선·쇄선과 아래 파선·점선은 글꼴별 run 경계에서도 획과 간격을 잇는다.
 pub(crate) fn underline_spans(
     underline: crate::model::style::UnderlineType,
     shape: u8,
@@ -206,7 +206,7 @@ pub(crate) fn underline_spans(
     offset: f64,
 ) -> impl Iterator<Item = (f64, f64)> {
     let dashed = (underline == crate::model::style::UnderlineType::Top && matches!(shape, 1..=5))
-        || (underline == crate::model::style::UnderlineType::Bottom && shape == 1);
+        || (underline == crate::model::style::UnderlineType::Bottom && matches!(shape, 1..=2));
     // 9~48pt Print 실측: 점은 600dpi 격자에 맞추고, 쇄선은 약 0.57em 획·0.17em 간격이다.
     let (dot_steps, dot_period) = underline_dot_pattern(font_size);
     let dot = dot_steps * PRINT_GRID;

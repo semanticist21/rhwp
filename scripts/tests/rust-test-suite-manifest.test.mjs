@@ -22,6 +22,7 @@ import {
   assignSources,
   deriveManifest,
   loadManifest,
+  rebalanceManifest,
   renderCargoTestBlock,
   renderHarness,
   validateAddedSourcePlacement,
@@ -176,6 +177,39 @@ test('명시적으로 허용한 CLI module blocker는 generated suite에 배정�
     const plan = resolveCasePlan(caseName);
     assert.equal(plan.grouped, true, caseName);
     assert.match(plan.target, /^regression_suite_\d{3}$/);
+  }
+});
+
+test('같은 path 모듈은 전체 재배정과 추가 배정에서 서로 다른 suite에 둔다', () => {
+  const root = mkdtempSync(path.join(os.tmpdir(), 'rhwp-shared-module-'));
+  try {
+    const manifest = writeRepositoryFixture(root);
+    manifest.sharding.suiteCount = 2;
+    manifest.sharding.maximumIntegrationTargets = 2;
+    const sources = ['tests/cases/one.rs', 'tests/cases/two.rs'];
+    manifest.moduleIntegrationOverrides = sources.map((source) => ({
+      path: source, allowBlockers: ['path_attr', 'root_mod'],
+    }));
+    writeFileSync(path.join(root, 'tests/cases/existing.rs'),
+      `// ${'x'.repeat(30000)}\n#[test]\nfn existing_case() {}\n`);
+    mkdirSync(path.join(root, 'src'));
+    writeFileSync(path.join(root, 'src/shared.rs'), 'pub fn shared() {}\n');
+    sources.forEach((source, index) => writeFileSync(path.join(root, source),
+      `#[path = "../../src/${index ? './' : ''}shared.rs"]\nmod shared;\n#[test]\nfn case() { shared::shared(); }\n`));
+    rebalanceManifest(manifest, root);
+    const target = (source) => Object.keys(manifest.suites)
+      .find((suite) => manifest.suites[suite].includes(source));
+    assert.notEqual(target(sources[0]), target(sources[1]));
+    manifest.suites[target(sources[1])] = manifest.suites[target(sources[1])]
+      .filter((source) => source !== sources[1]);
+    assignSources(manifest, [sources[1]], root, { persist: false, report: false });
+    assert.notEqual(target(sources[0]), target(sources[1]));
+    assert.equal(Object.values(manifest.suites).flat().length, 3);
+    manifest.suites = { regression_suite_001: ['tests/cases/existing.rs', sources[0]] };
+    assert.throws(() => assignSources(manifest, [sources[1]], root, { persist: false }),
+      /모듈 충돌을 피할 suite가 없습니다/);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
   }
 });
 

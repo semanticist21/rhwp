@@ -373,6 +373,8 @@ export function sourceMetrics(source, manifest, root = ROOT, durationPolicy = nu
     caseName: caseNameForSource(source),
     staticTests,
     bytes,
+    modulePaths: [...text.matchAll(/#\s*\[\s*path\s*=\s*"([^"]+)"\s*\]/g)]
+      .map((match) => path.resolve(root, path.dirname(source), match[1])),
     weight:
       bytes + Math.max(1, staticTests) * manifest.sharding.testAttributeWeight,
     blockers,
@@ -467,16 +469,24 @@ function emptySuiteRecords(manifest) {
     name: suiteName(manifest, index),
     sources: [],
     weight: 0,
+    modulePaths: new Set(),
   }));
 }
 
-function lightestSuite(records) {
-  return [...records].sort(
+function lightestSuite(records, metric) {
+  // 같은 #[path] 파일을 한 target에서 두 번 로드하면 Clippy duplicate_mod가 발생한다.
+  const suite = records.filter((record) =>
+    metric.modulePaths.every((modulePath) => !record.modulePaths.has(modulePath)),
+  ).sort(
     (left, right) =>
       left.weight - right.weight ||
       left.sources.length - right.sources.length ||
       left.name.localeCompare(right.name),
   )[0];
+  if (!suite) {
+    throw new Error(`#[path] 모듈 충돌을 피할 suite가 없습니다: ${metric.source}`);
+  }
+  return suite;
 }
 
 export function rebalanceManifest(
@@ -507,9 +517,10 @@ export function rebalanceManifest(
         right.weight - left.weight || left.source.localeCompare(right.source),
     )
     .forEach((metric) => {
-      const suite = lightestSuite(suites);
+      const suite = lightestSuite(suites, metric);
       suite.sources.push(metric.source);
       suite.weight += metric.weight;
+      metric.modulePaths.forEach((modulePath) => suite.modulePaths.add(modulePath));
     });
 
   manifest.exceptions = exceptions;
@@ -532,14 +543,15 @@ function declaredSourcePaths(manifest) {
 }
 
 function suiteRecordsWithWeights(manifest, root = ROOT) {
-  return Object.entries(manifest.suites).map(([name, sources]) => ({
-    name,
-    sources,
-    weight: sources.reduce(
-      (total, source) => total + sourceMetrics(source, manifest, root).weight,
-      0,
-    ),
-  }));
+  return Object.entries(manifest.suites).map(([name, sources]) => {
+    const metrics = sources.map((source) => sourceMetrics(source, manifest, root));
+    return {
+      name,
+      sources,
+      weight: metrics.reduce((total, metric) => total + metric.weight, 0),
+      modulePaths: new Set(metrics.flatMap((metric) => metric.modulePaths)),
+    };
+  });
 }
 
 export function assignSources(
@@ -583,11 +595,12 @@ export function assignSources(
         );
       }
     } else {
-      const suite = lightestSuite(suites);
+      const suite = lightestSuite(suites, metric);
       // suite.sources는 manifest.suites[suite.name]과 같은 배열이다. 한 번만
       // 추가해야 신규 source가 harness에 중복 선언되지 않는다.
       suite.sources.push(metric.source);
       suite.weight += metric.weight;
+      metric.modulePaths.forEach((modulePath) => suite.modulePaths.add(modulePath));
       assignedTarget = suite.name;
       if (report) {
         process.stdout.write(
