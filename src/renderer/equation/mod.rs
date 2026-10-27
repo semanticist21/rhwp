@@ -195,7 +195,6 @@ fn cached_flow_metrics(equation: &crate::model::control::Equation) -> (u32, u32,
         raw_ctrl_data: _,
         raw_ctrl_seal: _,
         unpositioned_host_frame_seal: _,
-        legacy_source_frame_seal: _,
     } = equation;
     let key = FlowMetricsKey {
         script: script.clone(),
