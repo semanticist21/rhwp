@@ -3380,6 +3380,25 @@ impl DocumentCore {
         path: &[(usize, usize, usize)],
         cell_para_idx: usize,
     ) {
+        self.reflow_cell_paragraph_by_path_after_edit(
+            section_idx,
+            parent_para_idx,
+            path,
+            cell_para_idx,
+            None,
+        );
+    }
+
+    /// 깊이 ≥ 2 셀 문단도 깊이 1 편집처럼 편집 자리 앞의 저장 줄을 그대로 둔다.
+    /// 전체 재조판은 그 줄에 놓인 글자처럼 취급 표의 높이를 다시 재지 못한다.
+    fn reflow_cell_paragraph_by_path_after_edit(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        cell_para_idx: usize,
+        edit_char_offset: Option<usize>,
+    ) {
         use crate::renderer::hwpunit_to_px;
 
         let Some((cell_width, pad_left, pad_right)) =
@@ -3404,7 +3423,18 @@ impl DocumentCore {
         let para_style = styles.para_styles.get(cell_para.para_shape_id as usize);
         let paragraph_box = ParagraphBox::content_for_style(available_width, para_style, dpi);
         // 셀 내용 상자 — 열이 없으므로 미스냅.
-        reflow_line_segs(cell_para, paragraph_box, &styles, dpi);
+        match edit_char_offset {
+            Some(offset) => {
+                crate::renderer::composer::reflow_line_segs_after_cell_text_edit(
+                    cell_para,
+                    paragraph_box,
+                    &styles,
+                    dpi,
+                    offset,
+                );
+            }
+            None => reflow_line_segs(cell_para, paragraph_box, &styles, dpi),
+        }
     }
 
     /// [#2755] path 기반 셀 문단 vpos 재계산 (깊이 ≥ 2 중첩 표 지원).
@@ -6206,7 +6236,13 @@ impl DocumentCore {
         replace_paragraph_text(cell_para, char_offset, 0, text, active, false);
 
         let inner_cell_para_idx = path.last().map(|entry| entry.2).unwrap_or(0);
-        self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, path, inner_cell_para_idx);
+        self.reflow_cell_paragraph_by_path_after_edit(
+            section_idx,
+            parent_para_idx,
+            path,
+            inner_cell_para_idx,
+            Some(char_offset),
+        );
         self.recalculate_cell_paragraph_vpos_by_path(
             section_idx,
             parent_para_idx,
@@ -6268,7 +6304,13 @@ impl DocumentCore {
         // [#2755] 깊이 ≥ 2 중첩 셀도 flat `delete_text_in_cell_native` 처럼 최내곽 셀 폭으로
         // 재래핑하고 vpos 를 재계산한다(깊이 1 은 위 위임 가드가 flat 경로로 처리).
         let inner_cell_para_idx = path.last().map(|e| e.2).unwrap_or(0);
-        self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, path, inner_cell_para_idx);
+        self.reflow_cell_paragraph_by_path_after_edit(
+            section_idx,
+            parent_para_idx,
+            path,
+            inner_cell_para_idx,
+            Some(char_offset),
+        );
         self.recalculate_cell_paragraph_vpos_by_path(
             section_idx,
             parent_para_idx,

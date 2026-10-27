@@ -288,7 +288,6 @@ impl DocumentCore {
 mod tests {
     use super::*;
     use crate::model::control::CharOverlap;
-    use crate::model::footnote::Footnote;
 
     #[test]
     fn overlap_takes_a_run_slot_and_notes_only_a_logical_slot() {
@@ -300,7 +299,7 @@ mod tests {
                     chars: vec!['가'],
                     ..Default::default()
                 }),
-                Control::Footnote(Box::new(Footnote::default())),
+                Control::Footnote(Box::default()),
             ],
             ..Default::default()
         };
