@@ -85,8 +85,8 @@ fn assert_inline(core: &DocumentCore, paragraph: &Paragraph, exact_dimensions: b
                 assert_eq!(table.cells.len(), 1);
                 assert_eq!(table.cells[0].paragraphs.len(), 1);
                 if exact_dimensions {
-                    // 선언 높이(1207·1509)보다 내용이 길면 한컴처럼 표 높이만 내용에 맞춰 커진다.
-                    let expected = if at == 4 { (2003, 2882) } else { (3005, 2882) };
+                    // 선언 높이(3207·3509)가 내용 높이(2882)보다 크므로 한컴처럼 선언 높이를 지킨다.
+                    let expected = if at == 4 { (2003, 3207) } else { (3005, 3509) };
                     assert_eq!((table.common.width, table.common.height), expected);
                 }
                 Some(("table", at, table.cells[0].paragraphs[0].text.clone()))
