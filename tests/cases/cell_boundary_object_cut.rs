@@ -966,14 +966,14 @@ fn cell_caret_prefers_the_next_run_origin_but_keeps_the_slot_before_an_object() 
             })
             .collect();
         let path_json = serde_json::to_string(&entries).unwrap();
-        let tree = doc.build_page_render_tree(0).unwrap();
+        let tree = doc.build_page_render_tree_logical(0).unwrap();
         let next = run_at(&tree.root, &path, 3).expect("이모지 뒤 글자 런");
         let before = run_at(&tree.root, &path, 0).expect("개체 앞 글자 런");
         let RenderNodeType::TextRun(before_run) = &before.node_type else {
             unreachable!()
         };
         let layout: serde_json::Value =
-            serde_json::from_str(&doc.get_page_text_layout_native(0).unwrap()).unwrap();
+            serde_json::from_str(&doc.get_page_text_layout_logical_native(0).unwrap()).unwrap();
         let expected_path = serde_json::Value::Array(entries);
         let painted = layout["runs"]
             .as_array()

@@ -24,6 +24,8 @@ struct AxisMap {
     /// 논리 칸을 차지하는 컨트롤의 논리 위치(컨트롤 인덱스 → 위치).
     control_slots: HashMap<usize, usize>,
     logical_len: usize,
+    /// 저장 줄 `i`의 원시 시작 앞에 놓인 논리 개체 수.
+    objects_before_line: Vec<usize>,
 }
 
 fn axis_map(para: &Paragraph) -> AxisMap {
@@ -62,11 +64,24 @@ fn axis_map(para: &Paragraph) -> AxisMap {
             next += 1;
         }
     }
+    let control_raw = para.control_utf16_positions();
+    let objects_before_line = para
+        .line_segs
+        .iter()
+        .map(|line| {
+            para.controls
+                .iter()
+                .zip(&control_raw)
+                .filter(|(control, &at)| control.is_logical_inline() && at < line.text_start)
+                .count()
+        })
+        .collect();
     AxisMap {
         logical,
         text,
         control_slots,
         logical_len: next,
+        objects_before_line,
     }
 }
 
@@ -99,6 +114,7 @@ fn para_key(run: &crate::renderer::render_tree::TextRunNode) -> Option<ParaKey> 
 fn split_run(
     node: &RenderNode,
     map: &AxisMap,
+    textless_line: Option<Option<u32>>,
     ids: &mut PageLayoutContext,
 ) -> Option<Vec<RenderNode>> {
     let RenderNodeType::TextRun(run) = &node.node_type else {
@@ -106,10 +122,18 @@ fn split_run(
     };
     let start = run.char_start?;
     if run.char_overlap.is_some() || run.text.is_empty() {
-        let logical = if start >= map.logical.len() {
-            map.logical_len
-        } else {
-            map.logical[start]
+        let logical = match textless_line.filter(|_| run.text.is_empty()) {
+            // 글 없는 줄의 앵커는 줄 안 개체를 이미 센 위치다(공식 빈 줄 경로). 원문 글자
+            // 축으로는 같은 자리의 개체 앞뒤를 가르지 못하므로 앞 줄의 개체 수만 더한다.
+            Some(line) => {
+                start
+                    + line
+                        .and_then(|line| map.objects_before_line.get(line as usize))
+                        .copied()
+                        .unwrap_or(0)
+            }
+            None if start >= map.logical.len() => map.logical_len,
+            None => map.logical[start],
         };
         let mut node = node.clone();
         if let RenderNodeType::TextRun(run) = &mut node.node_type {
@@ -173,6 +197,16 @@ fn convert(
     ) {
         return;
     }
+    let textless_line = match &node.node_type {
+        RenderNodeType::TextLine(line)
+            if !node.children.iter().any(|child| {
+                matches!(&child.node_type, RenderNodeType::TextRun(run) if !run.text.is_empty())
+            }) =>
+        {
+            Some(line.line_index)
+        }
+        _ => None,
+    };
     let children = std::mem::take(&mut node.children);
     for mut child in children {
         let key = match &child.node_type {
@@ -189,7 +223,10 @@ fn convert(
                 .ok()
                 .map(axis_map)
         });
-        match map.as_ref().and_then(|map| split_run(&child, map, ids)) {
+        match map
+            .as_ref()
+            .and_then(|map| split_run(&child, map, textless_line, ids))
+        {
             Some(pieces) => node.children.extend(pieces),
             None => node.children.push(child),
         }
