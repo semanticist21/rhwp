@@ -2231,6 +2231,31 @@ impl DocumentCore {
             }
         }
 
+        // 본문 문단의 글자처럼 취급 개체가 놓인 원문 글자 자리.
+        let inline_text_positions = |si: usize, pi: usize| -> Vec<usize> {
+            self.document
+                .sections
+                .get(si)
+                .and_then(|section| section.paragraphs.get(pi))
+                .map(|para| {
+                    para.controls
+                        .iter()
+                        .zip(para.control_text_positions())
+                        .filter(|(control, _)| is_treat_as_char_object_control(control))
+                        .map(|(_, position)| position)
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        // 본문 글 런의 char_start(원문 글자 축)를 캐럿 조회와 같은 논리 축으로 옮긴다. 같은 자리의
+        // 글자처럼 취급 개체는 글자 앞에 놓인다. 그래야 그림 뒤 글자를 누른 결과를 그대로
+        // get_cursor_rect에 넘길 수 있다. 글 없는 문단 끝 앵커는 이미 논리 끝이다.
+        for run in &mut runs {
+            if run.cell_context.is_none() && !run.is_textbox && run.has_text {
+                let positions = inline_text_positions(run.section_index, run.paragraph_index);
+                run.char_start += positions.iter().filter(|&&p| p <= run.char_start).count();
+            }
+        }
         let mut inline_image_hits = Vec::new();
         collect_body_inline_image_hits(self, &tree.root, None, &mut inline_image_hits);
         // 이웃 그림의 여백보다 실제 그림 영역을 먼저 판정한다.
