@@ -589,6 +589,8 @@ impl DocumentCore {
 
         // 꼭짓점은 original 좌표계로 보존한다. current/common 크기로 덮으면
         // 저장 시 current/original 배율이 두 번 적용된다.
+        // 다각형 행렬은 회전 전 프레임에서 합성하고, 프레임 갱신이 원점 이동을 보정한다.
+        super::common::update_changed_polygon_geometry(shape, transform_before);
         group_geometry::finish_top_level_edit(shape, transform_before);
 
         let caption_changed = Self::apply_shape_caption_props(shape, props_json);
@@ -618,8 +620,6 @@ impl DocumentCore {
                 group.shape_attr.raw_rendering = Vec::new();
             }
         }
-
-        super::common::update_changed_polygon_geometry(shape, transform_before);
 
         if caption_changed {
             crate::parser::assign_auto_numbers(&mut self.document);
@@ -938,6 +938,8 @@ impl DocumentCore {
             }
         }
 
+        // 다각형 행렬은 회전 전 프레임에서 합성하고, 프레임 갱신이 원점 이동을 보정한다.
+        super::common::update_changed_polygon_geometry(shape, transform_before);
         group_geometry::finish_top_level_edit(shape, transform_before);
 
         let caption_changed = Self::apply_shape_caption_props(shape, props_json);
@@ -959,7 +961,6 @@ impl DocumentCore {
                 group.shape_attr.raw_rendering = Vec::new();
             }
         }
-        super::common::update_changed_polygon_geometry(shape, transform_before);
         caption_changed
     }
     /// 글상자(Shape) 삭제 (네이티브).

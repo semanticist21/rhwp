@@ -2098,9 +2098,21 @@ impl DocumentCore {
                             } else {
                                 0.0
                             };
+                            // 양식 문단에서 감긴 줄 끝의 빈 앵커는 앞 양식 뒤 칸과 같다.
+                            // 앞쪽 캐럿은 다음 줄 첫 양식 앞 칸이 이기게 한다.
+                            let wrapped_form_line_end = tr.text.is_empty()
+                                && !tr.is_para_end
+                                && render_para
+                                    .controls
+                                    .iter()
+                                    .any(|control| matches!(control, Control::Form(_)));
                             update_best_cursor(
                                 best,
-                                cursor_score(offset, cs, cc, bias),
+                                if wrapped_form_line_end && matches!(bias, CursorBias::Leading) {
+                                    2
+                                } else {
+                                    cursor_score(offset, cs, cc, bias)
+                                },
                                 CursorHit {
                                     page,
                                     x: node.bbox.x + xr,

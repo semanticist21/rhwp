@@ -25,11 +25,20 @@ pub(super) fn refresh_top_level_frame(shape: &mut ShapeObject) {
         let delta = (i64::from(common.height) - i64::from(bh)) / 2;
         common.vertical_offset = (i64::from(common.vertical_offset as i32) + delta) as i32 as u32;
     }
+    let (old_w, old_h) = (common.width, common.height);
     common.width = bw;
     common.height = bh;
+    // 합성 행렬을 쓰는 다각형은 원점 기준 좌표다. 가운데를 지킨 프레임 이동만큼 되돌린다.
+    let affine_polygon =
+        matches!(shape, ShapeObject::Polygon(poly) if poly.affine_edit_reference.is_some());
     let sa = shape.shape_attr_mut();
     sa.rotation_center.x = (bw / 2) as i32;
     sa.rotation_center.y = (bh / 2) as i32;
+    if affine_polygon {
+        sa.render_tx += (f64::from(bw) - f64::from(old_w)) / 2.0;
+        sa.render_ty += (f64::from(bh) - f64::from(old_h)) / 2.0;
+        sa.raw_rendering = crate::serializer::control::serialize_affine_rendering(sa);
+    }
 }
 
 /// 실제 변환 변경에서만 저장 캐시를 비우며, 무변경 속성 되먹임은 원본 행렬을 보존한다.
@@ -43,8 +52,12 @@ pub(super) fn finish_top_level_edit(
     if shape.shape_attr().rotation_angle != before.6 {
         refresh_top_level_frame(shape);
     }
-    if super::super::common::shape_transform_fingerprint(shape.common(), shape.shape_attr())
-        != before
+    // 합성 행렬을 이미 적은 다각형은 그 행렬이 저장 캐시다.
+    let affine_polygon =
+        matches!(shape, ShapeObject::Polygon(poly) if poly.affine_edit_reference.is_some());
+    if !affine_polygon
+        && super::super::common::shape_transform_fingerprint(shape.common(), shape.shape_attr())
+            != before
     {
         let sa = shape.shape_attr_mut();
         sa.raw_rendering.clear();

@@ -18,8 +18,9 @@ fn content_height(measured: &MeasuredTable, dpi: f64) -> u32 {
     px_to_hwpunit(rows, dpi).max(0) as u32
 }
 
+/// 선언 높이 0은 크기를 정하지 않은 원문 sentinel이다. 내용 높이로 덮지 않는다.
 fn grown(declared: u32, content: u32) -> Option<u32> {
-    (content > declared.saturating_add(ROUNDING_HU)).then_some(content)
+    (declared > 0 && content > declared.saturating_add(ROUNDING_HU)).then_some(content)
 }
 
 /// rhwp가 다시 짠 칸 문단이 있는 표인가. 한컴이 저장한 줄을 그대로 가진 표는 그 높이(sz)가

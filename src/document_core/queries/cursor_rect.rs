@@ -231,7 +231,12 @@ fn find_cursor_in_cell_node(
                     y: caret_y,
                     height: font_size,
                     char_offset_y: node.char_offset_y,
-                    at_run_end: offset > char_start && offset == char_start + char_count,
+                    // 양식 문단에서 감긴 줄 끝의 빈 앵커는 앞 양식 뒤 칸과 같다.
+                    // 다음 줄 첫 양식 앞 칸이 이기도록 줄 끝 후보로만 둔다.
+                    at_run_end: (offset > char_start && offset == char_start + char_count)
+                        || (paragraph.is_some()
+                            && text_run.text.is_empty()
+                            && !text_run.is_para_end),
                 };
                 if !hit.at_run_end {
                     return Some(hit);
