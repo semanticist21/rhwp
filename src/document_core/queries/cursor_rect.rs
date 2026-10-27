@@ -3692,7 +3692,8 @@ impl DocumentCore {
             .map(|bottom| col_area.y + bottom),
         );
 
-        // legacy 와 동일한 매칭 함수로 캐럿·셀 bbox 탐색
+        // legacy 처럼 논리 축 트리에서 같은 매칭 함수로 캐럿·셀 bbox 탐색
+        self.logical_caret_node(&mut scratch_col, &mut scratch_frame);
         let cell_bounds =
             find_table_cell_bounds_in_node(&scratch_col, parent_para_idx, control_idx, cell_idx);
         if let Some(hit) = find_cursor_in_cell_node(

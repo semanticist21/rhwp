@@ -298,6 +298,11 @@ impl DocumentCore {
         tree
     }
 
+    /// 캐럿 빠른 경로가 따로 조판한 하위 트리도 같은 논리 축으로 옮긴다.
+    pub(crate) fn logical_caret_node(&self, node: &mut RenderNode, ids: &mut PageLayoutContext) {
+        convert(self, node, &mut HashMap::new(), ids);
+    }
+
     /// 공개 렌더 트리(`build_page_render_tree`)를 캐럿·편집 API의 논리 축으로 옮긴다.
     pub fn build_page_render_tree_logical(
         &self,
