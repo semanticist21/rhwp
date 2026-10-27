@@ -452,6 +452,11 @@ impl TypesetEngine {
                 .iter()
                 .filter_map(|(para, end)| to_local(*para).map(|local| (local, *end)))
                 .collect(),
+            host_compositions: st
+                .host_compositions
+                .iter()
+                .filter_map(|(para, comp)| to_local(*para).map(|local| (local, comp.clone())))
+                .collect(),
             stored_column_top_spacings: st
                 .stored_column_top_spacings
                 .iter()
@@ -481,6 +486,7 @@ impl TypesetEngine {
             entries
         }
         let crate::renderer::layout::EndnoteColumnPlacements {
+            host_compositions,
             stored_paragraph_flow_ends,
             stored_column_top_spacings,
             wrap_anchors,
@@ -491,7 +497,7 @@ impl TypesetEngine {
             page_band_flow_starts,
         } = &placements;
         let mut key = format!(
-            "extent|{:p}|{:?}|{:?}|{:?}|{:?}|{}|{}|{:?}|{}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}",
+            "extent|{:p}|{:?}|{:?}|{:?}|{:?}|{}|{}|{:?}|{}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}",
             styles,
             st.profile,
             self.section_column_spacing_hu.get(),
@@ -506,6 +512,7 @@ impl TypesetEngine {
             ),
             source_base,
             local_sources,
+            sorted(host_compositions),
             sorted(stored_paragraph_flow_ends),
             sorted(stored_column_top_spacings),
             sorted(wrap_anchors),

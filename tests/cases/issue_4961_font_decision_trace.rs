@@ -34,62 +34,7 @@ fn public_trace(path: &str, page: u32, max_characters: u64) -> serde_json::Value
     serde_json::from_str(&json).expect("public fixture trace JSON")
 }
 
-fn assert_stage4_profile(trace: &serde_json::Value, profile: &serde_json::Value) {
-    let records = trace["records"].as_array().expect("trace records");
-    let address = profile["sourceAddress"]
-        .as_object()
-        .expect("원본 문자 주소");
-    let matches: Vec<_> = records
-        .iter()
-        .filter(|record| {
-            address
-                .iter()
-                .all(|(key, value)| record["source"].get(key) == Some(value))
-        })
-        .collect();
-    assert_eq!(
-        matches.len(),
-        1,
-        "같은 원본 문자의 프로필은 유일하다: {}",
-        profile["id"]
-    );
-    let record = matches[0];
-    let expected = &profile["expected"];
-    assert_eq!(record["source"]["status"], expected["sourceStatus"]);
-    assert_eq!(record["source"]["character"], expected["character"]);
-    assert_eq!(record["document"]["face"], expected["documentFace"]);
-    assert_eq!(record["document"]["substFont"], expected["substFont"]);
-    assert_eq!(
-        record["layoutName"]["normalizedFace"],
-        expected["normalizedFace"]
-    );
-    let expected_step = &expected["layoutStepKind"];
-    if expected_step.is_null() {
-        assert!(record["layoutName"]["steps"]
-            .as_array()
-            .expect("layout steps")
-            .is_empty());
-    } else {
-        assert!(record["layoutName"]["steps"]
-            .as_array()
-            .expect("layout steps")
-            .iter()
-            .any(|step| step.get("kind") == Some(expected_step)));
-    }
-    assert_eq!(
-        record["layoutMetric"]["matchKind"],
-        expected["metricMatchKind"]
-    );
-    assert_eq!(
-        record["layoutMetric"]["characterMatch"], expected["metricCharacterMatch"],
-        "{}: 전용 폭 표의 문자 hit와 공통 메트릭 DB의 matchKind는 별개다",
-        profile["id"]
-    );
-    assert_eq!(
-        record["layoutMetric"]["widthSource"],
-        expected["widthSource"]
-    );
-}
+include!("../common/font_trace_profile_assertions.rs");
 
 #[test]
 fn font_trace_profiles_follow_source_ownership_and_preserve_font_decisions() {
@@ -126,75 +71,7 @@ fn font_trace_profiles_follow_source_ownership_and_preserve_font_decisions() {
                 assert_eq!(&trace["counts"][key], value, "{id}: {key}");
             }
             if document["validateRunOwnership"] == true {
-                let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
-                    .join(document["path"].as_str().expect("source path"));
-                let core = DocumentCore::from_bytes(&std::fs::read(path).expect("동일 원본"))
-                    .expect("원본 문서 열기");
-                let public: serde_json::Value =
-                    serde_json::from_str(
-                        &core
-                            .get_page_text_layout_native(
-                                document["page"].as_u64().expect("page") as u32
-                            )
-                            .expect("공개 문자 배치"),
-                    )
-                    .expect("문자 배치 JSON");
-                let runs = public["runs"].as_array().expect("공개 소유 런");
-                assert_eq!(
-                    trace["counts"]["runsSeen"].as_u64(),
-                    Some(runs.len() as u64)
-                );
-                let count: usize = runs
-                    .iter()
-                    .map(|run| run["text"].as_str().expect("내용").chars().count())
-                    .sum();
-                assert_eq!(
-                    trace["counts"]["charactersSeen"].as_u64(),
-                    Some(count as u64)
-                );
-                let records = trace["records"].as_array().expect("문자 기록");
-                let ids: std::collections::HashSet<_> = records
-                    .iter()
-                    .map(|record| record["recordId"].as_str().expect("기록 ID"))
-                    .collect();
-                assert_eq!(ids.len(), records.len(), "기록을 중복하지 않는다");
-                for record in records {
-                    let owner = record["source"]["runIndex"].as_u64().expect("소유 런") as usize;
-                    let run = runs.get(owner).expect("실제 소유 런");
-                    let local = record["recordId"]
-                        .as_str()
-                        .expect("문자 기록 ID")
-                        .rsplit(":char:")
-                        .next()
-                        .expect("런 내부 문자 번호")
-                        .parse::<usize>()
-                        .expect("문자 번호");
-                    let character = run["text"]
-                        .as_str()
-                        .expect("소유 런 내용")
-                        .chars()
-                        .nth(local)
-                        .expect("문자는 소유 런 안에 포함");
-                    assert_eq!(record["source"]["character"], character.to_string());
-                    if let Some(start) = run["charStart"].as_u64() {
-                        assert_eq!(
-                            record["source"]["charOffset"].as_u64(),
-                            Some(start + local as u64)
-                        );
-                        assert_eq!(record["source"]["sectionIndex"], run["secIdx"]);
-                    } else {
-                        assert_eq!(record["source"]["status"], "unavailable");
-                    }
-                    assert_eq!(record["source"]["charShapeId"], run["charShapeId"]);
-
-                    if run["charStart"].is_null() {
-                        assert!(record["source"]["charOffset"].is_null());
-                    } else if run["cellPath"].is_null() {
-                        assert_eq!(record["source"]["paragraphIndex"], run["paraIdx"]);
-                    } else {
-                        assert_eq!(record["source"]["paragraphIndex"], run["parentParaIdx"]);
-                    }
-                }
+                assert_profile_run_ownership(document, &trace);
             }
         }
         if !is_render_pin_deferred("expectedLayoutHash") {
@@ -731,6 +608,7 @@ fn synthetic_overlap_cannot_claim_repeated_source_and_real_pua_keeps_source() {
             record["source"]["status"], "unavailable",
             "겹침 원문 소유권을 추정하지 않는다: {record}"
         );
+        assert!(record["source"]["charOffset"].is_null());
     }
     let mut plain = DocumentCore::new_empty();
     plain.create_blank_document_native().unwrap();
@@ -749,6 +627,149 @@ fn synthetic_overlap_cannot_claim_repeated_source_and_real_pua_keeps_source() {
             "PUA는 실제 원문이다: {record}"
         );
         assert_eq!(record["source"]["charOffset"], offset);
+    }
+}
+
+#[test]
+fn note_markers_are_transparent_to_body_and_nested_source_glyph_addresses() {
+    use rhwp::model::control::Control;
+    for (footnote, at, has_tac) in [
+        (true, 0, false),
+        (true, 1, false),
+        (false, 0, false),
+        (false, 1, false),
+        (true, 0, true),
+        (true, 1, true),
+        (false, 0, true),
+        (false, 1, true),
+    ] {
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().unwrap();
+        core.insert_text_native(0, 0, 0, "가가🦦나끝").unwrap();
+        if footnote {
+            core.insert_footnote_native(0, 0, at).unwrap();
+        } else {
+            core.insert_endnote_native(0, 0, at).unwrap();
+        }
+        if has_tac {
+            let image: serde_json::Value = serde_json::from_str(
+                &core
+                    .insert_picture_native(
+                        0,
+                        0,
+                        at,
+                        &[],
+                        include_bytes!("../../assets/logo/logo-16.png"),
+                        1200,
+                        400,
+                        16,
+                        16,
+                        "png",
+                        "주석과 같은 자리",
+                        None,
+                        None,
+                    )
+                    .unwrap(),
+            )
+            .unwrap();
+            core.set_picture_properties_native(
+                0,
+                0,
+                image["controlIdx"].as_u64().unwrap() as usize,
+                r#"{"treatAsChar":true}"#,
+            )
+            .unwrap();
+        }
+        core.apply_char_format_native(0, 0, 1, 3, r#"{"bold":true}"#)
+            .unwrap();
+        let leaf = core.document().sections[0].paragraphs[0].clone();
+        core.split_paragraph_native(0, 0, if has_tac { 7 } else { 6 }, None)
+            .unwrap();
+        core.create_table_native(0, 1, 0, 1, 1).unwrap();
+        let mut document = core.document().clone();
+        let mut host = document.sections[0].paragraphs[1].clone();
+        let Control::Table(outer) = &mut document.sections[0].paragraphs[1].controls[0] else {
+            panic!("표")
+        };
+        let mut inner = outer.clone();
+        inner.cells[0].paragraphs = vec![leaf.clone()];
+        host.controls = vec![Control::Table(inner)];
+        outer.cells[0].paragraphs = vec![
+            rhwp::model::paragraph::Paragraph::new_empty_like(&leaf),
+            host,
+        ];
+        document.sections[0].raw_stream = None;
+        core.set_document(document);
+        for (format, bytes) in [
+            ("hwp", core.export_hwp_native().unwrap()),
+            ("hwpx", core.export_hwpx_native().unwrap()),
+        ] {
+            let loaded = DocumentCore::from_bytes(&bytes).unwrap();
+
+            let tree = loaded.build_page_render_tree(0).unwrap();
+            let trace = readonly_trace(&loaded);
+            // 런 순서는 따르되 원문 주소는 독립 원문의 scalar 순서로 정한다.
+            let mut runs = Vec::new();
+            fn collect<'a>(
+                node: &'a rhwp::renderer::render_tree::RenderNode,
+                framed: bool,
+                runs: &mut Vec<(&'a rhwp::renderer::render_tree::TextRunNode, bool)>,
+            ) {
+                use rhwp::renderer::render_tree::RenderNodeType;
+                let framed = framed || matches!(node.node_type, RenderNodeType::TextLine(_));
+                if let RenderNodeType::TextRun(run) = &node.node_type {
+                    runs.push((run, framed));
+                }
+                for child in &node.children {
+                    collect(child, framed, runs);
+                }
+            }
+            collect(&tree.root, false, &mut runs);
+            let records = trace["records"].as_array().unwrap();
+            for (parent, path) in [(0, vec![]), (1, vec![0, 0, 1, 0, 0, 0])] {
+                let expected: Vec<_> = "가가🦦나끝"
+                    .chars()
+                    .enumerate()
+                    .map(|(i, ch)| (i as u64, ch.to_string()))
+                    .collect();
+                let actual: Vec<_> = records
+                    .iter()
+                    .filter(|r| {
+                        let index = r["source"]["runIndex"].as_u64().unwrap() as usize;
+                        let (run, framed) = runs[index];
+                        framed
+                            && run.char_start.is_some()
+                            && r["source"]["sectionIndex"] == 0
+                            && r["source"]["paragraphIndex"] == parent
+                            && r["source"]["nestedPath"] == serde_json::json!(path)
+                    })
+                    .map(|r| {
+                        assert_eq!(
+                            r["source"]["status"], "complete",
+                            "{format} footnote={footnote} at={at}: {r}"
+                        );
+                        (
+                            r["source"]["charOffset"].as_u64().unwrap(),
+                            r["source"]["character"].as_str().unwrap().to_string(),
+                        )
+                    })
+                    .collect();
+                assert_eq!(
+                    actual, expected,
+                    "{format} footnote={footnote} at={at} path={path:?}"
+                );
+            }
+            for record in records {
+                let (run, framed) = runs[record["source"]["runIndex"].as_u64().unwrap() as usize];
+                if !framed
+                    || run.char_start.is_none()
+                    || record["source"]["paragraphIndex"].is_null()
+                {
+                    assert_eq!(record["source"]["status"], "unavailable");
+                    assert!(record["source"]["charOffset"].is_null());
+                }
+            }
+        }
     }
 }
 

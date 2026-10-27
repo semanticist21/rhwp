@@ -5,9 +5,13 @@
 
 use std::ops::Range;
 
+mod alignment;
+use alignment::RowEnding;
 mod picture_rows;
 pub(crate) use picture_rows::supports_picture_rows;
 mod separator_spaces;
+mod source_addresses;
+pub(crate) use source_addresses::text_logical_starts;
 mod table_rows;
 pub(crate) use table_rows::{standalone_table_fragment_owner, supports_table_text_rows};
 
@@ -343,7 +347,15 @@ pub(crate) fn plan(
     // 글자처럼 그림으로 끝나는 문단은 문단 끝 표시의 글자 모양이 마지막 줄 높이와
     // 끝 캐럿을 정한다. 저장 줄 경로와 같도록 폭 0인 끝 상자를 둔다. 표로 끝나는 문단은
     // 한컴 인쇄처럼 표 줄 높이만 쓴다(issue_6776).
-    if matches!(
+    // 빈 그림 줄은 공식 빈 호스트 상자가 끝 줄 메트릭을 소유한다.
+    let empty_picture_host = if picture_rows {
+        picture_rows::empty_host_text_box(para, styles, style, frame.dpi)
+    } else {
+        None
+    };
+    if let Some(anchor) = empty_picture_host {
+        atoms.push(Atom::Box(anchor));
+    } else if matches!(
         atoms.last(),
         Some(Atom::Box(InlineFlowBox {
             content: InlineFlowContent::Picture { .. },
@@ -473,7 +485,7 @@ pub(crate) fn plan(
                     &exclusions,
                     style,
                     frame.dpi,
-                    Some(&chars),
+                    RowEnding::Forced(&chars),
                 )?;
                 exclusions.push(exclusion);
                 row_metrics = RowMetrics::default();
@@ -489,7 +501,7 @@ pub(crate) fn plan(
                     &exclusions,
                     style,
                     frame.dpi,
-                    Some(&chars),
+                    RowEnding::Forced(&chars),
                 )?;
                 row_metrics = RowMetrics::default();
             }
@@ -542,7 +554,7 @@ pub(crate) fn plan(
                             &exclusions,
                             style,
                             frame.dpi,
-                            Some(&chars),
+                            RowEnding::Soft(&chars),
                         )?;
                         row_metrics = RowMetrics::default();
                         continue;
@@ -595,7 +607,7 @@ pub(crate) fn plan(
                         &exclusions,
                         style,
                         frame.dpi,
-                        Some(&chars),
+                        RowEnding::Soft(&chars),
                     )?;
                     row_metrics = RowMetrics::default();
                 }
@@ -611,9 +623,15 @@ pub(crate) fn plan(
         &exclusions,
         style,
         frame.dpi,
-        None,
+        RowEnding::ParagraphEnd(&chars),
     )?;
-    result.end = result.end.max(result.next_row_top) + style.spacing_after;
+    // Percent 간격의 다음 원점은 물리 점유 하단과 다르다. 음수 간격도
+    // 줄 구성 결과대로 전진시키며 쪽 수용은 occupied_end로 따로 판단한다.
+    result.end = if style.line_spacing_type == crate::model::style::LineSpacingType::Percent {
+        result.next_row_top
+    } else {
+        result.end.max(result.next_row_top)
+    } + style.spacing_after;
     (result.start.is_finite() && result.end.is_finite()).then_some(result)
 }
 
@@ -624,7 +642,7 @@ fn finish_row(
     exclusions: &[FrameExclusion],
     style: &ResolvedParaStyle,
     dpi: f64,
-    trim_separator_spaces: Option<&[char]>,
+    ending: RowEnding<'_>,
 ) -> Option<()> {
     if row.is_empty() {
         return Some(());
@@ -646,7 +664,7 @@ fn finish_row(
     }
     let baseline = row_metrics.baseline;
     let height = row_metrics.baseline + row_metrics.descent;
-    if let Some(chars) = trim_separator_spaces {
+    if let Some(chars) = ending.trimmed_chars() {
         // 개행 메트릭 상자는 폭 0이며 후행 공백 조회를 막지 않는다.
         // 줄 경계에서 소비한 공백은 가운데·오른쪽 잉크 정렬을 밀지 않는다.
         row_metrics.width -= row
@@ -660,7 +678,7 @@ fn finish_row(
             .sum::<f64>();
     }
     let row_horizontal = paragraph_row_horizontal(horizontal, style, plan.boxes.is_empty());
-    let (mut x, y, carved) = row_geometry(
+    let (mut x, y, carved, available_width) = row_geometry(
         row_metrics,
         &row_horizontal,
         plan.next_row_top,
@@ -669,6 +687,14 @@ fn finish_row(
         dpi,
     )?;
     plan.carved |= carved;
+    // 같은 확정 줄의 분배 전진을 측정 결과와 실제 글자 원점에 함께 보존한다.
+    let gaps = alignment::gaps(
+        row,
+        ending,
+        style.alignment,
+        available_width - row_metrics.width,
+    );
+    row_metrics.width += gaps.iter().sum::<f64>();
     let has_table = row
         .iter()
         .any(|b| matches!(b.content, InlineFlowContent::Table { .. }));
@@ -689,14 +715,18 @@ fn finish_row(
         .unwrap_or(plan.fallback_font_size);
     let first_box = plan.boxes.len();
     let row_x = x;
-    for mut item in row.drain(..) {
+    for (index, mut item) in row.drain(..).enumerate() {
         item.x = x;
         item.y = if matches!(item.content, InlineFlowContent::FloatingTable { .. }) {
             y
         } else {
             y + baseline - item.alignment_baseline()
         };
-        x += item.width;
+        let advance = item.width + gaps[index];
+        if matches!(item.content, InlineFlowContent::Text { .. }) {
+            item.width = advance;
+        }
+        x += advance;
         plan.boxes.push(item);
     }
     plan.rows.push(InlineFlowRow {
@@ -715,8 +745,11 @@ fn finish_row(
         dpi,
     );
     let gap = hwpunit_to_px(metrics.line_spacing, dpi);
-    // 텍스트의 sub-100% 간격은 유지하되, 표의 물리 하단을 후속 줄이 침범하지 않는다.
-    plan.next_row_top = y + height + if has_table { gap.max(0.0) } else { gap };
+    // 표도 Percent의 부호 있는 간격을 소비한다. 표의 실제 점유 높이는
+    // rows에 보존하므로 다음 줄 원점을 물리 하단으로 clamp하지 않는다.
+    let signed_gap =
+        !has_table || style.line_spacing_type == crate::model::style::LineSpacingType::Percent;
+    plan.next_row_top = y + height + if signed_gap { gap } else { gap.max(0.0) };
     plan.end = plan.end.max(y + height);
     Some(())
 }
@@ -741,7 +774,7 @@ fn row_geometry(
     exclusions: &[FrameExclusion],
     style: &ResolvedParaStyle,
     dpi: f64,
-) -> Option<(f64, f64, bool)> {
+) -> Option<(f64, f64, bool, f64)> {
     let width = metrics.width;
     let height = metrics.baseline + metrics.descent;
     let base = px_to_hwpunit(horizontal.start, dpi)..px_to_hwpunit(horizontal.end, dpi);
@@ -765,7 +798,7 @@ fn row_geometry(
         };
     let y = hwpunit_to_px(frame.top, dpi).max(top);
     let carved = y > top + 0.01 || lane.start > base.start || lane.end < base.end;
-    Some((x, y, carved))
+    Some((x, y, carved, hwpunit_to_px(lane.end - lane.start, dpi)))
 }
 
 /// 저장 행과 자체 inline 소유자가 없는 본문만 현재 물리 frame에서 재조판한다.

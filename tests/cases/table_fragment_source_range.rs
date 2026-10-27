@@ -18,6 +18,7 @@ fn cell_source_paragraph_range_survives_layer_conversion_and_json() {
                 border_fill_id: 0,
                 text_direction: 0,
                 clip: true,
+                closed_reflow_frame: false,
                 page_fragment: false,
                 model_cell_index: Some(4),
                 model_para_range: range,
@@ -31,6 +32,6 @@ fn cell_source_paragraph_range_survives_layer_conversion_and_json() {
         );
         assert!(layer.to_json().contains("\"modelCellIndex\":4"));
         let json: serde_json::Value = serde_json::from_str(&layer.to_json()).unwrap();
-        assert_eq!(json["schemaMinorVersion"], 30);
+        assert_eq!(json["schemaMinorVersion"], 35);
     }
 }

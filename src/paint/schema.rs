@@ -15,8 +15,8 @@ pub struct LayerTreeSchema {
 
 pub const LAYER_TREE_SCHEMA: LayerTreeSchema = LayerTreeSchema {
     schema_version: 1,
-    // 30: 분할 셀의 원본 문단 범위를 선택 항목으로 더한다.
-    schema_minor_version: 30,
+    // 35: 분할 셀의 원본 문단 범위를 선택 항목으로 더한다.
+    schema_minor_version: 35,
     resource_table_version: 1,
     resource_table_minor_version: 6,
     unit: "px",
@@ -37,7 +37,7 @@ mod tests {
 
     #[test]
     fn layer_tree_schema_constants_match_schema() {
-        assert_eq!(LAYER_TREE_SCHEMA.schema_minor_version, 30);
+        assert_eq!(LAYER_TREE_SCHEMA.schema_minor_version, 35);
         assert_eq!(LAYER_TREE_SCHEMA.resource_table_minor_version, 6);
         assert_eq!(
             LAYER_TREE_SCHEMA,

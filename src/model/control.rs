@@ -319,7 +319,7 @@ pub struct CharOverlap {
     pub chars: Vec<char>,
     /// 테두리 타입 (0=없음/글자끼리, 1=원, 2=반전원, 3=사각형, 4=반전사각형)
     pub border_type: u8,
-    /// 내부 글자 크기 (%, 양수=축소/확대, 기본 100)
+    /// 내부 글자 크기의 부호 있는 10% 단계 (0=원래 크기)
     pub inner_char_size: i8,
     /// 펼침
     pub expansion: u8,

@@ -1125,11 +1125,7 @@ impl DocumentCore {
                 );
                 // 번호/글머리표 TextRun (char_start: None)은 건너뛴다
                 if let (true, Some(cs)) = (matches, tr.char_start) {
-                    let cc = if tr.char_overlap.is_some() {
-                        usize::from(!tr.text.is_empty())
-                    } else {
-                        tr.text.chars().count()
-                    };
+                    let cc = tr.logical_char_count();
                     // 이 run이 목표 줄의 char_range에 겹치는지 확인
                     if cs < char_range.1 && cs + cc > char_range.0 {
                         let positions = cursor_positions_for_render_run(tr, node.bbox.width);
@@ -1232,7 +1228,7 @@ impl DocumentCore {
 
         // 페이지 순회하며 매칭 run 수집
         for &page_num in &pages {
-            let tree = self.build_page_tree_logical(page_num)?;
+            let tree = self.build_page_tree(page_num)?;
             let mut runs = Vec::new();
             collect_matching_runs(&tree.root, sec, para, cell_ctx, char_range, &mut runs);
             let mut candidates = Vec::new();
@@ -1942,11 +1938,7 @@ impl DocumentCore {
                             && tr.cell_context.is_none(),
                         tr.char_start,
                     ) {
-                        let cc = if tr.char_overlap.is_some() {
-                            usize::from(!tr.text.is_empty())
-                        } else {
-                            tr.text.chars().count()
-                        };
+                        let cc = tr.logical_char_count();
                         if offset >= cs && offset <= cs + cc {
                             let pos = cursor_positions_for_render_run(tr, node.bbox.width);
                             let lo = offset - cs;
@@ -2095,11 +2087,7 @@ impl DocumentCore {
                     });
                     // 번호/글머리표 TextRun (char_start: None)은 건너뛴다
                     if let (true, Some(cs)) = (matches_cell, tr.char_start) {
-                        let cc = if tr.char_overlap.is_some() {
-                            usize::from(!tr.text.is_empty())
-                        } else {
-                            tr.text.chars().count()
-                        };
+                        let cc = tr.logical_char_count();
                         if offset >= cs && offset <= cs + cc {
                             let pos = cursor_positions_for_render_run(tr, node.bbox.width);
                             let lo = offset - cs;
@@ -2353,7 +2341,7 @@ impl DocumentCore {
 
         let selection_tree = |pn| {
             if used_hints {
-                return self.build_page_tree_cached_logical(pn);
+                return self.build_page_tree_cached(pn);
             }
             // 본문은 렌더·캐럿 질의가 이미 만든 유효한 트리만 재사용한다.
             if cell_target.is_none() {
@@ -2368,7 +2356,7 @@ impl DocumentCore {
             }
             // 캐시가 없는 쪽은 기존 함수 로컬 수명을 유지한다. 긴 선택 범위 때문에
             // 보이지 않는 쪽까지 shared cache에 남겨 메모리 체류를 늘리지 않는다.
-            self.build_page_tree_logical(pn)
+            self.build_page_tree(pn)
         };
 
         fn collect_run_rects(

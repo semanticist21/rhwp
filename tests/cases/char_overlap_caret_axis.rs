@@ -133,7 +133,7 @@ fn public_caret_and_selection_use_the_rendered_overlap_and_note_boundaries() {
         }
     }
     for (format, doc) in variants(mixed) {
-        let tree = doc.build_page_render_tree_logical(0).unwrap();
+        let tree = doc.build_page_render_tree(0).unwrap();
         let overlap = &find(&tree.root, false).expect("실제 겹침 run").bbox;
         let note = &find(&tree.root, true).expect("실제 각주 마커").bbox;
         // 공개 사각형 JSON은 소수 첫째 자리로 반올림한다.
@@ -195,7 +195,7 @@ fn public_caret_and_selection_use_the_rendered_overlap_and_note_boundaries() {
                     .map(|ci| (pi, ci))
             })
             .expect("재열기한 표 주소");
-        let tree = doc.build_page_render_tree_logical(0).unwrap();
+        let tree = doc.build_page_render_tree(0).unwrap();
         let overlap = &find(&tree.root, false).expect("실제 셀 겹침 run").bbox;
         for (offset, x) in [(1, overlap.x), (2, overlap.x + overlap.width)] {
             let rect: serde_json::Value = serde_json::from_str(
@@ -418,7 +418,7 @@ fn non_bmp_text_and_note_keep_source_order_complete_caret_and_hit_boundaries() {
             }
             doc
         }) {
-            let tree = doc.build_page_render_tree_logical(0).unwrap();
+            let tree = doc.build_page_render_tree(0).unwrap();
             let mut nodes = Vec::new();
             collect(&tree.root, &mut nodes);
             let visual: Vec<_> = nodes
@@ -489,25 +489,22 @@ fn non_bmp_text_and_note_keep_source_order_complete_caret_and_hit_boundaries() {
             }
             let selection: serde_json::Value =
                 serde_json::from_str(&doc.get_selection_rects(0, 1, 2, 1, 6).unwrap()).unwrap();
-            let left = selection
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|rect| rect["x"].as_f64().unwrap())
-                .fold(f64::INFINITY, f64::min);
-            let right = selection
-                .as_array()
-                .unwrap()
-                .iter()
-                .map(|rect| rect["x"].as_f64().unwrap() + rect["width"].as_f64().unwrap())
-                .fold(f64::NEG_INFINITY, f64::max);
-            assert!(
-                (left - nodes[2].bbox.x).abs() <= 0.06,
-                "{format}: {selection}"
+            let rects = selection.as_array().expect("선택 사각형 배열");
+            assert_eq!(rects.len(), 1, "{format}: 같은 줄의 연속 선택 {selection}");
+            // 공개 JSON은 x와 width를 각각 소수 첫째 자리로 직렬화한다.
+            // 반올림한 x + width를 원래 오른쪽 끝과 비교해 오차를 중복 계상하지 않는다.
+            let public_coordinate = |value: f64| format!("{value:.1}").parse::<f64>().unwrap();
+            let selected_left = nodes[2].bbox.x;
+            let selected_right = nodes[4].bbox.x + nodes[4].bbox.width;
+            assert_eq!(
+                rects[0]["x"].as_f64(),
+                Some(public_coordinate(selected_left)),
+                "{format}: 시작 글리프의 경계 {selection}"
             );
-            assert!(
-                (right - (nodes[4].bbox.x + nodes[4].bbox.width)).abs() <= 0.06,
-                "{format}: {selection}"
+            assert_eq!(
+                rects[0]["width"].as_f64(),
+                Some(public_coordinate(selected_right - selected_left)),
+                "{format}: 선택한 본문·주석을 모두 포함한 폭 {selection}"
             );
             assert_eq!(para(&doc, 1).text, "앞🦦뒤끝");
             assert_eq!(para(&doc, 0).text, "머리");
@@ -531,6 +528,36 @@ fn same_anchor_notes_keep_control_order_and_terminal_overlap_geometry() {
             collect(child, out);
         }
     }
+    // 같은 글꼴·글자모양의 한 payload 대조군과 비교한다. 두 payload나 주석이
+    // 슬롯 폭을 더 늘리지 않아야 하며, 폰트의 실제 advance를 임의의 px로 고정하지 않는다.
+    let reference_widths: std::collections::BTreeMap<_, _> = variants(|| {
+        let mut doc = source("앞", 1);
+        let mut model = doc.document().clone();
+        let Control::CharOverlap(overlap) = &mut model.sections[0].paragraphs[1].controls[0] else {
+            panic!("한 글자 대조군의 겹침 누락");
+        };
+        overlap.chars.truncate(1);
+        doc.set_document(model);
+        doc
+    })
+    .into_iter()
+    .map(|(format, doc)| {
+        let tree = doc.build_page_render_tree(0).unwrap();
+        let mut nodes = Vec::new();
+        collect(&tree.root, &mut nodes);
+        let width = nodes
+            .iter()
+            .find(|node| {
+                matches!(&node.node_type,
+            RenderNodeType::TextRun(run) if run.char_overlap.is_some())
+            })
+            .expect("한 글자 대조군의 실제 겹침 paint")
+            .bbox
+            .width;
+        assert!(width > 0.0, "{format}: 대조군 슬롯이 소실됨");
+        (format, width)
+    })
+    .collect();
     for terminal in [false, true] {
         for note_first in [false, true] {
             for alignment in ["left", "right"] {
@@ -558,7 +585,7 @@ fn same_anchor_notes_keep_control_order_and_terminal_overlap_geometry() {
                         vec![("겹침", 1), ("각주", 1)]
                     };
                     assert_eq!(slots(p), expected_controls, "{format}");
-                    let tree = doc.build_page_render_tree_logical(0).unwrap();
+                    let tree = doc.build_page_render_tree(0).unwrap();
                     let mut nodes = Vec::new();
                     collect(&tree.root, &mut nodes);
                     let visual: Vec<_> = nodes
@@ -584,11 +611,9 @@ fn same_anchor_notes_keep_control_order_and_terminal_overlap_geometry() {
                         "{format} terminal={terminal}, note_first={note_first}"
                     );
                     let overlap = nodes.iter().find(|node| matches!(&node.node_type,RenderNodeType::TextRun(run) if run.char_overlap.is_some())).unwrap();
-                    // 두 payload 글자의 합이 아니라 원래 한 슬롯 상자를 그대로 그린다.
-                    assert!(
-                        (overlap.bbox.width - 1000.0 / 75.0).abs() < 0.001,
-                        "{format}: {:?}",
-                        overlap.bbox
+                    assert_eq!(
+                        overlap.bbox.width, reference_widths[format],
+                        "{format}: payload 수·주석 순서·정렬로 한 슬롯의 폭이 바뀌면 안 됨"
                     );
                     let end = p.text.chars().count() + 2;
                     let anchors: Vec<_> = nodes.iter().filter(|node| matches!(&node.node_type, RenderNodeType::TextRun(run) if run.text.is_empty())).collect();
@@ -667,7 +692,7 @@ fn same_anchor_notes_keep_control_order_and_terminal_overlap_geometry() {
                             }
                             _ => control,
                         };
-                        let control_tree = control.build_page_render_tree_logical(0).unwrap();
+                        let control_tree = control.build_page_render_tree(0).unwrap();
                         let mut control_nodes = Vec::new();
                         collect(&control_tree.root, &mut control_nodes);
                         let first = control_nodes.first().unwrap();
@@ -686,6 +711,38 @@ fn same_anchor_notes_keep_control_order_and_terminal_overlap_geometry() {
                         last.bbox
                     );
                 }
+            }
+        }
+    }
+}
+
+/// 같은 원본·2020 Print·96dpi의 첫 쪽은 Native/fresh WASM 모두 raw 100%다.
+/// 입력 SHA·TSV·PDF·확대 판독은 tests/fixtures/char_overlap_caret_axis/README.md에 연결한다.
+#[test]
+fn issue_7819_print_qualified_overlap_note_caret_boundaries_stay_within_two_pixels() {
+    // Print의 앞·테두리·비 BMP 문자·주석·뒤·끝 글리프 원점이다.
+    // 마지막은 같은 폭의 한글 advance로 구한 본문 끝이다. engine 메트릭은 재호출하지 않는다.
+    const PRINT_X: [f64; 7] = [
+        113.378550, 126.331533, 139.284515, 157.514628, 166.309865, 179.262797, 192.215729,
+    ];
+    for endnote in [false, true] {
+        for format in ["hwp", "hwpx"] {
+            let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("tests/fixtures/char_overlap_caret_axis")
+                .join(format!("nonbmp-endnote-{endnote}.{format}"));
+            let doc = HwpDocument::from_bytes(&std::fs::read(&path).unwrap()).unwrap();
+            assert_eq!(doc.page_count(), 1, "{format}: Print와 전체 쪽수 일치");
+            assert_eq!(para(&doc, 1).text, "앞🦦뒤끝", "{format}: 원문 보존");
+            for (offset, expected_x) in PRINT_X.into_iter().enumerate() {
+                let rect: serde_json::Value =
+                    serde_json::from_str(&doc.get_cursor_rect_native(0, 1, offset).unwrap())
+                        .unwrap();
+                let x = rect["x"].as_f64().unwrap();
+                assert_eq!(rect["pageIndex"], 0, "{format}: {offset}: {rect}");
+                assert!(
+                    (x - expected_x).abs() <= 2.0,
+                    "{format} 미주={endnote} 논리 {offset}: {rect}, Print x={expected_x}"
+                );
             }
         }
     }
