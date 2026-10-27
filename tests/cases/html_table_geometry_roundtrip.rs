@@ -522,8 +522,10 @@ fn css_padding_and_spacing_keep_zero_clamp_large_values_and_ignore_invalid_value
         assert!(!table.cells[0].apply_inner_margin, "{invalid}");
     }
     for large in ["327.68pt", "500px"] {
+        // 양쪽 모두 i16::MAX면 칸 최소 폭이 단 폭을 넘어 최상위 글줄 예산에서 거절된다.
+        // 왼쪽만 큰 값으로 두어 상한 처리를 들어갈 자리가 있는 표에서 확인한다.
         let flat = import(&format!(
-            r#"<table style="width:1000pt;padding:{large}"><tr><td>칸</td></tr></table>"#
+            r#"<table style="width:1000pt;padding:0pt 0pt 0pt {large}"><tr><td>칸</td></tr></table>"#
         ));
         let (_, _, parsed) = table(&flat);
         assert_eq!(parsed.padding.left, i16::MAX);
