@@ -1604,9 +1604,6 @@ impl DocumentCore {
         let para = &mut self.document.sections[sec_idx].paragraphs[para_idx];
         para.para_shape_id = new_id;
         restamp_indentation(&mut para.line_segs, old_indent, new_indent);
-        let stored_end_for_reset = crate::renderer::composer::paragraph_flow_end(
-            &self.document.sections[sec_idx].paragraphs[para_idx],
-        );
 
         // 줄바꿈에 영향을 주는 변경 시 LineSeg 재계산 (compose는 LineSeg 값을 그대로
         // 사용하므로). 줄간격뿐 아니라 여백/들여쓰기/줄나눔 단위도 사용 가능 폭·토큰
@@ -1640,11 +1637,11 @@ impl DocumentCore {
         {
             let styles = self.resolve_render_styles();
             let hwp3_layout = self.document.layout_profile().hwp3_layout();
-            crate::renderer::composer::recalculate_section_vpos(
+            recalculate_section_vpos(
                 &mut self.document.sections[sec_idx].paragraphs,
                 para_idx,
                 None,
-                stored_end_for_reset,
+                stored_end,
                 &styles,
                 self.dpi,
                 hwp3_layout,
@@ -1688,14 +1685,6 @@ impl DocumentCore {
             )));
         }
 
-        let old_id = self.document.sections[sec_idx].paragraphs[para_idx].para_shape_id;
-        let spacing_changed = {
-            let shapes = &self.document.doc_info.para_shapes;
-            shapes.get(old_id as usize).is_none_or(|old| {
-                let new = &shapes[para_shape_id as usize];
-                old.spacing_before != new.spacing_before || old.spacing_after != new.spacing_after
-            })
-        };
         let stored_end =
             paragraph_flow_state(&self.document.sections[sec_idx].paragraphs[para_idx]);
         let styles = self.resolve_render_styles();
@@ -1718,35 +1707,23 @@ impl DocumentCore {
             let old_id = self.document.sections[sec_idx].paragraphs[para_idx].para_shape_id;
             let (old_indent, new_indent) = self.para_shape_indents(old_id, para_shape_id);
             let para = &mut self.document.sections[sec_idx].paragraphs[para_idx];
-            let stored_end_for_reset = crate::renderer::composer::paragraph_flow_end(para);
             para.para_shape_id = para_shape_id;
             restamp_indentation(&mut para.line_segs, old_indent, new_indent);
             reflow_line_segs(para, available_box, &styles, self.dpi);
-            // 되돌린 문단 간격도 이 문단과 뒤 문단의 저장 세로 위치에 반영한다.
-            let hwp3_layout = self.document.layout_profile().hwp3_layout();
-            crate::renderer::composer::recalculate_section_vpos(
-                &mut self.document.sections[sec_idx].paragraphs,
-                para_idx,
-                None,
-                stored_end_for_reset,
-                &styles,
-                self.dpi,
-                hwp3_layout,
-            );
         }
 
-        if spacing_changed {
-            let hwp3 = self.document.layout_profile().hwp3_layout();
-            recalculate_section_vpos(
-                &mut self.document.sections[sec_idx].paragraphs,
-                para_idx,
-                None,
-                stored_end,
-                &styles,
-                self.dpi,
-                hwp3,
-            );
-        }
+        // 다시 짠 줄과 되돌린 문단 간격을 이 문단과 뒤 문단의 저장 세로 위치에 한 번 반영한다.
+        // 바뀌기 전 끝점과 문단 모양을 함께 넘겨 미수정 개체 호스트 다리도 간격 변화를 따른다.
+        let hwp3 = self.document.layout_profile().hwp3_layout();
+        recalculate_section_vpos(
+            &mut self.document.sections[sec_idx].paragraphs,
+            para_idx,
+            None,
+            stored_end,
+            &styles,
+            self.dpi,
+            hwp3,
+        );
 
         self.document.sections[sec_idx].raw_stream = None;
         self.rebuild_section(sec_idx);

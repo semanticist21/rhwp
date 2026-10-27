@@ -5835,6 +5835,9 @@ pub(crate) fn recalculate_section_vpos(
         let delta = if is_reset {
             // 단/쪽 리셋 경계 — 저장 좌표 유지.
             0
+        } else if let Some(delta) = bridge_delta {
+            // 미수정 개체 호스트 다리는 아래 일반 경로의 끝 이동에 편집 문단의 간격 변화까지 더한다.
+            delta
         } else if skipped_unlined && !para_modified {
             // 저장 줄 없는 문단의 높이는 조판이 그때 정하고, 그 자리는 이 문단의 저장
             // 좌표에만 남아 있다. 앞 문단 end 의 이동만 옮겨 그 간격을 지킨다.
@@ -5844,8 +5847,6 @@ pub(crate) fn recalculate_section_vpos(
                 orig_prev_end
             };
             stored_prev_end.map_or(0, |end| next_vpos - end)
-        } else if let Some(delta) = bridge_delta {
-            delta
         } else if para_modified || prev_modified {
             // 변조 인접 경계 — 이동 후 흐름에 스타일 여백 gap 으로 다시 잇는다.
             let gap = prev_idx
