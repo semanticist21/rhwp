@@ -82,6 +82,7 @@ fn fixture(
         }),
         ..Default::default()
     };
+    child.common.instance_id = 2;
     child.common.width = 20_000;
     child.common.height = 2400;
     child.common.flow_with_text = true;
@@ -116,6 +117,7 @@ fn fixture(
         ],
         ..Default::default()
     };
+    parent.common.instance_id = 1;
     parent.common.width = 30_000;
     parent.common.height = 1200;
     parent.common.flow_with_text = true;
@@ -352,6 +354,7 @@ fn spaced_nested_rowspan_keeps_source_cuts_and_parent_bounds() {
 
 #[test]
 fn spaced_nested_rowspan_with_stored_host_reserves_every_fragment() {
+    eprintln!("source-cuts fixture: parent_rows=1 reset=true cell_spacing=600 host_height=15000 body_height=4800HU (64px)");
     let mut core = fixture(true, None, 4800, 600);
     let mut document = core.document().clone();
     let Control::Table(parent) = &mut document.sections[0].paragraphs[1].controls[0] else {
@@ -379,6 +382,7 @@ fn short_stored_host_preserves_grown_nested_rowspan_and_following_text() {
     for (parent_rows, reset) in [(1, true), (2, true), (2, false)] {
         for spacing in [0, 600] {
             for host_height in [2400, 4800] {
+                eprintln!("source-cuts fixture: parent_rows={parent_rows} reset={reset} cell_spacing={spacing} host_height={host_height} body_height=4800HU (64px)");
                 let mut core = fixture(reset, None, 4800, spacing);
                 let mut document = core.document().clone();
                 let Control::Table(parent) = &mut document.sections[0].paragraphs[1].controls[0]
@@ -404,7 +408,8 @@ fn short_stored_host_preserves_grown_nested_rowspan_and_following_text() {
                 let hwpx = DocumentCore::from_bytes(&core.export_hwpx_native().expect("HWPX 저장"))
                     .expect("HWPX 다시 열기");
                 let original = glyphs(&core);
-                for current in [&core, &hwp, &hwpx] {
+                for (format, current) in [("live", &core), ("hwp", &hwp), ("hwpx", &hwpx)] {
+                    eprintln!("source-cuts stage: {format}");
                     let actual = glyphs(current);
                     assert_eq!(
                         actual.keys().copied().collect::<String>(),
@@ -415,7 +420,7 @@ fn short_stored_host_preserves_grown_nested_rowspan_and_following_text() {
                         assert_eq!(glyph.page, original[ch].page, "저장 후 글자의 쪽 위치");
                         assert!(
                             glyph.bbox.y >= 7.5 && glyph.bbox.y + glyph.bbox.height <= 72.5,
-                            "글자가 본문 밖에 있다: {ch}, {glyph:?}"
+                            "글자가 본문 밖에 있다: parent_rows={parent_rows}, reset={reset}, spacing={spacing}, host_height={host_height}, format={format}, body=8..72px, {ch}, {glyph:?}"
                         );
                     }
                     if reset {

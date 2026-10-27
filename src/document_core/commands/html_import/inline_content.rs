@@ -158,6 +158,11 @@ impl DocumentCore {
                 });
         }
 
+        // 새 HTML 빈 문단의 글자 모양도 저장해 재열기 때 12px 폴백으로 달라지지 않게 한다.
+        if para.text.is_empty() && para.char_shapes.is_empty() {
+            para.set_single_char_shape(self.css_to_char_shape_id(block_style));
+        }
+
         // 그림은 확장 제어문자 8칸을 차지한다. 그 자리를 char_offsets 의 갭으로 남겨야
         // control_text_positions 가 그림을 글 사이에 되짚는다.
         for (char_idx, pic) in pictures {
@@ -339,6 +344,9 @@ impl DocumentCore {
         // CharShape 쪽과 동일 — 원본 PARA_SHAPE 바이트를 비우지 않으면 정렬·줄간격 변경이
         // 저장 시 사라진다(ParaShapeMods::apply_to 와 같은 처리).
         ps.raw_data = None;
+        // 새 HTML 모양에는 원본 HWPX 표기가 없다. 패키지 버전에 맞는 공통 단위 출력을 쓴다.
+        ps.hwpx_plain_para_margin = false;
+        ps.hwpx_plain_para_margin_physical = false;
 
         let css_lower = css.to_lowercase();
 
@@ -396,12 +404,20 @@ impl DocumentCore {
             };
             let n: f64 = num.trim().parse().ok()?;
             // 마지막 ×2 가 위에서 말한 ParaShape IR 스케일이다.
-            Some(match unit {
-                "px" => (n * 72.0 / 96.0 * 200.0).round() as i32,
-                "cm" => (n * 72.0 / 2.54 * 200.0).round() as i32,
-                "mm" => (n * 72.0 / 25.4 * 200.0).round() as i32,
-                _ => (n * 200.0).round() as i32,
-            })
+            let physical = match unit {
+                "px" => n * 72.0 / 96.0 * 100.0,
+                "cm" => n * 72.0 / 2.54 * 100.0,
+                "mm" => n * 72.0 / 25.4 * 100.0,
+                _ => n * 100.0,
+            }
+            .round();
+            if !physical.is_finite()
+                || physical < f64::from(i32::MIN / 2)
+                || physical > f64::from(i32::MAX / 2)
+            {
+                return None;
+            }
+            Some(physical as i32 * 2)
         };
         let css_margin_left =
             parse_css_value(&css_lower, "margin-left").and_then(|v| css_len_to_hwpunit(&v));
@@ -418,21 +434,19 @@ impl DocumentCore {
             // 따라서 left = margin-left + text-indent(첫 줄 위치), indent = text-indent 로 옮긴다.
             let ml = css_margin_left.unwrap_or(0);
             let ti = css_text_indent.unwrap_or(0);
-            ps.margin_left = (ml + ti).max(0);
-            ps.indent = ti;
-            // 평문 표기를 유지하되, 여백은 직렬화기가 공통 IR에서 물리 단위로 되돌린다.
-            ps.hwpx_plain_para_margin = true;
+            if let Some(left) = ml.checked_add(ti) {
+                ps.margin_left = left.max(0);
+                ps.indent = ti;
+            }
         }
         if let Some(v) = parse_css_value(&css_lower, "margin-top") {
             if let Some(hu) = css_len_to_hwpunit(&v) {
                 ps.spacing_before = hu.max(0);
-                ps.hwpx_plain_para_margin = true;
             }
         }
         if let Some(v) = parse_css_value(&css_lower, "margin-bottom") {
             if let Some(hu) = css_len_to_hwpunit(&v) {
                 ps.spacing_after = hu.max(0);
-                ps.hwpx_plain_para_margin = true;
             }
         }
 

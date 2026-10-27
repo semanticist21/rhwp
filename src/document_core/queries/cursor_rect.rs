@@ -80,6 +80,7 @@ struct CellCursorHit {
     y: f64,
     height: f64,
     char_offset_y: f64,
+    at_run_end: bool,
 }
 
 /// 렌더 노드 트리에서 대상 셀의 bbox 를 찾는다 (legacy/fast 공유).
@@ -119,6 +120,8 @@ fn find_table_cell_bounds_in_node(
 /// 렌더 노드 트리에서 (cell_para, offset) 캐럿 TextRun 을 찾는다 (legacy/fast 공유).
 fn find_cursor_in_cell_node(
     node: &crate::renderer::render_tree::RenderNode,
+    paragraph: Option<&crate::model::paragraph::Paragraph>,
+    section: usize,
     parent_para: usize,
     ctrl_idx: usize,
     c_idx: usize,
@@ -127,6 +130,67 @@ fn find_cursor_in_cell_node(
     page_index: u32,
 ) -> Option<CellCursorHit> {
     use crate::renderer::render_tree::RenderNodeType;
+    let paragraph = paragraph.filter(|paragraph| {
+        paragraph
+            .controls
+            .iter()
+            .any(|control| matches!(control, crate::model::control::Control::Form(_)))
+    });
+    let mut end_fallback = None;
+    if let (RenderNodeType::TextLine(_), Some(paragraph)) = (&node.node_type, paragraph) {
+        let owns_cell = node.children.iter().any(|child| {
+            let RenderNodeType::TextRun(run) = &child.node_type else {
+                return false;
+            };
+            run.cell_context.as_ref().is_some_and(|ctx| {
+                ctx.parent_para_index == parent_para
+                    && ctx.path.len() == 1
+                    && ctx.path[0].control_index == ctrl_idx
+                    && ctx.path[0].cell_index == c_idx
+                    && ctx.path[0].cell_para_index == cp_idx
+            })
+        });
+        if owns_cell {
+            let positions = paragraph.logical_control_positions();
+            for child in &node.children {
+                let RenderNodeType::FormObject(form) = &child.node_type else {
+                    continue;
+                };
+                if form.section_index != section
+                    || form.para_index != cp_idx
+                    || form.cell_location.is_none()
+                    || !matches!(paragraph.controls.get(form.control_index),
+                        Some(crate::model::control::Control::Form(source))
+                            if source.common.treat_as_char)
+                {
+                    continue;
+                }
+                let Some(&position) = positions.get(form.control_index) else {
+                    continue;
+                };
+                if offset == position || offset == position + 1 {
+                    // 양식의 원문 글자 수가 0이어도 실제 인라인 칸의 앞·뒤는 서로 다르다.
+                    let hit = CellCursorHit {
+                        page_index,
+                        x: child.bbox.x
+                            + if offset == position {
+                                0.0
+                            } else {
+                                child.bbox.width
+                            },
+                        y: child.bbox.y,
+                        height: child.bbox.height.max(10.0),
+                        char_offset_y: child.char_offset_y,
+                        at_run_end: offset != position,
+                    };
+                    if !hit.at_run_end {
+                        return Some(hit);
+                    }
+                    end_fallback = Some(hit);
+                }
+            }
+        }
+    }
     if let RenderNodeType::TextRun(ref text_run) = node.node_type {
         let matches_cell = text_run.cell_context.as_ref().map_or(false, |ctx| {
             // path.len()==1 가드가 없으면 중첩 표 *내부* 셀의 run 도
@@ -161,19 +225,26 @@ fn find_cursor_in_cell_node(
                 let font_size = text_run.style.font_size;
                 let ascent = font_size * 0.8;
                 let caret_y = node.bbox.y + text_run.baseline - ascent;
-                return Some(CellCursorHit {
+                let hit = CellCursorHit {
                     page_index,
                     x: node.bbox.x + x_in_run,
                     y: caret_y,
                     height: font_size,
                     char_offset_y: node.char_offset_y,
-                });
+                    at_run_end: offset > char_start && offset == char_start + char_count,
+                };
+                if !hit.at_run_end {
+                    return Some(hit);
+                }
+                end_fallback = Some(hit);
             }
         }
     }
     for child in &node.children {
         if let Some(hit) = find_cursor_in_cell_node(
             child,
+            paragraph,
+            section,
             parent_para,
             ctrl_idx,
             c_idx,
@@ -181,10 +252,14 @@ fn find_cursor_in_cell_node(
             offset,
             page_index,
         ) {
-            return Some(hit);
+            // 앞 런 끝과 다음 런 시작이 같으면 실제 다음 글자의 원점을 쓴다.
+            if !hit.at_run_end {
+                return Some(hit);
+            }
+            end_fallback.get_or_insert(hit);
         }
     }
-    None
+    end_fallback
 }
 
 fn format_cursor_rect_json(
@@ -413,6 +488,16 @@ impl DocumentCore {
             bboxes: &mut std::collections::HashMap<usize, (f64, f64, f64, f64)>,
         ) {
             match &node.node_type {
+                RenderNodeType::FormObject(form)
+                    if form.section_index == sec
+                        && form.para_index == para
+                        && form.cell_location.is_none() =>
+                {
+                    bboxes.insert(
+                        form.control_index,
+                        (node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height),
+                    );
+                }
                 RenderNodeType::Image(image_node) => {
                     if image_node.section_index == Some(sec) && image_node.para_index == Some(para)
                     {
@@ -1885,17 +1970,10 @@ impl DocumentCore {
                     run.bbox_x
                 }
             };
-            // 본문 글자 클릭의 캐럿은 get_cursor_rect처럼 기준선과 글자 크기로 놓는다. 한 줄에
-            // 크기가 다른 글자가 섞이면 런 상자 위쪽이 실제 캐럿 위치와 다르다.
-            let (caret_y, caret_h) =
-                if run.cell_context.is_none() && !run.is_textbox && run.has_text {
-                    (run.caret_y, run.caret_h)
-                } else {
-                    (run.bbox_y, run.bbox_h)
-                };
+            // 클릭과 키보드 이동은 같은 기준선·글자 크기의 캐럿을 쓴다.
             let cursor_rect = format!(
                 ",\"cursorRect\":{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"height\":{:.1}}}",
-                page_num, cursor_x, caret_y, caret_h
+                page_num, cursor_x, run.caret_y, run.caret_h
             );
             if let Some(ref ctx) = run.cell_context {
                 let outer = ctx.path.first();
@@ -2059,6 +2137,33 @@ impl DocumentCore {
             } else {
                 line_id
             };
+            if let RenderNodeType::FormObject(form) = &node.node_type {
+                if form.cell_location.is_none() {
+                    if let Some(para) = core
+                        .document
+                        .sections
+                        .get(form.section_index)
+                        .and_then(|s| s.paragraphs.get(form.para_index))
+                    {
+                        if para
+                            .controls
+                            .get(form.control_index)
+                            .is_some_and(Control::is_treat_as_char_object)
+                        {
+                            hits.push((
+                                form.section_index,
+                                form.para_index,
+                                find_logical_control_positions(para)[form.control_index],
+                                node.bbox.x,
+                                node.bbox.y,
+                                node.bbox.width,
+                                node.bbox.height,
+                                line_id,
+                            ));
+                        }
+                    }
+                }
+            }
             if let RenderNodeType::Image(ref img) = node.node_type {
                 if img.cell_context.is_none() {
                     if let (Some(si), Some(pi), Some(ci)) =
@@ -2976,6 +3081,14 @@ impl DocumentCore {
                 find_table_cell_bounds_in_node(&tree.root, parent_para_idx, control_idx, cell_idx);
             if let Some(hit) = find_cursor_in_cell_node(
                 &tree.root,
+                self.get_cell_paragraph_ref(
+                    section_idx,
+                    parent_para_idx,
+                    control_idx,
+                    cell_idx,
+                    cell_para_idx,
+                ),
+                section_idx,
                 parent_para_idx,
                 control_idx,
                 cell_idx,
@@ -3584,6 +3697,14 @@ impl DocumentCore {
             find_table_cell_bounds_in_node(&scratch_col, parent_para_idx, control_idx, cell_idx);
         if let Some(hit) = find_cursor_in_cell_node(
             &scratch_col,
+            self.get_cell_paragraph_ref(
+                section_idx,
+                parent_para_idx,
+                control_idx,
+                cell_idx,
+                cell_para_idx,
+            ),
+            section_idx,
             parent_para_idx,
             control_idx,
             cell_idx,
@@ -3857,7 +3978,8 @@ impl DocumentCore {
             current_table_ctx: Option<CellContext>,
             current_cell_ctx: Option<CellContext>,
             current_cell_bounds: Option<CellCursorBounds>,
-        ) -> Option<(u32, f64, f64, f64, f64, Option<CellCursorBounds>)> {
+        ) -> Option<(CellCursorHit, Option<CellCursorBounds>)> {
+            let mut end_fallback = None;
             let table_ctx =
                 table_ctx_from_node(node, current_table_ctx.as_ref(), current_cell_ctx.as_ref());
             let mut child_cell_ctx = current_cell_ctx.clone();
@@ -3903,14 +4025,18 @@ impl DocumentCore {
                         } else {
                             0.0
                         };
-                        return Some((
-                            page,
-                            node.bbox.x + xr,
-                            node.bbox.y,
-                            node.bbox.height,
-                            node.char_offset_y,
-                            child_cell_bounds,
-                        ));
+                        let hit = CellCursorHit {
+                            page_index: page,
+                            x: node.bbox.x + xr,
+                            y: node.bbox.y,
+                            height: node.bbox.height,
+                            char_offset_y: node.char_offset_y,
+                            at_run_end: offset > cs && offset == cs + cc,
+                        };
+                        if !hit.at_run_end {
+                            return Some((hit, child_cell_bounds));
+                        }
+                        end_fallback = Some((hit, child_cell_bounds));
                     }
                 }
             }
@@ -3927,10 +4053,13 @@ impl DocumentCore {
                     child_cell_ctx.clone(),
                     child_cell_bounds,
                 ) {
-                    return Some(hit);
+                    if !hit.0.at_run_end {
+                        return Some(hit);
+                    }
+                    end_fallback.get_or_insert(hit);
                 }
             }
-            None
+            end_fallback
         }
 
         for &page_num in &pages {
@@ -3945,7 +4074,7 @@ impl DocumentCore {
             ) {
                 return Ok(hit);
             }
-            if let Some((pi, x, y, h, char_offset_y, cell_bounds)) = find_cursor_by_path(
+            if let Some((hit, cell_bounds)) = find_cursor_by_path(
                 self,
                 &tree.root,
                 section_idx,
@@ -3958,11 +4087,11 @@ impl DocumentCore {
                 None,
             ) {
                 return Ok(format_cursor_rect_json(
-                    pi,
-                    x,
-                    y,
-                    h,
-                    char_offset_y,
+                    hit.page_index,
+                    hit.x,
+                    hit.y,
+                    hit.height,
+                    hit.char_offset_y,
                     cell_bounds,
                 ));
             }

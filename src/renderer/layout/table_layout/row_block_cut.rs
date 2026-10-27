@@ -169,6 +169,113 @@ impl<'a> CellCutFrame<'a> {
 }
 
 impl LayoutEngine {
+    /// 커진 중첩 병합 표가 선택한 원본 컷의 물리 공간을 예약한 뒤 예산을 다시 맞춘다.
+    pub(crate) fn advance_row_block_cut_with_mixed_nested_reserve(
+        &self,
+        table: &crate::model::table::Table,
+        block: (usize, usize),
+        start_cut: &[usize],
+        physical_budget: f64,
+        row_offsets: &[f64],
+        styles: &ResolvedStyleSet,
+    ) -> RowCutResult {
+        let (b_start, b_end) = block;
+        let advance = |budget| {
+            if row_offsets.is_empty() {
+                self.advance_row_block_cut(table, b_start, b_end, start_cut, budget, styles)
+            } else {
+                self.advance_row_block_cut_with_row_offsets(
+                    table,
+                    b_start,
+                    b_end,
+                    start_cut,
+                    budget,
+                    row_offsets,
+                    styles,
+                )
+            }
+        };
+        let mut cells = Self::row_block_cells(table, b_start, b_end);
+        cells.sort_by_key(|cell| (cell.row, cell.col));
+        let mut budget = physical_budget;
+        let mut cut = advance(budget);
+        loop {
+            let mut physical = 0.0f64;
+            let mut logical = 0.0f64;
+            let mut row_top = 0.0;
+            let mut physical_row_top = 0.0;
+            let mut row_height = 0.0f64;
+            let mut physical_row_height = 0.0f64;
+            let mut previous_row = None;
+            let mut has_block_fragment = false;
+            for (i, cell) in cells.iter().enumerate() {
+                if row_offsets.is_empty() && previous_row.is_some_and(|row| row != cell.row) {
+                    let spacing =
+                        crate::renderer::hwpunit_to_px(table.cell_spacing as i32, self.dpi);
+                    row_top += row_height + spacing;
+                    physical_row_top += physical_row_height + spacing;
+                    row_height = 0.0;
+                    physical_row_height = 0.0;
+                }
+                previous_row = Some(cell.row);
+                let units = self.cell_units(cell, table, styles);
+                let start = start_cut.get(i).copied().unwrap_or(0).min(units.len());
+                let end = cut.end_cut[i].clamp(start, units.len());
+                let height: f64 = units[start..end].iter().map(|unit| unit.height).sum();
+                if height <= 0.0 {
+                    continue;
+                }
+                let owns_block_fragment = units[start..end].iter().any(|unit| {
+                    unit.nested_table_fragment
+                        .as_ref()
+                        .is_some_and(|fragment| fragment.is_block)
+                });
+                has_block_fragment |= owns_block_fragment;
+                let extra = if owns_block_fragment {
+                    self.mixed_nested_flow_extra_for_height(
+                        cell,
+                        table,
+                        styles,
+                        start,
+                        end,
+                        super::row_physical_band::CutHeight::Capacity,
+                    )
+                } else {
+                    0.0
+                };
+                let offset = (cell.row as usize)
+                    .checked_sub(b_start)
+                    .and_then(|row| row_offsets.get(row))
+                    .copied();
+                logical = logical.max(offset.unwrap_or(row_top) + height);
+                physical = physical.max(offset.unwrap_or(physical_row_top) + height + extra);
+                if cell.row_span == 1 {
+                    row_height = row_height.max(height);
+                    physical_row_height = physical_row_height.max(height + extra);
+                }
+            }
+            if !has_block_fragment {
+                return cut;
+            }
+            let reserve = (physical - logical).max(0.0);
+            let occupied = cut.occupied_height();
+            let available = (physical_budget - reserve).max(0.0);
+            if occupied <= available + super::ROW_CUT_CAPACITY_FP_EPSILON_PX || available >= budget
+            {
+                // 내용 전진은 고아 줄 판정에 남기고 추가 예약은 물리 높이에만 반영한다.
+                cut.physical_height = Some(occupied + reserve);
+                return cut;
+            }
+            budget = available;
+            let next = advance(budget);
+            if next.end_cut == cut.end_cut {
+                cut.physical_height = Some(occupied + reserve);
+                return cut;
+            }
+            cut = next;
+        }
+    }
+
     pub(in crate::renderer::layout) fn stored_cell_cut_alignment_height(
         &self,
         cell: &crate::model::table::Cell,

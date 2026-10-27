@@ -47,7 +47,7 @@ fn first_table(core: &DocumentCore) -> (usize, usize, &Table) {
 
 fn inline_html() -> String {
     format!(
-        r#"<div data-rhwp-paragraph="inline" style="text-align:right;font-size:16pt"><span>  <b>가🦦</b></span><table style="display:inline-table;width:20.03pt;height:12.07pt"><tr><td style="width:20.03pt;height:12.07pt"><p>첫 표</p></td></tr></table><i>나</i><img src="{PNG}" width="22.68" height="19.106666666666666"><br><u>다</u><table style="display:inline-table;width:30.05pt;height:15.09pt"><tr><td style="width:30.05pt;height:15.09pt"><p>둘 표</p></td></tr></table><span>끝  </span></div>"#
+        r#"<div data-rhwp-paragraph="inline" style="text-align:right;font-size:16pt"><span>  <b>가🦦</b></span><table style="display:inline-table;width:20.03pt;height:32.07pt"><tr><td style="width:20.03pt;height:32.07pt"><p>첫 표</p></td></tr></table><i>나</i><img src="{PNG}" width="22.68" height="19.106666666666666"><br><u>다</u><table style="display:inline-table;width:30.05pt;height:35.09pt"><tr><td style="width:30.05pt;height:35.09pt"><p>둘 표</p></td></tr></table><span>끝  </span></div>"#
     )
 }
 
@@ -416,7 +416,7 @@ fn marked_paragraph_table_width_respects_its_own_margins_and_rolls_back_no_space
         let mut core = blank();
         let before = core.export_hwp_native().unwrap();
         let html = format!(
-            r#"<div data-rhwp-paragraph="inline" style="margin-left:{margin}"><span>앞</span><table style="width:100pt"><tr><td>표</td></tr></table><span>뒤</span></div>"#
+            r#"<div data-rhwp-paragraph="inline" style="margin-left:{margin}"><span>앞</span><table style="width:100pt;padding:0"><tr><td>표</td></tr></table><span>뒤</span></div>"#
         );
         let result = core.paste_html_native(0, 0, 0, &html);
         if margin == "500pt" {
@@ -440,6 +440,20 @@ fn marked_paragraph_table_width_respects_its_own_margins_and_rolls_back_no_space
             }
         }
     }
+
+    // 기본 셀 여백과 한 글자의 최소 폭은 1992HU로, 남은 1954HU를 넘는다.
+    // 앞서 등록한 서식·그림까지 포함해 실패한 붙이기는 문서와 이벤트를 바꾸지 않는다.
+    let mut core = blank();
+    let before = core.export_hwp_native().unwrap();
+    let model = format!("{:?}", core.document());
+    let events = core.serialize_event_log();
+    let html = format!(
+        r#"<p style="color:#123456"><img src="{PNG}" width="1" height="1">등록</p><div data-rhwp-paragraph="inline" style="margin-left:400pt"><span>앞</span><table style="width:100pt"><tr><td>표</td></tr></table><span>뒤</span></div>"#
+    );
+    assert!(core.paste_html_native(0, 0, 0, &html).is_err());
+    assert_eq!(format!("{:?}", core.document()), model);
+    assert_eq!(core.serialize_event_log(), events);
+    assert_eq!(core.export_hwp_native().unwrap(), before);
 }
 
 #[test]

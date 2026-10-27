@@ -21,6 +21,15 @@ fn fixture() -> (DocumentCore, usize) {
         .unwrap();
     let made = json(core.insert_footnote_native(0, 0, 2).unwrap());
     let ci = made["controlIdx"].as_u64().unwrap() as usize;
+    // 새 각주는 서식의 130%를 따르므로 240/160 계약의 시작값을 명시한다.
+    core.apply_para_format_in_footnote_native(
+        0,
+        0,
+        ci,
+        0,
+        r#"{"lineSpacingType":"Percent","lineSpacing":160}"#,
+    )
+    .unwrap();
     let text = "각주 줄 간격 한글🦦 원문과 글자 서식을 보존합니다. ".repeat(4);
     core.insert_text_in_footnote_native(0, 0, ci, 0, 2, &text)
         .unwrap();

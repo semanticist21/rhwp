@@ -644,6 +644,7 @@ fn assert_inline_run_axis(
     paragraph: &Paragraph,
     path: Option<&Path>,
     pi: usize,
+    case: &str,
 ) {
     fn collect<'a>(
         node: &'a RenderNode,
@@ -715,10 +716,37 @@ fn assert_inline_run_axis(
     } else {
         doc.get_cursor_rect_native(0, pi, logical_end).unwrap()
     }).unwrap();
-    if path.is_some() {
+    if let Some(path) = path {
+        if caret["cellOverflowed"] != false {
+            eprintln!("{case}, pi={pi}: 원문 문단 {paragraph:#?}");
+            for node in &runs {
+                if let RenderNodeType::TextRun(run) = &node.node_type {
+                    eprintln!(
+                        "실제 런 text={:?}, start={:?}, bbox={:?}, baseline={}, font={}, offset_y={}",
+                        run.text, run.char_start, node.bbox, run.baseline,
+                        run.style.font_size, node.char_offset_y
+                    );
+                }
+            }
+            let mut paragraphs = doc.document().sections[0].paragraphs.as_slice();
+            let mut parent = 1;
+            for (depth, &(control, index, cell_para)) in path.iter().enumerate() {
+                let Control::Table(table) = &paragraphs[parent].controls[control] else {
+                    panic!("좌표 fixture의 조상 표 없음")
+                };
+                let cell = &table.cells[index];
+                eprintln!(
+                    "조상 {depth}: table={}x{}, cell={}x{}, cell_padding={:?}, table_padding={:?}, common={:?}",
+                    table.common.width, table.common.height, cell.width, cell.height,
+                    cell.padding, table.padding, table.common,
+                );
+                paragraphs = &cell.paragraphs;
+                parent = cell_para;
+            }
+        }
         assert_eq!(
             caret["cellOverflowed"], false,
-            "겹친 칸을 제외한 좌표 fixture: {caret}"
+            "{case}, pi={pi}, path={path:?}: 겹친 칸을 제외한 좌표 fixture: {caret}"
         );
     }
     let last = runs.last().unwrap();
@@ -756,6 +784,105 @@ fn assert_inline_run_axis(
 }
 
 fn inline_axis_fixture(flat: bool, tables: bool) -> (HwpDocument, Path) {
+    fn max_id(paragraphs: &[Paragraph]) -> u32 {
+        paragraphs
+            .iter()
+            .flat_map(|p| &p.controls)
+            .map(|control| match control {
+                Control::Table(table) => table.common.instance_id.max(
+                    table
+                        .cells
+                        .iter()
+                        .map(|cell| max_id(&cell.paragraphs))
+                        .max()
+                        .unwrap_or(0),
+                ),
+                Control::Picture(picture) => picture.common.instance_id.max(picture.instance_id),
+                _ => 0,
+            })
+            .max()
+            .unwrap_or(0)
+    }
+
+    fn fit_frames(paragraphs: &mut [Paragraph], available: u32, next_id: &mut u32) -> u32 {
+        let mut flow = 0u32;
+        for paragraph in paragraphs {
+            let mut objects = 0u32;
+            for control in &mut paragraph.controls {
+                match control {
+                    Control::Table(table) => {
+                        table.common.instance_id = *next_id;
+                        *next_id += 1;
+                        table.raw_ctrl_data.clear();
+                        table.raw_ctrl_seal = None;
+                        let outer = u32::from(table.outer_margin_left.max(0) as u16)
+                            + u32::from(table.outer_margin_right.max(0) as u16);
+                        let width = table
+                            .common
+                            .width
+                            .min(available.checked_sub(outer).unwrap());
+                        let columns = table.get_column_widths();
+                        let total = columns.iter().map(|&width| u64::from(width)).sum::<u64>();
+                        let mut assigned = 0;
+                        let widths: Vec<_> = columns
+                            .iter()
+                            .enumerate()
+                            .map(|(index, &column)| {
+                                let next = if index + 1 == columns.len() {
+                                    width - assigned
+                                } else {
+                                    (u64::from(column) * u64::from(width) / total) as u32
+                                };
+                                assigned += next;
+                                next
+                            })
+                            .collect();
+                        assert_eq!(assigned, width);
+                        let old: Vec<_> = table.cells.iter().map(|cell| cell.width).collect();
+                        table.set_column_widths(&widths).unwrap();
+                        for (cell, old) in table.cells.iter_mut().zip(old) {
+                            cell.shift_text_area_width(i64::from(cell.width) - i64::from(old));
+                            let padding = cell.effective_padding(&table.padding);
+                            let horizontal =
+                                padding.left.max(0) as u32 + padding.right.max(0) as u32;
+                            let content =
+                                fit_frames(&mut cell.paragraphs, cell.width - horizontal, next_id);
+                            cell.height =
+                                content + padding.top.max(0) as u32 + padding.bottom.max(0) as u32;
+                        }
+                        table.set_column_widths(&widths).unwrap();
+                        objects += table.common.height
+                            + table.outer_margin_top.max(0) as u32
+                            + table.outer_margin_bottom.max(0) as u32;
+                    }
+                    Control::Picture(picture) => {
+                        objects += picture.common.height
+                            + picture.common.margin.top.max(0) as u32
+                            + picture.common.margin.bottom.max(0) as u32;
+                    }
+                    _ => {}
+                }
+            }
+            // 직접 복제한 본문 줄의 절대 vpos·고정 높이는 새 셀의 저장 프레임이 아니다.
+            // 각 글줄과 모든 자식 개체를 담는 명시적 여유 프레임을 아래에서 위로 만든다.
+            let origin = paragraph
+                .line_segs
+                .first()
+                .map_or(0, |line| line.vertical_pos);
+            let advance = paragraph.line_segs.last().map_or(1600, |line| {
+                (line.vertical_pos - origin + line.line_height + line.line_spacing).max(0) as u32
+            });
+            for line in &mut paragraph.line_segs {
+                line.vertical_pos = line.vertical_pos - origin + flow as i32;
+                line.column_start = 0;
+                line.segment_width = (available / 4 * 4) as i32;
+                line.tag |= rhwp::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY;
+            }
+            flow += advance + objects;
+        }
+        flow
+    }
+
     let (core, path) = paste_fixture(flat, tables, true, 0);
     let mut document = core.document().clone();
     let mut paragraphs = &mut document.sections[0].paragraphs;
@@ -778,12 +905,115 @@ fn inline_axis_fixture(flat: bool, tables: bool) -> (HwpDocument, Path) {
                 table.raw_ctrl_data.clear();
                 table.raw_ctrl_seal = None;
                 table.common.ctrl_id = rhwp::parser::tags::CTRL_TABLE;
+                // 그림 크기의 빈 표는 그 크기에 맞는 한 칸으로 만든다.
+                // 두 칸 template의 큰 grid를 작은 공통 상자에 남기면 overflow 검사가 섞인다.
+                table.col_count = 1;
+                table.row_sizes = vec![1];
+                table.cells.truncate(1);
+                table.cells[0].width = table.common.width;
+                table.cells[0].height = table.common.height;
+                table.rebuild_grid();
             }
         }
     }
+    let Control::Table(outer) = &document.sections[0].paragraphs[1].controls[0] else {
+        unreachable!()
+    };
+    let available = outer.common.width
+        + outer.outer_margin_left.max(0) as u32
+        + outer.outer_margin_right.max(0) as u32;
+    let mut next_id = max_id(&document.sections[0].paragraphs) + 1;
+    fit_frames(
+        &mut document.sections[0].paragraphs,
+        available,
+        &mut next_id,
+    );
     let mut doc = HwpDocument::create_empty();
     doc.set_document(document);
     (doc, path)
+}
+
+#[test]
+fn cell_caret_prefers_the_next_run_origin_but_keeps_the_slot_before_an_object() {
+    fn run_at<'a>(node: &'a RenderNode, path: &Path, start: usize) -> Option<&'a RenderNode> {
+        if let RenderNodeType::TextRun(run) = &node.node_type {
+            let matches_path = run.cell_context.as_ref().is_some_and(|context| {
+                context.parent_para_index == 1
+                    && context.path.len() == path.len()
+                    && context.path.iter().zip(path).all(|(actual, expected)| {
+                        actual.control_index == expected.0
+                            && actual.cell_index == expected.1
+                            && actual.cell_para_index == expected.2
+                    })
+            });
+            if matches_path && run.char_start == Some(start) && !run.text.is_empty() {
+                return Some(node);
+            }
+        }
+        node.children
+            .iter()
+            .find_map(|child| run_at(child, path, start))
+    }
+
+    for flat in [true, false] {
+        let (doc, path) = inline_axis_fixture(flat, false);
+        let entries: Vec<_> = path
+            .iter()
+            .map(|&(control, cell, para)| {
+                serde_json::json!({
+                    "controlIndex": control, "cellIndex": cell, "cellParaIndex": para
+                })
+            })
+            .collect();
+        let path_json = serde_json::to_string(&entries).unwrap();
+        let tree = doc.build_page_render_tree(0).unwrap();
+        let next = run_at(&tree.root, &path, 3).expect("이모지 뒤 글자 런");
+        let before = run_at(&tree.root, &path, 0).expect("개체 앞 글자 런");
+        let RenderNodeType::TextRun(before_run) = &before.node_type else {
+            unreachable!()
+        };
+        let layout: serde_json::Value =
+            serde_json::from_str(&doc.get_page_text_layout_native(0).unwrap()).unwrap();
+        let expected_path = serde_json::Value::Array(entries);
+        let painted = layout["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|run| {
+                run["cellPath"] == expected_path
+                    && run["charStart"] == 0
+                    && run["text"] == before_run.text
+            })
+            .expect("개체 앞 글자의 공개 조판 좌표");
+        let before_x = painted["x"].as_f64().unwrap()
+            + painted["charX"]
+                .as_array()
+                .unwrap()
+                .last()
+                .unwrap()
+                .as_f64()
+                .unwrap();
+        // 연속 런 경계는 다음 글자 원점, 개체 앞 칸은 앞 글자 끝을 유지한다.
+        for (offset, expected) in [(3, next.bbox.x), (1, before_x)] {
+            let mut rects = vec![doc
+                .get_cursor_rect_by_path(0, 1, &path_json, offset)
+                .unwrap()];
+            if flat {
+                rects.push(
+                    doc.get_cursor_rect_in_cell_native(0, 1, 0, 0, 0, offset as usize)
+                        .unwrap(),
+                );
+            }
+            for rect in rects {
+                let rect: serde_json::Value = serde_json::from_str(&rect).unwrap();
+                let actual = rect["x"].as_f64().unwrap();
+                assert!(
+                    (actual - expected).abs() < 0.1,
+                    "flat={flat}, offset={offset}: {actual} != {expected}"
+                );
+            }
+        }
+    }
 }
 
 #[test]
@@ -809,7 +1039,13 @@ fn styled_inline_objects_keep_first_and_last_cell_paragraph_logical_offsets() {
                 ));
                 let before = serde_json::to_value(&doc.document().sections[0].paragraphs).unwrap();
                 for pi in [0, 2] {
-                    assert_inline_run_axis(&doc, &cell(doc.document(), &path)[pi], Some(&path), pi);
+                    assert_inline_run_axis(
+                        &doc,
+                        &cell(doc.document(), &path)[pi],
+                        Some(&path),
+                        pi,
+                        &format!("flat={flat}, tables={tables}, format={format}"),
+                    );
                 }
                 assert_eq!(
                     serde_json::to_value(&doc.document().sections[0].paragraphs).unwrap(),
@@ -839,7 +1075,13 @@ fn styled_inline_objects_keep_body_run_logical_offsets() {
             }
             let before = serde_json::to_value(&doc.document().sections[0].paragraphs).unwrap();
             for pi in [1, 3] {
-                assert_inline_run_axis(&doc, &doc.document().sections[0].paragraphs[pi], None, pi);
+                assert_inline_run_axis(
+                    &doc,
+                    &doc.document().sections[0].paragraphs[pi],
+                    None,
+                    pi,
+                    &format!("body, tables={tables}, format={format}"),
+                );
             }
             assert_eq!(
                 serde_json::to_value(&doc.document().sections[0].paragraphs).unwrap(),
@@ -869,7 +1111,13 @@ fn styled_inline_objects_keep_logical_offsets_across_line_breaks() {
                 };
                 doc = HwpDocument::from_bytes(&bytes).unwrap();
             }
-            assert_inline_run_axis(&doc, &cell(doc.document(), &path)[0], Some(&path), 0);
+            assert_inline_run_axis(
+                &doc,
+                &cell(doc.document(), &path)[0],
+                Some(&path),
+                0,
+                &format!("flat={flat}"),
+            );
         }
     }
 }

@@ -3453,6 +3453,18 @@ fn supports_inline_picture_frame_controls(para: &Paragraph) -> bool {
         })
 }
 
+// 양식만 있는 빈 문단도 그림과 같은 원시 인라인 슬롯을 프레임에 넘긴다.
+// 떠 있는 양식이나 다른 개체의 배치 소유권은 기존 경로에 둔다.
+pub(super) fn supports_inline_form_frame_controls(para: &Paragraph) -> bool {
+    para.controls
+        .iter()
+        .any(|control| matches!(control, Control::Form(form) if form.common.treat_as_char))
+        && para.controls.iter().all(|control| match control {
+            Control::Form(form) => form.common.treat_as_char,
+            other => control_is_width_neutral_marker(other),
+        })
+}
+
 /// 본문 뒤 남은 폭에 놓이지 않는 inline control은 별도 physical line을 가진다.
 ///
 /// 종전 cell reflow는 text token만 줄바꿈한 뒤 첫 LineSeg를 표 높이만큼 키웠다.
@@ -3896,6 +3908,7 @@ fn layout_paragraph_in_frame_impl(
         FramePurpose::Body => {
             supports_picture_band_frame_controls(para)
                 || supports_cached_body_frame_controls(para)
+                || supports_inline_form_frame_controls(para)
                 || (para.line_segs.is_empty() && supports_tac_table_band_frame_controls(para))
         }
         FramePurpose::PictureAnchor => picture_anchor_projection::admits(para),
@@ -3906,7 +3919,8 @@ fn layout_paragraph_in_frame_impl(
 
     let projected = (para.line_segs.is_empty()
         && (supports_tac_table_band_frame_controls(para)
-            || supports_inline_picture_frame_controls(para)))
+            || supports_inline_picture_frame_controls(para)
+            || supports_inline_form_frame_controls(para)))
     .then(|| inline_frame_input::project(para, styles, dpi))
     .flatten();
     let para = projected.as_ref().map_or(para, |(input, _)| input);
@@ -4545,7 +4559,8 @@ pub(crate) fn resolve_stored_line_segs_in_frame(
     // 거절하면 45자 합성 줄이 그대로 남아 표가 자기 줄을 못 얻는다(distribution_doc 3쪽).
     let tac_table_host_fill =
         para.line_segs.is_empty() && supports_tac_table_band_frame_controls(para);
-    if !supports_picture_band_frame_controls(para) && !tac_table_host_fill {
+    let form_host_fill = para.line_segs.is_empty() && supports_inline_form_frame_controls(para);
+    if !supports_picture_band_frame_controls(para) && !tac_table_host_fill && !form_host_fill {
         if !supports_cached_body_frame_controls(para) || (!stale && !para.line_segs.is_empty()) {
             return None;
         }
@@ -5053,7 +5068,10 @@ fn reflow_line_segs_impl(
     let (marker_hang_px, indent_px) = list_marker_breaker_box(para, styles, indent_px);
     let available_width_px = (paragraph_box.width_px(dpi) - marker_hang_px).max(1.0);
 
-    if !split_stale_cell_reflow && supports_inline_picture_frame_controls(para) {
+    if !split_stale_cell_reflow
+        && (supports_inline_picture_frame_controls(para)
+            || supports_inline_form_frame_controls(para))
+    {
         // An edit invalidates the old text/control partition together. Project
         // invisible control slots before filling, rather than measuring text
         // alone and attaching an end-of-paragraph picture during paint. The
@@ -5686,31 +5704,36 @@ pub(crate) fn recalculate_section_vpos(
     paragraphs: &mut [Paragraph],
     start_para: usize,
     ignore_reset_range: Option<std::ops::Range<usize>>,
-    start_stored_end: Option<i32>,
+    start_stored_end: impl Into<ParagraphFlowState>,
     styles: &ResolvedStyleSet,
     dpi: f64,
     is_hwp3_variant: bool,
 ) {
+    let previous = start_stored_end.into();
+    let start_stored_end = previous.end;
     if paragraphs.is_empty() || start_para >= paragraphs.len() {
         return;
     }
 
     // 문단 경계 gap (HWPUNIT) = 앞 문단 spacing_after + 뒤 문단 spacing_before.
     // recalculate_cell_paragraph_vpos 의 boundary_gaps 와 동일 산식.
-    let boundary_gap = |prev: &Paragraph, curr: &Paragraph| -> i32 {
+    let boundary_gap_for_shapes = |prev: u16, curr: u16| -> i32 {
         let spacing_after = styles
             .para_styles
-            .get(prev.para_shape_id as usize)
+            .get(prev as usize)
             .map(|style| style.spacing_after)
             .unwrap_or(0.0);
         let spacing_before = styles
             .para_styles
-            .get(curr.para_shape_id as usize)
+            .get(curr as usize)
             .map(|style| style.spacing_before)
             .unwrap_or(0.0);
         let spacing_before =
             crate::renderer::hwp3_variant_flow_spacing_before(spacing_before, is_hwp3_variant);
         px_to_hwpunit(spacing_after + spacing_before, dpi)
+    };
+    let boundary_gap = |prev: &Paragraph, curr: &Paragraph| {
+        boundary_gap_for_shapes(prev.para_shape_id, curr.para_shape_id)
     };
 
     // 줄 전진량 — 로드 경로와 동일한 TAC th-관례. saturating: 조작 파일의 극단
@@ -5725,9 +5748,8 @@ pub(crate) fn recalculate_section_vpos(
         height.saturating_add(ls.line_spacing)
     };
     let seg_end = |p: &Paragraph| -> Option<i32> {
-        p.line_segs
-            .last()
-            .map(|ls| ls.vertical_pos.saturating_add(seg_advance(ls)))
+        let last = p.line_segs.last()?;
+        Some(last.vertical_pos.saturating_add(seg_advance(last)))
     };
     let is_ignored = |pi: usize| {
         ignore_reset_range
@@ -5789,6 +5811,27 @@ pub(crate) fn recalculate_section_vpos(
             && !is_ignored(pi)
             && prev_stored_bound.is_some_and(|bound| current_start < bound);
 
+        // 미수정 NO_LS 개체 호스트 사이의 원본 간격은 앞뒤 문단의 스타일 간격이 아니다.
+        // 저장 끝점이 증명하는 점유는 유지하고, 편집 문단의 끝 변화량만 넘긴다.
+        let unchanged_object_bridge = !para_modified
+            && prev_idx == Some(start_para)
+            && pi > start_para + 1
+            && !is_ignored(start_para)
+            && (start_para + 1..pi)
+                .all(|gap| !is_ignored(gap) && !paragraphs[gap].stored_text_partition_is_dirty())
+            && paragraphs[start_para + 1..pi]
+                .iter()
+                .any(|paragraph| !paragraph.controls.is_empty());
+        let bridge_delta = start_stored_end
+            .filter(|_| unchanged_object_bridge)
+            .map(|end| {
+                let gap_delta = previous.para_shape_id.map_or(0, |old_shape| {
+                    let following = paragraphs[start_para + 1].para_shape_id;
+                    boundary_gap_for_shapes(paragraphs[start_para].para_shape_id, following)
+                        .saturating_sub(boundary_gap_for_shapes(old_shape, following))
+                });
+                next_vpos.saturating_sub(end).saturating_add(gap_delta)
+            });
         let delta = if is_reset {
             // 단/쪽 리셋 경계 — 저장 좌표 유지.
             0
@@ -5801,6 +5844,8 @@ pub(crate) fn recalculate_section_vpos(
                 orig_prev_end
             };
             stored_prev_end.map_or(0, |end| next_vpos - end)
+        } else if let Some(delta) = bridge_delta {
+            delta
         } else if para_modified || prev_modified {
             // 변조 인접 경계 — 이동 후 흐름에 스타일 여백 gap 으로 다시 잇는다.
             let gap = prev_idx
@@ -5840,6 +5885,28 @@ pub(crate) fn recalculate_section_vpos(
 /// 편집 호출자가 reflow 이전에 캡처해 `recalculate_section_vpos` 의
 /// `start_stored_end` 로 전달하기 위한 헬퍼 — reflow 가 end 를 덮은 뒤에는 저장
 /// 좌표를 복원할 수 없다.
+pub(crate) struct ParagraphFlowState {
+    end: Option<i32>,
+    para_shape_id: Option<u16>,
+}
+
+impl From<Option<i32>> for ParagraphFlowState {
+    fn from(end: Option<i32>) -> Self {
+        Self {
+            end,
+            para_shape_id: None,
+        }
+    }
+}
+
+// 재시작 판별의 저장 끝점과 바뀌기 전 문단 간격은 서로 다른 증거다.
+pub(crate) fn paragraph_flow_state(para: &Paragraph) -> ParagraphFlowState {
+    ParagraphFlowState {
+        end: paragraph_flow_end(para),
+        para_shape_id: Some(para.para_shape_id),
+    }
+}
+
 pub(crate) fn paragraph_flow_end(para: &Paragraph) -> Option<i32> {
     para.line_segs.last().map(|ls| {
         let height = if ls.line_height > ls.text_height && ls.text_height > 0 {

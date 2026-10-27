@@ -455,7 +455,15 @@ impl DocumentCore {
             }
 
             for i in para_idx..=last_para_idx {
-                self.reflow_paragraph(section_idx, i);
+                let paragraph = &self.document.sections[section_idx].paragraphs[i];
+                // 새 빈 블록 표에는 글줄을 합성하지 않고 공통 표 포맷 상자를 유지한다.
+                let empty_block_host = paragraph.controls.iter().any(|control| {
+                    matches!(control, Control::Table(table)
+                        if crate::renderer::float_placement::reflow_empty_table_host(paragraph, table))
+                });
+                if !empty_block_host {
+                    self.reflow_paragraph(section_idx, i);
+                }
             }
             // [Task #2299] 삽입 문단들의 vpos 를 흐름에 연결한다 — 클론/placeholder
             // 좌표를 방치하면 이후 편집의 vpos 재계산이 저장 단/쪽 리셋으로 오인해
@@ -848,6 +856,41 @@ impl DocumentCore {
         let result = self
             .parse_html_to_paragraphs_at_depth(html, 0, width)
             .and_then(|mut paragraphs| {
+                // 자식의 최소 폭을 부모 열에 모두 예약한 뒤 최상위 글줄 예산만 검사한다.
+                // 중첩 단계에서 거절하면 부모 열로 올릴 수 있는 정상 자식 폭도 잃는다.
+                for paragraph in &paragraphs {
+                    let margin = self
+                        .document
+                        .doc_info
+                        .para_shapes
+                        .get(paragraph.para_shape_id as usize)
+                        .map_or(0.0, |shape| {
+                            [shape.margin_left, shape.margin_right, shape.indent.max(0)]
+                                .into_iter()
+                                .map(|raw| {
+                                    crate::renderer::style_resolver::paragraph_margin_hwpunit(
+                                        raw,
+                                        &self.document.doc_info,
+                                    )
+                                })
+                                .sum::<f64>()
+                        });
+                    for control in &paragraph.controls {
+                        if let Control::Table(table) = control {
+                            let occupied = u64::from(table.common.width)
+                                + table.outer_margin_left.max(0) as u64
+                                + table.outer_margin_right.max(0) as u64;
+                            if table.common.treat_as_char
+                                && occupied as f64 > f64::from(width) - margin
+                            {
+                                return Err(HwpError::RenderError(
+                                    "표를 넣을 가로 공간이 부족합니다. 문단이나 셀의 여백을 줄여 주세요"
+                                        .into(),
+                                ));
+                            }
+                        }
+                    }
+                }
                 let mut parsed_count = 0;
                 crate::model::identity::walk::walk(&mut paragraphs, |node| {
                     if let crate::model::identity::walk::Node::Control(control) = node {
@@ -1183,6 +1226,13 @@ impl DocumentCore {
             let stripped = html_strip_tags(html);
             if !stripped.trim().is_empty() {
                 self.flush_text_to_paragraphs(&mut paragraphs, &stripped);
+            }
+        }
+
+        // 표·그림 앵커와 줄바꿈으로 만든 빈 문단도 저장본과 같은 기본 글자 모양을 쓴다.
+        for para in &mut paragraphs {
+            if para.text.is_empty() && para.char_shapes.is_empty() {
+                para.set_single_char_shape(self.css_to_char_shape_id(""));
             }
         }
 
