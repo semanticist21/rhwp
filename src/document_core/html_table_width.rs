@@ -34,11 +34,12 @@ fn paragraph_minimum_width(para: &Paragraph, styles: &ResolvedStyleSet, dpi: f64
     let text_width = px_to_hwpunit((text_width + margins).max(0.0), dpi).max(0) as u32;
     // HTML parser는 중첩 표를 독립 문단으로 만든다. 글과 다른 줄의 개체 폭은
     // 글 폭에 합산하지 않으며 부모 셀이 그 바깥 여백까지 담아야 한다.
+    // 떠 있는 개체는 글줄 폭을 쓰지 않으므로 부모 열을 넓히지 않는다.
     let object_width = para
         .controls
         .iter()
         .filter_map(|control| match control {
-            Control::Table(table) => Some(
+            Control::Table(table) if table.common.treat_as_char => Some(
                 table
                     .get_column_widths()
                     .iter()
@@ -47,7 +48,7 @@ fn paragraph_minimum_width(para: &Paragraph, styles: &ResolvedStyleSet, dpi: f64
                     .saturating_add(table.outer_margin_left.max(0) as u32)
                     .saturating_add(table.outer_margin_right.max(0) as u32),
             ),
-            Control::Picture(picture) => Some(
+            Control::Picture(picture) if picture.common.treat_as_char => Some(
                 picture
                     .common
                     .width
