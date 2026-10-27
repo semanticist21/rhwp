@@ -3069,14 +3069,6 @@ impl LayoutEngine {
             return;
         }
         let chars: Vec<_> = para.text.chars().collect();
-        // 글 런은 원문 글자 축이지만, 글 없는 문단 끝 캐럿은 저장 줄 경로의 빈 줄처럼
-        // 앞선 인라인 개체를 센 논리 끝을 쓴다.
-        let logical_end = chars.len()
-            + para
-                .controls
-                .iter()
-                .filter(|control| control.is_logical_inline())
-                .count();
         let mut paragraph_fill_bands = Vec::new();
         // Physical rows and per-character positions are the measurement
         // result. Preserve them in the render tree and coalesce compatible
@@ -3174,11 +3166,7 @@ impl LayoutEngine {
                         para_shape_id: Some(para.para_shape_id),
                         section_index: Some(section_index),
                         para_index: Some(para_index),
-                        char_start: Some(if range.is_empty() && range.start == chars.len() {
-                            logical_end
-                        } else {
-                            range.start
-                        }),
+                        char_start: Some(range.start),
                         cell_context: None,
                         is_para_end: range.end == chars.len(),
                         is_line_break_end: false,
@@ -3220,7 +3208,7 @@ impl LayoutEngine {
                         para_shape_id: Some(para.para_shape_id),
                         section_index: Some(section_index),
                         para_index: Some(para_index),
-                        char_start: Some(logical_end),
+                        char_start: Some(chars.len()),
                         cell_context: None,
                         is_para_end: true,
                         is_line_break_end: false,

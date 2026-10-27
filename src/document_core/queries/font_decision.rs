@@ -174,13 +174,14 @@ fn source_paragraph_index(run: &TextRunNode) -> Option<usize> {
         .filter(|index| *index < usize::MAX.saturating_sub(4096))
 }
 
-fn source_matches(core: &DocumentCore, run: &TextRunNode, offset: usize, ch: char) -> bool {
+/// 런 글자가 원문 글자와 같으면 그 원문 글자 인덱스를 돌려준다.
+fn source_match(core: &DocumentCore, run: &TextRunNode, offset: usize, ch: char) -> Option<usize> {
     let (Some(section), Some(paragraph), Some(char_start)) = (
         run.section_index,
         source_paragraph_index(run),
         run.char_start,
     ) else {
-        return false;
+        return None;
     };
     let path: Vec<(usize, usize, usize)> = run
         .cell_context
@@ -193,10 +194,17 @@ fn source_matches(core: &DocumentCore, run: &TextRunNode, offset: usize, ch: cha
                 .collect()
         })
         .unwrap_or_default();
-    core.resolve_control_para(section, paragraph, &path)
-        .ok()
-        .and_then(|para| para.text.chars().nth(char_start + offset))
-        .is_some_and(|source| source == ch)
+    let para = core.resolve_control_para(section, paragraph, &path).ok()?;
+    let index = char_start.checked_add(offset)?;
+    // 기록의 charOffset은 런 축 위치다. 겹침 컨트롤 칸이거나 앞선 겹침 칸 때문에 원문 글자
+    // 인덱스와 어긋나면 같은 글자라도 원문 소유를 확정하지 않는다.
+    let text_index = super::logical_runs::run_axis_text_index(para, index)
+        .filter(|text_index| *text_index == index)?;
+    para.text
+        .chars()
+        .nth(text_index)
+        .filter(|source| *source == ch)
+        .map(|_| text_index)
 }
 
 fn measurement_provenance() -> Result<ProvenanceDecision, HwpError> {
@@ -824,7 +832,8 @@ impl DocumentCore {
                 if records.len() >= applied_limits.max_characters {
                     break 'runs;
                 }
-                let source_complete = source_matches(self, run, run_offset, ch);
+                let source_index = source_match(self, run, run_offset, ch);
+                let source_complete = source_index.is_some();
                 source_mapping_mismatch |= !source_complete;
                 let font_decision = run.char_shape_id.and_then(|char_shape_id| {
                     self.document

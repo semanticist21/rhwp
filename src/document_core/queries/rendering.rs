@@ -3667,9 +3667,21 @@ impl DocumentCore {
 
     /// 텍스트 레이아웃 정보 (네이티브 에러 타입)
     pub fn get_page_text_layout_native(&self, page_num: u32) -> Result<String, HwpError> {
-        use crate::renderer::render_tree::{RenderNode, RenderNodeType};
+        Ok(Self::page_text_layout_json(
+            &self.build_page_tree(page_num)?,
+        ))
+    }
 
-        let tree = self.build_page_tree(page_num)?;
+    /// 런의 `charStart`·`charX`를 캐럿·편집 API의 논리 축으로 옮긴 텍스트 레이아웃.
+    /// 런 안에 개체 칸이 끼면 그 자리에서 런을 나눈다.
+    pub fn get_page_text_layout_logical_native(&self, page_num: u32) -> Result<String, HwpError> {
+        Ok(Self::page_text_layout_json(
+            &self.build_page_tree_logical(page_num)?,
+        ))
+    }
+
+    fn page_text_layout_json(tree: &PageRenderTree) -> String {
+        use crate::renderer::render_tree::{RenderNode, RenderNodeType};
 
         // 렌더 트리에서 TextRun 노드를 재귀적으로 수집
         fn collect_text_runs(node: &RenderNode, runs: &mut Vec<String>) {
@@ -3785,7 +3797,7 @@ impl DocumentCore {
         let mut runs = Vec::new();
         collect_text_runs(&tree.root, &mut runs);
 
-        Ok(format!("{{\"runs\":[{}]}}", runs.join(",")))
+        format!("{{\"runs\":[{}]}}", runs.join(","))
     }
 
     /// [#4694] 셀/글상자 안 ole 노드의 컨테이너 문맥 방출 — Image 방출(#1151/#1161)과

@@ -1138,6 +1138,16 @@ impl HwpDocument {
         Ok(tree.root.to_json())
     }
 
+    /// `getPageRenderTree`와 같은 형식이되 글 런의 `char_start`가 캐럿·편집 API의 논리
+    /// 오프셋이다. 런 안에 개체 칸이 끼면 그 자리에서 런을 나눈다.
+    #[wasm_bindgen(js_name = getPageRenderTreeLogical)]
+    pub fn get_page_render_tree_logical(&self, page_num: u32) -> Result<String, JsValue> {
+        let tree = self
+            .build_page_tree_cached_logical(page_num)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(tree.root.to_json())
+    }
+
     /// 페이지 레이어 트리를 JSON 문자열로 반환한다.
     ///
     /// screen profile 기본값이므로 `getPageLayerTreeWithProfile` 로 위임한다 — 같은 핫패치
@@ -1438,6 +1448,14 @@ impl HwpDocument {
     #[wasm_bindgen(js_name = getPageTextLayout)]
     pub fn get_page_text_layout(&self, page_num: u32) -> Result<String, JsValue> {
         self.get_page_text_layout_native(page_num)
+            .map_err(|e| e.into())
+    }
+
+    /// `getPageTextLayout`과 같은 형식이되 `charStart`가 캐럿·편집 API의 논리 오프셋이다.
+    /// 글자처럼 취급한 개체와 각주·미주 칸을 세고, 런 안에 그 칸이 끼면 런을 나눈다.
+    #[wasm_bindgen(js_name = getPageTextLayoutLogical)]
+    pub fn get_page_text_layout_logical(&self, page_num: u32) -> Result<String, JsValue> {
+        self.get_page_text_layout_logical_native(page_num)
             .map_err(|e| e.into())
     }
 

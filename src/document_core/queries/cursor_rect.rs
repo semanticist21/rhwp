@@ -1018,7 +1018,7 @@ impl DocumentCore {
         // 1차: 정확한 앵커(zero-width 노드) 우선 검색, 2차: 일반 검색
         if para_page_scan_can_hit {
             for &page_num in &pages {
-                let tree = self.build_page_tree_cached(page_num)?;
+                let tree = self.build_page_tree_cached_logical(page_num)?;
                 if !self.show_control_codes {
                     if let Ok(para) = self.get_render_paragraph_ref(section_idx, para_idx) {
                         if let Some(hit) = find_inline_flow_cursor_hit(
@@ -1099,7 +1099,7 @@ impl DocumentCore {
                 if let Some((ci, _ctrl)) = inline_ctrl.or(beyond_ctrl) {
                     // inline_shape_positions에서 Shape 좌표 조회
                     let first_page = pages[0];
-                    let tree = self.build_page_tree(first_page)?;
+                    let tree = self.build_page_tree_logical(first_page)?;
                     if let Some((sx, sy)) =
                         tree.get_inline_shape_position(section_idx, para_idx, ci, None)
                     {
@@ -1127,7 +1127,7 @@ impl DocumentCore {
 
         // TextRun에서 찾지 못한 경우 (빈 문단 등): 첫 페이지에서 문단 위치 추정
         let first_page = pages[0];
-        let tree = self.build_page_tree(first_page)?;
+        let tree = self.build_page_tree_logical(first_page)?;
 
         #[derive(Clone, Copy)]
         struct ParaLineHit {
@@ -1517,7 +1517,7 @@ impl DocumentCore {
         use crate::renderer::layout::{CellContext, CellPathEntry};
         use crate::renderer::render_tree::{RenderNode, RenderNodeType};
 
-        let tree = self.build_page_tree_cached(page_num)?;
+        let tree = self.build_page_tree_cached_logical(page_num)?;
         if let Some(hit) = super::transformed_text::hit(&tree.root, page_num, x, y) {
             return Ok(hit);
         }
@@ -2231,31 +2231,6 @@ impl DocumentCore {
             }
         }
 
-        // 본문 문단의 글자처럼 취급 개체가 놓인 원문 글자 자리.
-        let inline_text_positions = |si: usize, pi: usize| -> Vec<usize> {
-            self.document
-                .sections
-                .get(si)
-                .and_then(|section| section.paragraphs.get(pi))
-                .map(|para| {
-                    para.controls
-                        .iter()
-                        .zip(para.control_text_positions())
-                        .filter(|(control, _)| is_treat_as_char_object_control(control))
-                        .map(|(_, position)| position)
-                        .collect()
-                })
-                .unwrap_or_default()
-        };
-        // 본문 글 런의 char_start(원문 글자 축)를 캐럿 조회와 같은 논리 축으로 옮긴다. 같은 자리의
-        // 글자처럼 취급 개체는 글자 앞에 놓인다. 그래야 그림 뒤 글자를 누른 결과를 그대로
-        // get_cursor_rect에 넘길 수 있다. 글 없는 문단 끝 앵커는 이미 논리 끝이다.
-        for run in &mut runs {
-            if run.cell_context.is_none() && !run.is_textbox && run.has_text {
-                let positions = inline_text_positions(run.section_index, run.paragraph_index);
-                run.char_start += positions.iter().filter(|&&p| p <= run.char_start).count();
-            }
-        }
         let mut inline_image_hits = Vec::new();
         collect_body_inline_image_hits(self, &tree.root, None, &mut inline_image_hits);
         // 이웃 그림의 여백보다 실제 그림 영역을 먼저 판정한다.
@@ -2986,7 +2961,7 @@ impl DocumentCore {
         )?;
 
         for &page_num in &pages {
-            let tree = self.build_page_tree(page_num)?;
+            let tree = self.build_page_tree_logical(page_num)?;
             if let Some(hit) = super::transformed_text::cursor(
                 &tree.root,
                 section_idx,
@@ -3029,7 +3004,7 @@ impl DocumentCore {
             .first()
             .copied()
             .unwrap_or(pages[0]);
-        let tree = self.build_page_tree(first_page)?;
+        let tree = self.build_page_tree_logical(first_page)?;
         let first_page_cell_bounds =
             find_table_cell_bounds_in_node(&tree.root, parent_para_idx, control_idx, cell_idx);
 
@@ -3678,7 +3653,7 @@ impl DocumentCore {
             .ok()?;
         let mut max_para: Option<usize> = None;
         for &page_num in &pages {
-            let tree = self.build_page_tree(page_num).ok()?;
+            let tree = self.build_page_tree_logical(page_num).ok()?;
             if let Some(cp) = max_para_in_node(&tree.root, parent_para_idx, control_idx, cell_idx) {
                 max_para = Some(max_para.map_or(cp, |prev: usize| prev.max(cp)));
             }
@@ -3959,7 +3934,7 @@ impl DocumentCore {
         }
 
         for &page_num in &pages {
-            let tree = self.build_page_tree_cached(page_num)?;
+            let tree = self.build_page_tree_cached_logical(page_num)?;
             if let Some(hit) = super::transformed_text::cursor(
                 &tree.root,
                 section_idx,
@@ -3995,7 +3970,7 @@ impl DocumentCore {
 
         // fallback: 아무 TextRun이라도 찾기
         for &page_num in &pages {
-            let tree = self.build_page_tree_cached(page_num)?;
+            let tree = self.build_page_tree_cached_logical(page_num)?;
             fn find_any_run(
                 core: &DocumentCore,
                 node: &RenderNode,
@@ -4250,7 +4225,7 @@ impl DocumentCore {
             // Studio에서 보이거나 prefetch된 페이지는 이미 cache에 있다. 객체 선택
             // 때마다 같은 페이지를 다시 조판하면 keydown을 수백 ms 막으므로, 문서
             // mutation 시 함께 무효화되는 표준 page-tree cache를 재사용한다 (#4252).
-            let tree = self.build_page_tree_cached(page_num as u32)?;
+            let tree = self.build_page_tree_cached_logical(page_num as u32)?;
             if find_nested_table_cells(&tree.root, parent_para_idx, &path, page_num, &mut cells) {
                 found = true;
             } else if found {
@@ -4746,7 +4721,7 @@ impl DocumentCore {
                 continue;
             }
             let tree = if actual_target == (section_idx, apply_to) {
-                self.build_page_tree_cached(page_num)?
+                self.build_page_tree_cached_logical(page_num)?
             } else {
                 self.build_header_footer_edit_preview_tree(
                     page_num,
@@ -4976,7 +4951,7 @@ impl DocumentCore {
             return Ok("{\"hit\":false}".to_string());
         }
         let tree = if actual_target == (section_idx, apply_to) {
-            self.build_page_tree_cached(page_num)?
+            self.build_page_tree_cached_logical(page_num)?
         } else {
             self.build_header_footer_edit_preview_tree(page_num, section_idx, is_header, apply_to)?
         };
@@ -5279,7 +5254,7 @@ impl DocumentCore {
         }
 
         let tree = if actual_target == (section_idx, apply_to) {
-            self.build_page_tree_cached(page_num)?
+            self.build_page_tree_cached_logical(page_num)?
         } else {
             self.build_header_footer_edit_preview_tree(page_num, section_idx, is_header, apply_to)?
         };
@@ -5459,7 +5434,7 @@ impl DocumentCore {
     ) -> Result<String, HwpError> {
         use crate::renderer::render_tree::RenderNodeType;
 
-        let tree = self.build_page_tree(page_num)?;
+        let tree = self.build_page_tree_logical(page_num)?;
 
         for child in &tree.root.children {
             if !matches!(child.node_type, RenderNodeType::FootnoteArea) {
@@ -5507,7 +5482,7 @@ impl DocumentCore {
     ) -> Result<String, HwpError> {
         use crate::renderer::render_tree::{RenderNode, RenderNodeType};
 
-        let tree = self.build_page_tree(page_num)?;
+        let tree = self.build_page_tree_logical(page_num)?;
 
         let fn_node = tree
             .root
@@ -5737,7 +5712,7 @@ impl DocumentCore {
     ) -> Result<String, HwpError> {
         use crate::renderer::render_tree::{RenderNode, RenderNodeType};
 
-        let tree = self.build_page_tree(page_num)?;
+        let tree = self.build_page_tree_logical(page_num)?;
         let Some(fn_node) = tree
             .root
             .children
@@ -5911,7 +5886,7 @@ impl DocumentCore {
             }
         }
 
-        let tree = self.build_page_tree(page_num)?;
+        let tree = self.build_page_tree_logical(page_num)?;
         let mut runs = Vec::new();
         collect_runs(&tree.root, section_idx, para_idx, &mut runs);
         runs.sort_by(|a, b| {
@@ -6142,7 +6117,7 @@ impl DocumentCore {
     ) -> Result<String, HwpError> {
         use crate::renderer::render_tree::{RenderNode, RenderNodeType};
 
-        let tree = self.build_page_tree(page_num)?;
+        let tree = self.build_page_tree_logical(page_num)?;
 
         let fn_node = tree
             .root
@@ -6355,7 +6330,7 @@ impl DocumentCore {
             None
         }
 
-        let tree = self.build_page_tree_cached(page_num)?;
+        let tree = self.build_page_tree_cached_logical(page_num)?;
         let hit = match find_marker(&tree.root, x, y) {
             Some(hit) => hit,
             None => return Ok("{\"hit\":false}".to_string()),

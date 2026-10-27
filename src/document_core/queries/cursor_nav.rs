@@ -1232,7 +1232,7 @@ impl DocumentCore {
 
         // 페이지 순회하며 매칭 run 수집
         for &page_num in &pages {
-            let tree = self.build_page_tree(page_num)?;
+            let tree = self.build_page_tree_logical(page_num)?;
             let mut runs = Vec::new();
             collect_matching_runs(&tree.root, sec, para, cell_ctx, char_range, &mut runs);
             let mut candidates = Vec::new();
@@ -2193,7 +2193,7 @@ impl DocumentCore {
 
         let selection_tree = |pn| {
             if used_hints {
-                return self.build_page_tree_cached(pn);
+                return self.build_page_tree_cached_logical(pn);
             }
             // 본문은 렌더·캐럿 질의가 이미 만든 유효한 트리만 재사용한다.
             if cell_target.is_none() {
@@ -2208,7 +2208,7 @@ impl DocumentCore {
             }
             // 캐시가 없는 쪽은 기존 함수 로컬 수명을 유지한다. 긴 선택 범위 때문에
             // 보이지 않는 쪽까지 shared cache에 남겨 메모리 체류를 늘리지 않는다.
-            self.build_page_tree(pn)
+            self.build_page_tree_logical(pn)
         };
 
         fn collect_run_rects(

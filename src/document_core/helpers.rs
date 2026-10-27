@@ -65,6 +65,8 @@ pub(crate) fn logical_to_text_offset(para: &Paragraph, logical_offset: usize) ->
             if logical_idx == logical_offset {
                 return (text_idx, true);
             }
+            // 같은 자리의 다음 개체 칸도 글자보다 먼저 센다.
+            continue;
         }
         // 텍스트 문자
         if text_idx < text_len {
