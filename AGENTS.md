@@ -34,6 +34,10 @@
   기존 기준 PDF가 없어 검증 자료로 커밋해야 하는 PDF는 `pdf/<issue-or-topic>/` 등 정식 경로에
   생성하며, untracked 목록에서 숨기려고 `output/`으로 옮기거나 ignore하지 않는다.
   [임시 산출물과 기준 PDF의 저장 위치](mydocs/manual/codex/docs_and_git_workflow.md#임시-산출물과-기준-pdf의-저장-위치)를 따른다.
+- 검토·후속 처리 종료 시 저장소 루트의 `output/` 전체와 기본 작업공간의
+  `target/pr-review/debug`를 정리한다. 유휴 셸의 cwd 참조만으로 정리를 보류하지 않는다.
+  별도 정리 지시나 재승인 없이 자동 삭제하며 추가 백업·압축·이관을 하지 않는다. debug는 빌드·테스트 사용 종료 후
+  삭제하며, 상세 범위·실제 사용 판정·완료 검증은 [종료 정리](mydocs/manual/pr_review/post_merge.md#77-branch-worktree-검토-전용-target-정리)를 따른다.
 - 구현 전에 관련 이슈, 기존 계획·보고서·트러블슈팅을 확인한다.
 - 기존 이슈·회귀 실패는 코드나 기대값을 바꾸기 전에 **원 해결 PR → 통합·메인터너 보정 커밋 →
   독립 검증 근거**를 추적하고 현재 base/head와 대조한다. 여러 실패는 각각 확인하며, 리베이스로
@@ -356,7 +360,9 @@ SHA-256·이전/보존 경로·활성 유지/제거 목록·복원 조건을 기
   [고정 review target](mydocs/manual/pr_review/local_validation.md#고정-review-target과-실행-환경)을 따른다.
   다른 실행 중인 Cargo 작업의 산출물과 충돌할 우려가 있으면 새 경로를 만드는 대신
   실행 중인 작업·소유자를 먼저 확인하고, 필요할 때만 사용자가 별도 경로를 지시한다.
-  `target/pr-review`은 공유 캐시이므로 임의로 삭제·초기화하지 않는다.
+  검증 중 `target/pr-review`를 임의로 삭제·초기화하지 않는다. 종료 후에는
+  [정리 절차](mydocs/manual/pr_review/post_merge.md#771-검토-전용-target)에 따라 `debug` 전체를
+  삭제하고 공유 target의 나머지 profile은 재사용한다.
 - **디스크 공간 부족 시 Chromium 임시 프로필 정리 권고**: 빌드 캐시 정리에 앞서 종료된
   검증용 Chromium/Puppeteer 임시 프로필의 용량을 확인하고 삭제를 검토한다. Linux Snap의
   `/tmp/snap-private-tmp/snap.chromium/tmp/` 등이 대상이며, 기본 후보는 24시간 이상 지난
@@ -370,6 +376,7 @@ SHA-256·이전/보존 경로·활성 유지/제거 목록·복원 조건을 기
   지정해 삭제한다. target 전체·프로필 디렉터리·실행 파일·`deps`·`.fingerprint`와 다른 작업의
   산출물은 보존한다. 삭제 목록·확인 근거·전후 여유 공간을 기록하며 캐시는 이후 빌드에서
   재생성될 수 있다. 세부 확인은 위 디스크 공간 정리 절차를 따른다.
+  이 증분 캐시 정리와 별도로 검토 종료 시 `target/pr-review/debug` 전체를 정리한다.
 - **Studio 개발 서버에 WASM 반영**: Rust/WASM 변경을 `npx vite --host 0.0.0.0 --port 7700`
   같은 `rhwp-studio` 개발 서버에서 확인할 때는 반드시 **저장소 루트
   (`scripts/`·`pkg/`·`rhwp-studio/`가 함께 있는 디렉터리)**에서

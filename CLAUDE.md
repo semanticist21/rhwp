@@ -27,6 +27,10 @@
   기존 기준 PDF가 없어 검증 자료로 커밋해야 하는 PDF는 `pdf/<issue-or-topic>/` 등 정식 경로에
   생성하며, untracked 목록에서 숨기려고 `output/`으로 옮기거나 ignore하지 않는다.
   [임시 산출물과 기준 PDF의 저장 위치](mydocs/manual/codex/docs_and_git_workflow.md#임시-산출물과-기준-pdf의-저장-위치)를 따른다.
+- 검토·후속 처리 종료 시 저장소 루트의 `output/` 전체와 기본 작업공간의
+  `target/pr-review/debug`를 정리한다. 유휴 셸의 cwd 참조만으로 정리를 보류하지 않는다.
+  별도 정리 지시나 재승인 없이 자동 삭제하며 추가 백업·압축·이관을 하지 않는다. debug는 빌드·테스트 사용 종료 후
+  삭제하며, 상세 범위·실제 사용 판정·완료 검증은 [종료 정리](mydocs/manual/pr_review/post_merge.md#77-branch-worktree-검토-전용-target-정리)를 따른다.
 
 ## PR 제출 전 검증과 Draft 제한
 
@@ -95,7 +99,9 @@ CI 성공으로 대체하지 않는다. 후퇴·필수 증거 부족이 남으�
   이슈별·검토별 target, `target/pr-review/<name>`, worktree별 target을 새로 만들지 않는다. Native `release`와 WASM
   `wasm32-unknown-unknown`을 같은 경로에서 재사용해 재빌드를 피한다.
 - `target/pr-review`은 공유 캐시다. 실행 중인 Cargo 작업의 소유·상태를 먼저 확인하고,
-  그 경로를 임의로 삭제·초기화하지 않는다. 별도 target은 사용자가 명시한 경우에만 쓴다.
+  검증 중 그 경로를 임의로 삭제·초기화하지 않는다. 종료 후에는
+  [정리 절차](mydocs/manual/pr_review/post_merge.md#771-검토-전용-target)에 따라 `debug` 전체를
+  삭제하고 나머지 profile은 재사용한다. 별도 target은 사용자가 명시한 경우에만 쓴다.
 - 디스크 공간이 부족하면 빌드 캐시보다 **종료된 검증용 Chromium/Puppeteer 임시 프로필**을
   먼저 정리 후보로 확인한다. 기본 후보는 24시간 이상 지난 미사용 항목이며, 실행 중인
   프로세스의 경로·열린 파일 참조와 잠금 PID를 확인한 뒤 정확한 임시 경로만 삭제한다.
@@ -105,6 +111,7 @@ CI 성공으로 대체하지 않는다. 후퇴·필수 증거 부족이 남으�
   공유 target을 사용하는 Cargo·rustc·wasm-pack·wasm-opt 작업이 모두 종료됐는지 확인한 뒤
   사용하지 않는 정확한 `incremental` 하위 캐시 경로만 삭제하고 목록·확보 공간을 기록한다.
   target 전체·프로필 디렉터리·실행 파일·`deps`·`.fingerprint`와 다른 작업의 산출물은 보존한다.
+  이 증분 캐시 정리와 별도로 검토 종료 시 `target/pr-review/debug` 전체를 정리한다.
 - `rhwp-studio` 개발 서버에서 Rust/WASM 변경을 확인할 때는 반드시 **저장소 루트
   (`scripts/`·`pkg/`·`rhwp-studio/`가 함께 있는 디렉터리)**에서
   `CARGO_TARGET_DIR="${rhwp_review_target_dir:?기본 작업공간에서 공용 target 경로를 먼저 고정하세요}" scripts/wasm-pack-locked.sh --target web --out-dir pkg`를

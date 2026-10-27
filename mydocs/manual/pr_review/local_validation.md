@@ -94,6 +94,9 @@ worktree 안의 별도 `target/pr-review`를 새로 만들지 않는다. Cargo�
 Cargo 검증을 시작하기 전에는 target 하위 directory와 실행 중인 Cargo/Rust 작업을 확인한다.
 `target/pr-review`와 shared target/debug, target/release, target/release-test,
 target/wasm32-unknown-unknown, 다른 작업의 산출물은 삭제 대상으로 가정하지 않는다.
+다만 검증·후속 처리 종료 시에는 기본 작업공간의 `target/pr-review/debug` 전체를
+[종료 정리 절차](post_merge.md#771-검토-전용-target)에 따라 삭제한다. 실행 중인 빌드·테스트가
+없음을 확인하며, 공유 target 루트와 다른 profile은 재사용한다.
 
 디스크 공간이 부족하면 공유 빌드 캐시를 정리하기 전에 종료된 검증용 Chromium/Puppeteer
 임시 프로필의 삭제를 검토한다. 기본 후보는 24시간 이상 지난 항목이며 실행 중인 프로세스의
@@ -105,6 +108,7 @@ Linux Snap 경로와 상세 절차는 [디스크 공간 정리](../dev_environme
 사용하는 Cargo·rustc·wasm-pack·wasm-opt 작업이 모두 종료된 뒤 사용하지 않는 정확한
 `incremental` 하위 캐시 경로만 삭제한다. target 전체·프로필 디렉터리·실행 파일·`deps`·
 `.fingerprint`와 다른 작업의 산출물은 보존하고, 삭제 경로·확인 근거·전후 여유 공간을 기록한다.
+이 증분 캐시 정리와 검토 종료 후의 `target/pr-review/debug` 전체 삭제는 별개 절차다.
 
 ~~~bash
 find "${rhwp_review_source_dir:?기본 작업공간 경로를 먼저 고정하세요}/target" -mindepth 1 -maxdepth 1 -type d -exec du -sh {} \;
