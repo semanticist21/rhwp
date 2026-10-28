@@ -3339,6 +3339,8 @@ impl DocumentCore {
         json: &str,
     ) -> Result<String, HwpError> {
         self.apply_section_def_json(section_idx, json)?;
+        // 기본 탭 간격은 해소 스타일에 들어 있다.
+        self.rebuild_resolved_styles();
         let page_count = self.recompose_and_paginate();
         Ok(format!("{{\"ok\":true,\"pageCount\":{}}}", page_count))
     }
@@ -3349,6 +3351,7 @@ impl DocumentCore {
         for idx in 0..count {
             self.apply_section_def_json(idx, json)?;
         }
+        self.rebuild_resolved_styles();
         let page_count = self.recompose_and_paginate();
         Ok(format!("{{\"ok\":true,\"pageCount\":{}}}", page_count))
     }
