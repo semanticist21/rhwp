@@ -2172,8 +2172,22 @@ impl DocumentCore {
                 line_idx: usize,
                 page: u32,
             ) -> Option<CursorHit> {
+                // 표 칸·글상자·머리말·꼬리말·주석·캡션 줄의 같은 문단 번호를 본문 줄로 보지 않는다.
+                if matches!(
+                    node.node_type,
+                    RenderNodeType::Table(_)
+                        | RenderNodeType::TableCell(_)
+                        | RenderNodeType::TextBox
+                        | RenderNodeType::Header
+                        | RenderNodeType::Footer
+                        | RenderNodeType::MasterPage
+                        | RenderNodeType::FootnoteArea
+                ) {
+                    return None;
+                }
                 if let RenderNodeType::TextLine(ref line) = node.node_type {
-                    if line.section_index == Some(sec)
+                    if line.caption_owner.is_none()
+                        && line.section_index == Some(sec)
                         && line.para_index == Some(para)
                         && line.line_index.map(|idx| idx as usize) == Some(line_idx)
                     {

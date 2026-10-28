@@ -1304,7 +1304,24 @@ impl DocumentCore {
             list_marker_body_dx: Option<f64>,
             styles: &crate::renderer::style_resolver::ResolvedStyleSet,
         ) -> Option<ParaLineHit> {
+            // 표 칸·글상자·머리말·꼬리말·주석·캡션의 줄도 자기 문단 번호를 갖는다.
+            // 본문 빈 문단이 같은 번호의 그 줄로 캐럿을 옮기지 않게 본문 흐름만 찾는다.
+            if matches!(
+                node.node_type,
+                RenderNodeType::Table(_)
+                    | RenderNodeType::TableCell(_)
+                    | RenderNodeType::TextBox
+                    | RenderNodeType::Header
+                    | RenderNodeType::Footer
+                    | RenderNodeType::MasterPage
+                    | RenderNodeType::FootnoteArea
+            ) {
+                return None;
+            }
             if let RenderNodeType::TextLine(ref line) = node.node_type {
+                if line.caption_owner.is_some() {
+                    return None;
+                }
                 if line.section_index == Some(sec) && line.para_index == Some(para) {
                     let mut hit = ParaLineHit {
                         line_x: node.bbox.x,
