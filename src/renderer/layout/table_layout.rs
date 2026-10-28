@@ -10,6 +10,7 @@ mod plain_cell_flow;
 mod reflow_block_frames;
 mod reflow_external_cut;
 mod reflow_external_flow;
+pub(in crate::renderer) use reflow_block_frames::{ReflowMeasurementScope, ScanMeasureCache};
 pub(in crate::renderer) use reflow_external_cut::ReflowExternalCutFrame;
 mod reflow_fragment_content;
 mod reflow_nested_band;
@@ -11237,9 +11238,8 @@ impl LayoutEngine {
         table: &crate::model::table::Table,
         styles: &ResolvedStyleSet,
     ) -> f64 {
-        let col_count = table.col_count as usize;
         let row_count = table.row_count as usize;
-        let row_heights = self.resolve_row_heights(table, col_count, row_count, None, styles, true);
+        let row_heights = self.resolved_child_rows(table, styles);
         let cell_spacing = hwpunit_to_px(table.cell_spacing as i32, self.dpi);
         row_heights.iter().sum::<f64>() + cell_spacing * (row_count + 1) as f64
     }
@@ -26435,14 +26435,7 @@ impl LayoutEngine {
             }
         }
         let mut physical = if cut.start_row > 0 && child.repeat_header {
-            let rows = self.resolve_row_heights(
-                child,
-                usize::from(child.col_count),
-                usize::from(child.row_count),
-                None,
-                styles,
-                true,
-            );
+            let rows = self.resolved_child_rows(child, styles);
             let spacing = hwpunit_to_px(child.cell_spacing as i32, self.dpi);
             child
                 .leading_header_rows()
@@ -26522,14 +26515,7 @@ impl LayoutEngine {
                         }))) {
                 // A complete child row paints the same resolved frame as an
                 // ordinary table. Its source units alone omit physical space.
-                let rows = self.resolve_row_heights(
-                    child,
-                    usize::from(child.col_count),
-                    usize::from(child.row_count),
-                    None,
-                    styles,
-                    true,
-                );
+                let rows = self.resolved_child_rows(child, styles);
                 content.max(rows[row])
             } else {
                 content

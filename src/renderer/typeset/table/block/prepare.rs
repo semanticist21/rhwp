@@ -82,6 +82,7 @@ impl TypesetEngine {
         self.prime_section_cell_context(&layout_engine);
         layout_engine.set_layout_profile(st.profile);
         layout_engine.prime_column_layout_env(&st.layout);
+        layout_engine.keep_reflow_measurements();
         // 행 컷 측정도 같은 렌더링의 일부이므로 조판기와 동일한 표 출처를 사용한다.
         layout_engine
             .set_render_normalization_overlay(std::sync::Arc::clone(&self.render_normalization));

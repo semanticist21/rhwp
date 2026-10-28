@@ -14,6 +14,19 @@ impl LayoutEngine {
         if !crate::renderer::float_placement::supports_reflow_external_table_frame(table) {
             return None;
         }
+        if let Some(flow) = self.cached_external_flow(table) {
+            return flow;
+        }
+        let flow = self.reflow_unrestricted_table_flow_uncached(table, styles);
+        self.cache_external_flow(table, flow);
+        flow
+    }
+
+    fn reflow_unrestricted_table_flow_uncached(
+        &self,
+        table: &Table,
+        styles: &ResolvedStyleSet,
+    ) -> Option<ReflowExternalTableFlow> {
         let measured = self.measured_reflow_block_table(table, styles)?;
         let frames = measured.row_frame_heights.as_ref()?;
         let parent_height =

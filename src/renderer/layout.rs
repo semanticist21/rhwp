@@ -3528,6 +3528,9 @@ pub struct LayoutEngine {
     /// cell width. This lives for the layout session and is cleared at the same
     /// source/style invalidation boundary as the other pointer-keyed caches.
     single_line_overflow_cache: super::composer::SingleLineOverflowCache,
+    /// 재조판 블록 표의 전체 측정과 자식 표 행 높이. 문서가 바뀌지 않는 한 번의
+    /// 조판·배치 범위에서만 켜므로 표·칸 포인터를 키로 쓴다.
+    reflow_measure_cache: std::cell::RefCell<Option<table_layout::ScanMeasureCache>>,
     /// Issue #2214 test-only: cache miss가 실제 table-wide scan으로 이어진 횟수.
     #[cfg(test)]
     table_nested_text_flag_scan_count: std::cell::Cell<usize>,
@@ -3692,6 +3695,7 @@ impl LayoutEngine {
             table_row_index_cache: Default::default(),
             cursor_probe_block_cache: std::cell::RefCell::new(std::collections::HashMap::new()),
             single_line_overflow_cache: Default::default(),
+            reflow_measure_cache: Default::default(),
             #[cfg(test)]
             table_nested_text_flag_scan_count: std::cell::Cell::new(0),
         }
@@ -3707,6 +3711,9 @@ impl LayoutEngine {
         self.table_row_index_cache.clear();
         self.cursor_probe_block_cache.borrow_mut().clear();
         self.single_line_overflow_cache.clear();
+        if let Some(cache) = self.reflow_measure_cache.borrow_mut().as_mut() {
+            *cache = Default::default();
+        }
     }
 
     /// 반환한 guard가 표 borrow와 행 색인을 함께 소유한다.
@@ -4463,6 +4470,7 @@ impl LayoutEngine {
         outline_numbering_id: u16,
         wrap_around_paras: &[super::pagination::WrapAroundPara],
     ) -> PageRenderTree {
+        let _measurements = self.reflow_measurement_scope();
         let layout = &page_content.layout;
         // 바탕쪽이 없는 페이지의 머리말도 현재 용지·본문 좌표계를 소비한다.
         self.prime_page_layout_env(layout);
