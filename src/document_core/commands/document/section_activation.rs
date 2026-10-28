@@ -81,45 +81,5 @@ pub(super) fn rebase_body_frames(
             }
             next = next.saturating_add(px_to_hwpunit(after, dpi));
         }
-        // 활성 상자에서 다시 구성할 문자 분할은 로드 때 한 번 새 줄로 발행한다. 편집 중
-        // 그림과 저장·재열기 그림이 같은 줄을 쓰고, 그림 어울림 띠는 띠 전체를 함께 짠다.
-        let section = &mut document.sections[index];
-        let (_, first) = crate::document_core::DocumentCore::reflow_section_rows(
-            section,
-            styles,
-            dpi,
-            |paragraph| paragraph.stored_text_partition_is_dirty(),
-            false,
-        );
-        if let Some(start) = first {
-            crate::renderer::composer::recalculate_section_vpos(
-                &mut section.paragraphs,
-                start,
-                None,
-                None,
-                styles,
-                dpi,
-                false,
-            );
-        }
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use crate::document_core::DocumentCore;
-
-    /// 단 정의가 없는 HWP(그림 어울림 띠 포함)는 편집 중 그림과 HWP 저장 뒤 다시 연 그림이 같다.
-    #[test]
-    fn activated_section_renders_the_same_after_hwp_save_and_reopen() {
-        let bytes =
-            include_bytes!("../../../../tests/fixtures/section_activation/square-picture-band.hwp");
-        let mut core = DocumentCore::from_bytes(bytes).unwrap();
-        // 원본 스트림 재사용을 끊어 모델에서 다시 저장한다.
-        core.set_picture_properties_native(0, 0, 1, r#"{"transparency":37}"#)
-            .unwrap();
-        let live = core.render_page_svg_native(0).unwrap();
-        let reopened = DocumentCore::from_bytes(&core.export_hwp_native().unwrap()).unwrap();
-        assert_eq!(reopened.render_page_svg_native(0).unwrap(), live);
     }
 }

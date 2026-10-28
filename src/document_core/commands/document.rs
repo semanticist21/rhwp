@@ -1981,121 +1981,132 @@ impl DocumentCore {
         false
     }
 
-    /// 구역 본문에서 `needs_body`가 고른 문단의 줄을 새로 조판한다. 비-TAC 그림의
-    /// 어울림 띠는 띠 전체를 함께 조판하고, `cells`이면 표 셀 문단도 다시 조판한다.
-    /// 반환값은 조판한 문단 수와 vpos를 다시 이을 첫 본문 문단이다.
-    pub(crate) fn reflow_section_rows(
-        section: &mut crate::model::document::Section,
-        styles: &ResolvedStyleSet,
-        dpi: f64,
-        needs_body: impl Fn(&Paragraph) -> bool,
-        cells: bool,
-    ) -> (usize, Option<usize>) {
-        let page_def = &section.section_def.page_def;
-        let column_def = Self::find_initial_column_def(&section.paragraphs);
-        let layout = PageLayoutInfo::from_page_def(page_def, &column_def, dpi);
-        let col_width = layout
-            .column_areas
-            .first()
-            .map(|a| a.width)
-            .unwrap_or(layout.body_area.width);
-        let mut reflowed = 0usize;
-        let mut min_reflowed_idx: Option<usize> = None;
-        let mut latest_non_tac_picture_host = None;
-        let mut pi = 0usize;
-        while pi < section.paragraphs.len() {
-            if section.paragraphs[pi].controls.iter().any(|control| {
-                matches!(control, Control::Picture(picture) if !picture.common.treat_as_char)
-            }) {
-                latest_non_tac_picture_host = Some(pi);
-            }
-            if needs_body(&section.paragraphs[pi]) {
-                // A damaged successor can still belong to a stored
-                // Picture host. The forward walk records the latest
-                // possible owner, resolves its own physical column, and
-                // only claims this row when the completed projection
-                // contains it.
-                let mut tracked_picture_band_rejected = false;
-                let picture_band = if let Some(host_index) = latest_non_tac_picture_host {
-                    let picture_column_def =
-                        Self::find_column_def_for_paragraph(&section.paragraphs, host_index);
-                    let picture_layout =
-                        PageLayoutInfo::from_page_def(page_def, &picture_column_def, dpi);
-                    let picture_col_width = picture_layout
-                        .column_areas
-                        .first()
-                        .map(|area| area.width)
-                        .unwrap_or(picture_layout.body_area.width);
-                    let picture_band = layout_picture_band(
-                        &section.paragraphs,
-                        host_index,
-                        picture_col_width,
-                        styles,
-                        dpi,
-                        (layout.body_area.x, layout.body_area.y),
-                    );
-                    // A tracked host keeps ownership until a complete
-                    // projection proves that its band already ended.
-                    match picture_band {
-                        Some(band) if band.paragraph_range.contains(&pi) => Some(band),
-                        Some(band) if band.paragraph_range.end <= pi => {
-                            latest_non_tac_picture_host = None;
-                            None
-                        }
-                        _ => {
-                            tracked_picture_band_rejected = true;
-                            None
-                        }
-                    }
-                } else {
-                    None
-                };
-                if let Some(band) = picture_band {
-                    let paragraph_range = band.paragraph_range;
-                    let band_len = paragraph_range.len();
-                    debug_assert_eq!(band.line_segs.len(), band_len);
-                    for (paragraph, (line_segs, space_metrics)) in section.paragraphs
-                        [paragraph_range.clone()]
-                    .iter_mut()
-                    .zip(band.line_segs.into_iter().zip(band.space_metrics))
-                    {
-                        paragraph.replace_line_segs_with_space_metrics(line_segs, space_metrics);
-                    }
-                    reflowed += band_len;
-                    min_reflowed_idx =
-                        Some(min_reflowed_idx.map_or(paragraph_range.start, |start| {
-                            start.min(paragraph_range.start)
-                        }));
-                    pi = paragraph_range.end;
-                    continue;
-                }
-                if tracked_picture_band_rejected {
-                    break;
-                }
+    /// 사용자 명시 요청에 의한 전체 lineseg reflow (#177).
+    ///
+    /// `validate_linesegs` 에 기록된 경고 대상 문단들 중 명백히 reflow 가능한 것을 처리한다.
+    /// 기본 파싱 경로의 `reflow_zero_height_paragraphs` 와 달리 이 메서드는
+    /// 사용자가 UI에서 "자동 보정" 을 명시적으로 선택했을 때만 호출되어야 한다.
+    /// `LinesegTextRunReflow` 는 한컴이 계산한 1개 lineseg 를 강제로 다시 풀면
+    /// 페이지 수가 바뀔 수 있으므로 경고만 남기고 자동 보정 대상에서 제외한다.
+    ///
+    /// 반환값: 실제로 reflow 된 문단 개수 (본문 + 셀 내부 합계).
+    pub fn reflow_linesegs_on_demand(&mut self) -> usize {
+        if self.validation_report.is_empty() {
+            return 0;
+        }
 
-                // A non-TAC Picture host owns a possible multi-paragraph
-                // exclusion. If its complete band cannot be represented,
-                // do not publish a scalar host row and leave the source
-                // geometry intact for the caller's existing path.
+        // 스타일은 재해소해도 동일 결과이므로 재계산하여 borrow 충돌 회피.
+        let styles = self.resolve_render_styles();
+        let dpi = self.dpi;
+        let mut reflowed = 0usize;
+        let doc_hwp3_layout = self.document.layout_profile().hwp3_layout();
+
+        for section in &mut self.document.sections {
+            let page_def = &section.section_def.page_def;
+            let column_def = Self::find_initial_column_def(&section.paragraphs);
+            let layout = PageLayoutInfo::from_page_def(page_def, &column_def, dpi);
+            let col_width = layout
+                .column_areas
+                .first()
+                .map(|a| a.width)
+                .unwrap_or(layout.body_area.width);
+
+            let mut min_reflowed_idx: Option<usize> = None;
+            let mut latest_non_tac_picture_host = None;
+            let mut pi = 0usize;
+            while pi < section.paragraphs.len() {
                 if section.paragraphs[pi].controls.iter().any(|control| {
                     matches!(control, Control::Picture(picture) if !picture.common.treat_as_char)
                 }) {
-                    break;
+                    latest_non_tac_picture_host = Some(pi);
                 }
+                if Self::needs_reflow_broadly(&section.paragraphs[pi]) {
+                    // A damaged successor can still belong to a stored
+                    // Picture host. The forward walk records the latest
+                    // possible owner, resolves its own physical column, and
+                    // only claims this row when the completed projection
+                    // contains it.
+                    let mut tracked_picture_band_rejected = false;
+                    let picture_band = if let Some(host_index) = latest_non_tac_picture_host {
+                        let picture_column_def =
+                            Self::find_column_def_for_paragraph(&section.paragraphs, host_index);
+                        let picture_layout =
+                            PageLayoutInfo::from_page_def(page_def, &picture_column_def, dpi);
+                        let picture_col_width = picture_layout
+                            .column_areas
+                            .first()
+                            .map(|area| area.width)
+                            .unwrap_or(picture_layout.body_area.width);
+                        let picture_band = layout_picture_band(
+                            &section.paragraphs,
+                            host_index,
+                            picture_col_width,
+                            &styles,
+                            dpi,
+                            (layout.body_area.x, layout.body_area.y),
+                        );
+                        // A tracked host keeps ownership until a complete
+                        // projection proves that its band already ended.
+                        match picture_band {
+                            Some(band) if band.paragraph_range.contains(&pi) => Some(band),
+                            Some(band) if band.paragraph_range.end <= pi => {
+                                latest_non_tac_picture_host = None;
+                                None
+                            }
+                            _ => {
+                                tracked_picture_band_rejected = true;
+                                None
+                            }
+                        }
+                    } else {
+                        None
+                    };
+                    if let Some(band) = picture_band {
+                        let paragraph_range = band.paragraph_range;
+                        let band_len = paragraph_range.len();
+                        debug_assert_eq!(band.line_segs.len(), band_len);
+                        for (paragraph, (line_segs, space_metrics)) in section.paragraphs
+                            [paragraph_range.clone()]
+                        .iter_mut()
+                        .zip(band.line_segs.into_iter().zip(band.space_metrics))
+                        {
+                            paragraph
+                                .replace_line_segs_with_space_metrics(line_segs, space_metrics);
+                        }
+                        reflowed += band_len;
+                        min_reflowed_idx =
+                            Some(min_reflowed_idx.map_or(paragraph_range.start, |start| {
+                                start.min(paragraph_range.start)
+                            }));
+                        pi = paragraph_range.end;
+                        continue;
+                    }
+                    if tracked_picture_band_rejected {
+                        break;
+                    }
 
-                let para = &mut section.paragraphs[pi];
-                let para_style = styles.para_styles.get(para.para_shape_id as usize);
-                // 본문: 열 상자.
-                reflow_line_segs(
-                    para,
-                    ParagraphBox::body_for_style(col_width, para_style, dpi),
-                    styles,
-                    dpi,
-                );
-                reflowed += 1;
-                min_reflowed_idx.get_or_insert(pi);
-            }
-            if cells {
+                    // A non-TAC Picture host owns a possible multi-paragraph
+                    // exclusion. If its complete band cannot be represented,
+                    // do not publish a scalar host row and leave the source
+                    // geometry intact for the caller's existing path.
+                    if section.paragraphs[pi].controls.iter().any(|control| {
+                        matches!(control, Control::Picture(picture) if !picture.common.treat_as_char)
+                    }) {
+                        break;
+                    }
+
+                    let para = &mut section.paragraphs[pi];
+                    let para_style = styles.para_styles.get(para.para_shape_id as usize);
+                    // 본문: 열 상자.
+                    reflow_line_segs(
+                        para,
+                        ParagraphBox::body_for_style(col_width, para_style, dpi),
+                        &styles,
+                        dpi,
+                    );
+                    reflowed += 1;
+                    min_reflowed_idx.get_or_insert(pi);
+                }
                 // 표 셀 내부 문단도 동일 처리
                 for ctrl in &mut section.paragraphs[pi].controls {
                     if let Control::Table(ref mut table) = ctrl {
@@ -2126,7 +2137,7 @@ impl DocumentCore {
                                                 .get(cell_para.para_shape_id as usize),
                                             dpi,
                                         ),
-                                        styles,
+                                        &styles,
                                         dpi,
                                     );
                                     reflowed += 1;
@@ -2135,36 +2146,8 @@ impl DocumentCore {
                         }
                     }
                 }
+                pi += 1;
             }
-            pi += 1;
-        }
-        (reflowed, min_reflowed_idx)
-    }
-
-    /// 사용자 명시 요청에 의한 전체 lineseg reflow (#177).
-    ///
-    /// `validate_linesegs` 에 기록된 경고 대상 문단들 중 명백히 reflow 가능한 것을 처리한다.
-    /// 기본 파싱 경로의 `reflow_zero_height_paragraphs` 와 달리 이 메서드는
-    /// 사용자가 UI에서 "자동 보정" 을 명시적으로 선택했을 때만 호출되어야 한다.
-    /// `LinesegTextRunReflow` 는 한컴이 계산한 1개 lineseg 를 강제로 다시 풀면
-    /// 페이지 수가 바뀔 수 있으므로 경고만 남기고 자동 보정 대상에서 제외한다.
-    ///
-    /// 반환값: 실제로 reflow 된 문단 개수 (본문 + 셀 내부 합계).
-    pub fn reflow_linesegs_on_demand(&mut self) -> usize {
-        if self.validation_report.is_empty() {
-            return 0;
-        }
-
-        // 스타일은 재해소해도 동일 결과이므로 재계산하여 borrow 충돌 회피.
-        let styles = self.resolve_render_styles();
-        let dpi = self.dpi;
-        let mut reflowed = 0usize;
-        let doc_hwp3_layout = self.document.layout_profile().hwp3_layout();
-
-        for section in &mut self.document.sections {
-            let (count, min_reflowed_idx) =
-                Self::reflow_section_rows(section, &styles, dpi, Self::needs_reflow_broadly, true);
-            reflowed += count;
 
             // [Task #927] reflow 후 vpos 일관성 재계산 — 본문 paragraphs 만.
             // 빈 lineseg 였던 문단들은 reflow 시 vpos_start=0 으로 시작하여 후속 문단
