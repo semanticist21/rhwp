@@ -31,18 +31,27 @@ pub(crate) fn shape_transform_fingerprint(
     )
 }
 
+/// 위치를 뺀 크기·회전·대칭이 바뀌었는가. 위치 이동은 개체 틀 기준인 저장 행렬을 바꾸지 않는다.
+pub(crate) fn shape_geometry_changed(
+    before: (u32, u32, u32, u32, u32, u32, i16, bool, bool),
+    shape: &ShapeObject,
+) -> bool {
+    let after = shape_transform_fingerprint(shape.common(), shape.shape_attr());
+    let geometry =
+        |f: (u32, u32, u32, u32, u32, u32, i16, bool, bool)| (f.0, f.1, f.4, f.5, f.6, f.7, f.8);
+    geometry(before) != geometry(after)
+}
+
 /// 다각형의 실제 편집 변환을 저장 행렬에 합성한다.
 /// 위치만 옮기거나 같은 속성을 재적용할 때는 원본 행렬을 보존한다.
 pub(crate) fn update_changed_polygon_geometry(
     shape: &mut ShapeObject,
     before: (u32, u32, u32, u32, u32, u32, i16, bool, bool),
 ) {
-    let after = shape_transform_fingerprint(shape.common(), shape.shape_attr());
-    let geometry =
-        |f: (u32, u32, u32, u32, u32, u32, i16, bool, bool)| (f.0, f.1, f.4, f.5, f.6, f.7, f.8);
-    if geometry(before) == geometry(after) {
+    if !shape_geometry_changed(before, shape) {
         return;
     }
+    let after = shape_transform_fingerprint(shape.common(), shape.shape_attr());
     let ShapeObject::Polygon(poly) = shape else {
         return;
     };

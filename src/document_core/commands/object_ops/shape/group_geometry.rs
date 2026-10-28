@@ -41,7 +41,7 @@ pub(super) fn refresh_top_level_frame(shape: &mut ShapeObject) {
     }
 }
 
-/// 실제 변환 변경에서만 저장 캐시를 비우며, 무변경 속성 되먹임은 원본 행렬을 보존한다.
+/// 실제 변환 변경에서만 저장 캐시를 비우며, 무변경 속성 되먹임과 위치 이동은 원본 행렬을 보존한다.
 pub(super) fn finish_top_level_edit(
     shape: &mut ShapeObject,
     before: (u32, u32, u32, u32, u32, u32, i16, bool, bool),
@@ -55,10 +55,7 @@ pub(super) fn finish_top_level_edit(
     // 합성 행렬을 이미 적은 다각형은 그 행렬이 저장 캐시다.
     let affine_polygon =
         matches!(shape, ShapeObject::Polygon(poly) if poly.affine_edit_reference.is_some());
-    if !affine_polygon
-        && super::super::common::shape_transform_fingerprint(shape.common(), shape.shape_attr())
-            != before
-    {
+    if !affine_polygon && super::super::common::shape_geometry_changed(before, shape) {
         let sa = shape.shape_attr_mut();
         sa.raw_rendering.clear();
         sa.render_tx = 0.0;
