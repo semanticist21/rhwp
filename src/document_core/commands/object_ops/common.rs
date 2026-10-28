@@ -31,23 +31,57 @@ pub(crate) fn shape_transform_fingerprint(
     )
 }
 
+/// 회전한 개체의 틀 크기는 회전 외접 상자다. 틀 크기를 바꾸면 회전 전 로컬 크기를
+/// 같은 비율로 바꾸고, 회전하지 않은 개체는 틀 크기가 곧 로컬 크기다.
+pub(crate) fn rotated_local_size(
+    old_frame: u32,
+    old_local: u32,
+    new_frame: u32,
+    angle: i16,
+) -> u32 {
+    if angle.rem_euclid(360) != 0 && old_frame > 0 && old_local > 0 {
+        ((f64::from(old_local) * f64::from(new_frame) / f64::from(old_frame)).round()).max(1.0)
+            as u32
+    } else {
+        new_frame
+    }
+}
+
+/// 위치를 뺀 크기·회전·대칭이 바뀌었는가. 위치 이동은 개체 틀 기준인 저장 행렬을 바꾸지 않는다.
+pub(crate) fn shape_geometry_changed(
+    before: (u32, u32, u32, u32, u32, u32, i16, bool, bool),
+    shape: &ShapeObject,
+) -> bool {
+    let after = shape_transform_fingerprint(shape.common(), shape.shape_attr());
+    let geometry =
+        |f: (u32, u32, u32, u32, u32, u32, i16, bool, bool)| (f.0, f.1, f.4, f.5, f.6, f.7, f.8);
+    geometry(before) != geometry(after)
+}
+
 /// 다각형의 실제 편집 변환을 저장 행렬에 합성한다.
 /// 위치만 옮기거나 같은 속성을 재적용할 때는 원본 행렬을 보존한다.
 pub(crate) fn update_changed_polygon_geometry(
     shape: &mut ShapeObject,
     before: (u32, u32, u32, u32, u32, u32, i16, bool, bool),
 ) {
-    let after = shape_transform_fingerprint(shape.common(), shape.shape_attr());
-    let geometry =
-        |f: (u32, u32, u32, u32, u32, u32, i16, bool, bool)| (f.0, f.1, f.4, f.5, f.6, f.7, f.8);
-    if geometry(before) == geometry(after) {
+    if !shape_geometry_changed(before, shape) {
         return;
     }
+    let after = shape_transform_fingerprint(shape.common(), shape.shape_attr());
+    // 회전한 개체의 틀은 외접 상자이므로 꼭짓점 배율은 회전 전 로컬 크기로 잰다.
+    let local = |f: (u32, u32, u32, u32, u32, u32, i16, bool, bool)| {
+        (
+            if f.4 > 0 { f.4 } else { f.0 },
+            if f.5 > 0 { f.5 } else { f.1 },
+        )
+    };
+    let (before_w, before_h) = local(before);
+    let (after_w, after_h) = local(after);
     let ShapeObject::Polygon(poly) = shape else {
         return;
     };
     let sa = &mut poly.drawing.shape_attr;
-    if before.0 == 0 || before.1 == 0 || poly.points.is_empty() {
+    if before_w == 0 || before_h == 0 || poly.points.is_empty() {
         sa.raw_rendering.clear();
         return;
     }
@@ -71,11 +105,11 @@ pub(crate) fn update_changed_polygon_geometry(
             }
         };
         [
-            scale(before.0, sa.original_width),
+            scale(before_w, sa.original_width),
             0.0,
             0.0,
             0.0,
-            scale(before.1, sa.original_height),
+            scale(before_h, sa.original_height),
             0.0,
         ]
     };
@@ -84,15 +118,15 @@ pub(crate) fn update_changed_polygon_geometry(
     let reference =
         poly.affine_edit_reference
             .get_or_insert(crate::model::shape::PolygonAffineEditReference {
-                width: before.0,
-                height: before.1,
+                width: before_w,
+                height: before_h,
                 rotation: before.6,
                 horz_flip: before.7,
                 vert_flip: before.8,
                 matrix: source_matrix,
             });
-    let sx = f64::from(after.0) / f64::from(reference.width);
-    let sy = f64::from(after.1) / f64::from(reference.height);
+    let sx = f64::from(after_w) / f64::from(reference.width);
+    let sy = f64::from(after_h) / f64::from(reference.height);
     let base = reference.matrix;
     let mut m = [
         base[0] * sx,

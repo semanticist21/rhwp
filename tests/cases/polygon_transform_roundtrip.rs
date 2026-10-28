@@ -120,3 +120,44 @@ fn hancom_rotated_shapes_keep_their_centre_after_save_and_reopen() {
         }
     }
 }
+
+/// 돌린 다각형을 반대로 돌리면 원래 자리·크기로 돌아온다. 회전 외접 틀(4500×9000)의 크기·회전은
+/// 회전 전 로컬 크기(9000×4500)로 합성하고, 가운데는 새 틀 가운데에 둔다.
+#[test]
+fn rotated_polygon_returns_to_its_box_when_rotated_back() {
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.insert_text_native(0, 0, 0, "본문").unwrap();
+    let points = [
+        Point { x: 0, y: 0 },
+        Point { x: 9000, y: 0 },
+        Point { x: 0, y: 4500 },
+    ];
+    let made: serde_json::Value = serde_json::from_str(
+        &core
+            .create_shape_control_native(
+                0,
+                0,
+                0,
+                9000,
+                4500,
+                15000,
+                15000,
+                false,
+                "InFrontOfText",
+                "polygon",
+                false,
+                false,
+                &points,
+            )
+            .unwrap(),
+    )
+    .unwrap();
+    let control = made["controlIdx"].as_u64().unwrap() as usize;
+    let original = polygon(&core);
+    for angle in [90, 0, 270, 0] {
+        core.set_shape_properties_native(0, 0, control, &format!(r#"{{"rotationAngle":{angle}}}"#))
+            .unwrap();
+    }
+    assert_close(&polygon(&core), &original);
+}

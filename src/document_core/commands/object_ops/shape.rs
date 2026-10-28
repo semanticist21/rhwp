@@ -416,11 +416,23 @@ impl DocumentCore {
             // 여기서 `original_*` 를 다시 쓰면 분모가 분자를 따라가 스케일이 1 로 무너진다.
             // 묶음(아래)과 Polygon·Curve 는 이미 이 규칙을 지키고 있었고, 같은 렌더러
             // 의존을 가진 Line·Arc·Rectangle 만 빠져 있었다.
+            // 회전한 도형의 틀은 외접 상자이므로 그림과 같은 비율로 로컬 크기를 바꾼다.
+            let angle = d.shape_attr.rotation_angle;
             if let Some(w) = new_w.filter(|&w| w != width_before) {
-                d.shape_attr.current_width = w;
+                d.shape_attr.current_width = super::common::rotated_local_size(
+                    width_before,
+                    d.shape_attr.current_width,
+                    w,
+                    angle,
+                );
             }
             if let Some(h) = new_h.filter(|&h| h != height_before) {
-                d.shape_attr.current_height = h;
+                d.shape_attr.current_height = super::common::rotated_local_size(
+                    height_before,
+                    d.shape_attr.current_height,
+                    h,
+                    angle,
+                );
             }
 
             // 회전/기울임
@@ -782,11 +794,22 @@ impl DocumentCore {
         if let Some(d) = shape.drawing_mut() {
             // [#6806] 본문 경로와 동형 — 값이 바뀔 때만 `current_*` 만 따라간다.
             // `original_*`(생성 시 크기)는 렌더 스케일 분모라 리사이즈가 다시 쓰지 않는다.
+            let angle = d.shape_attr.rotation_angle;
             if let Some(w) = new_w.filter(|&w| w != width_before) {
-                d.shape_attr.current_width = w;
+                d.shape_attr.current_width = super::common::rotated_local_size(
+                    width_before,
+                    d.shape_attr.current_width,
+                    w,
+                    angle,
+                );
             }
             if let Some(h) = new_h.filter(|&h| h != height_before) {
-                d.shape_attr.current_height = h;
+                d.shape_attr.current_height = super::common::rotated_local_size(
+                    height_before,
+                    d.shape_attr.current_height,
+                    h,
+                    angle,
+                );
             }
             if let Some(v) = json_i32(props_json, "rotationAngle") {
                 d.shape_attr.rotation_angle = v as i16;
@@ -2791,6 +2814,53 @@ mod resize_clamp_tests {
             Control::Shape(s) => s.common(),
             _ => panic!("expected shape"),
         }
+    }
+
+    /// 회전한 도형의 너비는 회전 외접 틀이다. 틀 너비를 바꾸면 그림처럼 로컬 크기를 같은 비율로 바꾼다.
+    #[test]
+    fn rotated_frame_width_scales_local_width() {
+        let mut core = make_test_core();
+        let (p, c) = create_rectangle(&mut core);
+        core.set_shape_properties_native(0, p, c, r#"{"rotationAngle":30}"#)
+            .expect("rotate");
+        let frame = shape_common(&core, p, c).width;
+        // 9000×6750을 30도 돌린 외접 상자의 너비
+        assert_eq!(frame, 11169);
+        core.set_shape_properties_native(0, p, c, &format!(r#"{{"width":{}}}"#, frame + 283))
+            .expect("resize");
+        let Control::Shape(s) = &core.document.sections[0].paragraphs[p].controls[c] else {
+            panic!("expected shape");
+        };
+        assert_eq!(s.common().width, frame + 283);
+        assert_eq!(s.shape_attr().current_width, 9228);
+        assert_eq!(s.shape_attr().current_height, 6750);
+    }
+
+    /// 위치만 옮기면 개체 틀 기준인 저장 행렬을 지우지 않는다. 크기를 바꾸면 비운다.
+    #[test]
+    fn move_keeps_stored_rendering_matrix() {
+        let mut core = make_test_core();
+        let (p, c) = create_rectangle(&mut core);
+        let stored = |core: &DocumentCore| {
+            let Control::Shape(s) = &core.document.sections[0].paragraphs[p].controls[c] else {
+                panic!("expected shape");
+            };
+            let sa = s.shape_attr();
+            (sa.raw_rendering.clone(), sa.render_b, sa.render_tx)
+        };
+        if let Control::Shape(s) = &mut core.document.sections[0].paragraphs[p].controls[c] {
+            let sa = s.shape_attr_mut();
+            sa.raw_rendering = vec![1, 2, 3];
+            sa.render_b = 1.0;
+            sa.render_tx = 4500.0;
+        }
+        core.set_shape_properties_native(0, p, c, r#"{"horzOffset":1500,"vertOffset":750}"#)
+            .expect("move");
+        assert_eq!(shape_common(&core, p, c).horizontal_offset, 1500);
+        assert_eq!(stored(&core), (vec![1, 2, 3], 1.0, 4500.0));
+        core.set_shape_properties_native(0, p, c, r#"{"width":12000}"#)
+            .expect("resize");
+        assert_eq!(stored(&core), (Vec::new(), 0.0, 0.0));
     }
 
     /// 리사이즈 핸들을 반대편 너머로 잡아끌 때 studio가 width=0 을 보내도

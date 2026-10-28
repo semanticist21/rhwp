@@ -294,34 +294,22 @@ impl DocumentCore {
         // `flip` 만 나가고 `rotate_image` 는 HWPX `rotateimage` 의 원천이다.
     }
     fn apply_picture_display_width(pic: &mut crate::model::image::Picture, width: u32) {
-        let old_common_width = pic.common.width;
-        let old_current_width = pic.shape_attr.current_width;
+        pic.shape_attr.current_width = super::common::rotated_local_size(
+            pic.common.width,
+            pic.shape_attr.current_width,
+            width,
+            pic.shape_attr.rotation_angle,
+        );
         pic.common.width = width;
-        if pic.shape_attr.rotation_angle.rem_euclid(360) != 0
-            && old_common_width > 0
-            && old_current_width > 0
-        {
-            pic.shape_attr.current_width =
-                ((old_current_width as f64 * width as f64 / old_common_width as f64).round())
-                    .max(1.0) as u32;
-        } else {
-            pic.shape_attr.current_width = width;
-        }
     }
     fn apply_picture_display_height(pic: &mut crate::model::image::Picture, height: u32) {
-        let old_common_height = pic.common.height;
-        let old_current_height = pic.shape_attr.current_height;
+        pic.shape_attr.current_height = super::common::rotated_local_size(
+            pic.common.height,
+            pic.shape_attr.current_height,
+            height,
+            pic.shape_attr.rotation_angle,
+        );
         pic.common.height = height;
-        if pic.shape_attr.rotation_angle.rem_euclid(360) != 0
-            && old_common_height > 0
-            && old_current_height > 0
-        {
-            pic.shape_attr.current_height =
-                ((old_current_height as f64 * height as f64 / old_common_height as f64).round())
-                    .max(1.0) as u32;
-        } else {
-            pic.shape_attr.current_height = height;
-        }
     }
     /// [Task #825] 머리말/꼬리말 안 그림의 속성 조회.
     /// path: section[si].paragraphs[outer_para].controls[outer_ctrl] = Header/Footer
