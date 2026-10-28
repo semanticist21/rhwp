@@ -1148,6 +1148,12 @@ impl DocumentCore {
         for i in cell_para_idx..=last_para_idx {
             self.reflow_cell_paragraph(section_idx, parent_para_idx, control_idx, cell_idx, i);
         }
+        self.restack_pasted_cell_paragraphs(
+            section_idx,
+            parent_para_idx,
+            &[(control_idx, cell_idx, cell_para_idx)],
+            last_para_idx,
+        );
         self.mark_cell_control_dirty(section_idx, parent_para_idx, control_idx);
         self.document.sections[section_idx].raw_stream = None;
         self.mark_section_dirty(section_idx);
@@ -1161,6 +1167,38 @@ impl DocumentCore {
             "\"cellParaIdx\":{},\"charOffset\":{},\"containsField\":{}",
             last_para_idx, merge_point, contains_field
         )))
+    }
+
+    /// 붙인 문단에 남은 원문 본문의 세로 위치를 셀 안 위치로 다시 쌓는다. 남기면 배치는
+    /// 그 간격을 따르고 측정은 줄 합만 써서 글이 칸 아래로 넘는다. 뒤 문단의 저장 줄은
+    /// 붙이기 전 그대로 둔다. `path`의 마지막 문단이 붙이기를 시작한 문단이다.
+    fn restack_pasted_cell_paragraphs(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        last_para_idx: usize,
+    ) {
+        let Some(&(_, _, first_para_idx)) = path.last() else {
+            return;
+        };
+        let styles = self.styles.clone();
+        let dpi = self.dpi;
+        let is_hwp3_variant = self.document.layout_profile().hwp3_layout();
+        let Ok(paragraphs) =
+            self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)
+        else {
+            return;
+        };
+        let end = (last_para_idx + 1).min(paragraphs.len());
+        super::text_editing::recalculate_cell_paragraph_vpos(
+            &mut paragraphs[..end],
+            first_para_idx,
+            None,
+            &styles,
+            dpi,
+            is_hwp3_variant,
+        );
     }
 
     /// 내부 클립보드의 내용을 cellPath가 가리키는 중첩 표 셀에 붙여넣는다.
@@ -1201,6 +1239,7 @@ impl DocumentCore {
         for i in cell_para_idx..=last_para_idx {
             self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, path, i);
         }
+        self.restack_pasted_cell_paragraphs(section_idx, parent_para_idx, path, last_para_idx);
 
         let outer_ctrl = path[0].0;
         self.mark_cell_control_dirty(section_idx, parent_para_idx, outer_ctrl);

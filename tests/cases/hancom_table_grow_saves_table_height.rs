@@ -87,3 +87,72 @@ fn unchanged_table_keeps_its_saved_height() {
     let reopened = DocumentCore::from_bytes(&core.export_hwpx_native().unwrap()).unwrap();
     assert_eq!(table(&reopened).1, 8502);
 }
+
+#[test]
+fn spaced_table_copied_into_a_cell_keeps_its_height_when_nothing_overflows() {
+    // 칸 간격 표를 셀에 붙여도 내용이 넘치지 않으면 본문 원본처럼 선언 높이를 지킨다.
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.insert_text_native(0, 0, 0, "본문 앞").unwrap();
+    core.insert_paragraph_native(0, 1).unwrap();
+    core.create_table_ex_native(
+        0,
+        1,
+        0,
+        2,
+        2,
+        true,
+        Some(&[6001, 9002]),
+        Some(&[3003, 4004]),
+    )
+    .unwrap();
+    core.set_table_properties_native(0, 1, 0, r#"{"cellSpacing":400}"#)
+        .unwrap();
+    for cell in 0..4 {
+        core.insert_text_in_cell_native(0, 1, 0, cell, 0, 0, &format!("칸{cell}"))
+            .unwrap();
+    }
+    core.insert_paragraph_native(0, 2).unwrap();
+    core.insert_paragraph_native(0, 3).unwrap();
+    core.create_table_ex_native(0, 3, 0, 1, 1, true, Some(&[30005]), Some(&[17017]))
+        .unwrap();
+    core.copy_selection_native(0, 0, 0, 2, 0).unwrap();
+    core.paste_internal_in_cell_native(0, 3, 0, 0, 0, 0)
+        .unwrap();
+
+    let heights = |core: &DocumentCore| {
+        let paragraphs = &core.document().sections[0].paragraphs;
+        let Control::Table(body) = &paragraphs[1].controls[0] else {
+            panic!("본문 표가 없다");
+        };
+        let Control::Table(host) = &paragraphs[3].controls[0] else {
+            panic!("붙인 자리의 표가 없다");
+        };
+        let mut heights = vec![body.common.height];
+        heights.extend(
+            host.cells[0]
+                .paragraphs
+                .iter()
+                .flat_map(|paragraph| &paragraph.controls)
+                .filter_map(|control| match control {
+                    Control::Table(table) => Some(table.common.height),
+                    _ => None,
+                }),
+        );
+        heights
+    };
+    for hwpx in [false, true] {
+        let save = |core: &DocumentCore| {
+            if hwpx {
+                core.export_hwpx_native().unwrap()
+            } else {
+                core.export_hwp_native().unwrap()
+            }
+        };
+        let reopened = DocumentCore::from_bytes(&save(&core)).unwrap();
+        assert_eq!(heights(&reopened), vec![7007, 7007]);
+        // 다시 연 원본을 그대로 저장해도 키우지 않는다.
+        let resaved = DocumentCore::from_bytes(&save(&reopened)).unwrap();
+        assert_eq!(heights(&resaved), vec![7007, 7007]);
+    }
+}

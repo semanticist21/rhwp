@@ -706,3 +706,41 @@ fn fixed_css_line_height_and_public_cell_format_keep_canonical_double_units() {
         }
     }
 }
+
+#[test]
+fn internal_paste_in_cell_restacks_pasted_paragraph_positions() {
+    // 본문 둘째 문단부터 복사하면 원문 세로 위치에 첫 문단 몫이 들어 있다.
+    // 셀에 붙인 문단은 셀 안에서 줄 끝마다 이어 쌓는다.
+    let mut core = blank();
+    for (p, text) in ["바깥 본문", "가🦦나다라", "중간", "앞뒤끝말", ""]
+        .iter()
+        .enumerate()
+    {
+        if p > 0 {
+            core.insert_paragraph_native(0, p).unwrap();
+        }
+        core.insert_text_native(0, p, 0, text).unwrap();
+    }
+    let host: Value =
+        serde_json::from_str(&core.create_table_native(0, 4, 0, 1, 2).unwrap()).unwrap();
+    let (para, control) = (
+        host["paraIdx"].as_u64().unwrap() as usize,
+        host["controlIdx"].as_u64().unwrap() as usize,
+    );
+    core.copy_selection_native(0, 1, 0, 3, 4).unwrap();
+    core.paste_internal_in_cell_native(0, para, control, 0, 0, 0)
+        .unwrap();
+    let Control::Table(table) = &core.document().sections[0].paragraphs[para].controls[control]
+    else {
+        panic!("붙인 자리의 표가 없다");
+    };
+    let paragraphs = &table.cells[0].paragraphs;
+    assert_eq!(paragraphs.len(), 3);
+    for pair in paragraphs.windows(2) {
+        let last = pair[0].line_segs.last().unwrap();
+        assert_eq!(
+            pair[1].line_segs[0].vertical_pos,
+            last.vertical_pos + last.line_height + last.line_spacing
+        );
+    }
+}
