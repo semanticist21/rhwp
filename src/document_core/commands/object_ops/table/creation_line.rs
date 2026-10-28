@@ -31,9 +31,17 @@ pub(super) fn for_cursor(
         &core.styles,
         core.dpi,
     );
-    let mut line = empty.line_segs.into_iter().next().unwrap_or_default();
-    // 새 표의 셀 줄은 한컴이 만든 표처럼 저장 줄로 둔다. 재조판 생산자가 붙이는
-    // 합성 출처를 남기면 넘치지 않은 TAC 표도 재조판 표로 재고 저장 높이를 키운다.
+    empty.line_segs.into_iter().next().unwrap_or_default()
+}
+
+/// 새 표의 셀 줄은 한컴이 만든 표처럼 저장 줄로 둔다. 재조판 생산자가 붙이는 합성 출처를
+/// 남기면 넘치지 않은 TAC 표도 재조판 표로 재고 저장 높이를 키운다. 표 문단과 이웃 빈 문단은
+/// 세로 위치가 아직 정해지지 않은 자리표시 줄이므로 합성 출처를 그대로 둔다.
+pub(super) fn cell_line(line: &LineSeg, segment_width: i32) -> LineSeg {
+    let mut line = LineSeg {
+        segment_width,
+        ..line.clone()
+    };
     line.tag &= !LineSeg::TAG_IMPLEMENTATION_PROPERTY;
     line
 }

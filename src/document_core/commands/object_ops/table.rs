@@ -571,10 +571,7 @@ impl DocumentCore {
                     }
                     // line_segs 보정: new_empty()의 기본 LineSeg는 line_height=0이므로 항상 교체
                     let seg_w = (col_width as i32) - 141 - 141; // 셀 폭 - 좌우 패딩
-                    cp.line_segs = vec![LineSeg {
-                        segment_width: seg_w,
-                        ..inherited_line.clone()
-                    }];
+                    cp.line_segs = vec![creation_line::cell_line(&inherited_line, seg_w)];
                 }
                 // raw_list_extra: 빈 벡터 (cell.width 필드가 LIST_HEADER에 직렬화됨)
                 cell.raw_list_extra = Vec::new();
@@ -1003,10 +1000,7 @@ impl DocumentCore {
                         cp.raw_header_extra = rhe;
                     }
                     let seg_w = (col_w as i32) - 141 - 141;
-                    cp.line_segs = vec![LineSeg {
-                        segment_width: seg_w,
-                        ..inherited_line.clone()
-                    }];
+                    cp.line_segs = vec![creation_line::cell_line(&inherited_line, seg_w)];
                 }
                 cell.raw_list_extra = Vec::new();
                 cells.push(cell);
