@@ -156,3 +156,29 @@ fn spaced_table_copied_into_a_cell_keeps_its_height_when_nothing_overflows() {
         assert_eq!(heights(&resaved), vec![7007, 7007]);
     }
 }
+
+#[test]
+fn table_created_after_a_grown_table_starts_below_it() {
+    // 내용으로 커진 표 뒤에 새 표를 만들어도 새 표 문단은 커진 표 아래에서 시작한다.
+    let y = |json: String| -> f64 {
+        serde_json::from_str::<Value>(&json).unwrap()["y"]
+            .as_f64()
+            .unwrap()
+    };
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.insert_text_native(0, 0, 0, "바깥").unwrap();
+    for paragraph in 1..4 {
+        core.insert_paragraph_native(0, paragraph).unwrap();
+        core.insert_text_native(0, paragraph, 0, "줄").unwrap();
+    }
+    core.insert_paragraph_native(0, 4).unwrap();
+    core.create_table_native(0, 4, 0, 1, 2).unwrap();
+    core.copy_selection_native(0, 1, 0, 3, 1).unwrap();
+    core.paste_internal_in_cell_native(0, 4, 0, 0, 0, 0)
+        .unwrap();
+    let last = core.document().sections[0].paragraphs.len() - 1;
+    let before = y(core.get_cursor_rect_native(0, last, 0).unwrap());
+    core.create_table_native(0, last, 0, 1, 2).unwrap();
+    assert!(y(core.get_cursor_rect_native(0, last, 0).unwrap()) >= before - 0.5);
+}
