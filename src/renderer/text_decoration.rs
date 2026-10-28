@@ -139,13 +139,13 @@ pub(crate) fn top_underline_geometry(
     })
 }
 
-/// 아래 일점쇄선도 같은 출력 기하를 소비한다. 위 밑줄의 기존 계약은 그대로 유지한다.
+/// 아래 일점·이점쇄선도 같은 출력 기하를 소비한다. 위 밑줄의 기존 계약은 그대로 유지한다.
 pub(crate) fn underline_geometry(
     style: &super::TextStyle,
     font_size: f64,
 ) -> Option<TopUnderlineGeometry> {
     use crate::model::style::UnderlineType;
-    if style.underline != UnderlineType::Bottom || style.underline_shape != 3 {
+    if style.underline != UnderlineType::Bottom || !matches!(style.underline_shape, 3 | 4) {
         return top_underline_geometry(style, font_size);
     }
     if !(font_size * 2.0).is_finite() || font_size <= 0.0 {
@@ -155,6 +155,10 @@ pub(crate) fn underline_geometry(
     let scale = font_size / 35.0;
     let dot = (scale * 2.0 / 0.16).round().max(1.0) * 0.16;
     let gap = (scale * 6.0 / 0.32).round().max(1.0) * 0.32;
+    let mut dash = vec![scale * 20.0, gap, dot, gap];
+    if style.underline_shape == 4 {
+        dash.extend_from_slice(&[dot, gap]);
+    }
     Some(TopUnderlineGeometry {
         phase: style
             .top_underline_phase
@@ -163,7 +167,7 @@ pub(crate) fn underline_geometry(
         strokes: vec![DecorationStroke {
             offset: font_size * UNDERLINE_BASELINE_RATIO,
             width: font_size * 0.04,
-            dash: vec![scale * 20.0, gap, dot, gap],
+            dash,
         }],
         dots: None,
     })
@@ -199,7 +203,8 @@ pub(crate) fn resolve_page_phases(root: &mut super::render_tree::RenderNode) {
         let TextRunNode { style, .. } = run;
         let Some(id) = run.char_shape_id.filter(|_| {
             (style.underline == UnderlineType::Top
-                || (style.underline == UnderlineType::Bottom && style.underline_shape == 3))
+                || (style.underline == UnderlineType::Bottom
+                    && matches!(style.underline_shape, 3 | 4)))
                 && run.rotation == 0.0
                 && !run.is_vertical
                 && run.char_overlap.is_none()

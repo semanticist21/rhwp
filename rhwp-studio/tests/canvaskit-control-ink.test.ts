@@ -229,24 +229,27 @@ for (const sample of independentUnderlineSamples) test(`bottom underline consume
   assert.equal(JSON.stringify(op), before, '원문 소속·전진·glyph descriptor를 변경하지 않는다');
 });
 
-test('bottom dash-dot consumes shared Print geometry and source phase', () => {
-  const calls: unknown[][] = [];
-  const renderer = Object.create(prototype);
-  Object.assign(renderer, { unsupportedOps: new Set<string>(),
-    drawTextVisualStroke(_canvas: unknown, ...parameters: unknown[]) { calls.push(parameters); } });
-  const geometry = { phase: 17.5, strokes: [{ offset: 5.4335, width: 1.2787,
-    dash: [18.3907, 5.4373, 1.7587, 5.4373] }], dots: null };
-  const op = { type: 'textDecoration', bbox: { x: 31, y: 47, width: 111, height: 32 }, decoration: {
-    kind: 'underline', baseline: 20, rotation: 0, isVertical: false, fontSize: 32, ratio: 1,
-    color: '#0000cc', shape: 3, underline: 'bottom', emphasisDot: 0,
-    positions: [0, 111], positionsComplete: true, topUnderline: geometry,
-  } };
-  const before = structuredClone(op);
-  renderer.renderTextDecoration({}, op);
-  assert.deepEqual(calls, [[31, 47 + 20 + 5.4335, 142, 47 + 20 + 5.4335,
-    '#0000cc', 1.2787, geometry.strokes[0].dash, false, 0, 0, 17.5]]);
-  assert.deepEqual([...renderer.unsupportedOps], []);
-  assert.deepEqual(op, before, '공급된 기하와 원문 좌표를 변경하지 않는다');
+test('bottom dash patterns consume shared Print geometry and source phase', () => {
+  for (const shape of [3, 4]) {
+    const calls: unknown[][] = [];
+    const renderer = Object.create(prototype);
+    Object.assign(renderer, { unsupportedOps: new Set<string>(),
+      drawTextVisualStroke(_canvas: unknown, ...parameters: unknown[]) { calls.push(parameters); } });
+    const geometry = { phase: 17.5, strokes: [{ offset: 5.4335, width: 1.2787,
+      dash: [18.3907, 5.4373, 1.7587, 5.4373] }], dots: null };
+    if (shape === 4) geometry.strokes[0].dash.push(1.7587, 5.4373);
+    const op = { type: 'textDecoration', bbox: { x: 31, y: 47, width: 111, height: 32 }, decoration: {
+      kind: 'underline', baseline: 20, rotation: 0, isVertical: false, fontSize: 32, ratio: 1,
+      color: '#0000cc', shape, underline: 'bottom', emphasisDot: 0,
+      positions: [0, 111], positionsComplete: true, topUnderline: geometry,
+    } };
+    const before = structuredClone(op);
+    renderer.renderTextDecoration({}, op);
+    assert.deepEqual(calls, [[31, 47 + 20 + 5.4335, 142, 47 + 20 + 5.4335,
+      '#0000cc', 1.2787, geometry.strokes[0].dash, false, 0, 0, 17.5]]);
+    assert.deepEqual([...renderer.unsupportedOps], []);
+    assert.deepEqual(op, before, '공급된 기하와 원문 좌표를 변경하지 않는다');
+  }
 });
 
 test('bottom shared geometry retains finite and positive paint validation', () => {
