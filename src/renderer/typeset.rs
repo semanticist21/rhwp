@@ -3758,6 +3758,7 @@ impl TypesetEngine {
     ) -> FormattedTable {
         let frame_engine = crate::renderer::layout::LayoutEngine::new(self.dpi);
         self.prime_section_cell_context(&frame_engine);
+        let _measurements = frame_engine.reflow_measurement_scope();
         frame_engine.set_layout_profile(self.profile.get());
         frame_engine
             .set_render_normalization_overlay(std::sync::Arc::clone(&self.render_normalization));
