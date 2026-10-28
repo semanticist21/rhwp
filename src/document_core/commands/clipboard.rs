@@ -1148,6 +1148,16 @@ impl DocumentCore {
         for i in cell_para_idx..=last_para_idx {
             self.reflow_cell_paragraph(section_idx, parent_para_idx, control_idx, cell_idx, i);
         }
+        // HTML 셀 붙이기처럼 붙인 문단부터 셀 세로 위치를 다시 쌓는다. 원문 본문의
+        // 세로 위치가 남으면 배치는 그 간격을 따르고 측정은 줄 합만 써서 글이 칸을 넘는다.
+        self.recalculate_cell_paragraph_vpos_native(
+            section_idx,
+            parent_para_idx,
+            control_idx,
+            cell_idx,
+            cell_para_idx,
+            None,
+        );
         self.mark_cell_control_dirty(section_idx, parent_para_idx, control_idx);
         self.document.sections[section_idx].raw_stream = None;
         self.mark_section_dirty(section_idx);
@@ -1201,6 +1211,13 @@ impl DocumentCore {
         for i in cell_para_idx..=last_para_idx {
             self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, path, i);
         }
+        self.recalculate_cell_paragraph_vpos_by_path(
+            section_idx,
+            parent_para_idx,
+            path,
+            cell_para_idx,
+            None,
+        );
 
         let outer_ctrl = path[0].0;
         self.mark_cell_control_dirty(section_idx, parent_para_idx, outer_ctrl);
