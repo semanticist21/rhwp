@@ -315,9 +315,19 @@ fn header_top_ink_does_not_expand_body_clip_and_body_top_does_not_move_header() 
 fn bottom_none_shadow_and_emphasis_keep_the_existing_body_clip_and_geometry() {
     let mut doc = fixture();
     let before = doc.build_page_render_tree(0).unwrap();
-    let clip = rect(body(&before.root).1);
     let before_geometry = geometry(&before.root);
     let before_interaction = interaction(&doc);
+    // 첫 줄 강조점 잉크는 본문 clip에 들어간다(raised_decoration_body_clip).
+    // 그 clip을 기준으로 밑줄 없음·아래 밑줄·그림자가 clip을 더 넓히지 않는지 본다.
+    doc.apply_char_format_native(
+        0,
+        0,
+        0,
+        TEXTS[0].chars().count(),
+        &json!({"emphasisDot":6}).to_string(),
+    )
+    .unwrap();
+    let clip = rect(body(&doc.build_page_render_tree(0).unwrap().root).1);
     for kind in ["None", "Bottom"] {
         for shape in 0..=12 {
             decorate(&mut doc, kind, shape);
