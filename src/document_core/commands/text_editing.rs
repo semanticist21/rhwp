@@ -1436,7 +1436,16 @@ impl DocumentCore {
         let flow_after = body_paragraph_flow_signature(
             &self.document.sections[section_idx].paragraphs[para_idx],
         );
-        let flow_changed = flow_before != flow_after;
+        // 쪽 나눔이 수용한 호스트 구성은 배치가 실제 구성보다 먼저 쓴다. 그 문단은
+        // 쪽 나눔을 미루면 옛 글을 그리므로 흐름이 바뀐 것처럼 다시 나눈다.
+        let paginated_host_composition = self.pagination.get(section_idx).is_some_and(|result| {
+            result
+                .pages
+                .iter()
+                .flat_map(|page| &page.column_contents)
+                .any(|column| column.host_compositions.contains_key(&para_idx))
+        });
+        let flow_changed = flow_before != flow_after || paginated_host_composition;
         if self.batch_mode {
             // 문단의 새 줄 구성은 위에서 갱신했다. 쪽 소속 확정은 endBatch가 소유한다.
             self.mark_section_dirty(section_idx);

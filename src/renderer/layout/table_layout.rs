@@ -10,6 +10,7 @@ mod plain_cell_flow;
 mod reflow_block_frames;
 mod reflow_external_cut;
 mod reflow_external_flow;
+pub(in crate::renderer) use reflow_block_frames::{ReflowMeasurementScope, ScanMeasureCache};
 pub(in crate::renderer) use reflow_external_cut::ReflowExternalCutFrame;
 mod reflow_fragment_content;
 mod reflow_nested_band;
@@ -11237,9 +11238,8 @@ impl LayoutEngine {
         table: &crate::model::table::Table,
         styles: &ResolvedStyleSet,
     ) -> f64 {
-        let col_count = table.col_count as usize;
         let row_count = table.row_count as usize;
-        let row_heights = self.resolve_row_heights(table, col_count, row_count, None, styles, true);
+        let row_heights = self.resolved_child_rows(table, styles);
         let cell_spacing = hwpunit_to_px(table.cell_spacing as i32, self.dpi);
         row_heights.iter().sum::<f64>() + cell_spacing * (row_count + 1) as f64
     }
@@ -19890,7 +19890,7 @@ impl LayoutEngine {
             hwpunit_to_px(cell.width as i32, self.dpi) * self.render_table_width_scale(table);
         let inner_width =
             crate::renderer::composer::cell_inner_text_width(width, left, right, self.dpi);
-        let comp = self.compose_cell_unit_paragraph(para, cell.text_direction, inner_width, styles);
+        let comp = self.cached_cell_unit_paragraph(para, cell.text_direction, inner_width, styles);
         // 본문을 전진시키는 행 밴드만 문단 내부의 줄 뒤 간격을 쪽 밖으로 이월한다.
         // 어울림/배경 개체는 고유 프레임 안에서 같은 문단의 전진량을 보존한다.
         if closing.vis_end != comp.lines.len()
@@ -26435,14 +26435,7 @@ impl LayoutEngine {
             }
         }
         let mut physical = if cut.start_row > 0 && child.repeat_header {
-            let rows = self.resolve_row_heights(
-                child,
-                usize::from(child.col_count),
-                usize::from(child.row_count),
-                None,
-                styles,
-                true,
-            );
+            let rows = self.resolved_child_rows(child, styles);
             let spacing = hwpunit_to_px(child.cell_spacing as i32, self.dpi);
             child
                 .leading_header_rows()
@@ -26522,14 +26515,7 @@ impl LayoutEngine {
                         }))) {
                 // A complete child row paints the same resolved frame as an
                 // ordinary table. Its source units alone omit physical space.
-                let rows = self.resolve_row_heights(
-                    child,
-                    usize::from(child.col_count),
-                    usize::from(child.row_count),
-                    None,
-                    styles,
-                    true,
-                );
+                let rows = self.resolved_child_rows(child, styles);
                 content.max(rows[row])
             } else {
                 content
@@ -26809,12 +26795,14 @@ impl LayoutEngine {
         while u < units.len() {
             // Reflow recursive runs use their actual child RowCut even on the
             // first fragment. Group once so the parent scan remains O(U).
-            if (cell
-                .paragraphs
-                .get(units[u].para_idx)
-                .is_some_and(crate::renderer::para_has_no_stored_line_segs)
-                || units[u].nested_row_flow_edges.is_some())
-                && (units[u].mixed_nested_fragment || units[u].nested_row.is_some())
+            // 문단 전체 줄을 훑는 저장 줄 검사는 중첩 유닛에서만 한다. 글 유닛마다
+            // 하면 긴 셀 문단에서 컷 높이 조회가 줄 수의 제곱이 된다.
+            if (units[u].mixed_nested_fragment || units[u].nested_row.is_some())
+                && (units[u].nested_row_flow_edges.is_some()
+                    || cell
+                        .paragraphs
+                        .get(units[u].para_idx)
+                        .is_some_and(crate::renderer::para_has_no_stored_line_segs))
             {
                 let run_start = u;
                 let pi = units[u].para_idx;

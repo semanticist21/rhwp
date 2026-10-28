@@ -11,6 +11,43 @@ pub(in crate::renderer::layout) struct ReflowBlockHostScope<'a> {
     slot: &'a std::cell::Cell<Option<(f64, f64)>>,
 }
 
+/// 문서가 바뀌지 않는 한 범위에서 반복되는 전체 측정을 담는다.
+#[derive(Default)]
+pub(in crate::renderer) struct ScanMeasureCache {
+    reflow: std::collections::HashMap<
+        (usize, usize),
+        Option<crate::renderer::height_measurer::MeasuredTable>,
+    >,
+    child_rows: std::collections::HashMap<(usize, usize), Vec<f64>>,
+    external_flows: std::collections::HashMap<
+        (usize, usize),
+        Option<crate::renderer::float_placement::ReflowExternalTableFlow>,
+    >,
+    cell_paragraphs: std::collections::HashMap<
+        (usize, u64, u8),
+        std::sync::Arc<crate::renderer::composer::ComposedParagraph>,
+    >,
+}
+
+fn scan_cache_key(table: &Table) -> (usize, usize) {
+    (
+        table as *const Table as usize,
+        table.cells.as_ptr() as usize,
+    )
+}
+
+pub(in crate::renderer) struct ReflowMeasurementScope<'a> {
+    slot: Option<&'a std::cell::RefCell<Option<ScanMeasureCache>>>,
+}
+
+impl Drop for ReflowMeasurementScope<'_> {
+    fn drop(&mut self) {
+        if let Some(slot) = self.slot {
+            slot.borrow_mut().take();
+        }
+    }
+}
+
 impl Drop for ReflowBlockHostScope<'_> {
     fn drop(&mut self) {
         self.slot.set(None);
@@ -21,6 +58,136 @@ impl LayoutEngine {
     /// 전체 표·중첩 높이 조회가 같은 측정기의 부모 물리 프레임을 소비한다.
     /// 저장 문서 전체에 적용하지 않고 기존 혼합 재조판 호스트가 있는 표만 측정한다.
     pub(in crate::renderer::layout) fn measured_reflow_block_table(
+        &self,
+        table: &Table,
+        styles: &ResolvedStyleSet,
+    ) -> Option<crate::renderer::height_measurer::MeasuredTable> {
+        let key = scan_cache_key(table);
+        if let Some(measured) = self
+            .reflow_measure_cache
+            .borrow()
+            .as_ref()
+            .and_then(|cache| cache.reflow.get(&key))
+        {
+            return measured.clone();
+        }
+        let measured = self.measure_reflow_block_table(table, styles);
+        if let Some(cache) = self.reflow_measure_cache.borrow_mut().as_mut() {
+            cache.reflow.insert(key, measured.clone());
+        }
+        measured
+    }
+
+    /// 켠 캐시에 든 외부 자식 흐름. 바깥 `None`은 아직 계산하지 않았다는 뜻이다.
+    pub(in crate::renderer::layout) fn cached_external_flow(
+        &self,
+        table: &Table,
+    ) -> Option<Option<crate::renderer::float_placement::ReflowExternalTableFlow>> {
+        self.reflow_measure_cache
+            .borrow()
+            .as_ref()
+            .and_then(|cache| cache.external_flows.get(&scan_cache_key(table)).copied())
+    }
+
+    pub(in crate::renderer::layout) fn cache_external_flow(
+        &self,
+        table: &Table,
+        flow: Option<crate::renderer::float_placement::ReflowExternalTableFlow>,
+    ) {
+        if let Some(cache) = self.reflow_measure_cache.borrow_mut().as_mut() {
+            cache.external_flows.insert(scan_cache_key(table), flow);
+        }
+    }
+
+    /// 셀 문단의 셀 폭 구성. 쪽마다 컷 끝 간격을 물을 때 긴 문단 전체를 다시 구성하지 않는다.
+    pub(in crate::renderer::layout) fn cached_cell_unit_paragraph(
+        &self,
+        para: &Paragraph,
+        text_direction: u8,
+        inner_width: f64,
+        styles: &ResolvedStyleSet,
+    ) -> std::sync::Arc<crate::renderer::composer::ComposedParagraph> {
+        let key = (
+            para as *const Paragraph as usize,
+            inner_width.to_bits(),
+            text_direction,
+        );
+        let cached = self
+            .reflow_measure_cache
+            .borrow()
+            .as_ref()
+            .and_then(|cache| cache.cell_paragraphs.get(&key).cloned());
+        if let Some(comp) = cached {
+            return comp;
+        }
+        let comp = std::sync::Arc::new(self.compose_cell_unit_paragraph(
+            para,
+            text_direction,
+            inner_width,
+            styles,
+        ));
+        if let Some(cache) = self.reflow_measure_cache.borrow_mut().as_mut() {
+            cache
+                .cell_paragraphs
+                .insert(key, std::sync::Arc::clone(&comp));
+        }
+        comp
+    }
+
+    /// 자식 표 전체의 행 높이(`resolve_row_heights`, 측정 없음·완화 패딩).
+    /// 컷 높이를 행마다 물을 때 표 전체를 다시 구성하지 않는다.
+    pub(in crate::renderer::layout) fn resolved_child_rows(
+        &self,
+        child: &Table,
+        styles: &ResolvedStyleSet,
+    ) -> Vec<f64> {
+        let key = scan_cache_key(child);
+        let cached = self
+            .reflow_measure_cache
+            .borrow()
+            .as_ref()
+            .and_then(|cache| cache.child_rows.get(&key).cloned());
+        if let Some(rows) = cached {
+            // 계산 경로와 같은 저장 프레임 기록을 남긴다.
+            self.remember_stored_frame_rows(child, &rows);
+            return rows;
+        }
+        let rows = self.resolve_row_heights(
+            child,
+            usize::from(child.col_count),
+            usize::from(child.row_count),
+            None,
+            styles,
+            true,
+        );
+        if let Some(cache) = self.reflow_measure_cache.borrow_mut().as_mut() {
+            cache.child_rows.insert(key, rows.clone());
+        }
+        rows
+    }
+
+    /// 문서가 바뀌지 않는 한 번의 조판·배치 동안 같은 표의 전체 측정을 한 번만 한다.
+    /// 행·칸마다 부모 표 전체를 다시 재면 표 크기의 제곱으로 느려진다.
+    /// 이미 켠 범위 안에서는 바깥 범위가 캐시를 소유한다.
+    pub(in crate::renderer) fn reflow_measurement_scope(&self) -> ReflowMeasurementScope<'_> {
+        let mut cache = self.reflow_measure_cache.borrow_mut();
+        let owner = cache.is_none();
+        if owner {
+            *cache = Some(Default::default());
+        }
+        ReflowMeasurementScope {
+            slot: owner.then_some(&self.reflow_measure_cache),
+        }
+    }
+
+    /// 조판기의 일회용 배치기는 버려질 때까지 캐시를 켠다. 조판 중에는 문서가 바뀌지 않는다.
+    pub(in crate::renderer) fn keep_reflow_measurements(&self) {
+        self.reflow_measure_cache
+            .borrow_mut()
+            .get_or_insert_with(Default::default);
+    }
+
+    fn measure_reflow_block_table(
         &self,
         table: &Table,
         styles: &ResolvedStyleSet,

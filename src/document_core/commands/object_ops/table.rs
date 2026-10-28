@@ -419,7 +419,7 @@ impl DocumentCore {
     }
 
     /// 표 생성과 동시에 열 너비·정렬·반복 머리행을 적용한다.
-    /// 기존 create_table_native의 기본값은 바꾸지 않는다.
+    /// 지정하지 않은 값은 한컴 2024가 만든 표의 기본값을 따른다.
     pub fn create_table_with_options_native(
         &mut self,
         section_idx: usize,
@@ -589,10 +589,12 @@ impl DocumentCore {
         // 바이트 레이아웃: flags(4) + v_offset(4) + h_offset(4) + width(4) + height(4)
         //                 + z_order(4) + margin_l(2) + margin_r(2) + margin_t(2) + margin_b(2)
         //                 + instance_id(4) = 36바이트 (+ 여유 2바이트 = 38)
-        // vert=Para(2), horz=Para(3), wrap=TopAndBottom(1)
+        // vert=Para(2), horz=Column(2), flow_with_text(쪽 영역 안으로 제한), wrap=TopAndBottom(1)
         // width_criterion=Absolute(4), height_criterion=Absolute(2)
+        // 한컴 2024가 만든 표의 위치 기본값과 같다(vertRelTo=PARA, horzRelTo=COLUMN, flowWithText=1).
         // 새 표의 기본 번호 종류는 TABLE이다. 캡션의 존재가 번호 범주를 정하지 않는다.
-        let flags: u32 = (2 << 3) | (3 << 8) | (4 << 15) | (2 << 18) | (1 << 21) | (2 << 26);
+        let flags: u32 =
+            (2 << 3) | (2 << 8) | (1 << 13) | (4 << 15) | (2 << 18) | (1 << 21) | (2 << 26);
         let outer_margin: i16 = 283; // ~1mm
         let mut raw_ctrl_data = vec![0u8; 38];
         raw_ctrl_data[common_obj_offsets::FLAGS].copy_from_slice(&flags.to_le_bytes());
@@ -623,13 +625,10 @@ impl DocumentCore {
             zones: Vec::new(),
             cells,
             cell_grid: Vec::new(),
-            page_break: if options.repeat_header.is_some() {
-                // HWPX CELL은 저장소 공통 IR의 RowBreak에 대응한다.
-                TablePageBreak::RowBreak
-            } else {
-                TablePageBreak::None
-            },
-            repeat_header: options.repeat_header.unwrap_or(false),
+            // 한컴 2024가 만든 표는 pageBreak="CELL" repeatHeader="1"이다.
+            // HWPX CELL은 저장소 공통 IR의 RowBreak에 대응한다.
+            page_break: TablePageBreak::RowBreak,
+            repeat_header: options.repeat_header.unwrap_or(true),
             caption: None,
             common: crate::model::shape::CommonObjAttr {
                 attr: flags,
@@ -642,9 +641,10 @@ impl DocumentCore {
                 },
                 instance_id,
                 treat_as_char: false,
+                flow_with_text: true,
                 text_wrap: crate::model::shape::TextWrap::TopAndBottom,
                 vert_rel_to: crate::model::shape::VertRelTo::Para,
-                horz_rel_to: crate::model::shape::HorzRelTo::Para,
+                horz_rel_to: crate::model::shape::HorzRelTo::Column,
                 vert_align: crate::model::shape::VertAlign::Top,
                 horz_align: crate::model::shape::HorzAlign::Left,
                 width: total_width,
@@ -657,10 +657,9 @@ impl DocumentCore {
             outer_margin_bottom: 283,
             raw_ctrl_data,
             raw_ctrl_seal: None,
-            raw_table_record_attr: options.repeat_header.map_or(0x00000006, |repeat| {
-                // 새 표도 HWP5 저장기의 raw TABLE 레코드 우선 계약을 지킨다.
-                2 | (u32::from(repeat) << 2) // HWPX CELL (HWP5 RowBreak) + repeatHeader
-            }),
+            // 새 표도 HWP5 저장기의 raw TABLE 레코드 우선 계약을 지킨다.
+            // HWPX CELL (HWP5 RowBreak) + repeatHeader
+            raw_table_record_attr: 2 | (u32::from(options.repeat_header.unwrap_or(true)) << 2),
             // [#3570] 한컴은 TABLE 레코드를 zone 개수까지만 쓴다 — 여분 2바이트 없음.
             raw_table_record_extra: Vec::new(),
         };
