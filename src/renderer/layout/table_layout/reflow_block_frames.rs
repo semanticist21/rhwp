@@ -23,6 +23,10 @@ pub(in crate::renderer) struct ScanMeasureCache {
         (usize, usize),
         Option<crate::renderer::float_placement::ReflowExternalTableFlow>,
     >,
+    cell_paragraphs: std::collections::HashMap<
+        (usize, u64, u8),
+        std::sync::Arc<crate::renderer::composer::ComposedParagraph>,
+    >,
 }
 
 fn scan_cache_key(table: &Table) -> (usize, usize) {
@@ -93,6 +97,41 @@ impl LayoutEngine {
         if let Some(cache) = self.reflow_measure_cache.borrow_mut().as_mut() {
             cache.external_flows.insert(scan_cache_key(table), flow);
         }
+    }
+
+    /// 셀 문단의 셀 폭 구성. 쪽마다 컷 끝 간격을 물을 때 긴 문단 전체를 다시 구성하지 않는다.
+    pub(in crate::renderer::layout) fn cached_cell_unit_paragraph(
+        &self,
+        para: &Paragraph,
+        text_direction: u8,
+        inner_width: f64,
+        styles: &ResolvedStyleSet,
+    ) -> std::sync::Arc<crate::renderer::composer::ComposedParagraph> {
+        let key = (
+            para as *const Paragraph as usize,
+            inner_width.to_bits(),
+            text_direction,
+        );
+        let cached = self
+            .reflow_measure_cache
+            .borrow()
+            .as_ref()
+            .and_then(|cache| cache.cell_paragraphs.get(&key).cloned());
+        if let Some(comp) = cached {
+            return comp;
+        }
+        let comp = std::sync::Arc::new(self.compose_cell_unit_paragraph(
+            para,
+            text_direction,
+            inner_width,
+            styles,
+        ));
+        if let Some(cache) = self.reflow_measure_cache.borrow_mut().as_mut() {
+            cache
+                .cell_paragraphs
+                .insert(key, std::sync::Arc::clone(&comp));
+        }
+        comp
     }
 
     /// 자식 표 전체의 행 높이(`resolve_row_heights`, 측정 없음·완화 패딩).
