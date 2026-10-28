@@ -37,9 +37,17 @@ pub(super) fn resolve(
     {
         return None;
     }
+    // 호스트에 글앞 개체 같은 장식이 함께 있으면 format은 빈 줄을 표 뒤 간격으로 옮기고
+    // 자기 줄을 남기지 않는다. 그 줄은 표 아래에 쌓인 상자이므로 문단은 상자 끝에서
+    // 닫는다. 앵커에서 닫으면 다음 문단의 앞 간격이 표 띠에 흡수돼 간격이 사라진다.
+    let line_advance = if fmt.line_heights.is_empty() {
+        table_end - origin
+    } else {
+        fmt.total_height
+    };
     Some(ParagraphFloatPlacement {
         flow: ParagraphFloatFlow::ComputedEmptyHost {
-            line_advance: fmt.total_height,
+            line_advance,
             outer_box_top,
         },
         anchor_y: origin,
