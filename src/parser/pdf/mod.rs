@@ -3,8 +3,10 @@
 //! `pdf-import` is enabled by default and can be excluded with
 //! `--no-default-features`. The internal backend limits decoded outputs, but
 //! full codec/font/cache allocation bounds are not yet proven.
+pub(crate) mod allocation;
 mod body_regions;
 mod char_pool;
+mod editable;
 mod extract;
 mod lowering;
 mod path_paint;
@@ -19,6 +21,8 @@ mod table_paint;
 mod table_topology;
 mod text_analysis;
 mod text_clip;
+mod value_allocation;
+mod value_macro;
 
 use crate::model::document::Document;
 use pdf_oxide::import_limits::{ImportBudget, ImportBudgetSnapshot, ImportLimitFailure};
@@ -27,15 +31,13 @@ use serde::Serialize;
 use serde_json::Value;
 use std::sync::Arc;
 
-pub use policy::PdfImportPolicy;
+pub use policy::{PdfImportOverrides, PdfImportPolicy, PdfImportProfile};
 
 /// Product adapters may stop reading after this limit plus one byte.
 pub const MAX_INPUT_BYTES: usize = pdf_oxide::import_limits::DEFAULT_INPUT_BYTES;
 /// Maximum selected pages; adapters must bound range expansion before allocation.
 pub const MAX_PAGES: usize = 1024;
 const MAX_POOL_ENTRIES: usize = u16::MAX as usize;
-const MAX_TEXT_BYTES: usize = 2 * 1024 * 1024;
-const MAX_DOCUMENT_IMAGE_PIXELS: u64 = 64_000_000;
 
 #[derive(Clone, Debug, Default)]
 pub struct PdfImportOptions {
@@ -44,6 +46,33 @@ pub struct PdfImportOptions {
     /// Include page-scoped observations and competing table hypotheses in metadata.
     /// Contains source text; opt-in, local review only.
     pub include_table_inference: bool,
+    /// Where recognized body paragraphs are placed.
+    pub layout: PdfImportLayout,
+}
+
+/// Placement of recognized body paragraphs.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub enum PdfImportLayout {
+    /// One positioned text box per recognized body region (default). Every
+    /// page keeps the source geometry; paragraphs end at region borders.
+    #[default]
+    Fidelity,
+    /// Body paragraphs become the section's text flow with page margins,
+    /// columns and page/column breaks measured from the source. Other content
+    /// stays positioned on its page.
+    Editable,
+}
+
+impl PdfImportLayout {
+    /// Parses the stable option spelling used by the CLI and the WASM API.
+    pub fn parse(value: &str) -> Option<Self> {
+        match value {
+            "fidelity" => Some(Self::Fidelity),
+            "editable" => Some(Self::Editable),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Debug)]
@@ -67,7 +96,7 @@ pub struct PdfImportFailure {
 }
 
 impl PdfImportError {
-    fn backend(error: pdf_oxide::error::Error) -> Self {
+    pub(crate) fn backend(error: pdf_oxide::error::Error) -> Self {
         use pdf_oxide::error::Error;
         let kind = match &error {
             Error::ImportResourceLimit(_) => "resource_limit",
@@ -196,6 +225,10 @@ pub struct PdfImportMetadata {
     pub source_page_count: usize,
     pub pages: Vec<PdfPageMetadata>,
     pub paragraph_policy: &'static str,
+    pub layout: PdfImportLayout,
+    /// Editable layout only: sections, measured margins and moved paragraphs.
+    #[serde(skip_serializing_if = "Value::is_null")]
+    pub editable_layout: Value,
     pub parser_allocation_bounds_proven: bool,
     pub warnings: Vec<&'static str>,
     pub resource_policy: PdfImportPolicy,
@@ -238,9 +271,10 @@ fn selected_pages(
     options: &PdfImportOptions,
     count: usize,
     policy: &PdfImportPolicy,
+    allocation: allocation::Allocation<'_>,
 ) -> Result<Vec<usize>, PdfImportError> {
     match &options.source_pages {
-        None if count <= policy.max_selected_pages => Ok((0..count).collect()),
+        None if count <= policy.max_selected_pages => allocation.collect(0..count),
         None => Err(
             PdfImportError::budget("selected page count exceeds request policy").limit(
                 "selected pages",
@@ -255,7 +289,7 @@ fn selected_pages(
                 && pages.iter().all(|p| *p < count)
                 && pages.windows(2).all(|p| p[0] < p[1]) =>
         {
-            Ok(pages.clone())
+            allocation.copy_slice(pages)
         }
         _ => Err(PdfImportError::new(
             "PDF_PAGE_SELECTION",
@@ -282,16 +316,18 @@ pub fn parse_pdf_with_policy(
     options: &PdfImportOptions,
     policy: PdfImportPolicy,
 ) -> Result<PdfImportResult, PdfImportError> {
-    if policy.schema_version != 1
-        || policy.max_source_pages == 0
-        || policy.max_selected_pages == 0
-        || policy.max_selected_pages > u16::MAX as usize
-        || policy.max_path_operations == 0
-        || policy.max_document_path_operations == 0
-        || policy.max_document_image_placements == 0
-    {
-        return Err(PdfImportError::budget("invalid PDF import policy"));
-    }
+    policy.validate()?;
+    let request = Arc::new(ImportBudget::new(policy.backend).map_err(PdfImportError::backend)?);
+    parse_pdf_with_request(bytes, options, policy, request)
+}
+
+pub(crate) fn parse_pdf_with_request(
+    bytes: &[u8],
+    options: &PdfImportOptions,
+    policy: PdfImportPolicy,
+    request: Arc<ImportBudget>,
+) -> Result<PdfImportResult, PdfImportError> {
+    policy.validate()?;
     if bytes.len() > policy.max_input_bytes() {
         return Err(
             PdfImportError::budget("input exceeds request byte limit").limit(
@@ -310,8 +346,9 @@ pub fn parse_pdf_with_policy(
     }
     // Copy only after the input budget check. Upstream internal allocations are
     // a separate, unresolved release gate; extraction counters do not bound them.
-    let request = Arc::new(ImportBudget::new(policy.backend).map_err(PdfImportError::backend)?);
-    let pdf = PdfDocument::from_bytes_with_budget(bytes.to_vec(), Arc::clone(&request))
+    let allocation = allocation::Allocation(&request);
+    let input = allocation.copy_slice(bytes)?;
+    let pdf = PdfDocument::from_bytes_with_budget(input, Arc::clone(&request))
         .map_err(|error| PdfImportError::backend(error).at("container", None, Some(&request)))?;
     if pdf.is_encrypted() {
         return Err(PdfImportError::new(
@@ -334,7 +371,7 @@ pub fn parse_pdf_with_policy(
                 .at("page_tree", None, Some(&request)),
         );
     }
-    let selected = selected_pages(options, count, &policy)?;
+    let selected = selected_pages(options, count, &policy, allocation)?;
     let policy = policy.for_selected_pages(selected.len());
     request
         .restrict_work_limits(policy.backend.decoded_bytes, policy.backend.operators)
@@ -362,15 +399,21 @@ pub fn parse_pdf_with_policy(
         .pop()
         .ok_or_else(|| PdfImportError::new("PDF_LOWERING_FAILED", "IR scaffold has no section"))?;
     let mut next_id = 1;
-    let mut character_pool = char_pool::Pool::new(&document)?;
+    let mut character_pool = char_pool::Pool::new(&document, Arc::clone(&request))?;
     let mut budget = Budget {
         policy,
         ..Budget::default()
     };
-    let mut pages = Vec::with_capacity(selected.len());
+    let mut pages = allocation::Allocation(&request).vec(selected.len())?;
+    let mut body_frames = Vec::new();
     for source_page in selected {
-        let page = extract::extract(&pdf, source_page, &mut budget)
-            .map_err(|error| error.at("extract", Some(source_page), Some(&request)))?;
+        let page = extract::extract(
+            &pdf,
+            source_page,
+            &mut budget,
+            options.include_table_inference,
+        )
+        .map_err(|error| error.at("extract", Some(source_page), Some(&request)))?;
         // Reserve a conservative upper bound before any u16 resource-ID cast in
         // lowering. All pages share these pools; no page-local IDs are appended.
         let tables = page.snapshot["tableDetection"]["tables"]
@@ -423,6 +466,10 @@ pub fn parse_pdf_with_policy(
         let report = lowered.map_err(|_| {
             PdfImportError::new("PDF_LOWERING_FAILED", "PDF content could not be lowered")
         })?;
+        if options.layout == PdfImportLayout::Editable {
+            let frames = editable::page_frames(section, &report, allocation)?;
+            allocation.push(&mut body_frames, frames)?;
+        }
         character_pool.compact_page(&mut document, first_character_shape, section)?;
         let n = |key: &str| report[key].as_u64().unwrap_or(0) as usize;
         let (left, bottom, right, top) = page.media_box;
@@ -430,11 +477,8 @@ pub fn parse_pdf_with_policy(
             source_page,
             output_section: section,
             media_box: [left, bottom, right, top],
-            source_spans: page
-                .spans
-                .iter()
-                .enumerate()
-                .map(|(source_span, s)| PdfSpanEvidence {
+            source_spans: allocation.collect(page.spans.iter().enumerate().map(
+                |(source_span, s)| PdfSpanEvidence {
                     source_span,
                     bounds: [
                         s.bbox.x - left,
@@ -443,8 +487,8 @@ pub fn parse_pdf_with_policy(
                         s.font_size,
                     ],
                     baseline: top - s.bbox.y,
-                })
-                .collect(),
+                },
+            ))?,
             semantic_tables: n("semanticTables"),
             nested_tables: n("semanticNestedTables"),
             deferred_tables: report["deferredTables"].as_array().map_or(0, Vec::len),
@@ -455,9 +499,34 @@ pub fn parse_pdf_with_policy(
                 &page.paths,
                 &page.recognition.report,
                 options.include_table_inference,
-            ),
+            )?,
         });
     }
+    let editable_layout = if options.layout == PdfImportLayout::Editable {
+        let report = editable::reflow(&mut document, &body_frames, allocation)?;
+        // Page metadata follows the page into its reflowed section.
+        let mut section_of = std::collections::BTreeMap::new();
+        for (index, section) in report["sections"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .enumerate()
+        {
+            for page in section["pages"].as_array().into_iter().flatten() {
+                if let Some(source) = page["sourceSection"].as_u64() {
+                    allocation.insert(&mut section_of, source as usize, index)?;
+                }
+            }
+        }
+        for page in &mut pages {
+            if let Some(&section) = section_of.get(&page.output_section) {
+                page.output_section = section;
+            }
+        }
+        report
+    } else {
+        Value::Null
+    };
     document.doc_properties.section_count = u16::try_from(document.sections.len())
         .map_err(|_| PdfImportError::budget("section count exceeds format range"))?;
     document
@@ -470,6 +539,8 @@ pub fn parse_pdf_with_policy(
             pdf_import_support: crate::pdf_support::pdf_import_support(),
             source_page_count: count, pages,
             paragraph_policy: "observed-lines; authored paragraph boundaries are not recovered",
+            layout: options.layout,
+            editable_layout,
             parser_allocation_bounds_proven: false,
             warnings: vec![
                 "Experimental PDF frontend; upstream allocation bounds remain unproven",

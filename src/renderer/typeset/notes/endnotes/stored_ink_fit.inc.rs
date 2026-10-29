@@ -242,6 +242,43 @@ impl TypesetEngine {
         if st.current_items.is_empty() {
             return None;
         }
+        let query = super::measure_memo::ExtentQuery::new(
+            paragraphs,
+            styles,
+            available,
+            en_col_w,
+            extra_item,
+            self.section_column_spacing_hu.get(),
+        );
+        let revision = st.revision();
+        if let Some(extent) = self
+            .endnote_measure_memo
+            .borrow_mut()
+            .extent(revision, &query)
+        {
+            if self.endnote_replay_verify {
+                let fresh = self.replay_endnote_column_extent(st, paragraphs, styles, available, en_col_w, extra_item);
+                verify_endnote_measurement(extent, fresh);
+            }
+            return extent;
+        }
+        let extent =
+            self.replay_endnote_column_extent(st, paragraphs, styles, available, en_col_w, extra_item);
+        self.endnote_measure_memo
+            .borrow_mut()
+            .store_extent(revision, query, extent);
+        extent
+    }
+
+    fn replay_endnote_column_extent(
+        &self,
+        st: &TypesetState,
+        paragraphs: &[Paragraph],
+        styles: &ResolvedStyleSet,
+        available: f64,
+        en_col_w: f64,
+        extra_item: Option<&PageItem>,
+    ) -> Option<(f64, Option<f64>)> {
         let ssot_debug = en_ssot_debug();
         // 본문 항목이 함께 있는 단은 렌더처럼 본문·구분선부터 단 위에서 차례로 그린다 — 누계가
         // 기록한 미주 시작점(`current_start_height`)은 본문 마지막 줄 간격 등을 렌더와 다르게
@@ -478,54 +515,7 @@ impl TypesetEngine {
                 .filter_map(|(para, start)| to_local(*para).map(|local| (local, *start)))
                 .collect(),
         };
-        // 배치 맵은 호출마다 새로 모으므로 키에는 순서를 고정해 싣는다. `..` 없이 풀어
-        // 새 필드가 생기면 빌드가 깨지게 한다. 아래 scratch에 새 입력을 넘기면 이 키에도 싣는다.
-        fn sorted<K: Ord, V>(map: &std::collections::HashMap<K, V>) -> Vec<(&K, &V)> {
-            let mut entries: Vec<_> = map.iter().collect();
-            entries.sort_by(|a, b| a.0.cmp(b.0));
-            entries
-        }
-        let crate::renderer::layout::EndnoteColumnPlacements {
-            host_compositions,
-            stored_paragraph_flow_ends,
-            stored_column_top_spacings,
-            wrap_anchors,
-            inline_placements,
-            inline_flow_plans,
-            paragraph_float_placements,
-            float_pushed_line_spacings,
-            page_band_flow_starts,
-        } = &placements;
-        let mut key = format!(
-            "extent|{:p}|{:?}|{:?}|{:?}|{:?}|{}|{}|{:?}|{}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}|{:?}",
-            styles,
-            st.profile,
-            self.section_column_spacing_hu.get(),
-            local_items,
-            col_area,
-            st.current_start_height,
-            st.section_index,
-            (
-                st.endnote_separator_above_hu,
-                st.endnote_between_notes_hu,
-                st.endnote_separator_below_hu,
-            ),
-            source_base,
-            local_sources,
-            sorted(host_compositions),
-            sorted(stored_paragraph_flow_ends),
-            sorted(stored_column_top_spacings),
-            sorted(wrap_anchors),
-            sorted(inline_placements),
-            sorted(inline_flow_plans),
-            sorted(paragraph_float_placements),
-            sorted(float_pushed_line_spacings),
-            sorted(page_band_flow_starts),
-        );
-        for (index, paragraph) in a3_paras.iter().enumerate() {
-            push_replay_paragraph_key(&mut key, index, paragraph);
-        }
-        let (bottom, ink_bottom) = self.replay_endnote_column(key, || {
+        let (bottom, ink_bottom) = {
             let a3_composed: Vec<crate::renderer::composer::ComposedParagraph> = a3_paras
                 .iter()
                 .map(crate::renderer::composer::compose_paragraph)
@@ -557,7 +547,7 @@ impl TypesetEngine {
                 placements,
                 &[],
             )
-        });
+        };
         if ssot_debug {
             eprintln!(
                 "EN_COLSIM start_h={:.1} avail={:.1} items={} bottom={:.1} ink={:?}",

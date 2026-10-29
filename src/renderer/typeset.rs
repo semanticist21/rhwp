@@ -205,6 +205,7 @@ struct TableBreakToken {
     /// 인트라-로우 분할 시 각 셀의 콘텐츠 오프셋
     cell_content_offsets: Option<Vec<f64>>,
 }
+crate::storage::clone_fields!(TableBreakToken, {start_row, cell_content_offsets});
 
 /// RowBreak 표가 page boundary를 넘을 때 queue가 source order로 등록할 셀 각주.
 ///
@@ -220,6 +221,7 @@ struct TableCellFootnote {
     content_height: f64,
     fragment_split: Option<NativeHwp5FootnoteFragmentSplit>,
 }
+crate::storage::clone_fields!(TableCellFootnote, {number, cell_path, row, content_height, fragment_split});
 
 // ========================================================
 // FormattedTable — 표의 format() 결과
@@ -273,6 +275,7 @@ struct VisibleFloatExclusion {
     top: f64,
     bottom: f64,
 }
+crate::storage::clone_copy!(VisibleFloatExclusion);
 
 /// 다음 physical page의 본문 시작에 배치할 non-TAC Square picture control.
 ///
@@ -290,6 +293,7 @@ struct DeferredSquarePictureControl {
     wrap_target_para_indices: Vec<usize>,
     wrap_anchor: crate::renderer::pagination::WrapAnchorRef,
 }
+crate::storage::clone_fields!(DeferredSquarePictureControl, {para_index, control_index, wrap_target_para_indices, wrap_anchor});
 
 /// 저장 정보 또는 확정한 계산 프레임으로 다음 쪽 상단 소유가 확인된 개체.
 #[derive(Debug, Clone)]
@@ -297,6 +301,18 @@ enum DeferredStoredFrameKind {
     Picture,
     Table,
     AbsoluteShape,
+}
+impl crate::storage::CloneWithStorage for DeferredStoredFrameKind {
+    fn clone_with_storage<S: crate::storage::Storage>(
+        &self,
+        storage: &S,
+    ) -> Result<Self, S::Error> {
+        match self {
+            Self::Picture => Ok(Self::Picture),
+            Self::Table => Ok(Self::Table),
+            Self::AbsoluteShape => Ok(Self::AbsoluteShape),
+        }
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -308,6 +324,7 @@ struct DeferredStoredFrameControl {
     /// This original zero-origin body starts after the deferred object's page.
     following_body_para_index: Option<usize>,
 }
+crate::storage::clone_fields!(DeferredStoredFrameControl, {kind, para_index, control_index, placement, following_body_para_index});
 
 /// 호스트 문단의 spacing (표 전/후)
 #[derive(Debug, Clone, Copy)]
@@ -316,6 +333,11 @@ struct HostSpacing {
     before: f64,
     /// 표 뒤 spacing (spacing_after + outer_margin_bottom + host_line_spacing)
     after: f64,
+    /// 단 상단에서 열 때의 `before` — 문단 앞 간격 없이 바깥 위 여백만. 앞 쪽에서 포맷한
+    /// 표를 이월해 새 단 첫머리에 놓으면 이 값을 쓴다.
+    column_top_before: f64,
+    /// `after` 에 든 host 문단 줄간격(표-표 스택 간격, #1133).
+    host_line_spacing: f64,
     /// spacing_after만 (마지막 fragment용 — Paginator와 동일)
     spacing_after_only: f64,
     /// 재조판한 흐름 개체의 마지막 조각 뒤에서 닫을 아래 바깥여백.
@@ -325,6 +347,7 @@ struct HostSpacing {
     /// 한글 괘선 실측 vs hwpspec 178쪽 핀(#1086) 동시 충족).
     after_for_fit: f64,
 }
+crate::storage::clone_copy!(HostSpacing);
 
 /// 단일 패스 조판 엔진
 pub struct TypesetEngine {
@@ -346,10 +369,8 @@ pub struct TypesetEngine {
     format_next_stored_vpos: std::cell::Cell<Option<i32>>,
     render_normalization:
         std::sync::Arc<crate::renderer::render_normalization::RenderNormalizationOverlay>,
-    /// 미주 fit 판정이 scratch로 다시 그린 단 측정의 최근 결과 — 구역 진입 시 비운다.
-    /// 여러 판정이 같은 단과 후보를 연달아 다시 그리므로 입력 키가 같으면 결과를 재사용한다.
-    endnote_column_replays:
-        std::cell::RefCell<std::collections::VecDeque<(String, (f64, Option<f64>))>>,
+    /// 같은 상태 세대에서 반복된 미주 단 측정 결과.
+    endnote_measure_memo: std::cell::RefCell<notes::endnotes::measure_memo::EndnoteMeasureMemo>,
     /// 재사용할 때마다 다시 측정해 키가 scratch 입력을 빠뜨리지 않았는지 확인한다.
     /// 디버그 빌드와 `RHWP_ENDNOTE_REPLAY_VERIFY` 가 켠다.
     endnote_replay_verify: bool,
@@ -628,6 +649,39 @@ fn partial_rowbreak_fragment_spacing_px(
         0.0
     };
     (before, bottom)
+}
+
+/// [#8149] 글 없는 host 의 문단 기준 자리차지 표가 쪽 바닥에서 나뉘면 한/글은 첫 조각
+/// 아래에 그 표의 바깥 아래 여백과 (아래 캡션이면) 캡션 자리를 남긴다 — 한/글 2020 저장·
+/// Print 합성 `samples/issue8149/gen_rowfit.py` 16사례: 캡션 없음·여백 0 은 본문 끝까지,
+/// 여백 1984HU 는 여백만, 아래 캡션은 `여백 + 캡션 간격 + 캡션 줄` 을 남긴다. 첫 행이
+/// 들어가는지 보는 이월 판정과 첫 조각 행 예산이 같은 값을 쓴다 — 한글문서파일형식 32쪽
+/// 표 199 는 제목 행 19.5px 만 남은 22px 에 들어가 보였지만 이 예약 50.5px 를 넣으면 들지
+/// 않아 한/글처럼 표 전체가 33쪽으로 넘어간다. 조각마다 반복하는 바깥 아래 여백
+/// (`fragment_outer_bottom`)이 이미 있거나 원본 글 프레임이 첫 조각을 정하면 쓰지 않는다.
+fn empty_host_float_first_fragment_reserve_px(
+    para: &Paragraph,
+    table: &crate::model::table::Table,
+    fragment_outer_bottom: f64,
+    has_source_text_first_frame: bool,
+    caption_overhead: f64,
+    caption_is_top: bool,
+    dpi: f64,
+) -> f64 {
+    if fragment_outer_bottom > 0.0
+        || has_source_text_first_frame
+        || !is_para_topbottom_float(&table.common)
+        || signed_hwpunit(table.common.vertical_offset) != 0
+        || para_has_non_whitespace_text(para)
+    {
+        return 0.0;
+    }
+    hwpunit_to_px(table.outer_margin_bottom as i32, dpi).max(0.0)
+        + if caption_is_top {
+            0.0
+        } else {
+            caption_overhead
+        }
 }
 
 /// [Task #853] ColumnDef 의 "디자인 spacing"(px): 1단이면 `간격`, 다단이면 0.
@@ -1399,22 +1453,33 @@ fn equation_only_tac_line_assignment(
     para: &Paragraph,
     comp: &ComposedParagraph,
 ) -> Option<Vec<usize>> {
+    match equation_only_tac_line_assignment_with_storage(para, comp, &crate::storage::Unbounded) {
+        Ok(value) => value,
+        Err(never) => match never {},
+    }
+}
+
+fn equation_only_tac_line_assignment_with_storage<S: crate::storage::Storage>(
+    para: &Paragraph,
+    comp: &ComposedParagraph,
+    storage: &S,
+) -> Result<Option<Vec<usize>>, S::Error> {
     let n_lines = comp.lines.len();
     if n_lines <= 1 || comp.tac_controls.is_empty() {
-        return None;
+        return Ok(None);
     }
     if !comp.lines.iter().all(|line| line.runs.is_empty()) {
-        return None;
+        return Ok(None);
     }
     let degenerate = comp
         .lines
         .windows(2)
         .any(|w| w[1].char_start <= w[0].char_start);
     if !degenerate {
-        return None;
+        return Ok(None);
     }
 
-    let mut assign = vec![n_lines - 1; comp.tac_controls.len()];
+    let mut assign = storage.filled(comp.tac_controls.len(), n_lines - 1)?;
     let mut line_idx = 0usize;
     let mut tac_idx = 0usize;
     while tac_idx < comp.tac_controls.len() {
@@ -1433,12 +1498,13 @@ fn equation_only_tac_line_assignment(
         while line_idx < n_lines && comp.lines[line_idx].char_start == pos {
             line_idx += 1;
         }
-        let line_candidates: Vec<usize> = (line_start..line_idx).collect();
-        let filtered_candidates: Vec<usize> = line_candidates
-            .iter()
-            .copied()
-            .filter(|idx| !line_is_leading_empty_equation_tac_guide(para, comp, *idx))
-            .collect();
+        let line_candidates: Vec<usize> = storage.collect(line_start..line_idx)?;
+        let filtered_candidates: Vec<usize> = storage.collect(
+            line_candidates
+                .iter()
+                .copied()
+                .filter(|idx| !line_is_leading_empty_equation_tac_guide(para, comp, *idx)),
+        )?;
         let line_targets = if tac_count > 1 && line_candidates.len() >= tac_count {
             // 같은 char_start에 여러 TAC 수식이 있고 저장 LINE_SEG도 같은 수만큼 있으면
             // 선행 빈 guide 줄도 한컴의 물리 수식 줄로 보존한다.
@@ -1458,7 +1524,7 @@ fn equation_only_tac_line_assignment(
         }
     }
 
-    Some(assign)
+    Ok(Some(assign))
 }
 
 fn tac_control_indices_for_line(
@@ -1466,29 +1532,44 @@ fn tac_control_indices_for_line(
     comp: &ComposedParagraph,
     line_idx: usize,
 ) -> Vec<usize> {
+    match tac_control_indices_for_line_with_storage(
+        para,
+        comp,
+        line_idx,
+        &crate::storage::Unbounded,
+    ) {
+        Ok(value) => value,
+        Err(never) => match never {},
+    }
+}
+
+fn tac_control_indices_for_line_with_storage<S: crate::storage::Storage>(
+    para: &Paragraph,
+    comp: &ComposedParagraph,
+    line_idx: usize,
+    storage: &S,
+) -> Result<Vec<usize>, S::Error> {
     let Some(line) = comp.lines.get(line_idx) else {
-        return Vec::new();
+        return Ok(Vec::new());
     };
     if comp.tac_controls.is_empty() {
-        return Vec::new();
+        return Ok(Vec::new());
     }
 
-    if let Some(assign) = crate::renderer::composer::composed_tac_line_assignment(para, comp) {
-        return assign
-            .into_iter()
-            .filter_map(|(ci, owner)| (owner == line_idx).then_some(ci))
-            .collect();
+    if let Some(assign) =
+        crate::renderer::composer::composed_tac_line_assignment_with_storage(para, comp, storage)?
+    {
+        return storage.collect(
+            assign
+                .into_iter()
+                .filter_map(|(ci, owner)| (owner == line_idx).then_some(ci)),
+        );
     }
 
-    if let Some(assign) = equation_only_tac_line_assignment(para, comp) {
-        return comp
-            .tac_controls
-            .iter()
-            .enumerate()
-            .filter_map(|(idx, (_, _, ci))| {
-                (assign.get(idx).copied() == Some(line_idx)).then_some(*ci)
-            })
-            .collect();
+    if let Some(assign) = equation_only_tac_line_assignment_with_storage(para, comp, storage)? {
+        return storage.collect(comp.tac_controls.iter().enumerate().filter_map(
+            |(idx, (_, _, ci))| (assign.get(idx).copied() == Some(line_idx)).then_some(*ci),
+        ));
     }
 
     if line.runs.is_empty() {
@@ -1498,11 +1579,11 @@ fn tac_control_indices_for_line(
             .get(line_idx + 1)
             .map(|next| next.char_start)
             .unwrap_or(usize::MAX);
-        return comp
-            .tac_controls
-            .iter()
-            .filter_map(|(pos, _, ci)| (*pos >= start && *pos < end).then_some(*ci))
-            .collect();
+        return storage.collect(
+            comp.tac_controls
+                .iter()
+                .filter_map(|(pos, _, ci)| (*pos >= start && *pos < end).then_some(*ci)),
+        );
     }
 
     let next_start = comp.lines.get(line_idx + 1).map(|next| next.char_start);
@@ -1515,12 +1596,12 @@ fn tac_control_indices_for_line(
         let allow_end_tac = run_idx == line.runs.len() - 1 && !next_line_starts_at_run_end;
         for (pos, _, ci) in &comp.tac_controls {
             if *pos >= run_start && (*pos < run_end || (allow_end_tac && *pos == run_end)) {
-                hits.push(*ci);
+                storage.push(&mut hits, *ci)?;
             }
         }
         run_start = run_end;
     }
-    hits
+    Ok(hits)
 }
 
 fn line_has_tac_equation_control(
@@ -1577,7 +1658,19 @@ fn line_has_visible_text_or_tac_equation(
 }
 
 fn line_has_tac_control(para: &Paragraph, comp: &ComposedParagraph, line_idx: usize) -> bool {
-    !tac_control_indices_for_line(para, comp, line_idx).is_empty()
+    match line_has_tac_control_with_storage(para, comp, line_idx, &crate::storage::Unbounded) {
+        Ok(value) => value,
+        Err(never) => match never {},
+    }
+}
+
+fn line_has_tac_control_with_storage<S: crate::storage::Storage>(
+    para: &Paragraph,
+    comp: &ComposedParagraph,
+    line_idx: usize,
+    storage: &S,
+) -> Result<bool, S::Error> {
+    Ok(!tac_control_indices_for_line_with_storage(para, comp, line_idx, storage)?.is_empty())
 }
 
 fn line_tac_picture_or_shape_height(
@@ -1586,13 +1679,34 @@ fn line_tac_picture_or_shape_height(
     line_idx: usize,
     dpi: f64,
 ) -> Option<f64> {
-    tac_control_indices_for_line(para, comp, line_idx)
-        .iter()
-        .find_map(|ci| {
-            para.controls
-                .get(*ci)
-                .and_then(|ctrl| crate::renderer::tac_object_flow_height_px(ctrl, dpi))
-        })
+    match line_tac_picture_or_shape_height_with_storage(
+        para,
+        comp,
+        line_idx,
+        dpi,
+        &crate::storage::Unbounded,
+    ) {
+        Ok(value) => value,
+        Err(never) => match never {},
+    }
+}
+
+fn line_tac_picture_or_shape_height_with_storage<S: crate::storage::Storage>(
+    para: &Paragraph,
+    comp: &ComposedParagraph,
+    line_idx: usize,
+    dpi: f64,
+    storage: &S,
+) -> Result<Option<f64>, S::Error> {
+    Ok(
+        tac_control_indices_for_line_with_storage(para, comp, line_idx, storage)?
+            .iter()
+            .find_map(|ci| {
+                para.controls
+                    .get(*ci)
+                    .and_then(|ctrl| crate::renderer::tac_object_flow_height_px(ctrl, dpi))
+            }),
+    )
 }
 
 fn text_line_is_picture_lead_in(
@@ -1603,26 +1717,52 @@ fn text_line_is_picture_lead_in(
     max_fs: f64,
     dpi: f64,
 ) -> bool {
+    match text_line_is_picture_lead_in_with_storage(
+        para,
+        comp,
+        line_idx,
+        raw_lh,
+        max_fs,
+        dpi,
+        &crate::storage::Unbounded,
+    ) {
+        Ok(value) => value,
+        Err(never) => match never {},
+    }
+}
+
+fn text_line_is_picture_lead_in_with_storage<S: crate::storage::Storage>(
+    para: &Paragraph,
+    comp: &ComposedParagraph,
+    line_idx: usize,
+    raw_lh: f64,
+    max_fs: f64,
+    dpi: f64,
+    storage: &S,
+) -> Result<bool, S::Error> {
     if max_fs <= 0.0 || raw_lh <= max_fs * 2.0 {
-        return false;
+        return Ok(false);
     }
     let Some(line) = comp.lines.get(line_idx) else {
-        return false;
+        return Ok(false);
     };
     if line.runs.iter().all(|run| run.text.trim().is_empty())
-        || line_tac_picture_or_shape_height(para, comp, line_idx, dpi).is_some()
+        || line_tac_picture_or_shape_height_with_storage(para, comp, line_idx, dpi, storage)?
+            .is_some()
     {
-        return false;
+        return Ok(false);
     }
     let Some(next) = comp.lines.get(line_idx + 1) else {
-        return false;
+        return Ok(false);
     };
     if !next.runs.iter().all(|run| run.text.trim().is_empty()) {
-        return false;
+        return Ok(false);
     }
-    line_tac_picture_or_shape_height(para, comp, line_idx + 1, dpi)
-        .map(|height| (raw_lh - height).abs() <= 8.0)
-        .unwrap_or(false)
+    Ok(
+        line_tac_picture_or_shape_height_with_storage(para, comp, line_idx + 1, dpi, storage)?
+            .map(|height| (raw_lh - height).abs() <= 8.0)
+            .unwrap_or(false),
+    )
 }
 
 /// 큰 inline `TopAndBottom` 그림 바로 앞 native HWP5 본문 문단의 physical-page
@@ -3095,6 +3235,7 @@ pub(crate) struct DumpFormattedParagraphHeight {
     pub spacing_after: f64,
     pub line_spacing_sum: f64,
 }
+crate::storage::clone_copy!(DumpFormattedParagraphHeight);
 
 mod controls;
 #[path = "typeset/inline_flow.rs"]
@@ -3276,6 +3417,20 @@ impl Issue2424TypesetProfile {
 
 impl TypesetEngine {
     pub fn new(dpi: f64) -> Self {
+        Self::new_with_render_normalization(
+            dpi,
+            std::sync::Arc::new(
+                crate::renderer::render_normalization::RenderNormalizationOverlay::default(),
+            ),
+        )
+    }
+
+    pub(crate) fn new_with_render_normalization(
+        dpi: f64,
+        render_normalization: std::sync::Arc<
+            crate::renderer::render_normalization::RenderNormalizationOverlay,
+        >,
+    ) -> Self {
         Self {
             dpi,
             profile: std::cell::Cell::new(Default::default()),
@@ -3283,10 +3438,8 @@ impl TypesetEngine {
             uniform_filler_ladder: std::cell::Cell::new(false),
             float_carve_evidence: std::cell::RefCell::new(Vec::new()),
             format_next_stored_vpos: std::cell::Cell::new(None),
-            render_normalization: std::sync::Arc::new(
-                crate::renderer::render_normalization::RenderNormalizationOverlay::default(),
-            ),
-            endnote_column_replays: Default::default(),
+            render_normalization,
+            endnote_measure_memo: Default::default(),
             endnote_replay_verify: cfg!(debug_assertions)
                 || std::env::var_os("RHWP_ENDNOTE_REPLAY_VERIFY").is_some(),
         }
@@ -3639,7 +3792,7 @@ impl TypesetEngine {
         force_break_before: &std::collections::HashSet<usize>,
         endnote_deferral: EndnoteDeferral<'_>,
     ) -> PaginationResult {
-        self.run_section(
+        match self.typeset_section_with_variant_with_storage(
             paragraphs,
             composed,
             styles,
@@ -3655,6 +3808,50 @@ impl TypesetEngine {
             endnote_shape,
             force_break_before,
             endnote_deferral,
+            &crate::storage::Unbounded,
+        ) {
+            Ok(value) => value,
+            Err(never) => match never {},
+        }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn typeset_section_with_variant_with_storage<S: crate::storage::Storage>(
+        &self,
+        paragraphs: &[Paragraph],
+        composed: &[ComposedParagraph],
+        styles: &ResolvedStyleSet,
+        page_def: &PageDef,
+        column_def: &ColumnDef,
+        section_index: usize,
+        measured_tables: &[MeasuredTable],
+        hide_empty_line: bool,
+        profile: crate::model::provenance::LayoutCompatibilityProfile,
+        skip_spacing_before_prededuct: bool,
+        hwp3_origin_page_tolerance: bool,
+        footnote_shape: Option<&FootnoteShape>,
+        endnote_shape: Option<&FootnoteShape>,
+        force_break_before: &std::collections::HashSet<usize>,
+        endnote_deferral: EndnoteDeferral<'_>,
+        storage: &S,
+    ) -> Result<PaginationResult, S::Error> {
+        self.run_section_with_storage(
+            paragraphs,
+            composed,
+            styles,
+            page_def,
+            column_def,
+            section_index,
+            measured_tables,
+            hide_empty_line,
+            profile,
+            skip_spacing_before_prededuct,
+            hwp3_origin_page_tolerance,
+            footnote_shape,
+            endnote_shape,
+            force_break_before,
+            endnote_deferral,
+            storage,
         )
     }
 
@@ -3680,21 +3877,23 @@ impl TypesetEngine {
         )
     }
 
-    fn format_paragraph_with_known_square_band(
+    fn format_paragraph_with_known_square_band_with_storage<S: crate::storage::Storage>(
         &self,
         para: &Paragraph,
         composed: Option<&ComposedParagraph>,
         styles: &ResolvedStyleSet,
         column_width_px: Option<f64>,
         known_square_band: bool,
-    ) -> FormattedParagraph {
-        self.format_paragraph_for_flow(
+        storage: &S,
+    ) -> Result<FormattedParagraph, S::Error> {
+        self.format_paragraph_for_flow_with_storage(
             para,
             composed,
             styles,
             column_width_px,
             styles.hwp3_variant,
             known_square_band,
+            storage,
         )
     }
 
@@ -3707,6 +3906,30 @@ impl TypesetEngine {
         hwp3_body_reflow: bool,
         known_square_band: bool,
     ) -> FormattedParagraph {
+        match self.format_paragraph_for_flow_with_storage(
+            para,
+            composed,
+            styles,
+            column_width_px,
+            hwp3_body_reflow,
+            known_square_band,
+            &crate::storage::Unbounded,
+        ) {
+            Ok(value) => value,
+            Err(never) => match never {},
+        }
+    }
+
+    fn format_paragraph_for_flow_with_storage<S: crate::storage::Storage>(
+        &self,
+        para: &Paragraph,
+        composed: Option<&ComposedParagraph>,
+        styles: &ResolvedStyleSet,
+        column_width_px: Option<f64>,
+        hwp3_body_reflow: bool,
+        known_square_band: bool,
+        storage: &S,
+    ) -> Result<FormattedParagraph, S::Error> {
         let context = paragraph::context::ParagraphFormatContext::new(
             self.dpi,
             &self.profile,
@@ -3714,7 +3937,7 @@ impl TypesetEngine {
             &self.float_carve_evidence,
             self.format_next_stored_vpos.get(),
         );
-        paragraph::format::format_paragraph_for_flow(
+        paragraph::format::format_paragraph_for_flow_with_storage(
             &context,
             para,
             composed,
@@ -3722,6 +3945,7 @@ impl TypesetEngine {
             column_width_px,
             hwp3_body_reflow,
             known_square_band,
+            storage,
         )
     }
 
@@ -3741,8 +3965,34 @@ impl TypesetEngine {
         styles: &ResolvedStyleSet,
         is_last_in_section: bool,
     ) {
+        match self.typeset_paragraph_with_storage(
+            st,
+            para_idx,
+            para,
+            fmt,
+            paragraphs,
+            styles,
+            is_last_in_section,
+            &crate::storage::Unbounded,
+        ) {
+            Ok(value) => value,
+            Err(never) => match never {},
+        }
+    }
+
+    fn typeset_paragraph_with_storage<S: crate::storage::Storage>(
+        &self,
+        st: &mut TypesetState,
+        para_idx: usize,
+        para: &Paragraph,
+        fmt: &FormattedParagraph,
+        paragraphs: &[Paragraph],
+        styles: &ResolvedStyleSet,
+        is_last_in_section: bool,
+        storage: &S,
+    ) -> Result<(), S::Error> {
         let keep_with_previous = self.keeps_with_previous(st, para_idx, paragraphs, styles);
-        paragraph::flow::place(
+        paragraph::flow::place_with_storage(
             st,
             paragraph::flow::ParagraphFlowInput {
                 para_idx,
@@ -3754,7 +4004,10 @@ impl TypesetEngine {
                 keep_with_previous,
             },
             self,
-        );
+            storage,
+        )?;
+
+        Ok(())
     }
 
     // ========================================================
@@ -3776,6 +4029,36 @@ impl TypesetEngine {
         next_para: Option<&Paragraph>,
         is_column_top: bool,
     ) -> FormattedTable {
+        match self.format_table_with_storage(
+            para,
+            para_idx,
+            ctrl_idx,
+            table,
+            measured_tables,
+            styles,
+            composed,
+            next_para,
+            is_column_top,
+            &crate::storage::Unbounded,
+        ) {
+            Ok(value) => value,
+            Err(never) => match never {},
+        }
+    }
+
+    fn format_table_with_storage<S: crate::storage::Storage>(
+        &self,
+        para: &Paragraph,
+        para_idx: usize,
+        ctrl_idx: usize,
+        table: &crate::model::table::Table,
+        measured_tables: &[MeasuredTable],
+        styles: &ResolvedStyleSet,
+        composed: Option<&ComposedParagraph>,
+        next_para: Option<&Paragraph>,
+        is_column_top: bool,
+        storage: &S,
+    ) -> Result<FormattedTable, S::Error> {
         let frame_engine = crate::renderer::layout::LayoutEngine::new(self.dpi);
         self.prime_section_cell_context(&frame_engine);
         let _measurements = frame_engine.reflow_measurement_scope();
@@ -3783,7 +4066,7 @@ impl TypesetEngine {
         frame_engine
             .set_render_normalization_overlay(std::sync::Arc::clone(&self.render_normalization));
         let external_flow = frame_engine.reflow_unrestricted_table_flow(table, styles);
-        table::format(
+        table::format_with_storage(
             table::TableFormatInput {
                 para,
                 para_idx,
@@ -3799,6 +4082,7 @@ impl TypesetEngine {
             self.dpi,
             || self.profile.get(),
             || self.uses_tac_table_flow(table),
+            storage,
         )
     }
 
@@ -3863,7 +4147,40 @@ impl TypesetEngine {
         paragraphs_all: &[Paragraph],
         composed_all: &[ComposedParagraph],
     ) {
-        controls::paragraph_flow::place(
+        match self.typeset_table_paragraph_with_storage(
+            st,
+            para_idx,
+            para,
+            composed,
+            next_para,
+            styles,
+            measured_tables,
+            _page_def, // [Task #1753] 지연 이월 표의 후속 문단 prefill 용 전체 슬라이스.
+            paragraphs_all,
+            composed_all,
+            &crate::storage::Unbounded,
+        ) {
+            Ok(value) => value,
+            Err(never) => match never {},
+        }
+    }
+
+    fn typeset_table_paragraph_with_storage<S: crate::storage::Storage>(
+        &self,
+        st: &mut TypesetState,
+        para_idx: usize,
+        para: &Paragraph,
+        composed: Option<&ComposedParagraph>,
+        next_para: Option<&Paragraph>,
+        styles: &ResolvedStyleSet,
+        measured_tables: &[MeasuredTable],
+        _page_def: &PageDef,
+        // [Task #1753] 지연 이월 표의 후속 문단 prefill 용 전체 슬라이스.
+        paragraphs_all: &[Paragraph],
+        composed_all: &[ComposedParagraph],
+        storage: &S,
+    ) -> Result<(), S::Error> {
+        controls::paragraph_flow::place_with_storage(
             self,
             st,
             controls::paragraph_flow::TableParagraphInput {
@@ -3876,7 +4193,10 @@ impl TypesetEngine {
                 paragraphs_all,
                 composed_all,
             },
-        );
+            storage,
+        )?;
+
+        Ok(())
     }
 
     #[allow(clippy::too_many_arguments)]

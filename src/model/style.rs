@@ -1312,3 +1312,5 @@ mod tests {
         assert_eq!(fill.fill_type, FillType::None);
     }
 }
+
+crate::storage::clone_fields!(DiagonalLine, {diagonal_type, width, color});

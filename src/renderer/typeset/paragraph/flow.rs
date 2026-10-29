@@ -23,6 +23,18 @@ pub(in crate::renderer::typeset) fn place(
     input: ParagraphFlowInput<'_>,
     engine: &TypesetEngine,
 ) {
+    match place_with_storage(st, input, engine, &crate::storage::Unbounded) {
+        Ok(value) => value,
+        Err(never) => match never {},
+    }
+}
+
+pub(in crate::renderer::typeset) fn place_with_storage<S: crate::storage::Storage>(
+    st: &mut TypesetState,
+    input: ParagraphFlowInput<'_>,
+    engine: &TypesetEngine,
+    storage: &S,
+) -> Result<(), S::Error> {
     let dpi = engine.dpi;
     let ParagraphFlowInput {
         para_idx,
@@ -40,6 +52,23 @@ pub(in crate::renderer::typeset) fn place(
             fmt.spacing_before,
             st.current_height,
         );
+    // [#8149] 인증 배치가 없는 빈 host 자리차지 표 상자 뒤도 같은 앞 간격 소비를 따른다.
+    let stored_frame_shared_spacing = if stored_frame_shared_spacing > 0.0 {
+        stored_frame_shared_spacing
+    } else {
+        crate::renderer::float_placement::empty_host_float_successor_absorbed_spacing_px(
+            st.current_items.last(),
+            paragraphs,
+            para_idx,
+            fmt.spacing_before,
+            (st.profile.hwpx_stored_layout() || st.profile.hwp5_stored_pagination_layout())
+                && !st.profile.session_edited(),
+            st.profile.hwpx_container(),
+            st.profile.hwp5_origin_hwpx(),
+            st.current_height,
+            dpi,
+        )
+    };
     st.reclaim_flow_by(stored_frame_shared_spacing.min(st.current_height));
     let previous_is_partial_table = st.current_items.last().is_some_and(
         |item| matches!(item, PageItem::PartialTable { para_index, .. } if *para_index < para_idx),
@@ -71,7 +100,7 @@ pub(in crate::renderer::typeset) fn place(
         prev_is_partial_table,
         mut available,
         footnote_margin_addback,
-    } = paragraph::prepare_fit_budget(
+    } = paragraph::prepare_fit_budget_with_storage(
         st,
         para_idx,
         para,
@@ -79,26 +108,30 @@ pub(in crate::renderer::typeset) fn place(
         paragraphs,
         engine.profile.get().session_edited(),
         dpi,
-    );
+        storage,
+    )?;
 
-    if paragraph::try_absorb_rowbreak_guide(
+    if paragraph::try_absorb_rowbreak_guide_with_storage(
         st,
         prev_is_partial_table,
         para,
         paragraphs,
         para_idx,
         dpi,
-    ) {
-        return;
+        storage,
+    )? {
+        return Ok(());
     }
 
     let early_format = paragraph::spacing::confirmed_format(st, para_idx, fmt, paragraphs);
     let early_format = early_format.as_ref().unwrap_or(fmt);
-    if paragraph::try_place_multicolumn_paragraph(st, para_idx, para, early_format, dpi) {
-        return;
+    if paragraph::try_place_multicolumn_paragraph_with_storage(
+        st, para_idx, para, fmt, dpi, storage,
+    )? {
+        return Ok(());
     }
 
-    if paragraph::try_absorb_empty_paragraph(
+    if paragraph::try_absorb_empty_paragraph_with_storage(
         st,
         para_idx,
         para,
@@ -106,8 +139,9 @@ pub(in crate::renderer::typeset) fn place(
         is_last_in_section,
         available,
         layout_drift_safety_px,
-    ) {
-        return;
+        storage,
+    )? {
+        return Ok(());
     }
 
     // 뒤 호스트의 절대 프레임이 저장 본문 재시작을 닫으면 분할 전에 소유를 예약한다.
@@ -227,7 +261,7 @@ pub(in crate::renderer::typeset) fn place(
     if st.prefilled_line_prefixes.contains_key(&para_idx) {
         // 앞 쪽의 선행 조각이 소유한 줄을 whole-fit으로 다시 배치하지 않는다.
         let base_available = st.base_available_height();
-        paragraph::place_split_paragraph(
+        paragraph::place_split_paragraph_with_storage(
             st,
             para_idx,
             para,
@@ -243,8 +277,9 @@ pub(in crate::renderer::typeset) fn place(
             false,
             strict_after_empty_host_float,
             dpi,
-        );
-        return;
+            storage,
+        )?;
+        return Ok(());
     }
     let current_format = paragraph::spacing::confirmed_format(st, para_idx, fmt, paragraphs);
     let current_format = current_format.as_ref().unwrap_or(fmt);
@@ -283,7 +318,7 @@ pub(in crate::renderer::typeset) fn place(
             && forced_page_break_line.is_none()
             && st.current_height + fmt.height_for_fit <= available)
     {
-        paragraph::place_fitted_paragraph(
+        paragraph::place_fitted_paragraph_with_storage(
             st,
             para_idx,
             para,
@@ -294,11 +329,12 @@ pub(in crate::renderer::typeset) fn place(
             trimmed_sb_gate,
             body_bottom_vpos,
             dpi,
-        );
-        return;
+            storage,
+        )?;
+        return Ok(());
     }
 
-    if paragraph::try_place_overflow_paragraph(
+    if paragraph::try_place_overflow_paragraph_with_storage(
         st,
         para_idx,
         para,
@@ -313,11 +349,12 @@ pub(in crate::renderer::typeset) fn place(
         stored_vpos_rewind_break || stored_vpos_rewind_overflow_break,
         current_page_vpos_base,
         dpi,
-    ) {
-        return;
+        storage,
+    )? {
+        return Ok(());
     }
 
-    paragraph::place_after_failed_fit(
+    paragraph::place_after_failed_fit_with_storage(
         st,
         para_idx,
         para,
@@ -337,5 +374,8 @@ pub(in crate::renderer::typeset) fn place(
         native_hwp5_existing_footnote_boundary,
         current_page_vpos_base,
         dpi,
-    );
+        storage,
+    )?;
+
+    Ok(())
 }

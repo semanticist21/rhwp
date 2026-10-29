@@ -3045,6 +3045,23 @@ impl LayoutEngine {
         Self::tac_band_covers_height(para, tbl, i64::from(tbl.common.height.min(i32::MAX as u32)))
     }
 
+    /// [#8149] 배치가 TAC 표 상단을 «줄 상단 + om_top» 에 둘지 정할 때만 쓰는 판정 — 아래 캡션은
+    /// 표 본체와 바깥 아래 여백 사이에 놓여 저장 밴드에 포함된다(한글문서파일형식 62쪽 표 397:
+    /// 9363 = 566 + 5011 + 캡션 1802 + 1984). 조판의 후속 원점 판정
+    /// (`tac_stored_band_is_outer_box`)은 캡션이 섞인 줄을 표 원점으로 쓰지 않으므로 바꾸지 않는다.
+    pub(crate) fn tac_stored_band_is_captioned_outer_box(
+        para: &Paragraph,
+        tbl: &crate::model::table::Table,
+    ) -> bool {
+        let declared = i64::from(tbl.common.height.min(i32::MAX as u32));
+        Self::tac_band_covers_height(para, tbl, declared)
+            || crate::renderer::float_placement::stored_empty_host_frame::stored_bottom_caption_hu(
+                tbl,
+            )
+            .filter(|caption| *caption > 0)
+            .is_some_and(|caption| Self::tac_band_covers_height(para, tbl, declared + caption))
+    }
+
     fn tac_band_covers_height(
         para: &Paragraph,
         tbl: &crate::model::table::Table,
@@ -3328,7 +3345,7 @@ impl LayoutEngine {
             let y = col_area.y + item.y;
             match &item.content {
                 InlineFlowContent::Text { .. } => {}
-                InlineFlowContent::Picture { .. } => {}
+                InlineFlowContent::Picture { .. } | InlineFlowContent::FloatingShape { .. } => {}
                 InlineFlowContent::FloatingTable { control } => {
                     let Control::Table(table) = &para.controls[*control] else {
                         continue;
@@ -5515,17 +5532,12 @@ impl LayoutEngine {
             }
             if let Some(p) = para {
                 if let Some(Control::Equation(eq)) = p.controls.get(tac_ci) {
-                    let ast = crate::renderer::equation::document_script::parse(eq);
                     let font_size_px = hwpunit_to_px(eq.font_size as i32, self.dpi);
-                    let layout_box =
-                        crate::renderer::equation::layout_for_paint(eq, &ast, self.dpi);
-                    let color_str =
-                        crate::renderer::equation::svg_render::eq_color_to_svg(eq.color);
-                    let svg_content = crate::renderer::equation::svg_render::render_equation_svg(
-                        &layout_box,
-                        &color_str,
-                        font_size_px,
-                    );
+                    let crate::renderer::equation::PaintParts {
+                        layout_box,
+                        color_str,
+                        svg_content,
+                    } = crate::renderer::equation::paint_parts(eq, self.dpi);
                     let hwp_eq_h = hwpunit_to_px(
                         crate::renderer::equation::flow_height_hwp(eq) as i32,
                         self.dpi,
@@ -6580,6 +6592,12 @@ impl LayoutEngine {
                 // (exam_kor 5쪽 셀: 글자+글상자 줄 lh 26.5 → 18.4, 뒤 그림 줄 8.1px 위).
                 // 행 높이 측정은 저장 lh 를 믿으므로 배치도 같은 값을 써야 맞는다.
                 && cell_ctx.is_none()
+                // [#8167] 글자가 있는 줄은 접지 않는다. 한/글은 글자처럼 취급한 도형이 줄을
+                // 도형 높이만큼 키우고 글자를 그 줄의 기준선(도형 아래 변 높이)에 놓는다 —
+                // 그림 줄과 같다(한/글 2024 Print, 글상자·사각형·그림 세 경우 같은 위치).
+                // 접으면 글자가 줄 맨 위 글자 높이 자리에 남는다. 아래의 접힘 근거는 모두
+                // 글자 없는 도형 전용 줄(`max_fs=0`)이다.
+                && max_fs <= 0.0
                 && raw_lh > max_fs * 1.5
             {
                 // Shape와 텍스트가 같은 줄에 있으면 Shape 높이가 line_height에 포함된다.
@@ -9884,7 +9902,10 @@ impl LayoutEngine {
                                     0.0
                                 } else {
                                     let raw = hwpunit_to_px(
-                                        calc_sibling_topandbottom_reserved_hu(&p.controls),
+                                        calc_sibling_topandbottom_reserved_hu(
+                                            &p.controls,
+                                            para_line_top_hu(p, line_idx),
+                                        ),
                                         self.dpi,
                                     );
                                     // 줄 y 가 이미 형제 자리차지 예약 아래(최종 좌표)면
@@ -10024,18 +10045,12 @@ impl LayoutEngine {
                     if let Some(p) = para {
                         if let Some(Control::Equation(eq)) = p.controls.get(tac_ci) {
                             // 수식 스크립트 → AST → 레이아웃 → SVG 조각
-                            let ast = crate::renderer::equation::document_script::parse(eq);
                             let font_size_px = hwpunit_to_px(eq.font_size as i32, self.dpi);
-                            let layout_box =
-                                crate::renderer::equation::layout_for_paint(eq, &ast, self.dpi);
-                            let color_str =
-                                crate::renderer::equation::svg_render::eq_color_to_svg(eq.color);
-                            let svg_content =
-                                crate::renderer::equation::svg_render::render_equation_svg(
-                                    &layout_box,
-                                    &color_str,
-                                    font_size_px,
-                                );
+                            let crate::renderer::equation::PaintParts {
+                                layout_box,
+                                color_str,
+                                svg_content,
+                            } = crate::renderer::equation::paint_parts(eq, self.dpi);
                             // HWP 저장 높이를 우선 사용 (한컴 조판 결과 기준)
                             let hwp_eq_h = hwpunit_to_px(
                                 crate::renderer::equation::flow_height_hwp(eq) as i32,
@@ -11404,7 +11419,10 @@ impl LayoutEngine {
                                 0.0
                             } else {
                                 let raw = hwpunit_to_px(
-                                    calc_sibling_topandbottom_reserved_hu(&p.controls),
+                                    calc_sibling_topandbottom_reserved_hu(
+                                        &p.controls,
+                                        para_line_top_hu(p, vars.line_idx),
+                                    ),
                                     self.dpi,
                                 );
                                 // 위 텍스트 줄 경로와 동일한 가드 — 편집 세션은
@@ -11707,29 +11725,43 @@ impl LayoutEngine {
 /// 합산 공식:
 /// - 표: `common.height + outer_margin_top + outer_margin_bottom`
 /// - 그림/도형: `common.height + common.margin.top + common.margin.bottom`
+///
+/// [#8168] 이 보정의 전제(#1151)는 자리차지 개체가 **이 문단의 흐름 시작**(문단 기준,
+/// 세로 오프셋 0)에 놓여 그림 줄 위를 차지하는 것이다. 쪽·종이 기준 개체나 띠가 그림
+/// 줄(`line_top_hu`, 문단 첫 줄 기준)보다 아래에서 시작하는 개체는 그림 줄을 밀지 않는다 —
+/// 한/글 2024 는 같은 문단의 글자처럼 그림을 줄 안에 두고 위아래 글상자를 지정 위치(줄
+/// 아래)에 그린다.
 pub(crate) fn calc_sibling_topandbottom_reserved_hu(
     controls: &[crate::model::control::Control],
+    line_top_hu: i32,
 ) -> i32 {
     use crate::model::control::Control;
-    use crate::model::shape::TextWrap;
+    use crate::model::shape::{CommonObjAttr, TextWrap, VertRelTo};
+    let above_line = |common: &CommonObjAttr| {
+        matches!(common.vert_rel_to, VertRelTo::Para)
+            && common.vertical_offset as i32 <= line_top_hu
+    };
     controls
         .iter()
         .map(|c| match c {
             Control::Table(t)
                 if matches!(t.common.text_wrap, TextWrap::TopAndBottom)
-                    && !t.common.treat_as_char =>
+                    && !t.common.treat_as_char
+                    && above_line(&t.common) =>
             {
                 t.common.height as i32 + t.outer_margin_top as i32 + t.outer_margin_bottom as i32
             }
             Control::Picture(p)
                 if matches!(p.common.text_wrap, TextWrap::TopAndBottom)
-                    && !p.common.treat_as_char =>
+                    && !p.common.treat_as_char
+                    && above_line(&p.common) =>
             {
                 p.common.height as i32 + p.common.margin.top as i32 + p.common.margin.bottom as i32
             }
             Control::Shape(s)
                 if matches!(s.common().text_wrap, TextWrap::TopAndBottom)
-                    && !s.common().treat_as_char =>
+                    && !s.common().treat_as_char
+                    && above_line(s.common()) =>
             {
                 let common = s.common();
                 common.height as i32 + common.margin.top as i32 + common.margin.bottom as i32
@@ -11737,6 +11769,14 @@ pub(crate) fn calc_sibling_topandbottom_reserved_hu(
             _ => 0,
         })
         .sum()
+}
+
+/// 문단 첫 줄 기준 `line_idx` 줄의 위끝 (HWPUNIT, 저장 줄 vpos 차).
+fn para_line_top_hu(para: &Paragraph, line_idx: usize) -> i32 {
+    match (para.line_segs.first(), para.line_segs.get(line_idx)) {
+        (Some(first), Some(seg)) => (seg.vertical_pos - first.vertical_pos).max(0),
+        _ => 0,
+    }
 }
 
 /// [Task #1151 v7 항목 7] paragraph_layout 의 3 곳에서 반복되던 ImageNode 생성
@@ -12464,7 +12504,7 @@ mod issue_1151_v3_helper_tests {
     use super::calc_sibling_topandbottom_reserved_hu;
     use crate::model::control::Control;
     use crate::model::image::Picture;
-    use crate::model::shape::{CommonObjAttr, TextWrap};
+    use crate::model::shape::{CommonObjAttr, TextWrap, VertRelTo};
     use crate::model::table::Table;
 
     fn make_table(width: u32, height: u32, wrap: TextWrap, tac: bool) -> Table {
@@ -12474,6 +12514,7 @@ mod issue_1151_v3_helper_tests {
                 height,
                 text_wrap: wrap,
                 treat_as_char: tac,
+                vert_rel_to: VertRelTo::Para,
                 ..Default::default()
             },
             outer_margin_left: 283,
@@ -12489,28 +12530,44 @@ mod issue_1151_v3_helper_tests {
         // scenario-a-after.hwp 의 표: 13630×12498, outer_margin (top=283, bottom=283).
         // 합산 = 12498 + 283 + 283 = 13064 HU.
         let table = make_table(13630, 12498, TextWrap::TopAndBottom, false);
-        let controls = vec![Control::Table(Box::new(table))];
-        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls), 13064);
+        let controls = vec![Control::Table(Box::new(table.clone()))];
+        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls, 0), 13064);
+
+        // [#8168] 쪽·종이 기준 위아래 개체는 문단 흐름 시작에 놓이지 않으므로 예약하지 않는다.
+        let mut paper = table.clone();
+        paper.common.vert_rel_to = VertRelTo::Paper;
+        let controls = vec![Control::Table(Box::new(paper))];
+        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls, 0), 0);
+
+        // [#8168] 문단 기준이어도 띠가 그림 줄보다 아래에서 시작하면 예약하지 않는다.
+        let mut below = table;
+        below.common.vertical_offset = 15000;
+        let controls = vec![Control::Table(Box::new(below))];
+        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls, 0), 0);
+        assert_eq!(
+            calc_sibling_topandbottom_reserved_hu(&controls, 15000),
+            13064
+        );
     }
 
     #[test]
     fn topandbottom_table_reserved_none_when_no_table() {
         let controls: Vec<Control> = vec![];
-        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls), 0);
+        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls, 0), 0);
     }
 
     #[test]
     fn topandbottom_table_reserved_excludes_tac_table() {
         let table = make_table(13630, 12498, TextWrap::TopAndBottom, true); // tac=true 제외
         let controls = vec![Control::Table(Box::new(table))];
-        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls), 0);
+        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls, 0), 0);
     }
 
     #[test]
     fn topandbottom_table_reserved_excludes_square_wrap() {
         let table = make_table(13630, 12498, TextWrap::Square, false); // wrap=Square 제외
         let controls = vec![Control::Table(Box::new(table))];
-        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls), 0);
+        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls, 0), 0);
     }
 
     #[test]
@@ -12518,11 +12575,12 @@ mod issue_1151_v3_helper_tests {
         let mut pic = Picture::default();
         pic.common.text_wrap = TextWrap::TopAndBottom;
         pic.common.treat_as_char = false;
+        pic.common.vert_rel_to = VertRelTo::Para;
         pic.common.height = 7733;
         pic.common.margin.top = 100;
         pic.common.margin.bottom = 200;
         let controls = vec![Control::Picture(Box::new(pic))];
-        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls), 8033);
+        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls, 0), 8033);
     }
 
     #[test]
@@ -12532,7 +12590,7 @@ mod issue_1151_v3_helper_tests {
         pic.common.treat_as_char = true;
         pic.common.height = 7733;
         let controls = vec![Control::Picture(Box::new(pic))];
-        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls), 0);
+        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls, 0), 0);
     }
 
     #[test]
@@ -12541,7 +12599,7 @@ mod issue_1151_v3_helper_tests {
         let t2 = make_table(13630, 5000, TextWrap::TopAndBottom, false);
         let controls = vec![Control::Table(Box::new(t1)), Control::Table(Box::new(t2))];
         // (10000 + 283 + 283) + (5000 + 283 + 283) = 10566 + 5566 = 16132
-        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls), 16132);
+        assert_eq!(calc_sibling_topandbottom_reserved_hu(&controls, 0), 16132);
     }
 }
 

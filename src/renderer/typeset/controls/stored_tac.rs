@@ -818,6 +818,39 @@ pub(super) fn prepare(
                 // 뒤 저장 줄이 새 개체 줄의 전체 전진과 일치하는 0축을 소유한다.
                 saved_origin = flow_origin;
             }
+            // 직전 쪽이 완전한 저장 문단을 소비하고 현재 저장 줄이 그보다
+            // 작은 양수로 되감겼으며 다음 문단이 명시적으로 새 쪽을 열면,
+            // 이 단독 표는 원본 쪽의 첫 줄이다. 그 줄의 양수 vpos는 새 단의
+            // 물리 원점에서 한 번 소비한다. 단순히 표가 새 쪽으로 밀린 경우는
+            // 이전 저장 사다리의 되감김과 후속 쪽 경계가 없어 여기에 해당하지 않는다.
+            let source_page_rewind = single_saved_line
+                && page.profile.hwp5_stored_pagination_layout()
+                && page.empty_column
+                && page.current_height == 0.0
+                && para.text.is_empty()
+                && matches!(para.controls.as_slice(), [Control::Table(_)])
+                && para.line_segs[0].vertical_pos > 0
+                && !para.stored_text_partition_is_dirty()
+                && !para.cell_format_vpos_dirty
+                && next_para.is_some_and(|next| {
+                    next.column_type == crate::model::paragraph::ColumnBreakType::Page
+                })
+                && previous_para.is_some_and(|previous| {
+                    !previous.stored_text_partition_is_dirty()
+                        && !previous.cell_format_vpos_dirty
+                        && page.previous_page_tail.is_some_and(|(owner, end)| {
+                            owner.checked_add(1) == Some(para_idx)
+                                && end == previous.line_segs.len()
+                        })
+                        && previous.line_segs.last().is_some_and(|last| {
+                            !crate::renderer::typeset::is_synthetic_line_seg(last)
+                                && last.vertical_pos > para.line_segs[0].vertical_pos
+                        })
+                });
+            if source_page_rewind {
+                saved_origin =
+                    page.vpos_col_anchor + hwpunit_to_px(para.line_segs[0].vertical_pos, dpi);
+            }
             // A complete object height authenticates the local line, not the
             // page-relative origin. A single-line shortcut may only reuse a
             // source origin which agrees with the current physical flow: its
@@ -828,6 +861,7 @@ pub(super) fn prepare(
                     page.current_height + fmt.spacing_before - shared_spacing_before;
                 let same_frame = (saved_origin - page.current_height).abs() <= dpi / 7200.0
                     || (saved_origin - unreserved_origin).abs() <= dpi / 7200.0
+                    || source_page_rewind
                     || (page.original_object_column_origin
                         && para.source_line_seg_vertical_pos.is_none())
                     // 단의 첫 원본 글줄이 영점을 이미 인증했고 활성 축도 그대로면,

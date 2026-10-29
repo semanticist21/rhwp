@@ -295,7 +295,7 @@ fn converted_hwp_scripts_reuse_existing_manifest_and_spine_refs() {
     assert_eq!(info(&reopened, 4, 0)["items"], info(&core, 4, 0)["items"]);
 
     // 새 스크립트 식별자는 그림·바탕쪽 식별자와도 충돌하지 않는다.
-    let hpf = rhwp::serializer::hwpx::content::write_content_hpf(
+    let hpf = rhwp::serializer::hwpx::content::write_content_hpf_with_scripts(
         &["Contents/section0.xml".into()],
         &[rhwp::serializer::hwpx::content::BinDataEntry {
             id: "headersc".into(),
@@ -305,7 +305,10 @@ fn converted_hwp_scripts_reuse_existing_manifest_and_spine_refs() {
         }],
         &[(0, "sourcesc".into(), "Contents/masterpage0.xml".into())],
         None,
-        true,
+        &[
+            ("headersc", "Scripts/headerScripts"),
+            ("sourcesc", "Scripts/sourceScripts"),
+        ],
     )
     .unwrap();
     let xml = String::from_utf8(hpf).unwrap();
@@ -415,4 +418,50 @@ fn distribution_hwp_script_preserves_decrypted_counted_payload_and_original_stre
     replace_script(&mut truncated, original[..260].to_vec());
     assert!(serialize_hwpx_with_report(&truncated).is_err());
     assert_eq!(script(&truncated), &original[..260]);
+}
+
+#[test]
+fn counted_script_bom_is_preserved_in_hwpx_parts_and_reopen() {
+    let core = fixture();
+    for part in 0..2 {
+        let mut raw = raw_script(core.document());
+        let header_len = u32::from_le_bytes(raw[..4].try_into().unwrap());
+        let count_at = if part == 0 {
+            0
+        } else {
+            4 + header_len as usize * 2
+        };
+        let count = u32::from_le_bytes(raw[count_at..count_at + 4].try_into().unwrap());
+        raw.splice(count_at + 4..count_at + 4, [0xff, 0xfe]);
+        raw[count_at..count_at + 4].copy_from_slice(&(count + 1).to_le_bytes());
+        let mut doc = core.document().clone();
+        replace_script(&mut doc, raw.clone());
+        let bytes = serialize_hwpx(&doc).unwrap();
+        for (index, path) in PARTS.into_iter().enumerate() {
+            let mut expected = if index == part {
+                vec![0xff, 0xfe]
+            } else {
+                vec![]
+            };
+            expected.extend(entry(HWPX, path));
+            assert_eq!(entry(&bytes, path), expected);
+        }
+        let reopened = DocumentCore::from_bytes(&bytes).unwrap();
+        assert_eq!(raw_script(reopened.document()), raw);
+        let resaved = reopened.export_hwpx_native().unwrap();
+        for path in PARTS {
+            assert_eq!(entry(&resaved, path), entry(&bytes, path));
+        }
+    }
+}
+
+#[test]
+fn counted_script_invalid_utf16_is_rejected_without_changing_source() {
+    let core = fixture();
+    let mut raw = raw_script(core.document());
+    raw[4..6].copy_from_slice(&0xd800u16.to_le_bytes());
+    let mut doc = core.document().clone();
+    replace_script(&mut doc, raw.clone());
+    assert!(serialize_hwpx(&doc).is_err());
+    assert_eq!(script(&doc), raw);
 }

@@ -391,6 +391,11 @@ render tree 중 한 쪽이 누락되면 성공으로 처리하지 않는다. 패
 같은 `@font-face` 공급을 적용하며 WASM의 text·좌표·render tree는 Native 것으로 대체하지 않는다.
 mode와 해당 디렉터리의 폰트 파일 hash가 바뀌면 `--resume`은 이전 증적을 거부한다.
 
+본문과 수식의 face를 각각 확인한다. 수식에 `HYhwpEQ` 또는 `HancomEQN`을 사용하면 설치된
+`HYHWPEQ.TTF`·`HancomEQN.ttf` 중 해당 프로그램도 명시한 경로에 공급한다. 두 face의
+메트릭은 서로 다르므로 임의로 치환하지 않는다. base/후보와 Native/fresh WASM 모두 같은
+원본 프로그램·우선순위로 다시 출력하고, 글꼴 공급 전의 미달 결과와 구분해 기록한다.
+
 ```bash
 venv/bin/python scripts/visual_sweep.py \
   --file-target bold samples/issue2470/36382471_masked.hwpx pdf/issue2470/36382471_masked-2022.pdf \
@@ -1265,3 +1270,35 @@ PR 리뷰/보고서에는 다음을 분리해 적는다.
 동일한 설정을 사용하며, 설정 파일 해시가 달라지면 이전 `--resume` 결과는 재사용하지 않는다.
 프로필 선언과 페이지 수만으로 PDF 일치를 판정하지 않는다. 대응 페이지의 내용과 폰트를
 직접 확인한다. JSON 형식과 지원 범위는 [폰트 환경 가이드](../font_environment.md)를 따른다.
+
+## 외부 연결 그림을 제외한 실루엣 비교
+
+한컴 Print 서버가 원본의 외부 연결 그림 경로에 접근하지 못하는 경우에는 원본 그림 컨트롤과
+실제 렌더 트리의 상자를 확인하고, 사용자 지시에 따라 `--silhouette-only
+--linked-image-exclusions <증거.json>`을 지정할 수 있다. 기본 비교는 바뀌지 않는다.
+대상은 하나의 원본·PDF 조합, 96dpi이며 `--resume`과 함께 쓸 수 없다.
+
+증거 JSON의 `kind`는 `linked-image-exclusions-v1`, `dpi`는 96이다. `source`와 `pdf`에는
+각각 `path`와 `sha256`을 기록한다. `regions`에는 1부터 시작하는 `page`, 정수 픽셀 사각형
+`rect_px`(`[왼쪽, 위, 오른쪽, 아래]`, 오른쪽·아래는 제외), 실제 `external_path`와
+`control`(`section0/para1/control0` 형식)을 기록한다. `assets`에는 WASM의 디코드에 사용할
+로컬 연결 그림의 `name`, `path`, `sha256`을 기록한다. 원본이 실제 요청한 basename과 공급
+목록이 일치해야 하며 각 파일의 해시도 확인한다. 외부 파일이 없으면 없는 그대로 기록하고
+다른 이미지로 대체하지 않는다.
+
+```bash
+venv/bin/python scripts/visual_sweep.py --silhouette-only \
+  --hwp <원본.hwp> --pdf <독립-print.pdf> \
+  --linked-image-exclusions <증거.json> --dpi 96 --compat 2022 \
+  --key <대상> --out <출력-디렉터리>
+```
+
+실제 대상과 증거의 원본·PDF 해시를 대조하고, 선택 쪽의 그림 컨트롤과 렌더 상자가 증거의
+사각형과 일치하는지 확인한다. 현재 렌더 트리에서 구역을 구별할 수 없으므로 단일 구역 문서의
+첫 구역 컨트롤만 허용한다. WASM은 해시가 확인된 로컬 연결 파일을 문서가 요청한 경우에만
+주입한다. 비교할 때만 양쪽 PNG에서 같은 영역을 흰색으로 처리하며 원본 PNG는 변경하지 않는다.
+TSV의 `excluded_linked_image_regions`와 manifest의 `excluded_regions`에 제외 내역을 남긴다.
+해당 상자와 겹치는 글자나 다른 내용도 비교되지 않으므로 전쪽 전체 픽셀 검증이나 100%로
+주장하지 않는다. 제외 밖의 raw 90% 미달은 그대로 재검토 상태이며, 통과하는 경우에도 이
+제외 비교만으로 최종 수용 판정을 내리지 않는다. 기존 raster를 `--png-pair`로 비교할 때도
+같은 옵션을 사용할 수 있으나, 별도 렌더 트리 대조는 호출자가 증거로 남겨야 한다.

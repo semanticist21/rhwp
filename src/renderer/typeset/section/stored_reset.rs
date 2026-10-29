@@ -22,6 +22,40 @@ impl TypesetEngine {
         measured_tables: &[MeasuredTable],
         boundary: &super::entry::ParagraphBoundary<'_>,
     ) {
+        match self.apply_stored_paragraph_boundary_with_storage(
+            st,
+            para_idx,
+            para,
+            paragraphs,
+            styles,
+            has_table,
+            hwp3_origin_page_tolerance,
+            profile,
+            body_height_hu_for_variant,
+            measured_tables,
+            boundary,
+            &crate::storage::Unbounded,
+        ) {
+            Ok(value) => value,
+            Err(never) => match never {},
+        }
+    }
+
+    pub(super) fn apply_stored_paragraph_boundary_with_storage<S: crate::storage::Storage>(
+        &self,
+        st: &mut TypesetState,
+        para_idx: usize,
+        para: &Paragraph,
+        paragraphs: &[Paragraph],
+        styles: &ResolvedStyleSet,
+        has_table: bool,
+        hwp3_origin_page_tolerance: bool,
+        profile: crate::model::provenance::LayoutCompatibilityProfile,
+        body_height_hu_for_variant: i32,
+        measured_tables: &[MeasuredTable],
+        boundary: &super::entry::ParagraphBoundary<'_>,
+        storage: &S,
+    ) -> Result<(), S::Error> {
         let reset_consumed_by_empty_prefix = st.consume_saved_empty_run_reset(para_idx, paragraphs);
         let para_style = boundary.para_style;
         let overlay_columndef_separator_break = boundary.overlay_columndef_separator_break;
@@ -34,7 +68,7 @@ impl TypesetEngine {
         // HWP5 변환본 case 에서 paragraph 442/443 wrap_around 매칭 후 후속 paragraph
         // (예: 599) vpos=0 시점에도 wrap_around active 유지되어 페이지 분할 위반 →
         // vpos-reset trigger 시 wrap_around 강제 종료 + advance_column_or_new_page.
-        if para_idx > 0 && !st.current_items.is_empty() {
+        let _: () = if para_idx > 0 && !st.current_items.is_empty() {
             let prev_para = &paragraphs[para_idx - 1];
             // 재조판 줄의 vpos는 문단 내부 좌표다. 문단 사이의 쪽/단 경계는
             // 양쪽이 실제 저장 줄일 때만 같은 쪽 좌표계의 되감김으로 읽는다.
@@ -301,6 +335,14 @@ impl TypesetEngine {
                         (end as f64 * self.dpi / 7200.0 - st.current_height).abs()
                             <= self.dpi / 7200.0
                     });
+                let coanchored_host_reset = st.col_count == 1
+                    && !profile.session_edited()
+                    && profile.hwp5_stored_pagination_layout()
+                    && crate::renderer::float_placement::stored_empty_host_frame::coanchored_host_restarts_page(
+                        prev_para,
+                        para,
+                        crate::renderer::px_to_hwpunit(st.layout.body_area.height, self.dpi),
+                    );
                 let trigger = if st.col_count > 1 {
                     if is_distribute {
                         cv < prev_vpos_end && prev_vpos_end > 0
@@ -331,6 +373,7 @@ impl TypesetEngine {
                         || source_margin_restart
                         || inline_frame_page_restart
                         || stored_picture_group_reset
+                        || coanchored_host_reset
                         || reconstructed_source_vpos.is_some()
                 };
                 // [#2279 OMIT-fit] spacing-누락 문서군에서 fresh 재계산이 직전
@@ -460,12 +503,13 @@ impl TypesetEngine {
                             // 한글은 밴드를 떠나는 쪽의 흐름 말미에 남기고 본문 아래
                             // 여백으로 흘린다.
                             st.spill_page_tail_floats(para_idx, para);
-                            st.advance_column_or_new_page();
+                            st.advance_column_or_new_page_with_storage(storage)?;
                         }
                     }
                 }
             }
-        }
+        };
+        Ok(())
     }
 }
 

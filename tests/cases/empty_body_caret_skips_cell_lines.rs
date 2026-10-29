@@ -8,6 +8,7 @@
 
 use rhwp::document_core::DocumentCore;
 use rhwp::model::control::Control;
+use rhwp::renderer::render_tree::{RenderNode, RenderNodeType};
 use serde_json::Value;
 
 /// 첫 문단에 글 있는 칸 문단 셋을 담은 1×1 표, 그 뒤에 빈 본문 문단.
@@ -81,4 +82,88 @@ fn empty_body_paragraph_caret_is_not_drawn_on_a_cell_line() {
         "캐럿 자리가 표 칸이다: {hit}"
     );
     assert_eq!(hit["paragraphIndex"].as_u64(), Some(body as u64));
+}
+
+fn body_line(node: &RenderNode, para: usize) -> Option<&RenderNode> {
+    match &node.node_type {
+        RenderNodeType::Table(_)
+        | RenderNodeType::TableCell(_)
+        | RenderNodeType::TextBox
+        | RenderNodeType::Header
+        | RenderNodeType::Footer
+        | RenderNodeType::MasterPage
+        | RenderNodeType::FootnoteArea => return None,
+        RenderNodeType::TextLine(line)
+            if line.caption_owner.is_none()
+                && line.section_index == Some(0)
+                && line.para_index == Some(para) =>
+        {
+            return Some(node);
+        }
+        _ => {}
+    }
+    node.children
+        .iter()
+        .find_map(|child| body_line(child, para))
+}
+
+fn owned_table(node: &RenderNode, para: usize, control: usize) -> Option<&RenderNode> {
+    match &node.node_type {
+        RenderNodeType::Table(owner) => {
+            return (owner.cell_context.is_none()
+                && owner.section_index == Some(0)
+                && owner.para_index == Some(para)
+                && owner.control_index == Some(control))
+            .then_some(node);
+        }
+        RenderNodeType::TableCell(_)
+        | RenderNodeType::TextBox
+        | RenderNodeType::Header
+        | RenderNodeType::Footer
+        | RenderNodeType::MasterPage
+        | RenderNodeType::FootnoteArea => return None,
+        _ => {}
+    }
+    node.children
+        .iter()
+        .find_map(|child| owned_table(child, para, control))
+}
+
+fn cursor_decimal(value: f64) -> f64 {
+    format!("{value:.1}").parse().unwrap()
+}
+
+#[test]
+fn empty_table_host_caret_uses_owned_table_without_body_line() {
+    let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("samples/issue1949_giant_cell_nested_tables_perf.hwp");
+    let doc = DocumentCore::from_bytes(&std::fs::read(path).expect("115쪽 표 원본"))
+        .expect("115쪽 표 문서 열기");
+    assert_eq!(doc.page_count(), 115);
+    let paragraph = &doc.document().sections[0].paragraphs[0];
+    assert!(paragraph.text.is_empty());
+    let control = paragraph
+        .controls
+        .iter()
+        .position(|control| matches!(control, Control::Table(_)))
+        .expect("첫 본문 문단의 표");
+    let tree = doc.build_page_render_tree(0).unwrap();
+    assert!(
+        std::iter::once(&tree.root)
+            .chain(tree.caret_only_lines())
+            .all(|node| body_line(node, 0).is_none()),
+        "이 원본의 빈 표 호스트에는 별도 본문 글줄이 없다"
+    );
+    let table = owned_table(&tree.root, 0, control).expect("첫 쪽의 자기 표");
+    let caret = json(doc.get_cursor_rect_native(0, 0, 0).unwrap());
+    assert_eq!(caret["pageIndex"], 0);
+    for (field, expected) in [("x", table.bbox.x), ("y", table.bbox.y)] {
+        assert_eq!(
+            caret[field].as_f64().unwrap(),
+            cursor_decimal(expected),
+            "표 호스트 0/{control}: caret={caret}, table={:?}",
+            table.bbox
+        );
+    }
+    assert_eq!(caret["height"].as_f64(), Some(12.0));
 }

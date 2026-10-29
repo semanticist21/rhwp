@@ -15,6 +15,7 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 | 파일 | 분류 | 상태 | 용도 | 샘플 | 배선 | 비고 |
 |------|------|------|------|------|------|------|
 | `ai-panel.test.mjs` | 상시 | active | AI 대화·문서 도구·명령 확인·스트리밍 및 오류 복구 | 합성 문서 | npm e2e:ai-panel | Anthropic 응답 가로채기, 실제 키·외부 API 미사용 |
+| `ai-providers.test.mjs` | 상시 | active | OpenAI·Gemini 연결·모델·전송 동의·도구 왕복·오류·문서 바이트 보존 | 합성 문서 | npm e2e:ai-providers | SSE 응답 가로채기, 실제 키·외부 API 미사용 |
 | `ai-settings.test.mjs` | 상시 | active | AI 모델·키 설정·동의·암호화 저장·잠금·삭제 | 빈 문서 | npm e2e:ai-settings | Anthropic 응답 가로채기, 실제 키·외부 API 미사용 |
 | `side-panel.test.mjs` | 상시 | active | AI 도우미 패널 열기·닫기·폭·눈금자·선택문 보존 | 합성 문서 | npm e2e:side-panel | 실제 Studio DOM·키 입력 |
 | `canvaskit-periodic-borders-issue7998.test.mjs` | 상시 | active | #7998 주기 괘선의 CanvasKit dash 소비와 투명 프레임 무출력 | issue7998/periodic-borders/native-dot-widths.hwpx | 수동 | 실제 software CanvasKit·독립 Print 주기 대조 |
@@ -22,6 +23,9 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 | `cell-target-issue8102.test.mjs` | 상시 | active | #8102 생성·클릭·키보드·undo 진입 선택 삭제, 다중 문단·중첩·인접 셀·invalid target | 편집 API 합성 | npm e2e:issue-8102 | fresh WASM·Studio 실제 입력 |
 | `automation-commands.test.mjs` | 상시 | active | studio 자동화 표면 — 커맨드 질의·실행·메뉴 모델·드리프트 가드·다이얼로그 정책·`insert:field` 매개변수 삽입 | — | npm e2e:automation |  |
 | `enter-caret-reveal-issue7486.test.mjs` | 상시 | active | #7486 본문 Enter 새 쪽의 DOM 캐럿·viewport 및 Undo/Redo, 100%/66% 배율·160/200/300% 줄간격 | 편집 API 합성 | npm e2e:enter-caret | 추가 입력 없이 layout 완료 경계 검사 |
+| `issue8174-modal-focus.test.mjs` | 상시 | active | #8174 암호 모달·중첩 모달의 입력 소유 보존 | 빈 문서 | 수동 | 늦은 편집기 focus가 암호 입력을 빼앗지 않음 |
+| `selection-layout-issue8103.test.mjs` | 상시 | active | #8103 Canvas2D/auto의 400문단 Undo/Redo 선택·focus 원점, smooth zoom·scroll·배치·지연 중 새 선택·문서 교체 보존 | plain-text paste 합성 | npm e2e:selection-layout | 첫/중간/마지막 쪽 관계 검사, 명시 CanvasKit·원본 font cache 옵션 |
+| `canvaskit-periodic-borders-issue7998.test.mjs` | 상시 | active | 기존 CanvasKit 주기 테두리의 실제 dash 소비와 잉크 검사 | pdf/issue7998/periodic-borders/native-dot-widths.hwpx | 수동 | 기준 devel의 목록 누락 보완, 테스트 구현 변경 없음 |
 | `autosave-recovery.test.mjs` | 상시 | active | Task #1448 — 미저장 문서 자동 백업 복구 E2E | — | 수동 |  |
 | `blogform.test.mjs` | 상시 | active | BlogForm_BookReview.hwp 누름틀 안내문 | BlogForm_BookReview.hwp | 수동 |  |
 | `body-outside-click-fallback.test.mjs` | 진단 | hold | 보류 ② 본문 외곽 클릭 fallback 결함 — 가설 (b) master page 글상자 hit 확정 e2e | hwpctl_Action_Table__v1.1.hwp | 수동 | legacy-name · 보류② 이슈 종속 |
@@ -82,7 +86,7 @@ e2e 스크립트의 **단일 권위 목록**이다. 파일 추가/변경/폐기 
 | `hml-open.check.mjs` | 상시 | active | Standalone HML browser regression. | — | 수동 | legacy-name |
 | `hwpctl-basic.test.mjs` | 상시 | active | hwpctl 호환 레이어 기본 동작 | — | 수동 |  |
 | `hwp-password-open.test.mjs` | 상시 | active | #3474/#3481/#5986 HWP3·HWPX 암호 문서: 대화상자·오답·취소·Enter·저장소 비보존·저장 보호 상태 수명주기, HWP3 A4 144dpi Canvas 경계 | HWP3-password-123456.hwp, HWP5-password-123456.hwpx, HWP5-nopassword-123456.hwpx | npm e2e:hwp-password-open | 실제 암호 fixture; 비밀번호와 로컬 E2E 보고서는 비커밋 |
-| `issue_8160_password_open.test.mjs` | 상시 | active | #8160 sample16 HWP5 EncryptVersion 4 암호 대화상자·오답·취소·Enter·저장 보호 상태 | hwp3-sample16-hwp5-2024-password-123456.hwp | 기존 e2e:hwp-password-open에서 순차 실행 | 새 이름의 전용 검사, 직접 실행도 가능 |
+| `issue_8160_password_open.test.mjs` | 상시 | active | #8160 sample16 HWP5 EncryptVersion 4 암호 대화상자·오답·취소·Enter·저장 보호 상태 | hwp3-sample16-hwp5-2024-password-123456.hwp | 수동 | 직접 npm 진입점은 없음. hwp-password-open.test.mjs가 import하여 npm e2e:hwp-password-open에서 순차 호출하며 직접 실행도 가능 |
 | `crlf-insert-history.test.mjs` | 상시 | active | CRLF 입력의 커서·Undo/Redo·HWP 저장 보존 | 합성 본문·셀·중첩 셀 | 수동 | #8001, run-with-vite·fresh WASM 실동작 |
 | `hwpctrl-nested-caret.test.mjs` | 상시 | active | SDK 캐럿 동기화→CreateField의 중첩 셀 부모 문단 소유·Undo | issue1949_giant_cell_nested_tables_perf.hwp | 수동 | 조판 좌표 고정 없음 |
 | `hwpctrl-plugin.test.mjs` | 상시 | active | hwpctrl 플러그인 — studio 문서 공유·배치 편집·좌표 변환·사용자 캐럿 동기화·unload 생존 | — | npm e2e:hwpctrl-plugin |  |

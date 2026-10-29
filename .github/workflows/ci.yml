@@ -42,6 +42,11 @@ on:
         required: true
         default: false
         type: boolean
+      native_host_package:
+        description: Build and exercise all three native host packages at this commit.
+        required: false
+        default: false
+        type: boolean
 
 env:
   CARGO_TERM_COLOR: always
@@ -838,6 +843,14 @@ jobs:
     permissions:
       contents: read
 
+  # Bootstrap the new packaging workflow from this registered manual caller.
+  native-host-package:
+    uses: ./.github/workflows/native-host-package.yml
+    needs: [preflight]
+    if: github.event_name == 'workflow_dispatch' && inputs.native_host_package && needs.preflight.result == 'success'
+    permissions:
+      contents: read
+
   # [#6205] B/C가 같은 측정 정책 commit을 보도록 CI 시작 때 한 번만 SHA를 고정한다.
   # 데이터 브랜치가 아직 없거나 조회할 수 없으면 committed fallback을 사용한다.
   resolve-nextest-duration-policy:
@@ -1030,7 +1043,7 @@ jobs:
           sudo apt-get install --no-install-recommends -y poppler-utils
           rhwp_visual_contract_env="${RUNNER_TEMP}/rhwp-visual-sweep-contracts"
           python3 -m venv "$rhwp_visual_contract_env"
-          "$rhwp_visual_contract_env/bin/python" -m pip install Pillow==12.3.0 fonttools==4.64.0 pypdfium2==5.13.0
+          "$rhwp_visual_contract_env/bin/python" -m pip install Pillow==12.3.0 fonttools==4.64.0 Brotli==1.1.0 pypdfium2==5.13.0
           "$rhwp_visual_contract_env/bin/python" -m unittest discover -s scripts/tests -p 'test_visual_sweep*.py'
 
       - name: Validate CI impact classifier
@@ -1129,6 +1142,7 @@ jobs:
       # 추가하면 그 테스트가 실패하므로 여기 한 줄을 같이 넣어야 한다.
       - name: Validate workflow contracts
         run: |
+          python3 -m unittest scripts/tests/test_crates_io_source_preflight.py scripts/tests/test_crates_io_publish_preflight.py
           node --test scripts/tests/issue-form-labels.test.mjs
           node --test scripts/tests/verify-trusted-postmerge-ci-reuse.test.mjs
           node --test scripts/tests/verify-trusted-postmerge-ci-reuse-squash.test.mjs
@@ -1335,6 +1349,7 @@ jobs:
               node scripts/run-rust-test.mjs --cargo-test issue_7902_original_frame_and_content -- --profile release-test --features native-skia --verbose
               node scripts/run-rust-test.mjs --cargo-test issue_8160_hwp2022_paragraph_relations -- --profile release-test --features native-skia --verbose
               node scripts/run-rust-test.mjs --cargo-test native_fractional_glyph_origin -- --profile release-test --features native-skia --verbose
+              node scripts/run-rust-test.mjs --cargo-test skia_native_glyph_replay -- --profile release-test --features native-skia --verbose
               ;;
             release)
               echo "profile=release event=${GITHUB_EVENT_NAME} ref=${GITHUB_REF}"
@@ -1353,6 +1368,7 @@ jobs:
               node scripts/run-rust-test.mjs --cargo-test issue_7902_original_frame_and_content -- --release --features native-skia --verbose
               node scripts/run-rust-test.mjs --cargo-test issue_8160_hwp2022_paragraph_relations -- --release --features native-skia --verbose
               node scripts/run-rust-test.mjs --cargo-test native_fractional_glyph_origin -- --release --features native-skia --verbose
+              node scripts/run-rust-test.mjs --cargo-test skia_native_glyph_replay -- --release --features native-skia --verbose
               ;;
             *)
               echo "::error::Unknown test profile: ${TEST_PROFILE}"

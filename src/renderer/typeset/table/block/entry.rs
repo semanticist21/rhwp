@@ -1447,6 +1447,16 @@ impl TypesetEngine {
                 table_total = table_total.max(declared_total);
             }
         }
+        // [#8149] host 문단 앞 간격은 표를 실제로 여는 자리에서 정한다. 앞 쪽에서 포맷한 표를
+        // 선언 높이 이월 등으로 새 단 첫머리에 두면 앞 간격 없이 바깥 위 여백만 쓴다 —
+        // 한글문서파일형식 47쪽 표 297(앞 간격 6.7px 만큼 표와 뒤 표들이 내려갔다).
+        let host_spacing_before = if st.flow_table_column_top() {
+            ft.host_spacing
+                .before
+                .min(ft.host_spacing.column_top_before)
+        } else {
+            ft.host_spacing.before
+        };
 
         let mut original_control_frame = self.query_original_control_table_frame(
             st,
@@ -1663,7 +1673,7 @@ impl TypesetEngine {
             st,
             para,
             table,
-            ft.host_spacing.before,
+            host_spacing_before,
             ft.effective_height,
         );
         let consumed_whole_anchor = self.query_stored_whole_flow_anchor(
@@ -1867,11 +1877,26 @@ impl TypesetEngine {
                         para,
                         table,
                         ctrl_idx,
-                        text_origin,
+                        if has_preceding_coanchored_float && para.line_segs.is_empty() {
+                            // 앞 표와 같은 글 앞 앵커는 문단 흐름 원점을 공유한다.
+                            // 문단 앞 간격은 형제 표마다 다시 적용하지 않는다.
+                            placement_para_start_height
+                        } else {
+                            text_origin
+                        },
                         lines,
                         whole_placement_height,
                         self.dpi,
                     )
+                    .filter(|placement| {
+                        // 글 앞의 형제 표는 같은 문단 원점을 공유하고 뒤 글줄은
+                        // 모든 표의 점유를 소비한다. 첫 표만 독립 흐름으로 확정하면
+                        // 뒤 표 원점에 문단 앞 간격이 더해지고 글이 표 사이에 남는다.
+                        // 글 뒤 형제의 CoanchoredTable 소유는 그대로 유지한다.
+                        !(input.is_first_placed
+                            && para.line_segs.is_empty()
+                            && placement.flow == crate::renderer::float_placement::ParagraphFloatFlow::CoanchoredTable)
+                    })
                     })
                 } else {
                     crate::renderer::float_placement::ParagraphFloatPlacement::from_stored_host(
@@ -2084,7 +2109,20 @@ impl TypesetEngine {
                         // 여백을 빼면 같은 프레임을 다른 원점으로 인증하게 된다.
                         fmt.spacing_before,
                         (table_total - host_spacing_total).max(0.0),
-                        self.dpi,)
+                        // [#8149] 바로 앞 항목이 앞 문단(빈 host)의 자리차지 표 상자이고
+                        // 커서가 그 끝에 있을 때만 이 host 의 앞 간격 흡수를 인정한다.
+                        para_idx.checked_sub(1).is_some_and(|previous| {
+                            matches!(st.current_items.last(),
+                                Some(PageItem::Table { para_index, .. } | PageItem::PartialTable { para_index, .. })
+                                    if *para_index == previous)
+                                && paragraphs_all.get(previous).is_some_and(|host| {
+                                    !para_has_visible_text(host)
+                                        && host.controls.iter().any(|control| matches!(control,
+                                            Control::Table(t) if is_para_topbottom_float(&t.common)))
+                                })
+                        }),
+                        self.dpi,
+                    )
                 })
                 .flatten()
             })
@@ -2126,7 +2164,7 @@ impl TypesetEngine {
                 )
                 .then(|| {
                     let table_top = st.current_height
-                        + ft.host_spacing.before
+                        + host_spacing_before
                         + hwpunit_to_px(signed_hwpunit(table.common.vertical_offset), self.dpi);
                     crate::renderer::float_placement::ParagraphFloatPlacement {
                         flow: crate::renderer::float_placement::ParagraphFloatFlow::EmptyHost,
@@ -2183,8 +2221,13 @@ impl TypesetEngine {
                 table,
                 st.current_height,
                 source_host_origin,
+                if placement_para_start_height > 0.0 {
+                    fmt.spacing_before
+                } else {
+                    0.0
+                },
                 ft.effective_height,
-                ft.host_spacing.before,
+                host_spacing_before,
                 ft.host_spacing.after,
                 self.dpi,
             )
@@ -2289,7 +2332,7 @@ impl TypesetEngine {
             st,
             para,
             table,
-            ft.host_spacing.before,
+            host_spacing_before,
             ft.effective_height,
             resolved_host_placement,
         );
@@ -2371,17 +2414,49 @@ impl TypesetEngine {
                 && !ft.strict_following_plain_text_fit
                 && legacy_whole_fits)
                 .then(|| {
+                    let applied_spacing_before = if placement_para_start_height > 0.0 {
+                        fmt.spacing_before
+                    } else {
+                        0.0
+                    };
                     crate::renderer::float_placement::ParagraphFloatPlacement::from_saved_whole_empty_host(
                         para,
                         table,
-                        source_host_origin,
-                        if placement_para_start_height > 0.0 {
-                            fmt.spacing_before
-                        } else {
-                            0.0
-                        },
+                        // [#8149] 저장 단 원점을 세우지 못한 쪽(앞이 저장 줄 없는 제목·이어지는
+                        // 표 조각)에서도 한/글은 표를 문단 위끝 + 바깥 위 여백에 둔다. 조판 커서가
+                        // 문단 위끝이므로 거기에 적용한 앞 간격을 더한 줄 위치를 원점으로 쓴다
+                        // (한글문서파일형식 13쪽 표 51: 종전 줄 + 위 여백으로 +6.7px).
+                        // 세로 오프셋이 있는 표는 오프셋이 가리키는 상자 원점이 다른 계약(#4068)이라
+                        // 이 대체 원점을 쓰지 않는다. 커서가 문단 위끝이라는 근거는 host 저장 줄이
+                        // `커서 + 앞 간격`(앞 간격 적용) 또는 `커서`(앞 간격 소비, 43쪽 표 275)에
+                        // 있을 때뿐이다 — 앞 문단 꼬리 줄간격이 커서에 없으면 (hcar-001 1쪽 pi=2:
+                        // 커서 51.5, 저장 줄 56.3) 표가 그만큼 올라간다.
+                        source_host_origin.or_else(|| {
+                            let line_top = placement_para_start_height + applied_spacing_before;
+                            (signed_hwpunit(table.common.vertical_offset) == 0
+                                && para.line_segs.first().is_some_and(|line| {
+                                    let stored = hwpunit_to_px(line.vertical_pos, self.dpi);
+                                    (stored - line_top).abs() <= 1.0
+                                        || (stored - placement_para_start_height).abs() <= 1.0
+                                }))
+                            .then_some(line_top)
+                        }),
+                        applied_spacing_before,
                         ft.effective_height,
-                        ft.host_spacing.after - ft.host_spacing.spacing_after_only,
+                        // [#8149] 글 없이 표 하나만 든 host 의 줄간격은 저장 상자에 들지 않는다.
+                        // 저장 사다리가 다음 빈 host 표의 줄을 `표 + 캡션 + 바깥 아래 여백` 바닥에
+                        // 둔다(한글문서파일형식 33쪽 표 202→203: 다음 줄 vpos 45542 = 상자 바닥,
+                        // host 줄간격 600HU 를 더하면 표 203 이 8.0px 내려간다). 저장 사다리 경로
+                        // (`from_stored_ladder`, 52쪽 표 335~337)도 같은 상자를 쓴다.
+                        ft.host_spacing.after
+                            - ft.host_spacing.spacing_after_only
+                            - if crate::renderer::float_placement::textless_single_float_host(
+                                para, table,
+                            ) {
+                                ft.host_spacing.host_line_spacing
+                            } else {
+                                0.0
+                            },
                         self.dpi,
                     )
                 })

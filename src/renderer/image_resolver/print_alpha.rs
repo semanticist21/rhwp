@@ -70,6 +70,13 @@ pub(crate) fn print_alpha_payload(
     if width <= 0.0 || height <= 0.0 || width * height > MAX_PIXELS as f64 {
         return None;
     }
+    // 반올림한 정수 표본 간격으로 원본 전체를 펼쳐도 저장 출력 프레임을
+    // 덮지 못하면 마지막 행이나 열이 잘린다. 예를 들어 86행을 268 장치
+    // 픽셀에 놓을 때 간격을 3으로 반올림하면 258픽셀만 생성된다.
+    // 프레임을 다 채우지 못하는 경우 기존 이미지 샘플링 경로를 사용한다.
+    if left + width < r - 0.5 || top + height < b - 0.5 {
+        return None;
+    }
     let output = memoized(
         Conversion::PrintAlpha {
             frame: values.map(f64::to_bits),

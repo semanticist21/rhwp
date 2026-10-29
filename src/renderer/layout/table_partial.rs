@@ -21,12 +21,12 @@ use super::border_rendering::{
     mark_cell_span_interior_covered, render_cell_diagonal, render_edge_borders,
     render_spaced_cell_borders, render_transparent_borders,
 };
+use super::nested_table_origin::NestedTableOrigin;
 use super::table_layout::{
     border_style_has_diagonal, calc_nested_split_rows, effective_margin_left_line,
     expand_page_fragment_clip_to_own_text_lines, extend_completed_nested_table_border_clips,
-    native_terminal_child_host_line_spacing, para_relative_float_table_lead,
-    translate_render_subtree_y, unwrapped_table_cell_ctx, NestedTableSplit, StoredNestedHostFlow,
-    INLINE_WRAP_WIDTH_EPSILON_PX,
+    native_terminal_child_host_line_spacing, translate_render_subtree_y, unwrapped_table_cell_ctx,
+    NestedTableSplit, StoredNestedHostFlow, INLINE_WRAP_WIDTH_EPSILON_PX,
 };
 use super::text_measurement::{estimate_text_width, resolved_to_text_style};
 use super::{
@@ -2021,6 +2021,17 @@ impl LayoutEngine {
                     }
                     let line_count = comp.lines.len();
                     for li in start..end {
+                        // CellUnit은 좌우 조각의 마지막 seg에서만 한 물리 줄을
+                        // 전진한다. 정렬 높이도 같은 저장 줄 소속을 소비한다.
+                        if line_count == para.line_segs.len()
+                            && li + 1 < end
+                            && crate::renderer::height_measurer::stored_seg_is_row_fragment(
+                                para,
+                                li + 1,
+                            )
+                        {
+                            continue;
+                        }
                         if li < line_count {
                             let line = &comp.lines[li];
                             let h = hwpunit_to_px(line.line_height, self.dpi);
@@ -2220,7 +2231,7 @@ impl LayoutEngine {
                 });
                 if !owns_first_line
                     || !cut_units.is_none_or(|(start, _)| start == 0)
-                    || !crate::renderer::cell_paragraph_has_only_single_column_metadata(para)
+                    || !crate::renderer::cell_paragraph_has_only_text_metadata(para)
                     || para.stored_text_partition_is_dirty()
                     || self
                         .render_normalization
@@ -2349,6 +2360,15 @@ impl LayoutEngine {
                             );
                         }
                         for li in start..end.min(comp.lines.len()) {
+                            if comp.lines.len() == para.line_segs.len()
+                                && li + 1 < end
+                                && crate::renderer::height_measurer::stored_seg_is_row_fragment(
+                                    para,
+                                    li + 1,
+                                )
+                            {
+                                continue;
+                            }
                             let line = &comp.lines[li];
                             let raw_height = hwpunit_to_px(line.line_height, self.dpi);
                             let glyph_em = line
@@ -4235,18 +4255,12 @@ impl LayoutEngine {
                                     (x, para_y_before_compose)
                                 };
 
-                                let ast = super::super::equation::document_script::parse(eq);
                                 let font_size_px = hwpunit_to_px(eq.font_size as i32, self.dpi);
-                                let layout_box =
-                                    super::super::equation::layout_for_paint(eq, &ast, self.dpi);
-                                let color_str =
-                                    super::super::equation::svg_render::eq_color_to_svg(eq.color);
-                                let svg_content =
-                                    super::super::equation::svg_render::render_equation_svg(
-                                        &layout_box,
-                                        &color_str,
-                                        font_size_px,
-                                    );
+                                let super::super::equation::PaintParts {
+                                    layout_box,
+                                    color_str,
+                                    svg_content,
+                                } = super::super::equation::paint_parts(eq, self.dpi);
 
                                 let eq_node = RenderNode::new(
                                     tree.next_id(),
@@ -4370,26 +4384,31 @@ impl LayoutEngine {
                                             nested_table, para_y_before_lines, nested_h, self.dpi,
                                         ))
                                         .flatten();
-                                    let nested_y = if let Some(owner) = frame_owner {
+                                    let nested_origin = if let Some(owner) = frame_owner {
                                         let base = para
                                             .line_segs
                                             .get(start_line)
                                             .map_or(0, |line| line.vertical_pos);
                                         let origin = para.line_segs[owner].vertical_pos;
-                                        para_y_before_lines + hwpunit_to_px(origin - base, self.dpi)
+                                        NestedTableOrigin::Paragraph(
+                                            para_y_before_lines
+                                                + hwpunit_to_px(origin - base, self.dpi),
+                                        )
                                     } else if matches!(
                                         stored_host_flow,
                                         Some(StoredNestedHostFlow::BeforeLine { .. })
                                     ) {
                                         // 앞 간격은 종료 줄을 소유한다. 본체는 앞 유닛이
                                         // 끝난 곳에서 시작하고 바깥 여백은 표 배치가 소비한다.
-                                        stored_host_flow_entry
+                                        NestedTableOrigin::Paragraph(stored_host_flow_entry)
                                     } else if let Some(frame) = stored_float_frame {
-                                        frame.table_top
+                                        NestedTableOrigin::Table(frame.table_top)
                                     } else if let Some(frame) = &overlay_frame {
-                                        frame.start
+                                        NestedTableOrigin::Table(frame.start)
                                     } else if let Some(offset) = stored_square_offset {
-                                        para_y_before_lines + hwpunit_to_px(offset, self.dpi)
+                                        NestedTableOrigin::Table(
+                                            para_y_before_lines + hwpunit_to_px(offset, self.dpi),
+                                        )
                                     } else if let Some((_, lead)) = first_stored_inline_owner_lead
                                         .filter(|(owner, _)| {
                                             *owner == cp_idx
@@ -4399,54 +4418,48 @@ impl LayoutEngine {
                                     {
                                         // 첫 표의 앞 간격은 내용 유닛에 이미 포함되어 있다.
                                         // 뒤 문단은 자신의 저장 좌표 스냅을 계속 소비한다.
-                                        para_y_before_lines + lead
+                                        NestedTableOrigin::Paragraph(para_y_before_lines + lead)
                                     } else if nested_table.common.treat_as_char
                                         && table_host_line_only_fragment
                                     {
                                         // 앞쪽 원본 줄이 비어 있어도 자신의 슬롯을 소유한다.
                                         // 그린 텍스트가 없다는 이유로 저장 개체 줄의 원점을 셀 상단으로 대체하지 않는다.
-                                        para_y_before_lines
-                                            + stored_nested_table_line_offset_px(
-                                                para, ctrl_idx, start_line, self.dpi,
-                                            )
-                                            .unwrap_or(0.0)
-                                    } else if has_preceding_text {
-                                        if table_host_line_only_fragment {
-                                            // [#6653] 은 "표는 그 줄이 시작한 자리에 놓는다" 인데
-                                            // `para_y_before_lines` 는 **문단**의 시작이다.
-                                            // [#6923] 저장 사다리가 표를 별도 줄에 적어 둔 문단
-                                            // (148738070 p69: ls[0] 글줄 49113HU · ls[1] 표
-                                            // 51229HU)에서는 그 둘이 28.2px 다르고, 문단 시작에
-                                            // 앉히면 표가 앞 글줄 위로 올라온다(4쪽: 줄
-                                            // 735.0..753.7 위에 표 740.0 — 겹침 13건).
-                                            // 저장이 말하는 **그 줄**까지의 델타를 더한다.
+                                        NestedTableOrigin::Paragraph(
                                             para_y_before_lines
                                                 + stored_nested_table_line_offset_px(
                                                     para, ctrl_idx, start_line, self.dpi,
                                                 )
-                                                .unwrap_or(0.0)
-                                        } else {
-                                            para_y
-                                        }
+                                                .unwrap_or(0.0),
+                                        )
+                                    } else if has_preceding_text {
+                                        NestedTableOrigin::Paragraph(
+                                            if table_host_line_only_fragment {
+                                                // [#6653] 은 "표는 그 줄이 시작한 자리에 놓는다" 인데
+                                                // `para_y_before_lines` 는 **문단**의 시작이다.
+                                                // [#6923] 저장 사다리가 표를 별도 줄에 적어 둔 문단
+                                                // (148738070 p69: ls[0] 글줄 49113HU · ls[1] 표
+                                                // 51229HU)에서는 그 둘이 28.2px 다르고, 문단 시작에
+                                                // 앉히면 표가 앞 글줄 위로 올라온다(4쪽: 줄
+                                                // 735.0..753.7 위에 표 740.0 — 겹침 13건).
+                                                // 저장이 말하는 **그 줄**까지의 델타를 더한다.
+                                                para_y_before_lines
+                                                    + stored_nested_table_line_offset_px(
+                                                        para, ctrl_idx, start_line, self.dpi,
+                                                    )
+                                                    .unwrap_or(0.0)
+                                            } else {
+                                                para_y
+                                            },
+                                        )
                                     } else {
-                                        inner_area.y
+                                        NestedTableOrigin::Paragraph(inner_area.y)
                                     };
                                     let owns_nested_start = owns_paragraph_entry;
-                                    let nested_y = nested_y
-                                        + if stored_float_frame.is_some()
-                                            || !crate::renderer::para_has_no_stored_line_segs(para)
-                                        {
-                                            0.0
-                                        } else {
-                                            if owns_nested_start {
-                                                para_relative_float_table_lead(
-                                                    nested_table,
-                                                    self.dpi,
-                                                )
-                                            } else {
-                                                0.0
-                                            }
-                                        };
+                                    let nested_y = nested_origin.resolve(
+                                        nested_table,
+                                        self.dpi,
+                                        owns_nested_start,
+                                    );
                                     let available_h =
                                         (inner_area.height - (nested_y - inner_area.y)).max(0.0);
                                     // TAC(글자처럼 취급) 표: 앞 텍스트 너비만큼 x 오프셋 적용.
@@ -6250,19 +6263,24 @@ impl LayoutEngine {
                 )
                 && table.row_count > 1
                 && table.repeat_header
-                && !table.leading_header_rows().is_empty()
                 // 이 보정은 반복 제목행 바로 뒤에서 표 끝까지 걸친 가운데
                 // 정렬 셀의 저장 물리 높이를 두 조각에 나누는 경우에만 필요하다.
                 // 일반 83행 교육 표까지 열면 다른 조각이 본문 아래로 밀린다.
-                && table.cells.iter().any(|cell| {
-                    cell.row as usize == table.leading_header_rows().len()
-                        && cell.row_span > 1
-                        && cell.row as usize + cell.row_span as usize == table.row_count as usize
-                        && matches!(
-                            cell.vertical_align,
-                            crate::model::table::VerticalAlign::Center
-                        )
-                })
+                // 제목행 수는 셀마다 다시 세지 않고 한 번만 센다.
+                && {
+                    let header_rows = table.leading_header_rows().len();
+                    header_rows > 0
+                        && table.cells.iter().any(|cell| {
+                            cell.row as usize == header_rows
+                                && cell.row_span > 1
+                                && cell.row as usize + cell.row_span as usize
+                                    == table.row_count as usize
+                                && matches!(
+                                    cell.vertical_align,
+                                    crate::model::table::VerticalAlign::Center
+                                )
+                        })
+                }
                 && table.outer_margin_top > 0
                 && enclosing_cell_ctx.is_none()
                 && !repeat_fragment_outer_margin

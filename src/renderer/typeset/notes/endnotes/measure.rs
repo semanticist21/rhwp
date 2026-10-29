@@ -11,6 +11,7 @@ use crate::renderer::typeset::{
 };
 
 /// 같은 단 배치에서 생산한 흐름 예약 끝과 실제 줄·내용의 점유 끝이다.
+#[derive(Clone, Copy)]
 pub(super) struct EndnoteColumnGeometry {
     pub(super) flow_bottom: f64,
     pub(super) occupied_bottom: Option<f64>,
@@ -18,62 +19,21 @@ pub(super) struct EndnoteColumnGeometry {
 
 include!("stored_ink_fit.inc.rs");
 
-/// 한 문단의 fit 판정들이 같은 단을 다시 그리는 호출은 몇 호출 안에서 되풀이된다.
-const ENDNOTE_COLUMN_REPLAY_MEMO_LEN: usize = 8;
-
-/// scratch 단 측정 키에 문단 입력을 싣는다. `NumberingMarker` 는 `Debug` 로 값을
-/// 드러내지 않으므로 번호 문자열과 머리 속성을 따로 싣는다. 표 칸·주석·글상자 안
-/// 문단의 번호는 `{paragraph:?}` 에도 드러나지 않는다. 번호는 조판 전에 정해지고
-/// 조판은 `line_segs` 만 고치므로, 구역 진입 때 비우는 이 재사용 안에서 같은 문단의
-/// 중첩 번호는 바뀌지 않는다.
-fn push_replay_paragraph_key(key: &mut String, index: usize, paragraph: &Paragraph) {
-    use crate::model::paragraph::NumberingMarker;
-    use std::fmt::Write;
-    let marker = match &paragraph.numbering_marker {
-        NumberingMarker::Unresolved => None,
-        NumberingMarker::Absent => Some(None),
-        NumberingMarker::Text(text, head) => Some(Some((text, head))),
+pub(super) fn verify_endnote_measurement(
+    cached: Option<(f64, Option<f64>)>,
+    fresh: Option<(f64, Option<f64>)>,
+) {
+    let bits = |value: Option<(f64, Option<f64>)>| {
+        value.map(|(bottom, ink)| (bottom.to_bits(), ink.map(f64::to_bits)))
     };
-    let _ = write!(key, "|{index}:{marker:?}:{paragraph:?}");
+    assert_eq!(
+        bits(fresh),
+        bits(cached),
+        "미주 단 측정 키가 scratch 입력을 빠뜨렸다"
+    );
 }
 
 impl TypesetEngine {
-    /// scratch 단 측정은 새 `LayoutEngine` 으로 입력만 소비하는 순수 계산이다. `key` 가
-    /// 그 입력 전부를 담으므로 같은 키의 최근 결과를 그대로 돌려준다. 키가 입력을
-    /// 빠뜨리면 다른 측정에 같은 결과를 돌려주므로, 검증을 켜면 재사용할 때마다 다시
-    /// 측정해 비트 단위로 비교한다.
-    fn replay_endnote_column(
-        &self,
-        key: String,
-        measure: impl FnOnce() -> (f64, Option<f64>),
-    ) -> (f64, Option<f64>) {
-        let hit = self
-            .endnote_column_replays
-            .borrow()
-            .iter()
-            .find_map(|(cached, result)| (*cached == key).then_some(*result));
-        if let Some(result) = hit {
-            if self.endnote_replay_verify {
-                let bits =
-                    |(bottom, ink): (f64, Option<f64>)| (bottom.to_bits(), ink.map(f64::to_bits));
-                let fresh = measure();
-                assert_eq!(
-                    bits(fresh),
-                    bits(result),
-                    "미주 단 측정 키가 scratch 입력을 빠뜨렸다: {fresh:?} != {result:?}"
-                );
-            }
-            return result;
-        }
-        let result = measure();
-        let mut replays = self.endnote_column_replays.borrow_mut();
-        if replays.len() >= ENDNOTE_COLUMN_REPLAY_MEMO_LEN {
-            replays.pop_front();
-        }
-        replays.push_back((key, result));
-        result
-    }
-
     /// 문단의 렌더링 높이를 계산한다 (format).
     /// [Task #1027 Stage D] 항목 fit 직전, `current_height` 를 vpos-정합 위치로 스냅한다.
     ///
@@ -214,6 +174,83 @@ impl TypesetEngine {
         if st.current_items.is_empty() {
             return None;
         }
+        // 실제 배치 재생만 같은 세대의 질의 결과를 재사용한다.
+        if !(en_ssot_level() >= EnSsotLevel::A3 || sequential_compact_rewind) {
+            return self.replay_endnote_column(
+                st,
+                paragraphs,
+                styles,
+                available,
+                en_col_w,
+                extra_items,
+                sequential_compact_rewind,
+                future,
+                measured_tables,
+            );
+        }
+        let query = super::measure_memo::ColumnQuery::new(
+            paragraphs,
+            styles,
+            available,
+            en_col_w,
+            extra_items,
+            sequential_compact_rewind,
+            future,
+            measured_tables,
+        );
+        let revision = st.revision();
+        if let Some(geometry) = self
+            .endnote_measure_memo
+            .borrow_mut()
+            .column(revision, &query)
+        {
+            if self.endnote_replay_verify {
+                let fresh = self.replay_endnote_column(
+                    st,
+                    paragraphs,
+                    styles,
+                    available,
+                    en_col_w,
+                    extra_items,
+                    sequential_compact_rewind,
+                    future,
+                    measured_tables,
+                );
+                let value = |g: EndnoteColumnGeometry| (g.flow_bottom, g.occupied_bottom);
+                verify_endnote_measurement(geometry.map(value), fresh.map(value));
+            }
+            return geometry;
+        }
+        let geometry = self.replay_endnote_column(
+            st,
+            paragraphs,
+            styles,
+            available,
+            en_col_w,
+            extra_items,
+            sequential_compact_rewind,
+            future,
+            measured_tables,
+        );
+        self.endnote_measure_memo
+            .borrow_mut()
+            .store_column(revision, query, geometry);
+        geometry
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn replay_endnote_column(
+        &self,
+        st: &TypesetState,
+        paragraphs: &[Paragraph],
+        styles: &ResolvedStyleSet,
+        available: f64,
+        en_col_w: f64,
+        extra_items: &[PageItem],
+        sequential_compact_rewind: bool,
+        future: Option<(&[Paragraph], i32, bool)>,
+        measured_tables: &[MeasuredTable],
+    ) -> Option<EndnoteColumnGeometry> {
         // 앞 미주에서 방출한 표 조각도 최종 paint와 같은 행 측정을 받는다.
         // caller가 본문 측정만 전달하는 준비 조회에서는 소유 원장을 보충한다.
         let mut measured_tables = std::borrow::Cow::Borrowed(measured_tables);
@@ -384,32 +421,7 @@ impl TypesetEngine {
             // 빈 float host의 줄 예약은 페이지가 소유한 Shape 항목을 확인한다.
             // 단만 전달하면 실제 개체가 있는데도 일반 빈 문단으로 측정한다.
             page.column_contents.push(column.clone());
-            // `paint_paras` 는 아래 문단 외에는 기본 문단이다. 아래 scratch에 새 입력을
-            // 넘기면 이 키에도 싣는다.
-            let mut key = format!(
-                "bottom|{:p}|{:?}|{}|{}|{:?}|{:?}|{:?}|{:?}|{:?}",
-                styles,
-                st.profile,
-                paragraphs.len(),
-                paint_paras.len(),
-                (
-                    st.endnote_separator_above_hu,
-                    st.endnote_between_notes_hu,
-                    st.endnote_separator_below_hu,
-                ),
-                col_area,
-                sources,
-                measured_tables,
-                page,
-            );
-            for index in local_indices
-                .iter()
-                .map(|(global, _)| *global)
-                .chain(future_base..paint_paras.len())
-            {
-                push_replay_paragraph_key(&mut key, index, &paint_paras[index]);
-            }
-            let (flow_bottom, occupied_bottom) = self.replay_endnote_column(key, || {
+            let (flow_bottom, occupied_bottom) = {
                 let paint_composed: Vec<_> = paint_paras
                     .iter()
                     .map(|p| crate::renderer::composer::compose_paragraph_in_context(p, styles))
@@ -435,7 +447,7 @@ impl TypesetEngine {
                     st.endnote_between_notes_hu,
                     measured_tables,
                 )
-            });
+            };
             // 실제 배치는 용지 좌표, typeset 예산은 현재 단 원점 기준이다.
             let flow_bottom = flow_bottom - col_area.y;
             let occupied_bottom = occupied_bottom.map(|bottom| bottom - col_area.y);
@@ -871,63 +883,5 @@ impl TypesetEngine {
             None,
         );
         (y_after - y_start).max(0.0)
-    }
-}
-
-#[cfg(test)]
-mod replay_memo_tests {
-    use super::*;
-    use crate::model::paragraph::{MarkerHead, NumberingMarker};
-
-    #[test]
-    fn same_column_input_reuses_scratch_measure_until_evicted() {
-        let mut engine = TypesetEngine::new(96.0);
-        engine.endnote_replay_verify = false;
-        let calls = std::cell::Cell::new(0);
-        let measure = |bottom: f64| {
-            calls.set(calls.get() + 1);
-            (bottom, Some(bottom - 1.0))
-        };
-        let replay = |key: &str, bottom: f64| {
-            engine.replay_endnote_column(key.to_string(), || measure(bottom))
-        };
-        assert_eq!(replay("column", 10.0), (10.0, Some(9.0)));
-        assert_eq!(replay("column", 99.0), (10.0, Some(9.0)));
-        assert_eq!(calls.get(), 1);
-        for index in 0..ENDNOTE_COLUMN_REPLAY_MEMO_LEN {
-            replay(&format!("other-{index}"), 1.0);
-        }
-        assert_eq!(replay("column", 20.0), (20.0, Some(19.0)));
-        assert_eq!(calls.get(), ENDNOTE_COLUMN_REPLAY_MEMO_LEN + 2);
-    }
-
-    #[test]
-    #[should_panic(expected = "미주 단 측정 키가 scratch 입력을 빠뜨렸다")]
-    fn verify_rejects_reuse_when_key_misses_an_input() {
-        let mut engine = TypesetEngine::new(96.0);
-        engine.endnote_replay_verify = true;
-        engine.replay_endnote_column("column".to_string(), || (10.0, None));
-        engine.replay_endnote_column("column".to_string(), || (10.0, None));
-        engine.replay_endnote_column("column".to_string(), || (11.0, None));
-    }
-
-    #[test]
-    fn numbering_marker_hidden_from_debug_still_separates_keys() {
-        let key = |marker: NumberingMarker| {
-            let paragraph = Paragraph {
-                numbering_marker: marker,
-                ..Default::default()
-            };
-            let mut key = String::new();
-            push_replay_paragraph_key(&mut key, 0, &paragraph);
-            key
-        };
-        let text = |number: &str| NumberingMarker::Text(number.into(), MarkerHead::default());
-        assert_ne!(key(text("1.")), key(text("2.")));
-        assert_ne!(
-            key(NumberingMarker::Unresolved),
-            key(NumberingMarker::Absent)
-        );
-        assert_eq!(key(text("1.")), key(text("1.")));
     }
 }

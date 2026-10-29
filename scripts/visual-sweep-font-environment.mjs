@@ -52,7 +52,7 @@ export function hasTrueTypeSfntSignature(bytes) {
 
 // FontTools로 준비한 실제 SFNT bytes의 로드 성공·hash·형식을 증명한 뒤만
 // 환경 선택에 제공한다. local() 성공이나 catalogue의 이름만으로 선언하지 않는다.
-export async function loadSweepFontPrograms(plan, fonts, host = globalThis) {
+export async function loadSweepFontPrograms(plan, fonts, host = globalThis, sourceOwner = null) {
   const programs = [], loaded = [], supplied = new Set(), resources = new Map();
   for (const {query, face: record} of selectSweepProgramFaces(plan, fonts)) {
     let resource = resources.get(record.url);
@@ -69,7 +69,10 @@ export async function loadSweepFontPrograms(plan, fonts, host = globalThis) {
     for (const alias of new Set([query, family])) {
       const key = `${alias.toLowerCase()}|${record.weight}|${record.style}`;
       if (supplied.has(key)) continue;
-      const font = new host.FontFace(alias, resource.bytes, {weight: String(record.weight), style: record.style});
+      const descriptors = {weight: String(record.weight), style: record.style};
+      const unicodeRange = sourceOwner?.getFontSymbolUnicodeRange?.(new Uint8Array(resource.bytes), 0);
+      if (unicodeRange) descriptors.unicodeRange = unicodeRange;
+      const font = new host.FontFace(alias, resource.bytes, descriptors);
       try { await font.load(); }
       catch (error) {
         throw Error(`선택한 글꼴 프로그램 로드 실패: family=${alias}, source=${record.source || record.url}, faceIndex=${record.faceIndex}, sha256=${resource.sha256}: ${error}`);

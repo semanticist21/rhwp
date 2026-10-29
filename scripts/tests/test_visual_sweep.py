@@ -214,7 +214,7 @@ class OverlayLabelFitTests(unittest.TestCase):
             fast_dir = temp_dir / "fast"
             manifest = SWEEP.write_silhouette_tsv([(14, rhwp_path, pdf_path)], fast_dir, "summary")
             row = (fast_dir / "silhouette.tsv").read_text().splitlines()[1].split("\t")
-            self.assertEqual(float(row[1]), summary["worst_tolerant_content_match_percent"])
+            self.assertEqual(row[1], f"{summary['worst_tolerant_content_match_percent']:.2f}")
             self.assertFalse(list(fast_dir.rglob("*.png")))
             self.assertNotEqual(manifest["pr_review_gate"]["status"], "passed")
             with self.assertRaises(SystemExit):

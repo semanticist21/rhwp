@@ -1613,6 +1613,64 @@ impl DocumentCore {
             ));
         }
 
+        // 표 하나와 구역·단 정의만 있는 본문은 자기 표의 시작점을 쓴다. 칸 안의 같은 문단 번호는 빌리지 않는다.
+        if let Some(para) = self
+            .get_render_paragraph_ref(section_idx, para_idx)
+            .ok()
+            .filter(|para| {
+                char_offset == 0
+                    && para.text.is_empty()
+                    && para
+                        .controls
+                        .iter()
+                        .filter(|control| matches!(control, Control::Table(_)))
+                        .count()
+                        == 1
+                    && para.controls.iter().all(|control| match control {
+                        Control::Table(table) => !table.common.treat_as_char,
+                        definition => {
+                            matches!(definition, Control::SectionDef(_) | Control::ColumnDef(_))
+                        }
+                    })
+            })
+        {
+            fn find_table_host_anchor<'a>(
+                node: &'a RenderNode,
+                sec: usize,
+                para: usize,
+                source: &Paragraph,
+            ) -> Option<&'a RenderNode> {
+                match &node.node_type {
+                    RenderNodeType::Table(table) => {
+                        return (table.cell_context.is_none()
+                            && table.section_index == Some(sec)
+                            && table.para_index == Some(para)
+                            && table.control_index.is_some_and(|index| {
+                                matches!(source.controls.get(index), Some(Control::Table(table))
+                                    if !table.common.treat_as_char)
+                            }))
+                        .then_some(node);
+                    }
+                    RenderNodeType::TableCell(_)
+                    | RenderNodeType::TextBox
+                    | RenderNodeType::Header
+                    | RenderNodeType::Footer
+                    | RenderNodeType::MasterPage
+                    | RenderNodeType::FootnoteArea => return None,
+                    _ => {}
+                }
+                node.children
+                    .iter()
+                    .find_map(|child| find_table_host_anchor(child, sec, para, source))
+            }
+            if let Some(table) = find_table_host_anchor(&tree.root, section_idx, para_idx, para) {
+                return Ok(format!(
+                    "{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"height\":{:.1}}}",
+                    first_page, table.bbox.x, table.bbox.y, 12.0
+                ));
+            }
+        }
+
         Err(HwpError::RenderError(format!(
             "커서 위치를 찾을 수 없습니다: sec={}, para={}, offset={}",
             section_idx, para_idx, char_offset

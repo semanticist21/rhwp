@@ -718,6 +718,52 @@ impl TypesetEngine {
         // 일반 행 강제 배치 경로가 통째로 밀어넣어 본문 초과(예: pi=242 vert_off 38px,
         // 잔여 65.4px 로 보였으나 실가용 23.4px < 행0 34.9px). 루프 내 page_avail
         // (host_before_overhead/vert_offset_overhead) 와 동일 overhead 를 가드에도 적용.
+        // 캡션 처리
+        let caption_is_top = para
+            .controls
+            .get(ctrl_idx)
+            .and_then(|c| {
+                if let Control::Table(t) = c {
+                    t.caption
+                        .as_ref()
+                        .map(|cap| matches!(cap.direction, CaptionDirection::Top))
+                } else {
+                    None
+                }
+            })
+            .unwrap_or(false);
+
+        let host_line_spacing_for_caption =
+            crate::renderer::float_placement::block_table_caption_host_spacing_px(
+                para, table, self.dpi,
+            );
+        let caption_base_overhead = {
+            let ch = ft.caption_height;
+            if ch > 0.0 {
+                let cs_val = para
+                    .controls
+                    .get(ctrl_idx)
+                    .and_then(|c| {
+                        if let Control::Table(t) = c {
+                            t.caption
+                                .as_ref()
+                                .map(|cap| hwpunit_to_px(cap.spacing as i32, self.dpi))
+                        } else {
+                            None
+                        }
+                    })
+                    .unwrap_or(0.0);
+                ch + cs_val
+            } else {
+                0.0
+            }
+        };
+        let caption_overhead = if caption_base_overhead > 0.0 && !caption_is_top {
+            caption_base_overhead + host_line_spacing_for_caption
+        } else {
+            caption_base_overhead
+        };
+
         let (first_frag_overhead, first_fragment_outer_bottom) = {
             let (host_before, fragment_outer_bottom) = partial_rowbreak_fragment_spacing_px(
                 table,
@@ -742,8 +788,39 @@ impl TypesetEngine {
                     0.0
                 }
             };
+            // [#8149] 첫 조각 행 예산과 같은 빈 host 바닥 예약으로 첫 행 수용을 판정한다.
+            // 선언 개체 높이가 첫 조각만 덮으면(#7147) 한/글이 이 표를 거기서 나눴다는 저장
+            // 증거이므로 이월 판정에는 쓰지 않는다 — 한글문서파일형식 51쪽 표 334 는 선언
+            // 19.5px = 제목 행이고 한/글도 제목 행만 51쪽에 둔다. 선언이 모든 행을 덮는
+            // 표 199(선언 117.9px = 7행)는 한/글이 통째로 33쪽에 둔다.
+            let declared_covers_rows = mt.row_heights.iter().sum::<f64>()
+                + cs * row_count.saturating_sub(1) as f64
+                <= hwpunit_to_px(table.common.height.min(i32::MAX as u32) as i32, self.dpi) + 1.0;
+            let has_source_text_first_frame = st.profile.hwp5_stored_pagination_layout()
+                && layout_engine
+                    .native_text_frame_first_fragment_saved_top(
+                        para,
+                        para_idx.checked_sub(1).and_then(|i| paragraphs_all.get(i)),
+                        table,
+                        &st.inline_flow_column(),
+                        styles,
+                    )
+                    .is_some();
+            let empty_host_reserve = if !declared_covers_rows {
+                0.0
+            } else {
+                crate::renderer::typeset::empty_host_float_first_fragment_reserve_px(
+                    para,
+                    table,
+                    fragment_outer_bottom,
+                    has_source_text_first_frame,
+                    caption_overhead,
+                    caption_is_top,
+                    self.dpi,
+                )
+            };
             (
-                host_before + vert_off + fragment_outer_bottom,
+                host_before + vert_off + fragment_outer_bottom + empty_host_reserve,
                 fragment_outer_bottom,
             )
         };
@@ -891,22 +968,24 @@ impl TypesetEngine {
         // 조각 스캔의 첫 조각 재맞춤(#2097 `FN_REFIT`)과 같은 앵커 위치·같은 예약 몫을
         // 쓴다. 1382000 96쪽: 49×2 표의 각주 3)~5) 앵커는 98쪽 행에 있는데 280px 예약이
         // 잔여를 0 으로 만들어 표 전체가 97쪽으로 갔다(한/글은 96쪽 바닥에 캡션·머리 행·4행).
-        let table_fn_reserved = (total_footnote - st.current_footnote_height).max(0.0)
-            + if st.current_footnote_height <= 0.0 {
-                fn_margin
-            } else {
-                0.0
-            };
+        // [#7732] 표 각주를 이 쪽에서 빼면 남는 각주는 이미 정해진 쪽 각주뿐이라 경계가 확정이다.
+        // 그 경계를 지키는 40px 여유도 함께 되돌린다(한/글은 각주 구분선 바로 위까지 행을 놓는다).
+        // [#7732] 이 쪽에 표가 다 들어가지 않으면 표 각주는 첫 조각 쪽에 오지 않는다 — 한/글은
+        // 행을 칸 각주 때문에 줄이지 않고, 칸 각주는 조각 뒤 남는 공간이나 표가 끝나는 쪽에
+        // 놓는다(합성 `samples/issue1937/gen_cell_notes_multipage.py`, 한/글 2020·2024).
+        let table_fn_reserved = (total_footnote - st.current_footnote_height).max(0.0) + fn_margin;
+        let table_continues_past_page = all_rows_h > remaining_with(table_fn_reserved) + 0.5;
         let first_unit_note_release = if table_fn_reserved > 0.5
             && !ft.table_footnotes.is_empty()
-            && table::footnotes::first_table_footnote_anchor_offset(
-                &layout_engine,
-                row_geometry_table,
-                styles,
-                &cut_row_h,
-                cs,
-            )
-            .is_some_and(|anchor| anchor >= split_unit_h)
+            && (table_continues_past_page
+                || table::footnotes::first_table_footnote_anchor_offset(
+                    &layout_engine,
+                    row_geometry_table,
+                    styles,
+                    &cut_row_h,
+                    cs,
+                )
+                .is_some_and(|anchor| anchor >= split_unit_h))
         {
             table_fn_reserved
         } else {
@@ -1147,52 +1226,6 @@ impl TypesetEngine {
                 st.advance_column_or_new_page();
             }
         }
-
-        // 캡션 처리
-        let caption_is_top = para
-            .controls
-            .get(ctrl_idx)
-            .and_then(|c| {
-                if let Control::Table(t) = c {
-                    t.caption
-                        .as_ref()
-                        .map(|cap| matches!(cap.direction, CaptionDirection::Top))
-                } else {
-                    None
-                }
-            })
-            .unwrap_or(false);
-
-        let host_line_spacing_for_caption =
-            crate::renderer::float_placement::block_table_caption_host_spacing_px(
-                para, table, self.dpi,
-            );
-        let caption_base_overhead = {
-            let ch = ft.caption_height;
-            if ch > 0.0 {
-                let cs_val = para
-                    .controls
-                    .get(ctrl_idx)
-                    .and_then(|c| {
-                        if let Control::Table(t) = c {
-                            t.caption
-                                .as_ref()
-                                .map(|cap| hwpunit_to_px(cap.spacing as i32, self.dpi))
-                        } else {
-                            None
-                        }
-                    })
-                    .unwrap_or(0.0);
-                ch + cs_val
-            } else {
-                0.0
-            }
-        };
-        let caption_overhead = if caption_base_overhead > 0.0 && !caption_is_top {
-            caption_base_overhead + host_line_spacing_for_caption
-        } else {
-            caption_base_overhead
-        };
 
         // [Task #1831] 한글 float 정합 — **같은 문단에 앵커된 선행 float(표)
         // 아래로 밀려 내려온** 다행(多行) 자리차지 표가 현재 단 잔여 공간에
@@ -1448,6 +1481,14 @@ impl TypesetEngine {
                 occupied_bottom: top + frame.opening_height,
             })
         });
+        // [#8149] 앞 쪽에서 포맷한 표를 이월해 새 단 첫머리에서 열면 host 문단 앞 간격은
+        // 쓰지 않는다(배치도 같은 자리에 그린다). 한글문서파일형식 42쪽 표 270 은 41쪽에서
+        // 포맷돼 앞 간격 6.7px 를 흐름에 더해 뒤 표 271 이 그만큼 내려갔다.
+        let deferred_column_top_released_before = if st.flow_table_column_top() {
+            (ft.host_spacing.before - ft.host_spacing.column_top_before).max(0.0)
+        } else {
+            0.0
+        };
         let prepared = BlockTableContinuationPreparedState {
             computed_host_tail,
             first_anchor_offset_consumed,
@@ -1482,8 +1523,8 @@ impl TypesetEngine {
             queue_table_footnotes,
             table_footnotes: ft.table_footnotes.clone(),
             footnote_margin: fn_margin,
-            host_spacing_total,
-            host_spacing_before: ft.host_spacing.before,
+            host_spacing_total: host_spacing_total - deferred_column_top_released_before,
+            host_spacing_before: ft.host_spacing.before - deferred_column_top_released_before,
             host_spacing_after_only: ft.host_spacing.spacing_after_only,
             terminal_outer_bottom_flow: ft.host_spacing.terminal_outer_bottom_flow,
             terminal_host_spacing,

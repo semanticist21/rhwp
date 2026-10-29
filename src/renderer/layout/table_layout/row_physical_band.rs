@@ -1,7 +1,8 @@
 //! 논리 전진 예산과 실제 조각 끝의 내용 점유를 구분한다.
 
 use super::{
-    CellUnit, LayoutEngine, ResolvedStyleSet, RowCutResult, ROW_CUT_CAPACITY_FP_EPSILON_PX,
+    CellUnit, LayoutEngine, NestedTableCut, ResolvedStyleSet, RowCutResult,
+    ROW_CUT_CAPACITY_FP_EPSILON_PX,
 };
 use crate::model::{
     control::Control,
@@ -416,6 +417,43 @@ impl LayoutEngine {
     ) -> f64 {
         self.cut_trailing_advances(table, cell, units, start, end, styles)
             .1
+    }
+
+    /// 한 셀의 원본 유닛을 그대로 투영한 부모도 같은 컷의 후행 전진을 넘긴다.
+    /// 줄 뒤 간격만 감소 한도로 사용하며, 자식의 선언된 빈 물리 띠는 회수하지 않는다.
+    pub(super) fn projected_cut_trailing_advance(
+        &self,
+        child: &Table,
+        cut: &NestedTableCut,
+        styles: &ResolvedStyleSet,
+        purpose: CutHeight,
+    ) -> f64 {
+        let [cell] = child.cells.as_slice() else {
+            return 0.0;
+        };
+        if cut.start_row != 0 || cut.end_row != 1 || cut.is_block_split || cut.start_cut_is_block {
+            return 0.0;
+        }
+        let units = self.cell_units(cell, child, styles);
+        let start = cut.start_cut.first().copied().unwrap_or(0).min(units.len());
+        let end = cut
+            .end_cut
+            .first()
+            .copied()
+            .unwrap_or(units.len())
+            .clamp(start, units.len());
+        if start == end || end == units.len() {
+            return 0.0;
+        }
+        let trailing = match purpose {
+            CutHeight::Capacity => {
+                self.row_cut_capacity_trailing_trim(child, cell, &units, start, end, styles)
+            }
+            CutHeight::Occupied => {
+                self.physical_cut_trailing_trim(child, cell, &units, start, end, styles)
+            }
+        };
+        trailing + self.continued_cut_nested_atom_tail(cell, &units, start, end, styles)
     }
 
     /// 실제 칸별 안여백과 같은 컷의 내용 점유로 물리 밴드 안의 유닛을 고른다.
