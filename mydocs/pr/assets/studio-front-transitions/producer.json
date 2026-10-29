@@ -1,0 +1,2783 @@
+{
+  "summary": {
+    "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+    "stages": 9,
+    "all_checks_passed": true,
+    "stable_screens": 9,
+    "baseline_commit": "e3b9f441e0d7c0979827aa37bbabb70f0b70f1fd",
+    "baseline_page_sha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7",
+    "bytes_collected": 3092480,
+    "rows": [
+      {
+        "stage": "initial",
+        "zoom": "1",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          794,
+          1123
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7"
+        },
+        "full_page_visible": true,
+        "front_ink": {
+          "minX": 55,
+          "minY": 87,
+          "maxX": 436,
+          "maxY": 664
+        }
+      },
+      {
+        "stage": "dpr2-only",
+        "zoom": "1",
+        "window_dpr": 2,
+        "raw_dpr": "2",
+        "effective_dpr": "2",
+        "backing": [
+          1588,
+          2246
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 1588,
+          "height": 2246,
+          "sha256": "e2ad80c9f032c2dc1b9e0949e48be26fb48a5782189e6b31b13b4378d2b6930d"
+        },
+        "full_page_visible": true,
+        "front_ink": {
+          "minX": 111,
+          "minY": 175,
+          "maxX": 873,
+          "maxY": 1328
+        }
+      },
+      {
+        "stage": "dpr3-only",
+        "zoom": "1",
+        "window_dpr": 3,
+        "raw_dpr": "3",
+        "effective_dpr": "3",
+        "backing": [
+          2382,
+          3368
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 2382,
+          "height": 3369,
+          "sha256": "279fac0e7e1622ab6d0178fade806a5a12b3a624451b73c2f35907225430d981"
+        },
+        "full_page_visible": true,
+        "front_ink": {
+          "minX": 166,
+          "minY": 263,
+          "maxX": 1309,
+          "maxY": 1992
+        }
+      },
+      {
+        "stage": "dpr125-only",
+        "zoom": "1",
+        "window_dpr": 1.25,
+        "raw_dpr": "1.25",
+        "effective_dpr": "1.25",
+        "backing": [
+          993,
+          1404
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 993,
+          "height": 1404,
+          "sha256": "958121342506271dd2679812ab26b113da67738fdb5f99761745c04fef8c9e6a"
+        },
+        "full_page_visible": true,
+        "front_ink": {
+          "minX": 69,
+          "minY": 109,
+          "maxX": 545,
+          "maxY": 830
+        }
+      },
+      {
+        "stage": "dpr-restored",
+        "zoom": "1",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          794,
+          1123
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7"
+        },
+        "full_page_visible": true,
+        "front_ink": {
+          "minX": 55,
+          "minY": 87,
+          "maxX": 436,
+          "maxY": 664
+        }
+      },
+      {
+        "stage": "zoom125",
+        "zoom": "1.25",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          993,
+          1404
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 153.9375,
+          "y": 89.5,
+          "width": 992.125,
+          "height": 1403.125,
+          "top": 89.5,
+          "right": 1146.0625,
+          "bottom": 1492.625,
+          "left": 153.9375
+        },
+        "page_png": null,
+        "full_page_visible": false,
+        "front_ink": {
+          "minX": 69,
+          "minY": 109,
+          "maxX": 545,
+          "maxY": 830
+        }
+      },
+      {
+        "stage": "zoom-restored",
+        "zoom": "1",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          794,
+          1123
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7"
+        },
+        "full_page_visible": true,
+        "front_ink": {
+          "minX": 55,
+          "minY": 87,
+          "maxX": 436,
+          "maxY": 664
+        }
+      },
+      {
+        "stage": "dpr2-resized",
+        "zoom": "1",
+        "window_dpr": 2,
+        "raw_dpr": "2",
+        "effective_dpr": "2",
+        "backing": [
+          1588,
+          2246
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 333.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1126.84375,
+          "bottom": 1272.5,
+          "left": 333.15625
+        },
+        "page_png": {
+          "width": 1588,
+          "height": 2246,
+          "sha256": "e2ad80c9f032c2dc1b9e0949e48be26fb48a5782189e6b31b13b4378d2b6930d"
+        },
+        "full_page_visible": true,
+        "front_ink": {
+          "minX": 111,
+          "minY": 175,
+          "maxX": 873,
+          "maxY": 1328
+        }
+      },
+      {
+        "stage": "all-restored",
+        "zoom": "1",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          794,
+          1123
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7"
+        },
+        "full_page_visible": true,
+        "front_ink": {
+          "minX": 55,
+          "minY": 87,
+          "maxX": 436,
+          "maxY": 664
+        }
+      }
+    ]
+  },
+  "runtime": {
+    "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+    "sourceTree": "1ff3de58d486cdfcf0b36247d430609d7fb81869",
+    "phase": "candidate",
+    "backend": "canvas2d",
+    "specimen": "front",
+    "browser": "156.0.8078.73",
+    "production": true,
+    "consoleLog": [
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[FontLoader] 웹폰트 로드 시작: 3개 파일 (이미 요청함: 0개)"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: 함초롬돋움 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: 함초롬바탕 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: RHWP Old Hangul <- fonts/RHWPOldHangul-Regular.woff2"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: RHWP Old Hangul <- fonts/RHWPOldHangul-Regular.woff2"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: 함초롬돋움 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff"
+      },
+      {
+        "type": "warning",
+        "text": "Service Worker registration blocked by Playwright"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: 함초롬바탕 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      },
+      {
+        "type": "log",
+        "text": "[FontLoader] 폰트 로드 완료: 3개 성공, 0개 실패 (총 3개 파일 요청)"
+      },
+      {
+        "type": "log",
+        "text": "[WasmBridge] WASM 초기화 완료 (rhwp 0.9.0)"
+      },
+      {
+        "type": "log",
+        "text": "[WasmBridge] 새 문서 생성: 1페이지"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 1. 폰트 로딩 시작"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 2. 폰트 로딩 완료"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 3. inputHandler deactivate"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 4. canvasView loadDocument"
+      },
+      {
+        "type": "log",
+        "text": "[CanvasView] 1/1페이지 로드, 총 높이: 1142.5px"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 5. toolbar setEnabled"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 6. toolbar initFontDropdown + initStyleDropdown"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 7. 사전 검증 및 로컬 글꼴 확인"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 8. inputHandler activateWithCaretPosition"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 9. 완료"
+      },
+      {
+        "type": "debug",
+        "text": "[autosave] draft deleted: e6a5f58d-c6c0-4046-8a8a-908fa2fee11b (document-replaced)"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 1. 폰트 로딩 시작"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 2. 폰트 로딩 완료"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 3. inputHandler deactivate"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 4. canvasView loadDocument"
+      },
+      {
+        "type": "log",
+        "text": "[CanvasView] 1/1페이지 로드, 총 높이: 1142.5px"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 5. toolbar setEnabled"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 6. toolbar initFontDropdown + initStyleDropdown"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 7. 사전 검증 및 로컬 글꼴 확인"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 8. inputHandler activateWithCaretPosition"
+      },
+      {
+        "type": "warning",
+        "text": "[CursorState] updateRect 실패 → rect=null pos=(%d,%d,%d) cell=(%s,%s,%s,%s): 0 0 0 undefined undefined undefined undefined 렌더링 오류: 커서 위치를 찾을 수 없습니다: sec=0, para=0, offset=0"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 9. 완료"
+      }
+    ],
+    "pageErrors": [],
+    "responses": [
+      {
+        "url": "http://127.0.0.1:45633/theme-init.js",
+        "status": 200,
+        "sha256": "5a3afcc0139187bfe509414cd60fde2a0dfea72fd72751c4e6e696cdc0f6c587"
+      },
+      {
+        "url": "http://127.0.0.1:45633/locale-init.js",
+        "status": 200,
+        "sha256": "633d47a6a53b2211cf816769f8c084b097c1b60b6ab263803d8610c0531539fa"
+      },
+      {
+        "url": "http://127.0.0.1:45633/registerSW.js",
+        "status": 200,
+        "sha256": "9742073ef7fc795e7673d98f272992843298426a0ffd8cb3507784df5143608b"
+      },
+      {
+        "url": "http://127.0.0.1:45633/assets/index-B7ByZimA.js",
+        "status": 200,
+        "sha256": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa"
+      },
+      {
+        "url": "http://127.0.0.1:45633/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "sha256": "1a45a61e9a320c1bc62ca1401f7b23ceffffe8133dc2a9650ad4e12524f8dcab"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff",
+        "status": 200,
+        "sha256": "49bf312aec309ba88c3eb612c591c2d8e28b765c156c808691850137431bb1bf"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+        "status": 200,
+        "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c"
+      },
+      {
+        "url": "http://127.0.0.1:45633/assets/plugin-DO1SH32F.js",
+        "status": 200,
+        "sha256": "fd4da7dc0aae8f64ed16f659004a1c73757dc928d1515f632f0c35695e655823"
+      },
+      {
+        "url": "http://127.0.0.1:45633/assets/rhwp_bg-MJdpQrZt.wasm",
+        "status": 200,
+        "sha256": "f5c1452c503bd7789d126a78ff5004e7c8ca282ab08822dbfb9bbd04bc759791",
+        "observedDuringInitialization": true
+      }
+    ],
+    "failures": [],
+    "input": {
+      "name": "shape-group-02.hwp",
+      "sha256": "12a4b4962a57b4d292d23a1809255ddb7e8400af4dc7884c5bcb7b4767a6628f"
+    },
+    "stages": [
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "2",
+              "rhwpEstimatedSurfaceBytes": "7127426",
+              "rhwpEstimatedVisibleSurfaceBytes": "7127426",
+              "rhwpEstimatedRetainedSurfaceBytes": "7127426",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "1783324",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2|surfaces:main:794x1123,front:794x1123"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; z-index: 1; width: 793.7px; height: 1122.5px;",
+            "zIndex": "1",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          },
+          {
+            "plane": "front-0",
+            "dataset": {
+              "rhwpLayerKind": "front",
+              "rhwpOverlay": "front-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=front|profile=screen|backend=canvas2d|summary=overlay:0:1:0:0:0:0:0:#ffffff:0:215"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 2; image-rendering: crisp-edges;",
+            "zIndex": "2",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 145984,
+            "inkBounds": {
+              "minX": 55,
+              "minY": 87,
+              "maxX": 436,
+              "maxY": 664
+            }
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (158.8ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "2",
+            "rhwpEstimatedSurfaceBytes": "7127426",
+            "rhwpEstimatedVisibleSurfaceBytes": "7127426",
+            "rhwpEstimatedRetainedSurfaceBytes": "7127426",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "1783324",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2|surfaces:main:794x1123,front:794x1123"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "6b6a28d87df6393dbd87ce0aa826802cf80df1bee40696bf5966706b93d08bcd"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "6b6a28d87df6393dbd87ce0aa826802cf80df1bee40696bf5966706b93d08bcd"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7"
+        },
+        "pageSha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7",
+        "events": [],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "front-0",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "initial"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "2",
+              "rhwpRequestedDpr": "2",
+              "rhwpRenderScale": "2",
+              "rhwpRawDpr": "2",
+              "rhwpEffectiveDpr": "2",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "2",
+              "rhwpEstimatedSurfaceBytes": "28509704",
+              "rhwpEstimatedVisibleSurfaceBytes": "28509704",
+              "rhwpEstimatedRetainedSurfaceBytes": "28509704",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "7133296",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:2",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:2|surfaces:main:1588x2246,front:1588x2246"
+            },
+            "width": 1588,
+            "height": 2246,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: auto; z-index: 1; width: 793.7px; height: 1122.5px;",
+            "zIndex": "1",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          },
+          {
+            "plane": "front-0",
+            "dataset": {
+              "rhwpLayerKind": "front",
+              "rhwpOverlay": "front-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=2|width=1588|height=2246|layer=front|profile=screen|backend=canvas2d|summary=overlay:0:1:0:0:0:0:0:#ffffff:0:215"
+            },
+            "width": 1588,
+            "height": 2246,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 2; image-rendering: auto;",
+            "zIndex": "2",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 580814,
+            "inkBounds": {
+              "minX": 111,
+              "minY": 175,
+              "maxX": 873,
+              "maxY": 1328
+            }
+          }
+        ],
+        "dpr": 2,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (158.8ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 1588,
+          "height": 2246,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "2",
+            "rhwpRequestedDpr": "2",
+            "rhwpRenderScale": "2",
+            "rhwpRawDpr": "2",
+            "rhwpEffectiveDpr": "2",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "2",
+            "rhwpEstimatedSurfaceBytes": "28509704",
+            "rhwpEstimatedVisibleSurfaceBytes": "28509704",
+            "rhwpEstimatedRetainedSurfaceBytes": "28509704",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "7133296",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:2",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:2|surfaces:main:1588x2246,front:1588x2246"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "screenPng": {
+          "width": 2560,
+          "height": 3000,
+          "sha256": "d2178e52148e7a38712202239efaad3650b3401b85850d9d959617567223040a"
+        },
+        "stableScreenPng": {
+          "width": 2560,
+          "height": 3000,
+          "sha256": "d2178e52148e7a38712202239efaad3650b3401b85850d9d959617567223040a"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 1588,
+          "height": 2246,
+          "sha256": "e2ad80c9f032c2dc1b9e0949e48be26fb48a5782189e6b31b13b4378d2b6930d"
+        },
+        "pageSha256": "e2ad80c9f032c2dc1b9e0949e48be26fb48a5782189e6b31b13b4378d2b6930d",
+        "events": [
+          {
+            "phase": "dpr2-only",
+            "kind": "resolution-media-query",
+            "timestamp": 7801.5,
+            "dpr": 2,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1dppx)",
+            "matches": false
+          },
+          {
+            "phase": "dpr2-only",
+            "kind": "resolution-media-query",
+            "timestamp": 7801.5,
+            "dpr": 2,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 2dppx)",
+            "matches": true
+          }
+        ],
+        "afterCaptureDpr": 2,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 1588,
+            "height": 2246,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "front-0",
+            "width": 1588,
+            "height": 2246,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr2-only"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "3",
+              "rhwpRequestedDpr": "3",
+              "rhwpRenderScale": "3",
+              "rhwpRawDpr": "3",
+              "rhwpEffectiveDpr": "3",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "2",
+              "rhwpEstimatedSurfaceBytes": "64146834",
+              "rhwpEstimatedVisibleSurfaceBytes": "64146834",
+              "rhwpEstimatedRetainedSurfaceBytes": "64146834",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "16045152",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:3|layers:2",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:3|layers:2|surfaces:main:2382x3368,front:2382x3368"
+            },
+            "width": 2382,
+            "height": 3368,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; z-index: 1; width: 793.7px; height: 1122.5px;",
+            "zIndex": "1",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          },
+          {
+            "plane": "front-0",
+            "dataset": {
+              "rhwpLayerKind": "front",
+              "rhwpOverlay": "front-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=3|width=2382|height=3368|layer=front|profile=screen|backend=canvas2d|summary=overlay:0:1:0:0:0:0:0:#ffffff:0:215"
+            },
+            "width": 2382,
+            "height": 3368,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 2; image-rendering: crisp-edges;",
+            "zIndex": "2",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 1304447,
+            "inkBounds": {
+              "minX": 166,
+              "minY": 263,
+              "maxX": 1309,
+              "maxY": 1992
+            }
+          }
+        ],
+        "dpr": 3,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (158.8ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 2382,
+          "height": 3368,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "3",
+            "rhwpRequestedDpr": "3",
+            "rhwpRenderScale": "3",
+            "rhwpRawDpr": "3",
+            "rhwpEffectiveDpr": "3",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "2",
+            "rhwpEstimatedSurfaceBytes": "64146834",
+            "rhwpEstimatedVisibleSurfaceBytes": "64146834",
+            "rhwpEstimatedRetainedSurfaceBytes": "64146834",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "16045152",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:3|layers:2",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:3|layers:2|surfaces:main:2382x3368,front:2382x3368"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "screenPng": {
+          "width": 3840,
+          "height": 4500,
+          "sha256": "3ceae0ad998aa2cfdab011ab0447d3ec106e50a899650a1448170b1755fe1f0d"
+        },
+        "stableScreenPng": {
+          "width": 3840,
+          "height": 4500,
+          "sha256": "3ceae0ad998aa2cfdab011ab0447d3ec106e50a899650a1448170b1755fe1f0d"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 2382,
+          "height": 3369,
+          "sha256": "279fac0e7e1622ab6d0178fade806a5a12b3a624451b73c2f35907225430d981"
+        },
+        "pageSha256": "279fac0e7e1622ab6d0178fade806a5a12b3a624451b73c2f35907225430d981",
+        "events": [
+          {
+            "phase": "dpr3-only",
+            "kind": "resolution-media-query",
+            "timestamp": 10751.40000000596,
+            "dpr": 3,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 2dppx)",
+            "matches": false
+          },
+          {
+            "phase": "dpr3-only",
+            "kind": "resolution-media-query",
+            "timestamp": 10751.40000000596,
+            "dpr": 3,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 3dppx)",
+            "matches": true
+          }
+        ],
+        "afterCaptureDpr": 3,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 2382,
+            "height": 3368,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "front-0",
+            "width": 2382,
+            "height": 3368,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr3-only"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1.25",
+              "rhwpRequestedDpr": "1.25",
+              "rhwpRenderScale": "1.25",
+              "rhwpRawDpr": "1.25",
+              "rhwpEffectiveDpr": "1.25",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "2",
+              "rhwpEstimatedSurfaceBytes": "11136603.125",
+              "rhwpEstimatedVisibleSurfaceBytes": "11136603.125",
+              "rhwpEstimatedRetainedSurfaceBytes": "11136603.125",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "2788344",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:2",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:2|surfaces:main:993x1404,front:993x1404"
+            },
+            "width": 993,
+            "height": 1404,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; z-index: 1; width: 793.7px; height: 1122.5px;",
+            "zIndex": "1",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          },
+          {
+            "plane": "front-0",
+            "dataset": {
+              "rhwpLayerKind": "front",
+              "rhwpOverlay": "front-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1.25|width=993|height=1404|layer=front|profile=screen|backend=canvas2d|summary=overlay:0:1:0:0:0:0:0:#ffffff:0:215"
+            },
+            "width": 993,
+            "height": 1404,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 2; image-rendering: crisp-edges;",
+            "zIndex": "2",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 227629,
+            "inkBounds": {
+              "minX": 69,
+              "minY": 109,
+              "maxX": 545,
+              "maxY": 830
+            }
+          }
+        ],
+        "dpr": 1.25,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (158.8ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 993,
+          "height": 1404,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1.25",
+            "rhwpRequestedDpr": "1.25",
+            "rhwpRenderScale": "1.25",
+            "rhwpRawDpr": "1.25",
+            "rhwpEffectiveDpr": "1.25",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "2",
+            "rhwpEstimatedSurfaceBytes": "11136603.125",
+            "rhwpEstimatedVisibleSurfaceBytes": "11136603.125",
+            "rhwpEstimatedRetainedSurfaceBytes": "11136603.125",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "2788344",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:2",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:2|surfaces:main:993x1404,front:993x1404"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "screenPng": {
+          "width": 1600,
+          "height": 1875,
+          "sha256": "bc3298721a4f9668bed36ede82b3a2c963f8e4f0316ca19f45c5bfc28ebecbeb"
+        },
+        "stableScreenPng": {
+          "width": 1600,
+          "height": 1875,
+          "sha256": "bc3298721a4f9668bed36ede82b3a2c963f8e4f0316ca19f45c5bfc28ebecbeb"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 993,
+          "height": 1404,
+          "sha256": "958121342506271dd2679812ab26b113da67738fdb5f99761745c04fef8c9e6a"
+        },
+        "pageSha256": "958121342506271dd2679812ab26b113da67738fdb5f99761745c04fef8c9e6a",
+        "events": [
+          {
+            "phase": "dpr125-only",
+            "kind": "resolution-media-query",
+            "timestamp": 14448.59999999404,
+            "dpr": 1.25,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1.25dppx)",
+            "matches": true
+          },
+          {
+            "phase": "dpr125-only",
+            "kind": "resolution-media-query",
+            "timestamp": 14448.59999999404,
+            "dpr": 1.25,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 3dppx)",
+            "matches": false
+          }
+        ],
+        "afterCaptureDpr": 1.25,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 993,
+            "height": 1404,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "front-0",
+            "width": 993,
+            "height": 1404,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr125-only"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "2",
+              "rhwpEstimatedSurfaceBytes": "7127426",
+              "rhwpEstimatedVisibleSurfaceBytes": "7127426",
+              "rhwpEstimatedRetainedSurfaceBytes": "7127426",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "1783324",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2|surfaces:main:794x1123,front:794x1123"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; z-index: 1; width: 793.7px; height: 1122.5px;",
+            "zIndex": "1",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          },
+          {
+            "plane": "front-0",
+            "dataset": {
+              "rhwpLayerKind": "front",
+              "rhwpOverlay": "front-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=front|profile=screen|backend=canvas2d|summary=overlay:0:1:0:0:0:0:0:#ffffff:0:215"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 2; image-rendering: crisp-edges;",
+            "zIndex": "2",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 145984,
+            "inkBounds": {
+              "minX": 55,
+              "minY": 87,
+              "maxX": 436,
+              "maxY": 664
+            }
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (158.8ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "2",
+            "rhwpEstimatedSurfaceBytes": "7127426",
+            "rhwpEstimatedVisibleSurfaceBytes": "7127426",
+            "rhwpEstimatedRetainedSurfaceBytes": "7127426",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "1783324",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2|surfaces:main:794x1123,front:794x1123"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "ea201223e78792e5e08465b8d19c3db5856f3048ecb78be5a14eb8698b8533ea"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "ea201223e78792e5e08465b8d19c3db5856f3048ecb78be5a14eb8698b8533ea"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7"
+        },
+        "pageSha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7",
+        "events": [
+          {
+            "phase": "dpr-restored",
+            "kind": "resolution-media-query",
+            "timestamp": 17026,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1dppx)",
+            "matches": true
+          },
+          {
+            "phase": "dpr-restored",
+            "kind": "resolution-media-query",
+            "timestamp": 17026.09999999404,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1.25dppx)",
+            "matches": false
+          }
+        ],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "front-0",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr-restored"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1.25",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1.25",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "2",
+              "rhwpEstimatedSurfaceBytes": "11136603.125",
+              "rhwpEstimatedVisibleSurfaceBytes": "11136603.125",
+              "rhwpEstimatedRetainedSurfaceBytes": "11136603.125",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "2788344",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:2",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:2|surfaces:main:993x1404,front:993x1404"
+            },
+            "width": 993,
+            "height": 1404,
+            "rect": {
+              "x": 153.9375,
+              "y": 89.5,
+              "width": 992.125,
+              "height": 1403.125,
+              "top": 89.5,
+              "right": 1146.0625,
+              "bottom": 1492.625,
+              "left": 153.9375
+            },
+            "style": "top: 12.5px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; z-index: 1; width: 992.125px; height: 1403.12px;",
+            "zIndex": "1",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          },
+          {
+            "plane": "front-0",
+            "dataset": {
+              "rhwpLayerKind": "front",
+              "rhwpOverlay": "front-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1.25|width=993|height=1404|layer=front|profile=screen|backend=canvas2d|summary=overlay:0:1:0:0:0:0:0:#ffffff:0:215"
+            },
+            "width": 993,
+            "height": 1404,
+            "rect": {
+              "x": 153.9375,
+              "y": 89.5,
+              "width": 992.125,
+              "height": 1403.125,
+              "top": 89.5,
+              "right": 1146.0625,
+              "bottom": 1492.625,
+              "left": 153.9375
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 12.5px; left: 50%; transform: translateX(-50%); width: 992.125px; height: 1403.12px; overflow: hidden; z-index: 2; image-rendering: crisp-edges;",
+            "zIndex": "2",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 227629,
+            "inkBounds": {
+              "minX": 69,
+              "minY": 109,
+              "maxX": 545,
+              "maxY": 830
+            }
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "125%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (158.8ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          125%\n        \n      \n    ",
+        "canvas": {
+          "width": 993,
+          "height": 1404,
+          "dataset": {
+            "rhwpRenderedZoom": "1.25",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1.25",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "2",
+            "rhwpEstimatedSurfaceBytes": "11136603.125",
+            "rhwpEstimatedVisibleSurfaceBytes": "11136603.125",
+            "rhwpEstimatedRetainedSurfaceBytes": "11136603.125",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "2788344",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:2",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:2|surfaces:main:993x1404,front:993x1404"
+          }
+        },
+        "paper": {
+          "x": 153.9375,
+          "y": 89.5,
+          "width": 992.125,
+          "height": 1403.125,
+          "top": 89.5,
+          "right": 1146.0625,
+          "bottom": 1492.625,
+          "left": 153.9375
+        },
+        "scroll": {
+          "top": 63,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "b461f6bcacaba928a75b69de72e1793d1734b763526f808e102cf1da98055208"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "b461f6bcacaba928a75b69de72e1793d1734b763526f808e102cf1da98055208"
+        },
+        "stable": true,
+        "fullPageVisible": false,
+        "events": [],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 993,
+            "height": 1404,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "front-0",
+            "width": 993,
+            "height": 1404,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "zoom125"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "2",
+              "rhwpEstimatedSurfaceBytes": "7127426",
+              "rhwpEstimatedVisibleSurfaceBytes": "7127426",
+              "rhwpEstimatedRetainedSurfaceBytes": "7127426",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "1783324",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2|surfaces:main:794x1123,front:794x1123"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; z-index: 1; width: 793.7px; height: 1122.5px;",
+            "zIndex": "1",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          },
+          {
+            "plane": "front-0",
+            "dataset": {
+              "rhwpLayerKind": "front",
+              "rhwpOverlay": "front-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=front|profile=screen|backend=canvas2d|summary=overlay:0:1:0:0:0:0:0:#ffffff:0:215"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 2; image-rendering: crisp-edges;",
+            "zIndex": "2",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 145984,
+            "inkBounds": {
+              "minX": 55,
+              "minY": 87,
+              "maxX": 436,
+              "maxY": 664
+            }
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (158.8ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "2",
+            "rhwpEstimatedSurfaceBytes": "7127426",
+            "rhwpEstimatedVisibleSurfaceBytes": "7127426",
+            "rhwpEstimatedRetainedSurfaceBytes": "7127426",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "1783324",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2|surfaces:main:794x1123,front:794x1123"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "d54c1fd3155263c6df3a4fe5071b47f6b602b65103df28b127362894547308fc"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "d54c1fd3155263c6df3a4fe5071b47f6b602b65103df28b127362894547308fc"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7"
+        },
+        "pageSha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7",
+        "events": [],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "front-0",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "zoom-restored"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "2",
+              "rhwpRequestedDpr": "2",
+              "rhwpRenderScale": "2",
+              "rhwpRawDpr": "2",
+              "rhwpEffectiveDpr": "2",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "2",
+              "rhwpEstimatedSurfaceBytes": "28509704",
+              "rhwpEstimatedVisibleSurfaceBytes": "28509704",
+              "rhwpEstimatedRetainedSurfaceBytes": "28509704",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "7133296",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:2",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:2|surfaces:main:1588x2246,front:1588x2246"
+            },
+            "width": 1588,
+            "height": 2246,
+            "rect": {
+              "x": 333.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1126.84375,
+              "bottom": 1272.5,
+              "left": 333.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: auto; z-index: 1; width: 793.7px; height: 1122.5px;",
+            "zIndex": "1",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          },
+          {
+            "plane": "front-0",
+            "dataset": {
+              "rhwpLayerKind": "front",
+              "rhwpOverlay": "front-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=2|width=1588|height=2246|layer=front|profile=screen|backend=canvas2d|summary=overlay:0:1:0:0:0:0:0:#ffffff:0:215"
+            },
+            "width": 1588,
+            "height": 2246,
+            "rect": {
+              "x": 333.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1126.84375,
+              "bottom": 1272.5,
+              "left": 333.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 2; image-rendering: auto;",
+            "zIndex": "2",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 580814,
+            "inkBounds": {
+              "minX": 111,
+              "minY": 175,
+              "maxX": 873,
+              "maxY": 1328
+            }
+          }
+        ],
+        "dpr": 2,
+        "viewport": {
+          "width": 1440,
+          "height": 1600
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (158.8ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 1588,
+          "height": 2246,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "2",
+            "rhwpRequestedDpr": "2",
+            "rhwpRenderScale": "2",
+            "rhwpRawDpr": "2",
+            "rhwpEffectiveDpr": "2",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "2",
+            "rhwpEstimatedSurfaceBytes": "28509704",
+            "rhwpEstimatedVisibleSurfaceBytes": "28509704",
+            "rhwpEstimatedRetainedSurfaceBytes": "28509704",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "7133296",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:2",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:2|surfaces:main:1588x2246,front:1588x2246"
+          }
+        },
+        "paper": {
+          "x": 333.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1126.84375,
+          "bottom": 1272.5,
+          "left": 333.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1420,
+            "height": 1438,
+            "top": 140,
+            "right": 1440,
+            "bottom": 1578,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "screenPng": {
+          "width": 2880,
+          "height": 3200,
+          "sha256": "e5e9bf9e6f6f5fdd557b1581f87885a9c09190cf9cac64d58d272653a2821498"
+        },
+        "stableScreenPng": {
+          "width": 2880,
+          "height": 3200,
+          "sha256": "e5e9bf9e6f6f5fdd557b1581f87885a9c09190cf9cac64d58d272653a2821498"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 1588,
+          "height": 2246,
+          "sha256": "e2ad80c9f032c2dc1b9e0949e48be26fb48a5782189e6b31b13b4378d2b6930d"
+        },
+        "pageSha256": "e2ad80c9f032c2dc1b9e0949e48be26fb48a5782189e6b31b13b4378d2b6930d",
+        "events": [
+          {
+            "phase": "dpr2-resized",
+            "kind": "window-resize",
+            "timestamp": 24371.40000000596,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": true
+          },
+          {
+            "phase": "dpr2-resized",
+            "kind": "visual-viewport-resize",
+            "timestamp": 24371.40000000596,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": true
+          },
+          {
+            "phase": "dpr2-resized",
+            "kind": "resolution-media-query",
+            "timestamp": 24371.40000000596,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": true,
+            "query": "(resolution: 1dppx)",
+            "matches": false
+          },
+          {
+            "phase": "dpr2-resized",
+            "kind": "resolution-media-query",
+            "timestamp": 24371.5,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": true,
+            "query": "(resolution: 2dppx)",
+            "matches": true
+          },
+          {
+            "phase": "dpr2-resized",
+            "kind": "container-resize-observer",
+            "timestamp": 24371.5,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": null,
+            "containerWidth": 1420,
+            "containerHeight": 1438
+          }
+        ],
+        "afterCaptureDpr": 2,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 1588,
+            "height": 2246,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "front-0",
+            "width": 1588,
+            "height": 2246,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr2-resized"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "2",
+              "rhwpEstimatedSurfaceBytes": "7127426",
+              "rhwpEstimatedVisibleSurfaceBytes": "7127426",
+              "rhwpEstimatedRetainedSurfaceBytes": "7127426",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "1783324",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2|surfaces:main:794x1123,front:794x1123"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; z-index: 1; width: 793.7px; height: 1122.5px;",
+            "zIndex": "1",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          },
+          {
+            "plane": "front-0",
+            "dataset": {
+              "rhwpLayerKind": "front",
+              "rhwpOverlay": "front-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=front|profile=screen|backend=canvas2d|summary=overlay:0:1:0:0:0:0:0:#ffffff:0:215"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 2; image-rendering: crisp-edges;",
+            "zIndex": "2",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 145984,
+            "inkBounds": {
+              "minX": 55,
+              "minY": 87,
+              "maxX": 436,
+              "maxY": 664
+            }
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (158.8ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "2",
+            "rhwpEstimatedSurfaceBytes": "7127426",
+            "rhwpEstimatedVisibleSurfaceBytes": "7127426",
+            "rhwpEstimatedRetainedSurfaceBytes": "7127426",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "1783324",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2|surfaces:main:794x1123,front:794x1123"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": {
+          "x": 0,
+          "y": 0,
+          "width": 0,
+          "height": 0
+        },
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "d54c1fd3155263c6df3a4fe5071b47f6b602b65103df28b127362894547308fc"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "d54c1fd3155263c6df3a4fe5071b47f6b602b65103df28b127362894547308fc"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7"
+        },
+        "pageSha256": "c2340f7520ebda89ecaacdba61902af3e8ba3d665c7b047fc42754c425581ac7",
+        "events": [
+          {
+            "phase": "all-restored",
+            "kind": "window-resize",
+            "timestamp": 27414.29999999702,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true
+          },
+          {
+            "phase": "all-restored",
+            "kind": "visual-viewport-resize",
+            "timestamp": 27414.29999999702,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true
+          },
+          {
+            "phase": "all-restored",
+            "kind": "resolution-media-query",
+            "timestamp": 27414.29999999702,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1dppx)",
+            "matches": true
+          },
+          {
+            "phase": "all-restored",
+            "kind": "resolution-media-query",
+            "timestamp": 27414.40000000596,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 2dppx)",
+            "matches": false
+          },
+          {
+            "phase": "all-restored",
+            "kind": "container-resize-observer",
+            "timestamp": 27414.40000000596,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": null,
+            "containerWidth": 1260,
+            "containerHeight": 1338
+          }
+        ],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "front-0",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "all-restored"
+      }
+    ],
+    "metricsProtocol": "CDP device metrics + screen resolution media feature; no product dispatch",
+    "environmentChanges": [
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 2,
+        "mobile": false
+      },
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 3,
+        "mobile": false
+      },
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 1.25,
+        "mobile": false
+      },
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 1,
+        "mobile": false
+      },
+      {
+        "width": 1440,
+        "height": 1600,
+        "deviceScaleFactor": 2,
+        "mobile": false
+      },
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 1,
+        "mobile": false
+      }
+    ],
+    "caretCapturePhases": [
+      {
+        "name": "initial-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "initial-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "initial-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr2-only-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr2-only-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr2-only-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr3-only-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr3-only-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr3-only-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr125-only-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr125-only-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr125-only-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr-restored-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr-restored-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr-restored-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "zoom125-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "zoom125-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "zoom-restored-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "zoom-restored-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "zoom-restored-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr2-resized-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr2-resized-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr2-resized-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "all-restored-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "all-restored-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "all-restored-page.png",
+        "attempt": 1,
+        "phase": []
+      }
+    ],
+    "events": [
+      {
+        "phase": "observer-initialization",
+        "kind": "container-resize-observer",
+        "timestamp": 4206.5999999940395,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": null,
+        "containerWidth": 1260,
+        "containerHeight": 1338
+      },
+      {
+        "phase": "dpr2-only",
+        "kind": "resolution-media-query",
+        "timestamp": 7801.5,
+        "dpr": 2,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr2-only",
+        "kind": "resolution-media-query",
+        "timestamp": 7801.5,
+        "dpr": 2,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 2dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr3-only",
+        "kind": "resolution-media-query",
+        "timestamp": 10751.40000000596,
+        "dpr": 3,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 2dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr3-only",
+        "kind": "resolution-media-query",
+        "timestamp": 10751.40000000596,
+        "dpr": 3,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 3dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr125-only",
+        "kind": "resolution-media-query",
+        "timestamp": 14448.59999999404,
+        "dpr": 1.25,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1.25dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr125-only",
+        "kind": "resolution-media-query",
+        "timestamp": 14448.59999999404,
+        "dpr": 1.25,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 3dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr-restored",
+        "kind": "resolution-media-query",
+        "timestamp": 17026,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr-restored",
+        "kind": "resolution-media-query",
+        "timestamp": 17026.09999999404,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1.25dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "window-resize",
+        "timestamp": 24371.40000000596,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": true
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "visual-viewport-resize",
+        "timestamp": 24371.40000000596,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": true
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "resolution-media-query",
+        "timestamp": 24371.40000000596,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": true,
+        "query": "(resolution: 1dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "resolution-media-query",
+        "timestamp": 24371.5,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": true,
+        "query": "(resolution: 2dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "container-resize-observer",
+        "timestamp": 24371.5,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": null,
+        "containerWidth": 1420,
+        "containerHeight": 1438
+      },
+      {
+        "phase": "all-restored",
+        "kind": "window-resize",
+        "timestamp": 27414.29999999702,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true
+      },
+      {
+        "phase": "all-restored",
+        "kind": "visual-viewport-resize",
+        "timestamp": 27414.29999999702,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true
+      },
+      {
+        "phase": "all-restored",
+        "kind": "resolution-media-query",
+        "timestamp": 27414.29999999702,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1dppx)",
+        "matches": true
+      },
+      {
+        "phase": "all-restored",
+        "kind": "resolution-media-query",
+        "timestamp": 27414.40000000596,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 2dppx)",
+        "matches": false
+      },
+      {
+        "phase": "all-restored",
+        "kind": "container-resize-observer",
+        "timestamp": 27414.40000000596,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": null,
+        "containerWidth": 1260,
+        "containerHeight": 1338
+      }
+    ],
+    "trustedKeys": [
+      {
+        "key": "PageUp",
+        "trusted": true
+      },
+      {
+        "key": "PageUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "PageDown",
+        "trusted": true
+      },
+      {
+        "key": "PageDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      }
+    ],
+    "finalPageRestored": true,
+    "dprOnlyRepainted": true,
+    "resizedDprRepainted": true,
+    "dprOnlyMediaQueryDelivered": true,
+    "dprOnlyContainerResizeDelivered": false,
+    "dprOnlyWindowResizeDelivered": false,
+    "buildTree": "1ff3de58d486cdfcf0b36247d430609d7fb81869",
+    "initialJsSha256": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa",
+    "initialWasmSha256": "f5c1452c503bd7789d126a78ff5004e7c8ca282ab08822dbfb9bbd04bc759791",
+    "restoredScroll": true,
+    "passed": true,
+    "allChecksPassed": true
+  },
+  "scope": "controlled Canvas2D front-plane transitions only",
+  "baseline": {
+    "commit": "e3b9f441e0d7c0979827aa37bbabb70f0b70f1fd",
+    "page_url": "https://github.com/semanticist21/rhwp/blob/e3b9f441e0d7c0979827aa37bbabb70f0b70f1fd/mydocs/pr/assets/studio-front-plane/canvas2d-page.png",
+    "verification_url": "https://github.com/semanticist21/rhwp/blob/e3b9f441e0d7c0979827aa37bbabb70f0b70f1fd/mydocs/pr/assets/studio-front-plane/verification.md",
+    "source_blobs_equal": true
+  },
+  "source_blobs": {
+    "rhwp-studio/src/view/viewport-manager.ts": "3a5c1bafafebac9b388580e29c87c451b312fb24",
+    "rhwp-studio/src/view/canvas-view.ts": "85fd20d071f226e3e341dccab09712c8064e6329",
+    "rhwp-studio/src/view/page-renderer.ts": "f21e857f1ab6acbf2b77cc724f75c81c49c827f2"
+  }
+}
