@@ -409,8 +409,8 @@ fn paragraph_character_cell_and_diagonal_borders_share_long_dash_without_moving_
         .unwrap();
     let mut cell = border_props(6, 3, "#993377");
     cell["diagonalLine"] = json!(6);
-    cell["diagonalSlash"] = json!(1);
-    cell["diagonalBackSlash"] = json!(1);
+    cell["diagonalSlash"] = json!(2);
+    cell["diagonalBackSlash"] = json!(2);
     cell["diagonalWidth"] = json!(3);
     cell["diagonalColor"] = json!("#11aa55");
     doc.set_cell_properties_native(0, parent, control, 0, &cell.to_string())
