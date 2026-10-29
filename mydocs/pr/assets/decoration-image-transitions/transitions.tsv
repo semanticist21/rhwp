@@ -1,0 +1,7 @@
+stage	ui_zoom_percent	window_dpr	recorded_raw_dpr	effective_dpr	render_scale	viewport_css	screen_png_px	canvas_backing_px	dom_images	same_page_parent	full_page_visible	raw_dpr_matches_window	page_sha256
+initial	100	1	1	1	1	1280x1500	1280x1500	794x1123	2	1	1	1	eb2e5a16a481af1f6d3500a58d4ca65dc9cb578b6fda3138c438a31018a6c028
+zoom125	125	1	1	1	1.25	1280x1500	1280x1500	993x1404	2	1	0	1	not-captured
+zoom-restored	100	1	1	1	1	1280x1500	1280x1500	794x1123	2	1	1	1	eb2e5a16a481af1f6d3500a58d4ca65dc9cb578b6fda3138c438a31018a6c028
+dpr2-only	100	2	1	1	1	1280x1500	2560x3000	794x1123	2	1	1	0	b8c94bee035e6d8927572578873ad6baf65b5903aae06f2255dc36b29a92aecf
+dpr2-resized	100	2	2	2	2	1440x1600	2880x3200	1588x2246	2	1	1	1	dcd24ce3f1216690ad5ce446c78df0f71caee765e2b0625bebb81d96b473cfa3
+all-restored	100	1	1	1	1	1280x1500	1280x1500	794x1123	2	1	1	1	eb2e5a16a481af1f6d3500a58d4ca65dc9cb578b6fda3138c438a31018a6c028
