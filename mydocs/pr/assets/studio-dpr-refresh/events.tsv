@@ -1,0 +1,121 @@
+run_phase	backend	document	phase	kind	timestamp	dpr	width	height	trusted	query	matches	containerWidth	containerHeight
+base	canvas2d	pic	observer-initialization	container-resize-observer	4833.800000011921	1	1280	1500		not-applicable	not-applicable	1260	1338
+base	canvas2d	pic	dpr2-only	resolution-media-query	7410.300000011921	2	1280	1500	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+base	canvas2d	pic	dpr2-only	resolution-media-query	7410.4000000059605	2	1280	1500	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+base	canvas2d	pic	dpr2-resized	window-resize	9042.70000000298	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvas2d	pic	dpr2-resized	visual-viewport-resize	9042.800000011921	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvas2d	pic	dpr2-resized	container-resize-observer	9043.10000000894	2	1440	1600		not-applicable	not-applicable	1420	1438
+base	canvas2d	pic	all-restored	window-resize	10807.70000000298	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvas2d	pic	all-restored	visual-viewport-resize	10807.70000000298	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvas2d	pic	all-restored	resolution-media-query	10807.800000011921	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+base	canvas2d	pic	all-restored	resolution-media-query	10807.800000011921	1	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+base	canvas2d	pic	all-restored	container-resize-observer	10808	1	1280	1500		not-applicable	not-applicable	1260	1338
+base	canvas2d	top	observer-initialization	container-resize-observer	5304.29999999702	1	1280	1500		not-applicable	not-applicable	1260	1338
+base	canvas2d	top	dpr2-only	resolution-media-query	8402.79999999702	2	1280	1500	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+base	canvas2d	top	dpr2-only	resolution-media-query	8402.79999999702	2	1280	1500	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+base	canvas2d	top	dpr2-resized	window-resize	10611.60000000894	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvas2d	top	dpr2-resized	visual-viewport-resize	10611.70000000298	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvas2d	top	dpr2-resized	container-resize-observer	10612.10000000894	2	1440	1600		not-applicable	not-applicable	1420	1438
+base	canvas2d	top	all-restored	window-resize	13472.5	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvas2d	top	all-restored	visual-viewport-resize	13472.5	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvas2d	top	all-restored	resolution-media-query	13472.5	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+base	canvas2d	top	all-restored	resolution-media-query	13472.5	1	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+base	canvas2d	top	all-restored	container-resize-observer	13472.90000000596	1	1280	1500		not-applicable	not-applicable	1260	1338
+base	canvaskit	pic	observer-initialization	container-resize-observer	6947	1	1280	1500		not-applicable	not-applicable	1260	1338
+base	canvaskit	pic	dpr2-only	resolution-media-query	9657.09999999404	2	1280	1500	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+base	canvaskit	pic	dpr2-only	resolution-media-query	9657.20000000298	2	1280	1500	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+base	canvaskit	pic	dpr2-resized	window-resize	11273.59999999404	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvaskit	pic	dpr2-resized	visual-viewport-resize	11274.89999999106	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvaskit	pic	dpr2-resized	container-resize-observer	11275.39999999106	2	1440	1600		not-applicable	not-applicable	1420	1438
+base	canvaskit	pic	all-restored	window-resize	13049.59999999404	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvaskit	pic	all-restored	visual-viewport-resize	13049.59999999404	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvaskit	pic	all-restored	resolution-media-query	13049.59999999404	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+base	canvaskit	pic	all-restored	resolution-media-query	13049.59999999404	1	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+base	canvaskit	pic	all-restored	container-resize-observer	13050	1	1280	1500		not-applicable	not-applicable	1260	1338
+base	canvaskit	top	observer-initialization	container-resize-observer	7087.9000000059605	1	1280	1500		not-applicable	not-applicable	1260	1338
+base	canvaskit	top	dpr2-only	resolution-media-query	10183.90000000596	2	1280	1500	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+base	canvaskit	top	dpr2-only	resolution-media-query	10183.90000000596	2	1280	1500	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+base	canvaskit	top	dpr2-resized	window-resize	12420	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvaskit	top	dpr2-resized	visual-viewport-resize	12420	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvaskit	top	dpr2-resized	container-resize-observer	12420.5	2	1440	1600		not-applicable	not-applicable	1420	1438
+base	canvaskit	top	all-restored	window-resize	14453.40000000596	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvaskit	top	all-restored	visual-viewport-resize	14453.40000000596	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+base	canvaskit	top	all-restored	resolution-media-query	14453.5	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+base	canvaskit	top	all-restored	resolution-media-query	14453.5	1	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+base	canvaskit	top	all-restored	container-resize-observer	14453.70000000298	1	1280	1500		not-applicable	not-applicable	1260	1338
+candidate	canvas2d	pic	observer-initialization	container-resize-observer	4246.9000000059605	1	1280	1500		not-applicable	not-applicable	1260	1338
+candidate	canvas2d	pic	dpr2-only	resolution-media-query	6829.5	2	1280	1500	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+candidate	canvas2d	pic	dpr2-only	resolution-media-query	6829.5	2	1280	1500	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+candidate	canvas2d	pic	dpr3-only	resolution-media-query	8662.70000000298	3	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+candidate	canvas2d	pic	dpr3-only	resolution-media-query	8662.70000000298	3	1280	1500	True	(resolution: 3dppx)	True	not-applicable	not-applicable
+candidate	canvas2d	pic	dpr125-only	resolution-media-query	10879.10000000894	1.25	1280	1500	True	(resolution: 1.25dppx)	True	not-applicable	not-applicable
+candidate	canvas2d	pic	dpr125-only	resolution-media-query	10879.10000000894	1.25	1280	1500	True	(resolution: 3dppx)	False	not-applicable	not-applicable
+candidate	canvas2d	pic	dpr-restored	resolution-media-query	12363.90000000596	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+candidate	canvas2d	pic	dpr-restored	resolution-media-query	12364	1	1280	1500	True	(resolution: 1.25dppx)	False	not-applicable	not-applicable
+candidate	canvas2d	pic	dpr2-resized	window-resize	16648.40000000596	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvas2d	pic	dpr2-resized	visual-viewport-resize	16648.5	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvas2d	pic	dpr2-resized	resolution-media-query	16648.5	2	1440	1600	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+candidate	canvas2d	pic	dpr2-resized	resolution-media-query	16648.60000000894	2	1440	1600	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+candidate	canvas2d	pic	dpr2-resized	container-resize-observer	16648.70000000298	2	1440	1600		not-applicable	not-applicable	1420	1438
+candidate	canvas2d	pic	all-restored	window-resize	18431.90000000596	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvas2d	pic	all-restored	visual-viewport-resize	18432	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvas2d	pic	all-restored	resolution-media-query	18432	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+candidate	canvas2d	pic	all-restored	resolution-media-query	18432	1	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+candidate	canvas2d	pic	all-restored	container-resize-observer	18432.20000000298	1	1280	1500		not-applicable	not-applicable	1260	1338
+candidate	canvas2d	top	observer-initialization	container-resize-observer	4580	1	1280	1500		not-applicable	not-applicable	1260	1338
+candidate	canvas2d	top	dpr2-only	resolution-media-query	7685	2	1280	1500	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+candidate	canvas2d	top	dpr2-only	resolution-media-query	7685	2	1280	1500	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+candidate	canvas2d	top	dpr3-only	resolution-media-query	9908.89999999106	3	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+candidate	canvas2d	top	dpr3-only	resolution-media-query	9908.89999999106	3	1280	1500	True	(resolution: 3dppx)	True	not-applicable	not-applicable
+candidate	canvas2d	top	dpr125-only	resolution-media-query	14817.09999999404	1.25	1280	1500	True	(resolution: 1.25dppx)	True	not-applicable	not-applicable
+candidate	canvas2d	top	dpr125-only	resolution-media-query	14817.09999999404	1.25	1280	1500	True	(resolution: 3dppx)	False	not-applicable	not-applicable
+candidate	canvas2d	top	dpr-restored	resolution-media-query	16768.5	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+candidate	canvas2d	top	dpr-restored	resolution-media-query	16768.5	1	1280	1500	True	(resolution: 1.25dppx)	False	not-applicable	not-applicable
+candidate	canvas2d	top	dpr2-resized	window-resize	21687.5	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvas2d	top	dpr2-resized	visual-viewport-resize	21687.5	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvas2d	top	dpr2-resized	resolution-media-query	21687.59999999404	2	1440	1600	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+candidate	canvas2d	top	dpr2-resized	resolution-media-query	21687.59999999404	2	1440	1600	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+candidate	canvas2d	top	dpr2-resized	container-resize-observer	21687.69999998808	2	1440	1600		not-applicable	not-applicable	1420	1438
+candidate	canvas2d	top	all-restored	window-resize	23925.69999998808	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvas2d	top	all-restored	visual-viewport-resize	23925.69999998808	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvas2d	top	all-restored	resolution-media-query	23925.69999998808	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+candidate	canvas2d	top	all-restored	resolution-media-query	23925.69999998808	1	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+candidate	canvas2d	top	all-restored	container-resize-observer	23925.79999999702	1	1280	1500		not-applicable	not-applicable	1260	1338
+candidate	canvaskit	pic	observer-initialization	container-resize-observer	7510.0999999940395	1	1280	1500		not-applicable	not-applicable	1260	1338
+candidate	canvaskit	pic	dpr2-only	resolution-media-query	10226.90000000596	2	1280	1500	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+candidate	canvaskit	pic	dpr2-only	resolution-media-query	10227	2	1280	1500	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+candidate	canvaskit	pic	dpr3-only	resolution-media-query	12014.79999999702	3	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+candidate	canvaskit	pic	dpr3-only	resolution-media-query	12014.79999999702	3	1280	1500	True	(resolution: 3dppx)	True	not-applicable	not-applicable
+candidate	canvaskit	pic	dpr125-only	resolution-media-query	14403.59999999404	1.25	1280	1500	True	(resolution: 1.25dppx)	True	not-applicable	not-applicable
+candidate	canvaskit	pic	dpr125-only	resolution-media-query	14403.70000000298	1.25	1280	1500	True	(resolution: 3dppx)	False	not-applicable	not-applicable
+candidate	canvaskit	pic	dpr-restored	resolution-media-query	15939.70000000298	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+candidate	canvaskit	pic	dpr-restored	resolution-media-query	15939.70000000298	1	1280	1500	True	(resolution: 1.25dppx)	False	not-applicable	not-applicable
+candidate	canvaskit	pic	dpr2-resized	window-resize	20246.40000000596	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvaskit	pic	dpr2-resized	visual-viewport-resize	20246.5	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvaskit	pic	dpr2-resized	resolution-media-query	20246.59999999404	2	1440	1600	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+candidate	canvaskit	pic	dpr2-resized	resolution-media-query	20246.59999999404	2	1440	1600	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+candidate	canvaskit	pic	dpr2-resized	container-resize-observer	20246.70000000298	2	1440	1600		not-applicable	not-applicable	1420	1438
+candidate	canvaskit	pic	all-restored	window-resize	22049.09999999404	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvaskit	pic	all-restored	visual-viewport-resize	22049.09999999404	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvaskit	pic	all-restored	resolution-media-query	22049.09999999404	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+candidate	canvaskit	pic	all-restored	resolution-media-query	22049.09999999404	1	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+candidate	canvaskit	pic	all-restored	container-resize-observer	22049.29999999702	1	1280	1500		not-applicable	not-applicable	1260	1338
+candidate	canvaskit	top	observer-initialization	container-resize-observer	7360.0999999940395	1	1280	1500		not-applicable	not-applicable	1260	1338
+candidate	canvaskit	top	dpr2-only	resolution-media-query	10453.70000000298	2	1280	1500	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+candidate	canvaskit	top	dpr2-only	resolution-media-query	10453.70000000298	2	1280	1500	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+candidate	canvaskit	top	dpr3-only	resolution-media-query	12807.59999999404	3	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+candidate	canvaskit	top	dpr3-only	resolution-media-query	12807.70000000298	3	1280	1500	True	(resolution: 3dppx)	True	not-applicable	not-applicable
+candidate	canvaskit	top	dpr125-only	resolution-media-query	15567.09999999404	1.25	1280	1500	True	(resolution: 1.25dppx)	True	not-applicable	not-applicable
+candidate	canvaskit	top	dpr125-only	resolution-media-query	15567.09999999404	1.25	1280	1500	True	(resolution: 3dppx)	False	not-applicable	not-applicable
+candidate	canvaskit	top	dpr-restored	resolution-media-query	17550.20000000298	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+candidate	canvaskit	top	dpr-restored	resolution-media-query	17550.20000000298	1	1280	1500	True	(resolution: 1.25dppx)	False	not-applicable	not-applicable
+candidate	canvaskit	top	dpr2-resized	window-resize	23459.79999999702	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvaskit	top	dpr2-resized	visual-viewport-resize	23459.90000000596	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvaskit	top	dpr2-resized	resolution-media-query	23459.90000000596	2	1440	1600	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+candidate	canvaskit	top	dpr2-resized	resolution-media-query	23459.90000000596	2	1440	1600	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+candidate	canvaskit	top	dpr2-resized	container-resize-observer	23460	2	1440	1600		not-applicable	not-applicable	1420	1438
+candidate	canvaskit	top	all-restored	window-resize	25729	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvaskit	top	all-restored	visual-viewport-resize	25729	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+candidate	canvaskit	top	all-restored	resolution-media-query	25729	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+candidate	canvaskit	top	all-restored	resolution-media-query	25729	1	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+candidate	canvaskit	top	all-restored	container-resize-observer	25729.20000000298	1	1280	1500		not-applicable	not-applicable	1260	1338

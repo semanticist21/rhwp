@@ -1,0 +1,18 @@
+{
+  "pic": {
+    "input_path": "samples/pic-crop-01.hwp",
+    "reference_path": "samples/issue7688/reference/image-crop-2020.pdf",
+    "ref_commit": "ad4bf269ffef5adf2142b33004a9981fad7ce804",
+    "reference_sha256": "c9d29de7680e5642a24818a6924ef5f42b18e1194766b693d636853d8782d16d",
+    "input_sha256": "3b5afbe4cdb18faa49452a9cbed770d5caa27aed2f83b708e9ab8516c65ebf4c",
+    "pages": 1
+  },
+  "top": {
+    "input_path": "mydocs/pr/assets/raised-decoration-hancom/top-probe-shape-5.hwp",
+    "reference_path": "pdf/raised-decoration-hancom/top-probe-shape-5-hancom-print.pdf",
+    "ref_commit": "e4b792845f51a21a4f655579a1fc652203fb1dc1",
+    "reference_sha256": "f9a1d4e0f2071730269f1f9360ee31d5c13b3d79591761b398581a7c5029da25",
+    "input_sha256": "deade69da52406b917d05a766744df63c49dcd187e783963d64afbfdc926325e",
+    "pages": 1
+  }
+}

@@ -1,0 +1,329 @@
+{
+  "attempts": [
+    {
+      "name": "unit",
+      "args": [
+        "node",
+        "--test",
+        "rhwp-studio/tests/viewport-manager-dpr.test.ts",
+        "rhwp-studio/tests/viewport-manager-zoom-settle.test.ts",
+        "rhwp-studio/tests/viewport-manager-smooth-zoom.test.ts",
+        "rhwp-studio/tests/canvas-view-zoom-preview.test.ts",
+        "rhwp-studio/tests/canvas-view-zoom-scheduler.test.ts"
+      ],
+      "exit_code": 0,
+      "seconds": 1.371
+    },
+    {
+      "name": "typecheck",
+      "args": [
+        "<repo>/rhwp-studio/node_modules/.bin/tsc",
+        "--project",
+        "<repo>/rhwp-studio/tsconfig.json",
+        "--noEmit"
+      ],
+      "exit_code": 0,
+      "seconds": 0.767
+    },
+    {
+      "name": "studio-full-tests",
+      "args": [
+        "npm",
+        "--prefix",
+        "rhwp-studio",
+        "test"
+      ],
+      "exit_code": 0,
+      "seconds": 17.625
+    },
+    {
+      "name": "production",
+      "args": [
+        "npm",
+        "--prefix",
+        "rhwp-studio",
+        "run",
+        "build"
+      ],
+      "exit_code": 0,
+      "seconds": 4.435
+    },
+    {
+      "name": "source-policy",
+      "args": [
+        "node",
+        "scripts/rust-unit-test-tiers.mjs",
+        "--check",
+        "--base-ref",
+        "ad4bf269ffef5adf2142b33004a9981fad7ce804"
+      ],
+      "exit_code": 0,
+      "seconds": 13.662
+    },
+    {
+      "name": "suite-policy",
+      "args": [
+        "node",
+        "scripts/rust-test-suite-manifest.mjs",
+        "--check",
+        "--base-ref",
+        "ad4bf269ffef5adf2142b33004a9981fad7ce804"
+      ],
+      "exit_code": 1,
+      "seconds": 0.779
+    },
+    {
+      "name": "suite-prepare",
+      "args": [
+        "node",
+        "scripts/rust-test-suite-manifest.mjs",
+        "--prepare"
+      ],
+      "exit_code": 0,
+      "seconds": 1.079
+    },
+    {
+      "name": "suite-policy",
+      "args": [
+        "node",
+        "scripts/rust-test-suite-manifest.mjs",
+        "--check",
+        "--base-ref",
+        "ad4bf269ffef5adf2142b33004a9981fad7ce804"
+      ],
+      "exit_code": 0,
+      "seconds": 0.589
+    },
+    {
+      "name": "fmt",
+      "args": [
+        "cargo",
+        "fmt",
+        "--all",
+        "--",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 17.707
+    },
+    {
+      "name": "native-build",
+      "args": [
+        "cargo",
+        "build",
+        "--locked",
+        "--profile",
+        "release-test",
+        "--features",
+        "native-skia",
+        "--bin",
+        "rhwp"
+      ],
+      "exit_code": 0,
+      "seconds": 442.264
+    },
+    {
+      "name": "issue_8040_later_section_edit",
+      "args": [
+        "node",
+        "scripts/run-rust-test.mjs",
+        "--cargo-test",
+        "issue_8040_later_section_edit",
+        "--",
+        "--profile",
+        "release-test",
+        "--features",
+        "native-skia"
+      ],
+      "exit_code": 0,
+      "seconds": 474.868
+    },
+    {
+      "name": "issue_5730_underline_baseline_offset",
+      "args": [
+        "node",
+        "scripts/run-rust-test.mjs",
+        "--cargo-test",
+        "issue_5730_underline_baseline_offset",
+        "--",
+        "--profile",
+        "release-test",
+        "--features",
+        "native-skia"
+      ],
+      "exit_code": 0,
+      "seconds": 17.718
+    },
+    {
+      "name": "snapshot-1",
+      "args": [
+        "node",
+        "scripts/run-rust-test.mjs",
+        "--cargo-test",
+        "svg_snapshot",
+        "--",
+        "--profile",
+        "release-test"
+      ],
+      "exit_code": 0,
+      "seconds": 343.49
+    },
+    {
+      "name": "snapshot-2",
+      "args": [
+        "node",
+        "scripts/run-rust-test.mjs",
+        "--cargo-test",
+        "svg_snapshot",
+        "--",
+        "--profile",
+        "release-test"
+      ],
+      "exit_code": 0,
+      "seconds": 0.745
+    },
+    {
+      "name": "snapshot-unchanged",
+      "args": [
+        "git",
+        "diff",
+        "--exit-code",
+        "ad4bf269ffef5adf2142b33004a9981fad7ce804",
+        "--",
+        "tests/golden_svg"
+      ],
+      "exit_code": 0,
+      "seconds": 0.021
+    },
+    {
+      "name": "native-pic-png",
+      "args": [
+        "<review-target>/release-test/rhwp",
+        "export-png",
+        "samples/pic-crop-01.hwp",
+        "--output",
+        "<repo>/output/pr-review/dpr-refresh/native/pic/png",
+        "--profile",
+        "print",
+        "--compat",
+        "2024",
+        "--font-path",
+        "<supplied-fonts>",
+        "--scale",
+        "1",
+        "--json"
+      ],
+      "exit_code": 2,
+      "seconds": 0.003
+    },
+    {
+      "name": "native-export-producer",
+      "args": [
+        "cargo",
+        "build",
+        "--locked",
+        "--profile",
+        "release-test",
+        "--features",
+        "native-skia",
+        "--bin",
+        "rhwp"
+      ],
+      "exit_code": 0,
+      "seconds": 321.114
+    },
+    {
+      "name": "native-pic-png",
+      "args": [
+        "<review-target>/release-test/rhwp",
+        "export-png",
+        "samples/pic-crop-01.hwp",
+        "--output",
+        "<repo>/output/pr-review/dpr-refresh/native/pic/png",
+        "--profile",
+        "print",
+        "--compat",
+        "2024",
+        "--font-path",
+        "<supplied-fonts>",
+        "--scale",
+        "1",
+        "--json"
+      ],
+      "exit_code": 0,
+      "seconds": 0.182
+    },
+    {
+      "name": "native-pic-svg",
+      "args": [
+        "<review-target>/release-test/rhwp",
+        "export-svg",
+        "samples/pic-crop-01.hwp",
+        "--output",
+        "<repo>/output/pr-review/dpr-refresh/native/pic/svg",
+        "--profile",
+        "print",
+        "--compat",
+        "2024",
+        "--json"
+      ],
+      "exit_code": 0,
+      "seconds": 0.011
+    },
+    {
+      "name": "native-top-png",
+      "args": [
+        "<review-target>/release-test/rhwp",
+        "export-png",
+        "/var/tmp/rhwp-top.QWSnTd/specimens/top-probe-shape-5.hwp",
+        "--output",
+        "<repo>/output/pr-review/dpr-refresh/native/top/png",
+        "--profile",
+        "print",
+        "--compat",
+        "2024",
+        "--font-path",
+        "<supplied-fonts>",
+        "--scale",
+        "1",
+        "--json"
+      ],
+      "exit_code": 0,
+      "seconds": 0.195
+    },
+    {
+      "name": "native-top-svg",
+      "args": [
+        "<review-target>/release-test/rhwp",
+        "export-svg",
+        "/var/tmp/rhwp-top.QWSnTd/specimens/top-probe-shape-5.hwp",
+        "--output",
+        "<repo>/output/pr-review/dpr-refresh/native/top/svg",
+        "--profile",
+        "print",
+        "--compat",
+        "2024",
+        "--json"
+      ],
+      "exit_code": 0,
+      "seconds": 0.01
+    },
+    {
+      "name": "diff-check",
+      "args": [
+        "git",
+        "diff",
+        "--cached",
+        "--check"
+      ],
+      "exit_code": 0,
+      "seconds": 0.023
+    }
+  ],
+  "latest_all_exit_zero": true,
+  "preparation_notes": [
+    "Generated suite files were prepared before the successful suite check.",
+    "The Native Skia producer was reselected after default-feature snapshots replaced the CLI."
+  ],
+  "rust_full_lint_and_full_nextest_not_repeated": "Rust source/test/lock/fixture unchanged; Studio-only row of local validation 4.3 applies."
+}

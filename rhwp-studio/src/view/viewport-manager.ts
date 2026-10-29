@@ -26,6 +26,7 @@ export class ViewportManager {
   private zoom = 1.0;
   private container: HTMLElement | null = null;
   private resizeObserver: ResizeObserver | null = null;
+  private dprMediaQuery: MediaQueryList | null = null;
   private resizeAnimationFrame: number | null = null;
   private scrollAnimationFrame: number | null = null;
   private zoomAnimationFrame: number | null = null;
@@ -66,22 +67,9 @@ export class ViewportManager {
     // 뜰 수 있는, 기능에 영향 없는 잡음이라 uncaught error 로 새지 않게 막는다.
     window.addEventListener('error', this.onResizeObserverErrorBound);
 
-    this.resizeObserver = new ResizeObserver(() => {
-      if (this.resizeAnimationFrame !== null) return;
-
-      // 리스너가 레이아웃을 다시 계산해 컨테이너 크기가 같은 프레임에 또 바뀌면
-      // "ResizeObserver loop completed with undelivered notifications"가 발생한다.
-      // rAF 는 **같은 렌더링 프레임 안**(레이아웃·RO 전달 이전)에 실행되므로 이 루프를
-      // 벗어나지 못한다 — 실측으로 경고가 계속 발생했다. 매크로태스크(setTimeout 0)로
-      // 프레임 경계를 넘겨 변이를 다음 프레임의 관찰 사이클로 미룬다.
-      this.resizeAnimationFrame = window.setTimeout(() => {
-        this.resizeAnimationFrame = null;
-        if (!this.container) return;
-        this.updateViewportSize();
-        this.eventBus.emit('viewport-resize', this.viewportWidth, this.viewportHeight);
-      }, 0);
-    });
+    this.resizeObserver = new ResizeObserver(() => this.queueResize());
     this.resizeObserver.observe(container);
+    this.watchDevicePixelRatio();
     this.updateViewportSize();
   }
 
@@ -93,6 +81,8 @@ export class ViewportManager {
     }
     this.resizeObserver?.disconnect();
     this.resizeObserver = null;
+    this.dprMediaQuery?.removeEventListener('change', this.onDprChange);
+    this.dprMediaQuery = null;
     window.removeEventListener('error', this.onResizeObserverErrorBound);
     if (this.resizeAnimationFrame !== null) {
       clearTimeout(this.resizeAnimationFrame);
@@ -105,6 +95,30 @@ export class ViewportManager {
     this.cancelPendingZoomRaster();
     this.cancelZoomAnimation();
     this.container = null;
+  }
+
+  private watchDevicePixelRatio(): void {
+    this.dprMediaQuery?.removeEventListener('change', this.onDprChange);
+    this.dprMediaQuery = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    this.dprMediaQuery.addEventListener('change', this.onDprChange);
+  }
+
+  private readonly onDprChange = (): void => {
+    // 현재 해상도에서 벗어날 때만 알림이 오므로 바뀐 해상도로 다시 구독한다.
+    this.watchDevicePixelRatio();
+    this.queueResize();
+  };
+
+  private queueResize(): void {
+    if (this.resizeAnimationFrame !== null) return;
+
+    // RO 리스너의 DOM 변이가 같은 프레임의 관찰 루프를 다시 만들지 않게 미룬다.
+    this.resizeAnimationFrame = window.setTimeout(() => {
+      this.resizeAnimationFrame = null;
+      if (!this.container) return;
+      this.updateViewportSize();
+      this.eventBus.emit('viewport-resize', this.viewportWidth, this.viewportHeight);
+    }, 0);
   }
 
   /** ResizeObserver 잡음 window error 를 uncaught 로 전파하지 않도록 막는다. */

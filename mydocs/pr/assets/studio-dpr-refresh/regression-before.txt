@@ -1,0 +1,80 @@
+✖ CSS 크기가 같은 DPR 단독 변경도 공통 viewport 갱신을 예약하고 반복 전환을 따라간다 (19.685718ms)
+✔ DPR와 ResizeObserver 알림은 같은 예약을 공유하고 최신 container 크기를 읽는다 (1.05959ms)
+✖ detach는 해상도 구독과 대기 중인 viewport 갱신을 모두 해제한다 (0.5035ms)
+✖ 다른 container로 다시 연결하면 현재 DPR부터 관찰하고 예전 예약을 전달하지 않는다 (0.466831ms)
+ℹ tests 4
+ℹ suites 0
+ℹ pass 1
+ℹ fail 3
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 124.488036
+
+✖ failing tests:
+
+test at rhwp-studio/tests/viewport-manager-dpr.test.ts:60:1
+✖ CSS 크기가 같은 DPR 단독 변경도 공통 viewport 갱신을 예약하고 반복 전환을 따라간다 (19.685718ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly deep-equal:
+  + actual - expected
+
+  + undefined
+  - [
+  -   800,
+  -   600
+  - ]
+
+      at TestContext.<anonymous> (file:///var/tmp/rhwp-ci8289.oa4jf1te/rhwp-dpr-refresh/rhwp-studio/tests/viewport-manager-dpr.test.ts:68:12)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.start (node:internal/test_runner/test:1242:17)
+      at startSubtestAfterBootstrap (node:internal/test_runner/harness:387:17) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: [ 800, 600 ],
+    operator: 'deepStrictEqual',
+    diff: 'simple'
+  }
+
+test at rhwp-studio/tests/viewport-manager-dpr.test.ts:94:1
+✖ detach는 해상도 구독과 대기 중인 viewport 갱신을 모두 해제한다 (0.5035ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///var/tmp/rhwp-ci8289.oa4jf1te/rhwp-dpr-refresh/rhwp-studio/tests/viewport-manager-dpr.test.ts:98:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }
+
+test at rhwp-studio/tests/viewport-manager-dpr.test.ts:108:1
+✖ 다른 container로 다시 연결하면 현재 DPR부터 관찰하고 예전 예약을 전달하지 않는다 (0.466831ms)
+  AssertionError [ERR_ASSERTION]: Expected values to be strictly equal:
+
+  0 !== 1
+
+      at TestContext.<anonymous> (file:///var/tmp/rhwp-ci8289.oa4jf1te/rhwp-dpr-refresh/rhwp-studio/tests/viewport-manager-dpr.test.ts:114:10)
+      at Test.runInAsyncScope (node:async_hooks:227:14)
+      at Test.run (node:internal/test_runner/test:1382:25)
+      at Test.processPendingSubtests (node:internal/test_runner/test:960:18)
+      at Test.postRun (node:internal/test_runner/test:1522:19)
+      at Test.run (node:internal/test_runner/test:1447:12)
+      at async Test.processPendingSubtests (node:internal/test_runner/test:960:7) {
+    generatedMessage: true,
+    code: 'ERR_ASSERTION',
+    actual: 0,
+    expected: 1,
+    operator: 'strictEqual',
+    diff: 'simple'
+  }

@@ -1,0 +1,62 @@
+METRICS-ONLY BARE PAGE (not Studio)
+{"ratio":2,"state":{"dpr":2,"events":[],"matches":[false,false,true,false],"css":"rgb(0, 0, 0)"}}
+{"ratio":3,"state":{"dpr":3,"events":[],"matches":[false,false,false,true],"css":"rgb(0, 0, 0)"}}
+{"ratio":1.25,"state":{"dpr":1.25,"events":[],"matches":[false,true,false,false],"css":"rgb(0, 0, 0)"}}
+{"ratio":1,"state":{"dpr":1,"events":[],"matches":[true,false,false,false],"css":"rgb(0, 0, 0)"}}
+AFTER_MEDIA_FLUSH []
+
+DEVICE METRICS + RESOLUTION MEDIA BARE PAGE (not Studio)
+{"ratio":2,"state":{"dpr":2,"events":[{"media":"(resolution: 1dppx)","matches":false,"dpr":2,"trusted":true},{"media":"(resolution: 2dppx)","matches":true,"dpr":2,"trusted":true}],"matches":[false,false,true,false],"css":"rgb(0, 0, 255)"}}
+{"ratio":3,"state":{"dpr":3,"events":[{"media":"(resolution: 1dppx)","matches":false,"dpr":2,"trusted":true},{"media":"(resolution: 2dppx)","matches":true,"dpr":2,"trusted":true},{"media":"(resolution: 2dppx)","matches":false,"dpr":3,"trusted":true},{"media":"(resolution: 3dppx)","matches":true,"dpr":3,"trusted":true}],"matches":[false,false,false,true],"css":"rgb(0, 0, 255)"}}
+{"ratio":1.25,"state":{"dpr":1.25,"events":[{"media":"(resolution: 1dppx)","matches":false,"dpr":2,"trusted":true},{"media":"(resolution: 2dppx)","matches":true,"dpr":2,"trusted":true},{"media":"(resolution: 2dppx)","matches":false,"dpr":3,"trusted":true},{"media":"(resolution: 3dppx)","matches":true,"dpr":3,"trusted":true},{"media":"(resolution: 1.25dppx)","matches":true,"dpr":1.25,"trusted":true},{"media":"(resolution: 3dppx)","matches":false,"dpr":1.25,"trusted":true}],"matches":[false,true,false,false],"css":"rgb(0, 0, 0)"}}
+{"ratio":1,"state":{"dpr":1,"events":[{"media":"(resolution: 1dppx)","matches":false,"dpr":2,"trusted":true},{"media":"(resolution: 2dppx)","matches":true,"dpr":2,"trusted":true},{"media":"(resolution: 2dppx)","matches":false,"dpr":3,"trusted":true},{"media":"(resolution: 3dppx)","matches":true,"dpr":3,"trusted":true},{"media":"(resolution: 1.25dppx)","matches":true,"dpr":1.25,"trusted":true},{"media":"(resolution: 3dppx)","matches":false,"dpr":1.25,"trusted":true},{"media":"(resolution: 1dppx)","matches":true,"dpr":1,"trusted":true},{"media":"(resolution: 1.25dppx)","matches":false,"dpr":1,"trusted":true}],"matches":[true,false,false,false],"css":"rgb(0, 0, 0)"}}
+AFTER_MEDIA_FLUSH [
+  {
+    media: '(resolution: 1dppx)',
+    matches: false,
+    dpr: 2,
+    trusted: true
+  },
+  {
+    media: '(resolution: 2dppx)',
+    matches: true,
+    dpr: 2,
+    trusted: true
+  },
+  {
+    media: '(resolution: 2dppx)',
+    matches: false,
+    dpr: 3,
+    trusted: true
+  },
+  {
+    media: '(resolution: 3dppx)',
+    matches: true,
+    dpr: 3,
+    trusted: true
+  },
+  {
+    media: '(resolution: 1.25dppx)',
+    matches: true,
+    dpr: 1.25,
+    trusted: true
+  },
+  {
+    media: '(resolution: 3dppx)',
+    matches: false,
+    dpr: 1.25,
+    trusted: true
+  },
+  {
+    media: '(resolution: 1dppx)',
+    matches: true,
+    dpr: 1,
+    trusted: true
+  },
+  {
+    media: '(resolution: 1.25dppx)',
+    matches: false,
+    dpr: 1,
+    trusted: true
+  }
+]
