@@ -1,0 +1,212 @@
+{
+  "source": "1cb3a6dae1094f6ed552a8fdbffea8b89868d555",
+  "tree": "3a8ee1bb9aded4e206dfd188d310af639cf2f2b5",
+  "browser": "156.0.8078.73",
+  "versions": [
+    "rustc 1.93.1 (01f6ddf75 2026-02-11)",
+    "v24.19.0",
+    "wasm-pack 0.13.1"
+  ],
+  "options": {
+    "CARGO_BUILD_JOBS": 2,
+    "CARGO_PROFILE_RELEASE_CODEGEN_UNITS": 16,
+    "wasm_build": "release with wasm-opt -O; default features; no no-opt/dev flags",
+    "optimizer_version": "117 (version_117)",
+    "optimizer_command": [
+      "wasm-opt",
+      "pkg/rhwp_bg.wasm",
+      "-o",
+      "pkg/rhwp_bg.wasm-opt.wasm",
+      "-O"
+    ]
+  },
+  "steps": [
+    {
+      "name": "versions",
+      "args": [
+        "bash",
+        "-c",
+        "rustc --version && node --version && wasm-pack --version"
+      ],
+      "exit_code": 0,
+      "seconds": 0.186
+    },
+    {
+      "name": "wasm-optimized",
+      "args": [
+        "bash",
+        "scripts/wasm-pack-locked.sh",
+        "--target",
+        "web",
+        "--out-dir",
+        "pkg"
+      ],
+      "exit_code": 0,
+      "seconds": 1556.07
+    },
+    {
+      "name": "production",
+      "args": [
+        "npm",
+        "--prefix",
+        "rhwp-studio",
+        "run",
+        "build"
+      ],
+      "exit_code": 0,
+      "seconds": 5.54
+    }
+  ],
+  "dependencies": {
+    "non_root_lock_entries_identical": true,
+    "root_lock_only_version_changed": true,
+    "old_lock_sha256": "1ea605c8b94847d0788e20e2f0ec03c5eb0f61d1fa00bc8f44396be4b20f9d62",
+    "new_lock_sha256": "f4877a0e50b776cae01d73e41002b5ff38e5a290585c819a37e36ad042cd77b3"
+  },
+  "artifacts": {
+    "pkg/rhwp.js": {
+      "bytes": 505482,
+      "sha256": "8db5a374494ec01e885dbb649735ff1446802bc12addc556f5520097f06c4ee3"
+    },
+    "pkg/rhwp_bg.wasm": {
+      "bytes": 27129519,
+      "sha256": "4427af63857a12d23148858d9ee3aecdf82fc78f446bc909c36871535a7d1f12"
+    },
+    "rhwp-studio/public/rhwp.js": {
+      "bytes": 505482,
+      "sha256": "8db5a374494ec01e885dbb649735ff1446802bc12addc556f5520097f06c4ee3"
+    },
+    "rhwp-studio/public/rhwp_bg.wasm": {
+      "bytes": 27129519,
+      "sha256": "4427af63857a12d23148858d9ee3aecdf82fc78f446bc909c36871535a7d1f12"
+    },
+    "rhwp-studio/dist/assets/canvaskit-SCAxUyCS.wasm": {
+      "bytes": 7317345,
+      "sha256": "25ebed8e60158c5854f8dc807b936daca21354f8bfb6a2231266b0a93812f301"
+    },
+    "rhwp-studio/dist/assets/rhwp_bg-C8PFFcrF.wasm": {
+      "bytes": 27129519,
+      "sha256": "4427af63857a12d23148858d9ee3aecdf82fc78f446bc909c36871535a7d1f12"
+    },
+    "rhwp-studio/dist/assets/index-CvnxDTLI.js": {
+      "bytes": 2263931,
+      "sha256": "865b00c164eef986f2a29b12cd323380339ff281ecc2d387fbf840c9a2bd3f7e"
+    },
+    "rhwp-studio/dist/index.html": {
+      "bytes": 87083,
+      "sha256": "9c5e9c6fdfbab668e278f2193f3b7c71004dae678f75837f2426a352a979de43"
+    }
+  },
+  "initial_js_sha256": "865b00c164eef986f2a29b12cd323380339ff281ecc2d387fbf840c9a2bd3f7e",
+  "initial_wasm_sha256": "4427af63857a12d23148858d9ee3aecdf82fc78f446bc909c36871535a7d1f12",
+  "input": {
+    "name": "pic-crop-01.hwp",
+    "sha256": "3b5afbe4cdb18faa49452a9cbed770d5caa27aed2f83b708e9ab8516c65ebf4c"
+  },
+  "old_candidate_wasm_sha256": "290c17ab16f5126e11533fa7ce1bb72036198a8e21e5ed1e4a43e43d9e95a8f1",
+  "page_bytes_equal_previous_e4_control": true,
+  "requested_backend": "canvas2d",
+  "profile": "screen",
+  "page_canvas_count": 1,
+  "initial_runtime_canvas": {
+    "width": 794,
+    "height": 1123,
+    "dataset": {
+      "rhwpRenderedZoom": "1",
+      "rhwpRenderTier": "screen",
+      "rhwpRenderBucket": "1",
+      "rhwpRequestedDpr": "1",
+      "rhwpRenderScale": "1",
+      "rhwpRawDpr": "1",
+      "rhwpEffectiveDpr": "1",
+      "rhwpSurfaceVisible": "true",
+      "rhwpSurfaceLayerCount": "2",
+      "rhwpEstimatedSurfaceBytes": "7127426",
+      "rhwpEstimatedVisibleSurfaceBytes": "7127426",
+      "rhwpEstimatedRetainedSurfaceBytes": "7127426",
+      "rhwpSurfaceBudgetState": "within",
+      "rhwpActualSurfacePixels": "891662",
+      "rhwpSurfaceCacheLookupKey": "blake3:a1916cd259cb6357ab1e7cb882ff98d403698df0369218d1c5fb913d08cb3bb7|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2",
+      "rhwpSurfaceCacheKey": "blake3:a1916cd259cb6357ab1e7cb882ff98d403698df0369218d1c5fb913d08cb3bb7|revision:2|profile:screen|resources:2|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:2|surfaces:flow-images-0:dom,main:794x1123"
+    }
+  },
+  "initial_dom_image_layers": [
+    {
+      "naturalWidth": 639,
+      "naturalHeight": 70,
+      "complete": true,
+      "frame": {
+        "x": 79.25,
+        "y": 227.078125,
+        "width": 635.1875,
+        "height": 75.109375
+      },
+      "viewportFrame": {
+        "x": 332.40625,
+        "y": 377.078125,
+        "width": 635.1875,
+        "height": 75.109375,
+        "top": 377.078125,
+        "right": 967.59375,
+        "bottom": 452.1875,
+        "left": 332.40625
+      },
+      "layer": {
+        "rhwpOverlay": "flow-images-0",
+        "rhwpOverlayPage": "0",
+        "rhwpFlowImagePage": "0",
+        "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=flow-static|profile=screen|backend=canvas2d|summary=overlay:0:0:2:0:2:0:0:#ffffff:0:216"
+      },
+      "samePageParent": true
+    },
+    {
+      "naturalWidth": 639,
+      "naturalHeight": 70,
+      "complete": true,
+      "frame": {
+        "x": 79.25,
+        "y": 328.625,
+        "width": 635.1875,
+        "height": 62.09375
+      },
+      "viewportFrame": {
+        "x": 332.40625,
+        "y": 478.625,
+        "width": 635.1875,
+        "height": 62.09375,
+        "top": 478.625,
+        "right": 967.59375,
+        "bottom": 540.71875,
+        "left": 332.40625
+      },
+      "layer": {
+        "rhwpOverlay": "flow-images-0",
+        "rhwpOverlayPage": "0",
+        "rhwpFlowImagePage": "0",
+        "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=flow-static|profile=screen|backend=canvas2d|summary=overlay:0:0:2:0:2:0:0:#ffffff:0:216"
+      },
+      "samePageParent": true
+    }
+  ],
+  "font_responses": [
+    {
+      "url": "http://127.0.0.1:39129/fonts/RHWPOldHangul-Regular.woff2",
+      "status": 200,
+      "sha256": "1a45a61e9a320c1bc62ca1401f7b23ceffffe8133dc2a9650ad4e12524f8dcab"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+      "status": 200,
+      "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c"
+    },
+    {
+      "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff",
+      "status": 200,
+      "sha256": "49bf312aec309ba88c3eb612c591c2d8e28b765c156c808691850137431bb1bf"
+    }
+  ],
+  "product_all_checks_passed": false,
+  "observed_devel_after_build": "ad4bf269ffef5adf2142b33004a9981fad7ce804",
+  "observed_devel_frontend_boundary_files_identical": true,
+  "observed_devel_engine_not_executed": true
+}

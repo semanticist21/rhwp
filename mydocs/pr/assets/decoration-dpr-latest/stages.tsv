@@ -1,0 +1,5 @@
+stage	window_dpr	raw_dpr	effective_dpr	render_scale	viewport_css	canvas_backing	screen_png_px	raw_dpr_matches_window	dom_images	page_sha256	window-resize	visual-viewport-resize	resolution-media-query	container-resize-observer
+initial	1	1	1	1	1280x1500	794x1123	1280x1500	1	2	eb2e5a16a481af1f6d3500a58d4ca65dc9cb578b6fda3138c438a31018a6c028	0	0	0	0
+dpr2-only	2	1	1	1	1280x1500	794x1123	2560x3000	0	2	b8c94bee035e6d8927572578873ad6baf65b5903aae06f2255dc36b29a92aecf	0	0	2	0
+dpr2-resized	2	2	2	2	1440x1600	1588x2246	2880x3200	1	2	dcd24ce3f1216690ad5ce446c78df0f71caee765e2b0625bebb81d96b473cfa3	1	1	0	1
+all-restored	1	1	1	1	1280x1500	794x1123	1280x1500	1	2	eb2e5a16a481af1f6d3500a58d4ca65dc9cb578b6fda3138c438a31018a6c028	1	1	2	1
