@@ -1,0 +1,520 @@
+{
+  "checked_at": "2026-10-30T10:11:39.761471+00:00",
+  "scope": "Read-only existing-image ROI classification; no new screen capture, product execution, PDF raster or gate",
+  "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+  "tree": "1ff3de58d486cdfcf0b36247d430609d7fb81869",
+  "evidence_parent": "84048b1decde6d9c7826fe6a792087c1d283b13b",
+  "latest_checked": "2d535febe00a61585b6770cb95860fee912bbe54",
+  "latest_product_changes": [],
+  "source_blobs": {
+    "rhwp-studio/src/view/canvaskit-renderer.ts": "b303400cc346e546ebc17e4c8b88065b24a188bd",
+    "rhwp-studio/src/view/canvaskit/image-replay.ts": "d5bfc34f4439d8cbfecf5709224c13a5ff47751d",
+    "rhwp-studio/src/view/canvaskit/image-reduction.ts": "182d046d7185e3f65f2b435a1c815cbd1d5591e3",
+    "rhwp-studio/src/view/canvaskit/image-effects.ts": "d771bc1f1011a32cc674d88be8935b7a51b497b0",
+    "rhwp-studio/src/view/canvaskit/anisotropic-image.ts": "614cf469cf9fde4ba3403ae6418cb2f75ae78ac7",
+    "rhwp-studio/src/view/image-crop-scale.ts": "c62582ae645523c2935735240e6c38374a51f759",
+    "rhwp-studio/src/view/image-sampling.ts": "532105d281562ac2d3798c213999298d12dbfb97",
+    "src/renderer/skia/image_conv.rs": "6a6189da4f43b4ca13e808fa4dfbe83f0f193641",
+    "src/renderer/web_canvas.rs": "d2feb8a1a99c128a5e137137a066f3075647d6aa",
+    "src/renderer/web_canvas/image_reduction.rs": "53b238f6ddd9aff595441522f4515ca4278322b4",
+    "src/renderer/bitmap_raster.rs": "ddb87e2b2722c53aeac429ad295259c7e8ee50e8"
+  },
+  "versions": {
+    "python": "3.12.14 (main, Aug 25 2026, 14:01:42) [MSC v.1944 64 bit (AMD64)]",
+    "pillow": "12.3.0",
+    "pypdf": "6.10.0",
+    "numpy": "2.3.5",
+    "littlecms": "2.19",
+    "jpeg": "8.0"
+  },
+  "inputs": {
+    "samples/issue8271/tac_picture_behindtext_textbox.hwpx": {
+      "bytes": 89161,
+      "sha256": "19ac4952c2d2254fce267b950b40dba10cfe607c9c6bf9b6139804dfdbbc7b00",
+      "blob": "583088f76f00dede662117363ed492057852c171"
+    },
+    "pdf/issue8271/tac_picture_behindtext_textbox-2020.pdf": {
+      "bytes": 47160,
+      "sha256": "fe9dd3caedb3dabc7e38f81de03a3804bbf7430597f9c4fc3c3e86f3ba2e0ab0",
+      "blob": "54add2505d5f0d3cc2612023a0a2084f1d1b6c12"
+    }
+  },
+  "pngs": {
+    "reference": {
+      "bytes": 22881,
+      "sha256": "387d24d72a54d2a43686150b7b95a27ab08884917bdf236725955f5aa80aac95",
+      "size": [
+        794,
+        1122
+      ],
+      "public_evidence": null,
+      "original_mode": "RGB",
+      "roi_alpha_range": null
+    },
+    "native": {
+      "bytes": 42572,
+      "sha256": "55b128b96dbcc28331f5d9b9b15a2bcb6edb4ed0c8b30b9f67aab3ee00170963",
+      "size": [
+        794,
+        1122
+      ],
+      "public_evidence": [
+        "3deefcc6937015121e7cd63927ec30dc9f9404a7",
+        "mydocs/pr/assets/studio-behind-plane/native-skia.png"
+      ],
+      "original_mode": "RGBA",
+      "roi_alpha_range": [
+        255,
+        255
+      ]
+    },
+    "canvas2d": {
+      "bytes": 25425,
+      "sha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c",
+      "size": [
+        794,
+        1123
+      ],
+      "public_evidence": [
+        "3deefcc6937015121e7cd63927ec30dc9f9404a7",
+        "mydocs/pr/assets/studio-behind-plane/canvas2d-page.png"
+      ],
+      "original_mode": "RGB",
+      "roi_alpha_range": null
+    },
+    "canvaskit": {
+      "bytes": 26950,
+      "sha256": "d5f9e17d129ffd767f9bc29197014ebd8739db7361ca8648b96c939ac165a8ad",
+      "size": [
+        794,
+        1123
+      ],
+      "public_evidence": [
+        "84048b1decde6d9c7826fe6a792087c1d283b13b",
+        "mydocs/pr/assets/studio-canvaskit-behind/canvaskit-page.png"
+      ],
+      "original_mode": "RGB",
+      "roi_alpha_range": null
+    }
+  },
+  "reused_production": {
+    "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+    "initial_js": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa",
+    "engine_wasm": "f5c1452c503bd7789d126a78ff5004e7c8ca282ab08822dbfb9bbd04bc759791",
+    "canvaskit_wasm": "25ebed8e60158c5854f8dc807b936daca21354f8bfb6a2231266b0a93812f301",
+    "renderer_chunk": "34f1c749212f8a65ca6f9f636b672f384acb9924628f5dbb157995052d9763b6",
+    "identity_observed_in_parent_run": true,
+    "new_runtime_observation": false
+  },
+  "geometry": {
+    "node_probe_scope": "read-only Node WASM structure, without browser font registration; not actual Studio call payload",
+    "node_image_op": {
+      "type": "image",
+      "bbox": {
+        "x": 133.013,
+        "y": 132.267,
+        "width": 113.387,
+        "height": 59.293
+      },
+      "imagePaintBBox": {
+        "x": 133.013,
+        "y": 132.267,
+        "width": 113.387,
+        "height": 59.293
+      },
+      "mime": "image/jpeg",
+      "imageBytesOmitted": true,
+      "sourceImageKey": "bin:0:1:src",
+      "crop": {
+        "left": 0,
+        "top": 0,
+        "right": 75000,
+        "bottom": 39225
+      },
+      "originalSizeHu": [
+        75000,
+        39225
+      ],
+      "effect": "realPic",
+      "brightness": 0,
+      "contrast": 0,
+      "transform": {
+        "rotation": 0,
+        "horzFlip": false,
+        "vertFlip": false
+      }
+    },
+    "pdf_page_points": [
+      0,
+      0,
+      595,
+      841
+    ],
+    "pdf_image": {
+      "width": 1000,
+      "height": 523,
+      "color_space": "/DeviceRGB",
+      "filter": "/DCTDecode",
+      "draws": [
+        {
+          "name": "/Im1",
+          "matrix": [
+            85.034,
+            0.0,
+            0.0,
+            44.471,
+            99.786,
+            697.397
+          ]
+        }
+      ]
+    },
+    "pdf_bbox_at_96dpi_xywh": [
+      133.048,
+      132.17599999999993,
+      113.37866666666667,
+      59.294666666666664
+    ],
+    "node_minus_pdf_xywh": [
+      -0.03499999999999659,
+      0.09100000000006503,
+      0.008333333333325754,
+      -0.0016666666666651508
+    ],
+    "colour_support_bbox_xyxy": {
+      "reference": [
+        133,
+        132,
+        247,
+        192
+      ],
+      "native": [
+        133,
+        132,
+        247,
+        192
+      ],
+      "canvas2d": [
+        133,
+        132,
+        246,
+        192
+      ],
+      "canvaskit": [
+        133,
+        132,
+        247,
+        192
+      ]
+    },
+    "colour_support_rule": "Only in raw [128,128,252,198): max(R,G,B)-min(R,G,B)>16 and min<240. Diagnostic extent, not a mask or gate."
+  },
+  "jpeg": {
+    "original_bytes": 81040,
+    "original_sha256": "7af06b6410ea950341606e2ffe793f99e680030b39513b4bd835dc5c42822f76",
+    "pdf_dct_bytes": 35485,
+    "pdf_dct_sha256": "a8786dd100ed9fd140acd638fbec630f56404f75f455cd2335efc7f434849d2a",
+    "size": [
+      1000,
+      523
+    ],
+    "original_progressive": 1,
+    "pdf_progressive": false,
+    "original_icc": {
+      "bytes": 524,
+      "sha256": "61bb24bd075ae1179b562cb484a2737fa63bcf35133a951843db1f1f7c97ce7f",
+      "description": "c2"
+    },
+    "pdf_icc_present": false,
+    "decoded_rgb_mae_by_channel": [
+      4.090003824091778,
+      3.3692370936902485,
+      4.597105162523901
+    ],
+    "decoded_rgb_mean_difference": [
+      0.03164435946462715,
+      -0.02725621414913958,
+      -0.03592734225621415
+    ],
+    "offline_lcms_to_srgb": {
+      "rgb_mae_by_channel": [
+        0.0,
+        0.0,
+        0.0
+      ],
+      "max_abs_difference": 0.0,
+      "scope": "Pillow/LittleCMS only; not browser or CanvasKit decoder pixel observation"
+    }
+  },
+  "roi": {
+    "xyxy": [
+      135,
+      134,
+      245,
+      190
+    ],
+    "width": 110,
+    "height": 56,
+    "pixels": 6160,
+    "selection": "Fixed inner image rectangle from geometry, excludes boundary; no transformed or aligned output",
+    "units": "8-bit gamma-coded RGB levels; Yprime is .2126R+.7152G+.0722B, not linear-light luminance",
+    "statistics": {
+      "reference": {
+        "rgb_mean": [
+          167.6108766233766,
+          160.5483766233766,
+          126.23522727272727
+        ],
+        "rgb_std": [
+          58.102903943212056,
+          55.734047254247315,
+          56.5564597738944
+        ],
+        "yprime_mean": 159.57245474025973,
+        "yprime_std": 54.43494182138886,
+        "yprime_vertical_abs_difference_mean": 14.605207438016528,
+        "yprime_horizontal_abs_difference_mean": 12.172880013106159,
+        "yprime_quantiles": {
+          "0": 21.0614,
+          "5": 67.90228,
+          "25": 111.0289,
+          "50": 170.8471,
+          "75": 205.1223,
+          "95": 232.92533999999998,
+          "100": 246.84359999999998
+        }
+      },
+      "native": {
+        "rgb_mean": [
+          167.47207792207791,
+          159.9887987012987,
+          125.9853896103896
+        ],
+        "rgb_std": [
+          58.20996645234871,
+          55.65966886505228,
+          56.301292177198206
+        ],
+        "yprime_mean": 159.12469772727275,
+        "yprime_std": 54.367970639448814,
+        "yprime_vertical_abs_difference_mean": 14.613595735537189,
+        "yprime_horizontal_abs_difference_mean": 12.113054456094362,
+        "yprime_quantiles": {
+          "0": 21.5628,
+          "5": 67.14145,
+          "25": 110.458,
+          "50": 170.42079999999999,
+          "75": 204.6284,
+          "95": 232.3584,
+          "100": 247.77419999999998
+        }
+      },
+      "canvas2d": {
+        "rgb_mean": [
+          167.4801948051948,
+          159.96055194805194,
+          125.88814935064936
+        ],
+        "rgb_std": [
+          57.169251429881065,
+          54.74210109379132,
+          55.537301631867564
+        ],
+        "yprime_mean": 159.09920055194806,
+        "yprime_std": 53.44822536239189,
+        "yprime_vertical_abs_difference_mean": 13.184781917355371,
+        "yprime_horizontal_abs_difference_mean": 11.015217693315858,
+        "yprime_quantiles": {
+          "0": 25.4854,
+          "5": 68.01361,
+          "25": 112.2443,
+          "50": 168.9744,
+          "75": 204.04819999999998,
+          "95": 231.28579999999994,
+          "100": 243.3154
+        }
+      },
+      "canvaskit": {
+        "rgb_mean": [
+          168.4655844155844,
+          161.19935064935066,
+          126.81607142857143
+        ],
+        "rgb_std": [
+          61.92590186715949,
+          58.811374680296005,
+          59.194000070163966
+        ],
+        "yprime_mean": 160.2616791883117,
+        "yprime_std": 57.58363313361577,
+        "yprime_vertical_abs_difference_mean": 20.094421818181818,
+        "yprime_horizontal_abs_difference_mean": 17.183539744429883,
+        "yprime_quantiles": {
+          "0": 19.0642,
+          "5": 64.67685999999999,
+          "25": 108.48049999999999,
+          "50": 175.5031,
+          "75": 208.38174999999998,
+          "95": 236.78786,
+          "100": 253.77939999999998
+        }
+      }
+    },
+    "pairwise": [
+      {
+        "first": "reference",
+        "second": "native",
+        "rgb_mae": 2.299296536796537,
+        "rgb_mae_by_channel": [
+          2.402435064935065,
+          2.014772727272727,
+          2.480681818181818
+        ],
+        "rgb_signed_bias": [
+          0.1387987012987013,
+          0.5595779220779221,
+          0.24983766233766233
+        ],
+        "rgb_rmse": 3.490594970309968
+      },
+      {
+        "first": "reference",
+        "second": "canvas2d",
+        "rgb_mae": 6.837121212121212,
+        "rgb_mae_by_channel": [
+          7.305357142857143,
+          6.733603896103896,
+          6.472402597402597
+        ],
+        "rgb_signed_bias": [
+          0.13068181818181818,
+          0.5878246753246753,
+          0.3470779220779221
+        ],
+        "rgb_rmse": 12.896146946301677
+      },
+      {
+        "first": "reference",
+        "second": "canvaskit",
+        "rgb_mae": 11.347889610389611,
+        "rgb_mae_by_channel": [
+          11.904058441558442,
+          11.224025974025974,
+          10.915584415584416
+        ],
+        "rgb_signed_bias": [
+          -0.8547077922077922,
+          -0.650974025974026,
+          -0.5808441558441558
+        ],
+        "rgb_rmse": 22.07482969494003
+      },
+      {
+        "first": "native",
+        "second": "canvas2d",
+        "rgb_mae": 5.568344155844156,
+        "rgb_mae_by_channel": [
+          5.987337662337662,
+          5.597727272727273,
+          5.119967532467532
+        ],
+        "rgb_signed_bias": [
+          -0.008116883116883116,
+          0.028246753246753246,
+          0.09724025974025974
+        ],
+        "rgb_rmse": 11.1816151479121
+      },
+      {
+        "first": "native",
+        "second": "canvaskit",
+        "rgb_mae": 10.359199134199134,
+        "rgb_mae_by_channel": [
+          10.85,
+          10.338149350649351,
+          9.889448051948053
+        ],
+        "rgb_signed_bias": [
+          -0.9935064935064936,
+          -1.210551948051948,
+          -0.8306818181818182
+        ],
+        "rgb_rmse": 20.44989124538446
+      },
+      {
+        "first": "canvas2d",
+        "second": "canvaskit",
+        "rgb_mae": 8.420508658008657,
+        "rgb_mae_by_channel": [
+          8.837337662337662,
+          8.370616883116883,
+          8.053571428571429
+        ],
+        "rgb_signed_bias": [
+          -0.9853896103896104,
+          -1.2387987012987014,
+          -0.9279220779220779
+        ],
+        "rgb_rmse": 15.7857184482179
+      }
+    ],
+    "integer_neighbour_diagnostic": [
+      {
+        "dx": -1,
+        "dy": -1,
+        "rgb_mae": 17.529924242424244
+      },
+      {
+        "dx": 0,
+        "dy": -1,
+        "rgb_mae": 16.891017316017315
+      },
+      {
+        "dx": 1,
+        "dy": -1,
+        "rgb_mae": 22.191666666666666
+      },
+      {
+        "dx": -1,
+        "dy": 0,
+        "rgb_mae": 13.525703463203463
+      },
+      {
+        "dx": 0,
+        "dy": 0,
+        "rgb_mae": 11.347889610389611
+      },
+      {
+        "dx": 1,
+        "dy": 0,
+        "rgb_mae": 18.67949134199134
+      },
+      {
+        "dx": -1,
+        "dy": 1,
+        "rgb_mae": 21.821049783549782
+      },
+      {
+        "dx": 0,
+        "dy": 1,
+        "rgb_mae": 20.813852813852815
+      },
+      {
+        "dx": 1,
+        "dy": 1,
+        "rgb_mae": 23.800974025974025
+      }
+    ],
+    "integer_neighbour_scope": "Reads existing neighbouring pixels; does not align/shift/rewrite any published image or official metric"
+  },
+  "classification": {
+    "observed": "Higher local variation and near-zero mean colour bias in the fixed CanvasKit ROI; no integer-pixel displacement explains the difference",
+    "source_inference": "Default/screen excludes the common print/highQuality bitmap prefilter and compat/print/highQuality mipmaps. This supports a minification-policy explanation.",
+    "unverified": [
+      "Actual drawImageRectOptions arguments/matrix/filter/mipmap selection were not traced",
+      "CanvasKit/browser decoded image pixel arrays and exact colour conversion were not compared",
+      "JPEG recompression, subpixel phase and colour/decode contributions are not fully apportioned",
+      "No bug fix or pixel-identity/feature/gate completion claim"
+    ]
+  }
+}
