@@ -1,0 +1,63 @@
+{
+  "scope": "Fontconfig coverage of actual initialization HTTP response bytes; not browser internal glyph/Typeface selection trace",
+  "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+  "bytes": 11613312,
+  "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c",
+  "fc_query": "/usr/sbin/fc-query",
+  "family": "HCR Batang,함초롬바탕",
+  "style": "Regular",
+  "text": "앞 글 뒤 글다음 문단중요",
+  "coverage": [
+    {
+      "char": " ",
+      "codepoint": "U+0020",
+      "present": true
+    },
+    {
+      "char": "글",
+      "codepoint": "U+AE00",
+      "present": true
+    },
+    {
+      "char": "다",
+      "codepoint": "U+B2E4",
+      "present": true
+    },
+    {
+      "char": "단",
+      "codepoint": "U+B2E8",
+      "present": true
+    },
+    {
+      "char": "뒤",
+      "codepoint": "U+B4A4",
+      "present": true
+    },
+    {
+      "char": "문",
+      "codepoint": "U+BB38",
+      "present": true
+    },
+    {
+      "char": "앞",
+      "codepoint": "U+C55E",
+      "present": true
+    },
+    {
+      "char": "요",
+      "codepoint": "U+C694",
+      "present": true
+    },
+    {
+      "char": "음",
+      "codepoint": "U+C74C",
+      "present": true
+    },
+    {
+      "char": "중",
+      "codepoint": "U+C911",
+      "present": true
+    }
+  ],
+  "raw": "HCR Batang,함초롬바탕\nRegular\n20-7f a0-34e 350-36f 374-375 37a-37e 384-38a 38c 38e-3a1 3a3-3ce 3d0-486 488-513 531-556 559-55f 561-587 589-58a 591-5c7 5d0-5ea 5f0-5f4 600-604 606-61b 61e-70d 70f-74a 74d-7b1 7c0-7fa 8a0 8a2-8ac 8e4-8fe 901-939 93c-94d 950-954 958-970 97b-97f 981-983 985-98c 98f-990 993-9a8 9aa-9b0 9b2 9b6-9b9 9bc-9c4 9c7-9c8 9cb-9ce 9d7 9dc-9dd 9df-9e3 9e6-9fa a01-a03 a05-a0a a0f-a10 a13-a28 a2a-a30 a32-a33 a35-a36 a38-a39 a3c a3e-a42 a47-a48 a4b-a4d a59-a5c a5e a66-a74 a81-a83 a85-a8d a8f-a91 a93-aa8 aaa-ab0 ab2-ab3 ab5-ab9 abc-ac5 ac7-ac9 acb-acd ad0 ae0-ae3 ae6-aef af1 b01-b03 b05-b0c b0f-b10 b13-b28 b2a-b30 b32-b33 b35-b39 b3c-b43 b47-b48 b4b-b4d b56-b57 b5c-b5d b5f-b61 b66-b71 b82-b83 b85-b8a b8e-b90 b92-b95 b99-b9a b9c b9e-b9f ba3-ba4 ba8-baa bae-bb9 bbe-bc2 bc6-bc8 bca-bcd bd7 be6-bfa c01-c03 c05-c0c c0e-c10 c12-c28 c2a-c33 c35-c39 c3e-c44 c46-c48 c4a-c4d c55-c57 c60-c61 c66-c6f c82-c83 c85-c8c c8e-c90 c92-ca8 caa-cb3 cb5-cb9 cbc-cc4 cc6-cc8 cca-ccd cd5-cd6 cde ce0-ce3 ce6-cef cf1-cf2 d02-d03 d05-d0c d0e-d10 d12-d28 d2a-d39 d3e-d43 d46-d48 d4a-d4d d57 d60-d61 d66-d6f d82-d83 d85-d96 d9a-db1 db3-dbb dbd dc0-dc6 dca dcf-dd4 dd6 dd8-ddf df2-df4 e01-e3a e3f-e5b e81-e82 e84 e87-e88 e8a e8d e94-e97 e99-e9f ea1-ea3 ea5 ea7 eaa-eab ead-eb9 ebb-ebd ec0-ec4 ec6 ec8-ecd ed0-ed9 edc-edd f00-f47 f49-f6a f71-f8b f90-f97 f99-fbc fbe-fcc fcf-fd1 1000-1021 1023-1027 1029-102a 102c-1032 1036-1039 1040-1059 10a0-10c5 10d0-10fc 1100-1248 124a-124d 1250-1256 1258 125a-125d 1260-1288 128a-128d 1290-12b0 12b2-12b5 12b8-12be 12c0 12c2-12c5 12c8-12d6 12d8-1310 1312-1315 1318-135a 135f-137c 1380-1399 13a0-13f4 1401-1676 1680-169c 16a0-16f0 1700-170c 170e-1714 1720-1736 1740-1753 1760-176c 176e-1770 1772-1773 1780-17dd 17e0-17e9 17f0-17f9 1800-180a 1810-1819 1820-1877 1880-18a9 1900-191c 1920-192b 1930-193b 1940 1944-196d 1970-1974 1980-19a9 19b0-19c9 19d0-19d9 19de-1a1b 1a1e-1a1f 1b00-1b4b 1b50-1b7c 1d00-1dca 1dfe-1e9b 1ea0-1ef9 1f00-1f15 1f18-1f1d 1f20-1f45 1f48-1f4d 1f50-1f57 1f59 1f5b 1f5d 1f5f-1f7d 1f80-1fb4 1fb6-1fc4 1fc6-1fd3 1fd6-1fdb 1fdd-1fef 1ff2-1ff4 1ff6-1ffe 2000-2027 2030-2064 2070-2071 2074-208e 2090-2094 20a0-20b5 20d0-20f0 2100-214e 2153-2184 2190-23e7 2400-2426 2440-244a 2460-269c 26a0-26b2 2701-2704 2706-2709 270c-2727 2729-274b 274d 274f-2752 2756 2758-275e 2761-2794 2798-27af 27b1-27be 27c0-27ca 27d0-27eb 27f0-2b1a 2b20-2b23 2c00-2c2e 2c30-2c5e 2c60-2c6c 2c74-2c77 2c80-2cea 2cf9-2d25 2d30-2d65 2d6f 2d80-2d96 2da0-2da6 2da8-2dae 2db0-2db6 2db8-2dbe 2dc0-2dc6 2dc8-2dce 2dd0-2dd6 2dd8-2dde 2e00-2e17 2e1c-2e1d 2e80-2e99 2e9b-2ef3 2f00-2fd5 2ff0-2ffb 3000-303f 3041-3096 3099-30ff 3105-312c 3131-318e 3190-31b7 31c0-31cf 31f0-321e 3220-3243 3250-32fe 3300-4db5 4dc0-9fcb a000-a48c a490-a4c6 a700-a71a a720-a721 a800-a82b a840-a877 a960-a97c ac00-d7a3 d7b0-d7c6 d7cb-d7fb e011-e026 e032-e036 e0bc-efff f100-f66e f700-f71a f71c-f71d f811-f818 f820-f82d f832-f836 f900-fa2d fa30-fa6a fa70-fad9 fb00-fb06 fb13-fb17 fb1d-fb36 fb38-fb3c fb3e fb40-fb41 fb43-fb44 fb46-fbc1 fbd3-fd3f fd50-fd8f fd92-fdc7 fdf0-fdfd fe10-fe19 fe20-fe23 fe30-fe52 fe54-fe66 fe68-fe6b fe70-fe74 fe76-fefc ff01-ff9f ffa1-ffbe ffc2-ffc7 ffca-ffcf ffd2-ffd7 ffda-ffdc ffe0-ffe6 ffe8-ffee fffc-fffd f0000-f03f4 f0400-f0411 f0420-f0429 f0440-f0445 f0450-f0470 f0490-f04f3 f0500-f06d4 f0700-f070c f0800-f0849 f0850-f0855\n"
+}

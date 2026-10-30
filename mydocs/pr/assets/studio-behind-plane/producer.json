@@ -1,0 +1,922 @@
+{
+  "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+  "tree": "1ff3de58d486cdfcf0b36247d430609d7fb81869",
+  "inputs": {
+    "samples/issue8271/tac_picture_behindtext_textbox.hwpx": {
+      "bytes": 89161,
+      "sha256": "19ac4952c2d2254fce267b950b40dba10cfe607c9c6bf9b6139804dfdbbc7b00",
+      "blob": "583088f76f00dede662117363ed492057852c171"
+    },
+    "pdf/issue8271/tac_picture_behindtext_textbox-2020.pdf": {
+      "bytes": 47160,
+      "sha256": "fe9dd3caedb3dabc7e38f81de03a3804bbf7430597f9c4fc3c3e86f3ba2e0ab0",
+      "blob": "54add2505d5f0d3cc2612023a0a2084f1d1b6c12"
+    }
+  },
+  "native_producer": "a6c32ee47df10497b0b3994d9a0184723a3f69308c28cc8d6cef3bc1ef8d12ec",
+  "versions": {
+    "pdfinfo": "Author:          SYSTEM\nCreator:         Hwp 2020 0.0.0.0\nProducer:        Hancom PDF 1.3.0.550\nCreationDate:    Tue Oct 27 00:06:37 2026 KST\nModDate:         Tue Oct 27 00:06:37 2026 KST\nCustom Metadata: yes\nMetadata Stream: yes\nTagged:          no\nUserProperties:  no\nSuspects:        no\nForm:            none\nJavaScript:      no\nPages:           1\nEncrypted:       no\nPage size:       595 x 841 pts (A4)\nPage rot:        0\nFile size:       47160 bytes\nOptimized:       no\nPDF version:     1.4\n",
+    "pdffonts": "name                                 type              encoding         emb sub uni object ID\n------------------------------------ ----------------- ---------------- --- --- --- ---------\nINPILL+HCRBatang                     CID TrueType      Identity-H       yes yes yes     12  0\n",
+    "poppler": "pdftoppm version 26.01.0\nCopyright 2005-2026 The Poppler Developers - http://poppler.freedesktop.org\nCopyright 1996-2011, 2022 Glyph & Cog, LLC\n"
+  },
+  "commands": [
+    {
+      "name": "native-png",
+      "args": [
+        "/var/tmp/rhwp-ci8289.oa4jf1te/target/pr-review/release-test/rhwp",
+        "export-png",
+        "samples/issue8271/tac_picture_behindtext_textbox.hwpx",
+        "--output",
+        "/var/tmp/rhwp-ci8289.oa4jf1te/rhwp-dpr-refresh/output/pr-review/studio-behind-plane/native",
+        "--profile",
+        "print",
+        "--compat",
+        "2024",
+        "--font-path",
+        "/var/tmp/rhwp-ci8289.oa4jf1te/fonts",
+        "--scale",
+        "1",
+        "--json"
+      ],
+      "exit_code": 0
+    },
+    {
+      "name": "pdf-reference",
+      "args": [
+        "pdftoppm",
+        "-r",
+        "96",
+        "-png",
+        "-singlefile",
+        "/var/tmp/rhwp-ci8289.oa4jf1te/rhwp-dpr-refresh/pdf/issue8271/tac_picture_behindtext_textbox-2020.pdf",
+        "/var/tmp/rhwp-ci8289.oa4jf1te/rhwp-dpr-refresh/output/pr-review/studio-behind-plane/reference"
+      ],
+      "exit_code": 0
+    }
+  ],
+  "source_blobs": {
+    "rhwp-studio/src/view/page-renderer.ts": "f21e857f1ab6acbf2b77cc724f75c81c49c827f2",
+    "rhwp-studio/src/view/viewport-manager.ts": "3a5c1bafafebac9b388580e29c87c451b312fb24",
+    "rhwp-studio/src/view/canvas-view.ts": "85fd20d071f226e3e341dccab09712c8064e6329",
+    "scripts/renderer_baseline_manifest.json": "e8fd68ccfaca56fabe80bf048079ee058615dcfd",
+    "scripts/visual_sweep.py": "ef2ae9f3de3d90a8141bd191d5ba17777d9228a1"
+  },
+  "fonts": {
+    "HANBatang.ttf": {
+      "bytes": 28413328,
+      "sha256": "c5d544769d832477d48b7318222b9c3c2eced25455f7ba9acb23060dcecac104"
+    },
+    "arial.ttf": {
+      "bytes": 1045720,
+      "sha256": "b3658eadae55e682b5f69eb64c439c1ecc8f196c0bb8d4756d145d13bc86476a"
+    },
+    "HANDotum.ttf": {
+      "bytes": 22252900,
+      "sha256": "1d0437906d52e96af36943008f144ad74d6e994493df3a4210a9761e077ea898"
+    }
+  },
+  "runtime": {
+    "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+    "browser": "156.0.8078.73",
+    "production": true,
+    "consoleLog": [
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[FontLoader] 웹폰트 로드 시작: 3개 파일 (이미 요청함: 0개)"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: 함초롬돋움 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: 함초롬바탕 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: RHWP Old Hangul <- fonts/RHWPOldHangul-Regular.woff2"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: RHWP Old Hangul <- fonts/RHWPOldHangul-Regular.woff2"
+      },
+      {
+        "type": "warning",
+        "text": "Service Worker registration blocked by Playwright"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: 함초롬돋움 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: 함초롬바탕 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      },
+      {
+        "type": "log",
+        "text": "[FontLoader] 폰트 로드 완료: 3개 성공, 0개 실패 (총 3개 파일 요청)"
+      },
+      {
+        "type": "log",
+        "text": "[WasmBridge] WASM 초기화 완료 (rhwp 0.9.0)"
+      },
+      {
+        "type": "log",
+        "text": "[WasmBridge] 새 문서 생성: 1페이지"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 1. 폰트 로딩 시작"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 2. 폰트 로딩 완료"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 3. inputHandler deactivate"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 4. canvasView loadDocument"
+      },
+      {
+        "type": "log",
+        "text": "[CanvasView] 1/1페이지 로드, 총 높이: 1142.5px"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 5. toolbar setEnabled"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 6. toolbar initFontDropdown + initStyleDropdown"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 7. 사전 검증 및 로컬 글꼴 확인"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 8. inputHandler activateWithCaretPosition"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 9. 완료"
+      },
+      {
+        "type": "debug",
+        "text": "[autosave] draft deleted: cf016865-88b9-47e4-b26a-799e3ce7ac24 (document-replaced)"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 1. 폰트 로딩 시작"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 2. 폰트 로딩 완료"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 3. inputHandler deactivate"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 4. canvasView loadDocument"
+      },
+      {
+        "type": "log",
+        "text": "[CanvasView] 1/1페이지 로드, 총 높이: 1142.5px"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 5. toolbar setEnabled"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 6. toolbar initFontDropdown + initStyleDropdown"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 7. 사전 검증 및 로컬 글꼴 확인"
+      },
+      {
+        "type": "log",
+        "text": "[validation] 1 warnings — 그대로 보기 (#2527) {lineseg 배열이 비어있음: 1}"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 8. inputHandler activateWithCaretPosition"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 9. 완료"
+      }
+    ],
+    "pageErrors": [],
+    "responses": [
+      {
+        "url": "http://127.0.0.1:40989/theme-init.js",
+        "status": 200,
+        "bytes": 2783,
+        "sha256": "5a3afcc0139187bfe509414cd60fde2a0dfea72fd72751c4e6e696cdc0f6c587"
+      },
+      {
+        "url": "http://127.0.0.1:40989/locale-init.js",
+        "status": 200,
+        "bytes": 1342,
+        "sha256": "633d47a6a53b2211cf816769f8c084b097c1b60b6ab263803d8610c0531539fa"
+      },
+      {
+        "url": "http://127.0.0.1:40989/registerSW.js",
+        "status": 200,
+        "bytes": 134,
+        "sha256": "9742073ef7fc795e7673d98f272992843298426a0ffd8cb3507784df5143608b"
+      },
+      {
+        "url": "http://127.0.0.1:40989/assets/index-B7ByZimA.js",
+        "status": 200,
+        "bytes": 2264409,
+        "sha256": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa"
+      },
+      {
+        "url": "http://127.0.0.1:40989/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "bytes": 239732,
+        "sha256": "1a45a61e9a320c1bc62ca1401f7b23ceffffe8133dc2a9650ad4e12524f8dcab"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff",
+        "status": 200,
+        "bytes": 9751840,
+        "sha256": "49bf312aec309ba88c3eb612c591c2d8e28b765c156c808691850137431bb1bf"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+        "status": 200,
+        "bytes": 11613312,
+        "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c"
+      },
+      {
+        "url": "http://127.0.0.1:40989/assets/plugin-DO1SH32F.js",
+        "status": 200,
+        "bytes": 115635,
+        "sha256": "fd4da7dc0aae8f64ed16f659004a1c73757dc928d1515f632f0c35695e655823"
+      },
+      {
+        "url": "http://127.0.0.1:40989/assets/rhwp_bg-MJdpQrZt.wasm",
+        "status": 200,
+        "sha256": "f5c1452c503bd7789d126a78ff5004e7c8ca282ab08822dbfb9bbd04bc759791",
+        "observedDuringInitialization": true
+      }
+    ],
+    "failures": [],
+    "input": {
+      "name": "tac_picture_behindtext_textbox.hwpx",
+      "sha256": "19ac4952c2d2254fce267b950b40dba10cfe607c9c6bf9b6139804dfdbbc7b00"
+    },
+    "state": {
+      "title": "tac_picture_behindtext_textbox.hwpx - rhwp-studio",
+      "status": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      tac_picture_behindtext_textbox.hwpx — 1페이지 (218.0ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+      "globals": {
+        "wasm": false,
+        "canvasView": false
+      },
+      "fonts": [
+        {
+          "family": "함초롬돋움",
+          "status": "unloaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "함초롬바탕",
+          "status": "loaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "RHWP Old Hangul",
+          "status": "unloaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "\"RHWP Old Hangul\"",
+          "status": "loaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "함초롬돋움",
+          "status": "loaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "함초롬바탕",
+          "status": "loaded",
+          "style": "normal",
+          "weight": "normal"
+        }
+      ],
+      "canvases": [
+        {
+          "id": "",
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpLayerKind": "background",
+            "rhwpOverlay": "background-0",
+            "rhwpOverlayPage": "0",
+            "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+          },
+          "parent": "<div id=\"scroll-content\" style=\"width: 833.7px; height: 1142.5px;\"><canvas width=\"794\" height=\"1123\" data-rhwp-layer-kind=\"background\" data-rhwp-overlay=\"background-0\" data-rhwp-overlay-page=\"0\" data-rhwp-static-overlay-key=\"page=0|scale=1|width=794|height=1123|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215\" style=\"pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 0; image-rendering: crisp-edges;\"></canvas><canvas width=\"794\" height=\"1123\" data-rhwp-layer-kind=\"behind\" data-rhwp-overlay=\"behind-0\" data-rhwp-overlay-page=\"0\" data-rhwp-static-overlay-key=\"page=0|scale=1|width=794|height=1123|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215\" style=\"pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 1; image-rendering: crisp-edges;\"></canvas><canvas class=\"document-page-canvas\" width=\"794\" height=\"1123\" style=\"top: 10px; left: 50%; transform: transl"
+        },
+        {
+          "id": "",
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpLayerKind": "behind",
+            "rhwpOverlay": "behind-0",
+            "rhwpOverlayPage": "0",
+            "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+          },
+          "parent": "<div id=\"scroll-content\" style=\"width: 833.7px; height: 1142.5px;\"><canvas width=\"794\" height=\"1123\" data-rhwp-layer-kind=\"background\" data-rhwp-overlay=\"background-0\" data-rhwp-overlay-page=\"0\" data-rhwp-static-overlay-key=\"page=0|scale=1|width=794|height=1123|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215\" style=\"pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 0; image-rendering: crisp-edges;\"></canvas><canvas width=\"794\" height=\"1123\" data-rhwp-layer-kind=\"behind\" data-rhwp-overlay=\"behind-0\" data-rhwp-overlay-page=\"0\" data-rhwp-static-overlay-key=\"page=0|scale=1|width=794|height=1123|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215\" style=\"pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 1; image-rendering: crisp-edges;\"></canvas><canvas class=\"document-page-canvas\" width=\"794\" height=\"1123\" style=\"top: 10px; left: 50%; transform: transl"
+        },
+        {
+          "id": "",
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "3",
+            "rhwpEstimatedSurfaceBytes": "10691139",
+            "rhwpEstimatedVisibleSurfaceBytes": "10691139",
+            "rhwpEstimatedRetainedSurfaceBytes": "10691139",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "2674986",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3|surfaces:background:794x1123,behind:794x1123,main:794x1123"
+          },
+          "parent": "<div id=\"scroll-content\" style=\"width: 833.7px; height: 1142.5px;\"><canvas width=\"794\" height=\"1123\" data-rhwp-layer-kind=\"background\" data-rhwp-overlay=\"background-0\" data-rhwp-overlay-page=\"0\" data-rhwp-static-overlay-key=\"page=0|scale=1|width=794|height=1123|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215\" style=\"pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 0; image-rendering: crisp-edges;\"></canvas><canvas width=\"794\" height=\"1123\" data-rhwp-layer-kind=\"behind\" data-rhwp-overlay=\"behind-0\" data-rhwp-overlay-page=\"0\" data-rhwp-static-overlay-key=\"page=0|scale=1|width=794|height=1123|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215\" style=\"pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 1; image-rendering: crisp-edges;\"></canvas><canvas class=\"document-page-canvas\" width=\"794\" height=\"1123\" style=\"top: 10px; left: 50%; transform: transl"
+        }
+      ],
+      "images": [],
+      "dialogs": [],
+      "composition": [
+        {
+          "tag": "CANVAS",
+          "className": "",
+          "dataset": {
+            "rhwpLayerKind": "background",
+            "rhwpOverlay": "background-0",
+            "rhwpOverlayPage": "0",
+            "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+          },
+          "rect": {
+            "x": 253.15625,
+            "y": 150,
+            "width": 793.6875,
+            "height": 1122.5,
+            "top": 150,
+            "right": 1046.84375,
+            "bottom": 1272.5,
+            "left": 253.15625
+          }
+        },
+        {
+          "tag": "CANVAS",
+          "className": "",
+          "dataset": {
+            "rhwpLayerKind": "behind",
+            "rhwpOverlay": "behind-0",
+            "rhwpOverlayPage": "0",
+            "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+          },
+          "rect": {
+            "x": 253.15625,
+            "y": 150,
+            "width": 793.6875,
+            "height": 1122.5,
+            "top": 150,
+            "right": 1046.84375,
+            "bottom": 1272.5,
+            "left": 253.15625
+          }
+        },
+        {
+          "tag": "CANVAS",
+          "className": "document-page-canvas",
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "3",
+            "rhwpEstimatedSurfaceBytes": "10691139",
+            "rhwpEstimatedVisibleSurfaceBytes": "10691139",
+            "rhwpEstimatedRetainedSurfaceBytes": "10691139",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "2674986",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3|surfaces:background:794x1123,behind:794x1123,main:794x1123"
+          },
+          "rect": {
+            "x": 253.15625,
+            "y": 150,
+            "width": 793.6875,
+            "height": 1122.5,
+            "top": 150,
+            "right": 1046.84375,
+            "bottom": 1272.5,
+            "left": 253.15625
+          }
+        },
+        {
+          "tag": "DIV",
+          "className": "caret",
+          "dataset": {},
+          "rect": {
+            "x": 366.703125,
+            "y": 322,
+            "width": 2,
+            "height": 13.296875,
+            "top": 322,
+            "right": 368.703125,
+            "bottom": 335.296875,
+            "left": 366.703125
+          }
+        },
+        {
+          "tag": "DIV",
+          "className": "caret-composition",
+          "dataset": {},
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          }
+        }
+      ],
+      "fontStatus": "loaded",
+      "dpr": 1
+    },
+    "imageLayers": [],
+    "planes": [
+      {
+        "plane": "background-0",
+        "id": "",
+        "dataset": {
+          "rhwpLayerKind": "background",
+          "rhwpOverlay": "background-0",
+          "rhwpOverlayPage": "0",
+          "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+        },
+        "width": 794,
+        "height": 1123,
+        "rect": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "relative": {
+          "x": 0,
+          "y": 0,
+          "width": 793.6875,
+          "height": 1122.5
+        },
+        "zIndex": "0",
+        "pointerEvents": "none",
+        "connected": true,
+        "samePageParent": true,
+        "siblingIndex": 0,
+        "alphaPixels": 891662,
+        "inkBounds": {
+          "minX": 0,
+          "minY": 0,
+          "maxX": 793,
+          "maxY": 1122
+        }
+      },
+      {
+        "plane": "behind-0",
+        "id": "",
+        "dataset": {
+          "rhwpLayerKind": "behind",
+          "rhwpOverlay": "behind-0",
+          "rhwpOverlayPage": "0",
+          "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+        },
+        "width": 794,
+        "height": 1123,
+        "rect": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "relative": {
+          "x": 0,
+          "y": 0,
+          "width": 793.6875,
+          "height": 1122.5
+        },
+        "zIndex": "1",
+        "pointerEvents": "none",
+        "connected": true,
+        "samePageParent": true,
+        "siblingIndex": 1,
+        "alphaPixels": 17633,
+        "inkBounds": {
+          "minX": 116,
+          "minY": 203,
+          "maxX": 344,
+          "maxY": 279
+        }
+      },
+      {
+        "plane": "flow",
+        "id": "",
+        "dataset": {
+          "rhwpRenderedZoom": "1",
+          "rhwpRenderTier": "screen",
+          "rhwpRenderBucket": "1",
+          "rhwpRequestedDpr": "1",
+          "rhwpRenderScale": "1",
+          "rhwpRawDpr": "1",
+          "rhwpEffectiveDpr": "1",
+          "rhwpSurfaceVisible": "true",
+          "rhwpSurfaceLayerCount": "3",
+          "rhwpEstimatedSurfaceBytes": "10691139",
+          "rhwpEstimatedVisibleSurfaceBytes": "10691139",
+          "rhwpEstimatedRetainedSurfaceBytes": "10691139",
+          "rhwpSurfaceBudgetState": "within",
+          "rhwpActualSurfacePixels": "2674986",
+          "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3",
+          "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3|surfaces:background:794x1123,behind:794x1123,main:794x1123"
+        },
+        "width": 794,
+        "height": 1123,
+        "rect": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "relative": {
+          "x": 0,
+          "y": 0,
+          "width": 793.6875,
+          "height": 1122.5
+        },
+        "zIndex": "2",
+        "pointerEvents": "auto",
+        "connected": true,
+        "samePageParent": true,
+        "siblingIndex": 2,
+        "alphaPixels": 7627,
+        "inkBounds": {
+          "minX": 91,
+          "minY": 110,
+          "maxX": 702,
+          "maxY": 1031
+        }
+      }
+    ],
+    "fontSupply": {
+      "loaded": true,
+      "rules": "@font-face { font-family: \"함초롬돋움\"; src: url(\"https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff\") format(\"woff\"); font-display: swap; }\n@font-face { font-family: \"함초롬바탕\"; src: url(\"https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff\") format(\"woff\"); font-display: swap; }\n@font-face { font-family: \"RHWP Old Hangul\"; src: url(\"fonts/RHWPOldHangul-Regular.woff2\") format(\"woff2\"); font-display: swap; unicode-range: U+1100-11FF, U+A960-A97F, U+D7B0-D7FF; }",
+      "canvases": [
+        {
+          "plane": "background-0",
+          "font": "10px sans-serif"
+        },
+        {
+          "plane": "behind-0",
+          "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+        },
+        {
+          "plane": "flow",
+          "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+        }
+      ]
+    },
+    "sourceJsSha256": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa",
+    "screen": {
+      "width": 1280,
+      "height": 1500,
+      "attempt": 1,
+      "sha256": "6d9608f152f915f00dcee8f54be6afb7dc1e956bf9d4dcd454c679ee6e9ad76c"
+    },
+    "stableScreen": {
+      "width": 1280,
+      "height": 1500,
+      "attempt": 1,
+      "sha256": "6d9608f152f915f00dcee8f54be6afb7dc1e956bf9d4dcd454c679ee6e9ad76c"
+    },
+    "stable": true,
+    "pageClip": {
+      "x": 253.15625,
+      "y": 150,
+      "width": 793.6875,
+      "height": 1122.5
+    },
+    "pageCapture": {
+      "width": 794,
+      "height": 1123,
+      "attempt": 1,
+      "sha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c"
+    },
+    "afterCaptureDpr": 1,
+    "passed": true
+  },
+  "comparison": [
+    {
+      "backend": "canvas2d",
+      "page": "1",
+      "tolerant_content_match_percent": "97.59",
+      "below_90": "0",
+      "silhouette_raw_match_percent": "97.59",
+      "silhouette_boundary_reconciled_pixels": "0"
+    },
+    {
+      "backend": "native-skia",
+      "page": "1",
+      "tolerant_content_match_percent": "100.00",
+      "below_90": "0",
+      "silhouette_raw_match_percent": "100.00",
+      "silhouette_boundary_reconciled_pixels": "0"
+    }
+  ],
+  "reference_png_sha256": "387d24d72a54d2a43686150b7b95a27ab08884917bdf236725955f5aa80aac95",
+  "image_source": {
+    "scope": "immutable HWPX image identity; screen paint is independently captured",
+    "embedded": [
+      {
+        "path": "BinData/image1.jpg",
+        "bytes": 81040,
+        "sha256": "7af06b6410ea950341606e2ffe793f99e680030b39513b4bd835dc5c42822f76"
+      }
+    ],
+    "canonical_path": "rhwp-studio/public/samples/images/moogung.jpg"
+  },
+  "source_intake": {
+    "issue8271_cross_references": [
+      {
+        "number": 8206,
+        "title": "fix(layout): 같은 문단의 위아래 개체는 문단 흐름 시작을 차지할 때만 글자처럼 그림을 아래로 보낸다 (#8168)",
+        "state": "closed",
+        "pull_request": {
+          "url": "https://api.github.com/repos/edwardkim/rhwp/pulls/8206",
+          "html_url": "https://github.com/edwardkim/rhwp/pull/8206",
+          "diff_url": "https://github.com/edwardkim/rhwp/pull/8206.diff",
+          "patch_url": "https://github.com/edwardkim/rhwp/pull/8206.patch",
+          "merged_at": null
+        }
+      },
+      {
+        "number": 8282,
+        "title": "[layout] HWPX 로 저장한 뒤 다시 열면 글자처럼 그림 + 어울림 부동 도형 문단의 그림 줄 높이가 사라진다 (합성 입력)",
+        "state": "open",
+        "pull_request": null
+      },
+      {
+        "number": 8283,
+        "title": "fix(layout): 저장 줄 없는 글자처럼 그림 호스트가 줄 폭 중립 부동 개체와 함께여도 현재 프레임에서 재조판된다 (#8271, #8206 선행)",
+        "state": "closed",
+        "pull_request": {
+          "url": "https://api.github.com/repos/edwardkim/rhwp/pulls/8283",
+          "html_url": "https://github.com/edwardkim/rhwp/pull/8283",
+          "diff_url": "https://github.com/edwardkim/rhwp/pull/8283.diff",
+          "patch_url": "https://github.com/edwardkim/rhwp/pull/8283.patch",
+          "merged_at": null
+        }
+      }
+    ],
+    "latest": {
+      "devel": "698906bf4aeaa6d0d7101a4fd4d7c4a9229f6bb2",
+      "ahead_by": 6,
+      "commits": [
+        [
+          "743710d415c3f3dfd5fc57dadab0e41a9c8bd70b",
+          "fix(layout): 머리말·꼬리말의 용지·쪽 기준 표와 글상자를 그 틀에서 잰다"
+        ],
+        [
+          "b098116fe4bae93e3a34ba3b40349ac1065e62d8",
+          "fix(rendering): 바탕쪽이 없는 구역은 앞 구역의 바탕쪽을 잇는다"
+        ],
+        [
+          "0de61c2578063775dde80b6ccdc41e2a8ed8841f",
+          "docs(pr): 머리말·꼬리말 틀 기준과 바탕쪽 잇기의 Visual Sweep 증적"
+        ],
+        [
+          "f820e064a53b99259fa1c3ed17d8df731f72c1d1",
+          "Merge pull request #8165 from pblsketch/fix/header-footer-table-frame"
+        ],
+        [
+          "f3ff65bb58b166278ec4b10ee6fd5c1979b18555",
+          "docs: preserve PR 8165 acceptance review and visual evidence"
+        ],
+        [
+          "698906bf4aeaa6d0d7101a4fd4d7c4a9229f6bb2",
+          "docs: finalize PR 8165 welcome and post-merge cleanup"
+        ]
+      ],
+      "files": [
+        "mydocs/orders/20261030.md",
+        "mydocs/pr/archives/pr_8165_review.md",
+        "mydocs/pr/assets/header_footer_frame_20261023/base/header-footer-paper-frame-p001-native-review.png",
+        "mydocs/pr/assets/header_footer_frame_20261023/base/master-page-section-carry-p002-native-review.png",
+        "mydocs/pr/assets/header_footer_frame_20261023/base/native/header-footer-paper-frame_silhouette.tsv",
+        "mydocs/pr/assets/header_footer_frame_20261023/base/native/master-page-section-carry_silhouette.tsv",
+        "mydocs/pr/assets/header_footer_frame_20261023/base/wasm/header-footer-paper-frame_silhouette.tsv",
+        "mydocs/pr/assets/header_footer_frame_20261023/base/wasm/master-page-section-carry_silhouette.tsv",
+        "mydocs/pr/assets/header_footer_frame_20261023/header-footer-paper-frame-p001-native-overlay.png",
+        "mydocs/pr/assets/header_footer_frame_20261023/header-footer-paper-frame-p001-native-review.png",
+        "mydocs/pr/assets/header_footer_frame_20261023/header-footer-paper-frame-p001-wasm-overlay.png",
+        "mydocs/pr/assets/header_footer_frame_20261023/header-footer-paper-frame-p001-wasm-review.png",
+        "mydocs/pr/assets/header_footer_frame_20261023/master-page-section-carry-p002-native-overlay.png",
+        "mydocs/pr/assets/header_footer_frame_20261023/master-page-section-carry-p002-native-review.png",
+        "mydocs/pr/assets/header_footer_frame_20261023/master-page-section-carry-p002-wasm-overlay.png",
+        "mydocs/pr/assets/header_footer_frame_20261023/master-page-section-carry-p002-wasm-review.png",
+        "mydocs/pr/assets/header_footer_frame_20261023/native/header-footer-paper-frame_silhouette.tsv",
+        "mydocs/pr/assets/header_footer_frame_20261023/native/master-page-section-carry_silhouette.tsv",
+        "mydocs/pr/assets/header_footer_frame_20261023/samples/hf_cross_section_inherit-p002-before-after.png",
+        "mydocs/pr/assets/header_footer_frame_20261023/wasm/header-footer-paper-frame_silhouette.tsv",
+        "mydocs/pr/assets/header_footer_frame_20261023/wasm/master-page-section-carry_silhouette.tsv",
+        "mydocs/pr/assets/pr_8165_maintainer/README.md",
+        "mydocs/pr/assets/pr_8165_maintainer/native/header-footer.tsv",
+        "mydocs/pr/assets/pr_8165_maintainer/native/header-footer_compare.png",
+        "mydocs/pr/assets/pr_8165_maintainer/native/header-footer_overlay.png",
+        "mydocs/pr/assets/pr_8165_maintainer/native/header-footer_review.png",
+        "mydocs/pr/assets/pr_8165_maintainer/native/master-carry.tsv",
+        "mydocs/pr/assets/pr_8165_maintainer/provenance.json",
+        "mydocs/pr/assets/pr_8165_maintainer/wasm/header-footer.tsv",
+        "mydocs/pr/assets/pr_8165_maintainer/wasm/header-footer_compare.png",
+        "mydocs/pr/assets/pr_8165_maintainer/wasm/header-footer_overlay.png",
+        "mydocs/pr/assets/pr_8165_maintainer/wasm/header-footer_review.png",
+        "mydocs/pr/assets/pr_8165_maintainer/wasm/master-carry.tsv",
+        "samples/header-footer-paper-frame.hwpx",
+        "samples/master-page-section-carry.hwpx",
+        "src/document_core/queries/rendering.rs",
+        "src/renderer/layout/header_footer_layout.rs",
+        "tests/cases/header_footer_paper_frame.rs",
+        "tests/cases/master_page_section_carry.rs"
+      ]
+    }
+  },
+  "scope": "Canvas2D BehindText initial composition of one existing independently printed HWPX; not transitions or complete app verification",
+  "comparison_manifests": {
+    "canvas2d": {
+      "key": "canvas2d",
+      "mode": "silhouette_only",
+      "run_state": "complete",
+      "requested_pages": [
+        1
+      ],
+      "completed_pages": [
+        1
+      ],
+      "missing_pages": [],
+      "tsv": "C:\\Users\\seman\\Documents\\ChatGPT\\hannote\\.playwright-mcp\\studio-behind-plane-proof\\canvas2d\\silhouette.tsv",
+      "radius_px": 2,
+      "inputs": [
+        {
+          "page": 1,
+          "rhwp_png": "C:\\Users\\seman\\Documents\\ChatGPT\\hannote\\.playwright-mcp\\studio-behind-plane-proof\\collected\\canvas2d-page.png",
+          "rhwp_sha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c",
+          "pdf_png": "C:\\Users\\seman\\Documents\\ChatGPT\\hannote\\.playwright-mcp\\studio-behind-plane-proof\\collected\\reference.png",
+          "pdf_sha256": "387d24d72a54d2a43686150b7b95a27ab08884917bdf236725955f5aa80aac95"
+        }
+      ],
+      "metrics": [
+        {
+          "page": 1,
+          "silhouette_method": "threshold_boundary_color_support_v1",
+          "silhouette_raw_match_percent": 97.58689,
+          "silhouette_boundary_reconciled_pixels": 0,
+          "silhouette_color_tolerance": 32,
+          "silhouette_content_union_pixels": 9034,
+          "tolerant_content_match_percent": 97.58689
+        }
+      ],
+      "silhouette_method": "threshold_boundary_color_support_v1",
+      "image_decoding": {
+        "alpha_background": "#ffffff",
+        "script_sha256": "08dc51bc238330d254d773de3b5479ec662d2318353e49d8e4bce204b1c30ccb"
+      },
+      "color_tolerance": 32,
+      "pr_review_gate": {
+        "status": "not_evaluated",
+        "metric": "silhouette_raw_match_percent",
+        "minimum_silhouette_raw_match_percent": 90.0,
+        "below_threshold_pages": [],
+        "unavailable_metric_pages": [],
+        "font_mismatch_evidence": null,
+        "document_page_counts": {
+          "rhwp": 1,
+          "pdf": 1
+        },
+        "page_count_mismatch": false,
+        "reason": "실루엣 보조값만 산출; 직접 시각·각주·본문 소유 검토 필요"
+      }
+    },
+    "native-skia": {
+      "key": "native-skia",
+      "mode": "silhouette_only",
+      "run_state": "complete",
+      "requested_pages": [
+        1
+      ],
+      "completed_pages": [
+        1
+      ],
+      "missing_pages": [],
+      "tsv": "C:\\Users\\seman\\Documents\\ChatGPT\\hannote\\.playwright-mcp\\studio-behind-plane-proof\\native-skia\\silhouette.tsv",
+      "radius_px": 2,
+      "inputs": [
+        {
+          "page": 1,
+          "rhwp_png": "C:\\Users\\seman\\Documents\\ChatGPT\\hannote\\.playwright-mcp\\studio-behind-plane-proof\\collected\\native\\tac_picture_behindtext_textbox.png",
+          "rhwp_sha256": "55b128b96dbcc28331f5d9b9b15a2bcb6edb4ed0c8b30b9f67aab3ee00170963",
+          "pdf_png": "C:\\Users\\seman\\Documents\\ChatGPT\\hannote\\.playwright-mcp\\studio-behind-plane-proof\\collected\\reference.png",
+          "pdf_sha256": "387d24d72a54d2a43686150b7b95a27ab08884917bdf236725955f5aa80aac95"
+        }
+      ],
+      "metrics": [
+        {
+          "page": 1,
+          "silhouette_method": "threshold_boundary_color_support_v1",
+          "silhouette_raw_match_percent": 100.0,
+          "silhouette_boundary_reconciled_pixels": 0,
+          "silhouette_color_tolerance": 32,
+          "silhouette_content_union_pixels": 8848,
+          "tolerant_content_match_percent": 100.0
+        }
+      ],
+      "silhouette_method": "threshold_boundary_color_support_v1",
+      "image_decoding": {
+        "alpha_background": "#ffffff",
+        "script_sha256": "08dc51bc238330d254d773de3b5479ec662d2318353e49d8e4bce204b1c30ccb"
+      },
+      "color_tolerance": 32,
+      "pr_review_gate": {
+        "status": "not_evaluated",
+        "metric": "silhouette_raw_match_percent",
+        "minimum_silhouette_raw_match_percent": 90.0,
+        "below_threshold_pages": [],
+        "unavailable_metric_pages": [],
+        "font_mismatch_evidence": null,
+        "document_page_counts": {
+          "rhwp": 1,
+          "pdf": 1
+        },
+        "page_count_mismatch": false,
+        "reason": "실루엣 보조값만 산출; 직접 시각·각주·본문 소유 검토 필요"
+      }
+    }
+  }
+}

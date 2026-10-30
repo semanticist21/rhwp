@@ -1,0 +1,3 @@
+backend	page	tolerant_content_match_percent	below_90	silhouette_raw_match_percent	silhouette_boundary_reconciled_pixels
+canvas2d	1	97.59	0	97.59	0
+native-skia	1	100.00	0	100.00	0
