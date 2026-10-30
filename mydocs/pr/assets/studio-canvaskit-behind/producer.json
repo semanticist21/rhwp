@@ -1,0 +1,1268 @@
+{
+  "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+  "tree": "1ff3de58d486cdfcf0b36247d430609d7fb81869",
+  "evidence_parent": "2d28aec3c3b3bcb813e1b50629db069a39310438",
+  "input_pdf": {
+    "samples/issue8271/tac_picture_behindtext_textbox.hwpx": {
+      "bytes": 89161,
+      "sha256": "19ac4952c2d2254fce267b950b40dba10cfe607c9c6bf9b6139804dfdbbc7b00",
+      "blob": "583088f76f00dede662117363ed492057852c171"
+    },
+    "pdf/issue8271/tac_picture_behindtext_textbox-2020.pdf": {
+      "bytes": 47160,
+      "sha256": "fe9dd3caedb3dabc7e38f81de03a3804bbf7430597f9c4fc3c3e86f3ba2e0ab0",
+      "blob": "54add2505d5f0d3cc2612023a0a2084f1d1b6c12"
+    }
+  },
+  "image_source": {
+    "scope": "immutable HWPX image identity; screen paint is independently captured",
+    "embedded": [
+      {
+        "path": "BinData/image1.jpg",
+        "bytes": 81040,
+        "sha256": "7af06b6410ea950341606e2ffe793f99e680030b39513b4bd835dc5c42822f76"
+      }
+    ],
+    "canonical_path": "rhwp-studio/public/samples/images/moogung.jpg"
+  },
+  "source_blobs": {
+    "rhwp-studio/src/view/page-renderer.ts": "f21e857f1ab6acbf2b77cc724f75c81c49c827f2",
+    "rhwp-studio/src/view/canvaskit-renderer.ts": "b303400cc346e546ebc17e4c8b88065b24a188bd",
+    "rhwp-studio/src/view/canvas-view.ts": "85fd20d071f226e3e341dccab09712c8064e6329",
+    "rhwp-studio/src/view/canvaskit/replay-plane.ts": "dd5376ef28023e0c4863d1631f8d5a3146d4aa37"
+  },
+  "runtime": {
+    "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+    "browser": "156.0.8078.73",
+    "production": true,
+    "backend": "canvaskit",
+    "consoleLog": [
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[FontLoader] 웹폰트 로드 시작: 3개 파일 (이미 요청함: 0개)"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: 함초롬돋움 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: 함초롬바탕 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: RHWP Old Hangul <- fonts/RHWPOldHangul-Regular.woff2"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: RHWP Old Hangul <- fonts/RHWPOldHangul-Regular.woff2"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: 함초롬돋움 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff"
+      },
+      {
+        "type": "warning",
+        "text": "Service Worker registration blocked by Playwright"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: 함초롬바탕 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      },
+      {
+        "type": "log",
+        "text": "[FontLoader] 폰트 로드 완료: 3개 성공, 0개 실패 (총 3개 파일 요청)"
+      },
+      {
+        "type": "log",
+        "text": "[WasmBridge] WASM 초기화 완료 (rhwp 0.9.0)"
+      },
+      {
+        "type": "log",
+        "text": "[WasmBridge] 새 문서 생성: 1페이지"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 1. 폰트 로딩 시작"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 2. 폰트 로딩 완료"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 3. inputHandler deactivate"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 4. canvasView loadDocument"
+      },
+      {
+        "type": "log",
+        "text": "[CanvasView] 1/1페이지 로드, 총 높이: 1142.5px"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 5. toolbar setEnabled"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 6. toolbar initFontDropdown + initStyleDropdown"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 7. 사전 검증 및 로컬 글꼴 확인"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 8. inputHandler activateWithCaretPosition"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 9. 완료"
+      },
+      {
+        "type": "debug",
+        "text": "[autosave] draft deleted: 2ad7f148-192f-4a91-bc45-ca4a1e6f2953 (document-replaced)"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 1. 폰트 로딩 시작"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 2. 폰트 로딩 완료"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 3. inputHandler deactivate"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 4. canvasView loadDocument"
+      },
+      {
+        "type": "log",
+        "text": "[CanvasView] 1/1페이지 로드, 총 높이: 1142.5px"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 5. toolbar setEnabled"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 6. toolbar initFontDropdown + initStyleDropdown"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 7. 사전 검증 및 로컬 글꼴 확인"
+      },
+      {
+        "type": "log",
+        "text": "[validation] 1 warnings — 그대로 보기 (#2527) {lineseg 배열이 비어있음: 1}"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 8. inputHandler activateWithCaretPosition"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 9. 완료"
+      }
+    ],
+    "pageErrors": [],
+    "responses": [
+      {
+        "url": "http://127.0.0.1:33327/locale-init.js",
+        "status": 200,
+        "sha256": "633d47a6a53b2211cf816769f8c084b097c1b60b6ab263803d8610c0531539fa"
+      },
+      {
+        "url": "http://127.0.0.1:33327/theme-init.js",
+        "status": 200,
+        "sha256": "5a3afcc0139187bfe509414cd60fde2a0dfea72fd72751c4e6e696cdc0f6c587"
+      },
+      {
+        "url": "http://127.0.0.1:33327/registerSW.js",
+        "status": 200,
+        "sha256": "9742073ef7fc795e7673d98f272992843298426a0ffd8cb3507784df5143608b"
+      },
+      {
+        "url": "http://127.0.0.1:33327/assets/index-B7ByZimA.js",
+        "status": 200,
+        "sha256": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa"
+      },
+      {
+        "url": "http://127.0.0.1:33327/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "sha256": "1a45a61e9a320c1bc62ca1401f7b23ceffffe8133dc2a9650ad4e12524f8dcab"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff",
+        "status": 200,
+        "sha256": "49bf312aec309ba88c3eb612c591c2d8e28b765c156c808691850137431bb1bf"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+        "status": 200,
+        "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c"
+      },
+      {
+        "url": "http://127.0.0.1:33327/assets/plugin-DO1SH32F.js",
+        "status": 200,
+        "sha256": "fd4da7dc0aae8f64ed16f659004a1c73757dc928d1515f632f0c35695e655823"
+      },
+      {
+        "url": "http://127.0.0.1:33327/assets/canvaskit-renderer-S10QNEZn.js",
+        "status": 200,
+        "sha256": "34f1c749212f8a65ca6f9f636b672f384acb9924628f5dbb157995052d9763b6"
+      },
+      {
+        "url": "http://127.0.0.1:33327/fonts/NotoSansKR-Regular.woff2",
+        "status": 200,
+        "sha256": "d1bf8649914a4fe9477a8735bf056383e44e466141fb3d61897252e06d900c1a"
+      },
+      {
+        "url": "http://127.0.0.1:33327/fonts/D2Coding-Regular.woff2",
+        "status": 200,
+        "sha256": "4d3fa8ed66fedcb1787f200bd75637b816b09057fc06da0aa783e3b305a726d8"
+      },
+      {
+        "url": "http://127.0.0.1:33327/fonts/LatinModernMath-Regular.woff2",
+        "status": 200,
+        "sha256": "b11060f37967c090457580275129d0d7da1d5fbfc82b04e78c91aa31977f547c"
+      },
+      {
+        "url": "http://127.0.0.1:33327/fonts/NotoSansMath-Regular.woff2",
+        "status": 200,
+        "sha256": "6836027b99d29fd0e6f668cf0c2e89107de4131b91116cd96516ad4a7e19d66d"
+      },
+      {
+        "url": "http://127.0.0.1:33327/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "sha256": "1a45a61e9a320c1bc62ca1401f7b23ceffffe8133dc2a9650ad4e12524f8dcab"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+        "status": 200,
+        "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+        "status": 200,
+        "error": "response.body: Protocol error (Network.getResponseBody): No data found for resource with given identifier"
+      },
+      {
+        "url": "http://127.0.0.1:33327/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "error": "response.body: Protocol error (Network.getResponseBody): No data found for resource with given identifier"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+        "status": 200,
+        "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c"
+      },
+      {
+        "url": "http://127.0.0.1:33327/assets/rhwp_bg-MJdpQrZt.wasm",
+        "status": 200,
+        "sha256": "f5c1452c503bd7789d126a78ff5004e7c8ca282ab08822dbfb9bbd04bc759791",
+        "observedDuringInitialization": true
+      },
+      {
+        "url": "http://127.0.0.1:33327/assets/canvaskit-SCAxUyCS.wasm",
+        "status": 200,
+        "sha256": "25ebed8e60158c5854f8dc807b936daca21354f8bfb6a2231266b0a93812f301",
+        "observedDuringInitialization": true
+      }
+    ],
+    "failures": [],
+    "input": {
+      "name": "tac_picture_behindtext_textbox.hwpx",
+      "sha256": "19ac4952c2d2254fce267b950b40dba10cfe607c9c6bf9b6139804dfdbbc7b00"
+    },
+    "actualRenderInput": {
+      "profile": "screen",
+      "pageWidth": 793.707,
+      "pageHeight": 1122.48,
+      "layers": [
+        {
+          "path": "root.children.3",
+          "layer": {
+            "textWrap": "behindText",
+            "zOrder": 0,
+            "stableIndex": 3
+          },
+          "kind": "group",
+          "children": 2
+        },
+        {
+          "path": "root.children.3.children.0",
+          "layer": {
+            "textWrap": "behindText",
+            "zOrder": 0,
+            "stableIndex": 3
+          },
+          "kind": "leaf",
+          "children": 0
+        }
+      ],
+      "counts": {
+        "pageBackground": 1,
+        "textRun": 4,
+        "image": 1,
+        "rectangle": 1
+      },
+      "texts": [
+        {
+          "text": "앞 ",
+          "fontFamily": "함초롬바탕",
+          "paintFamily": "함초롬바탕",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "글 뒤 글",
+          "fontFamily": "함초롬바탕",
+          "paintFamily": "함초롬바탕",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "다음 문단",
+          "fontFamily": "함초롬바탕",
+          "paintFamily": "함초롬바탕",
+          "bold": false,
+          "italic": false
+        },
+        {
+          "text": "중요",
+          "fontFamily": "함초롬바탕",
+          "paintFamily": "함초롬바탕",
+          "bold": false,
+          "italic": false
+        }
+      ],
+      "fontResources": {
+        "kind": "object",
+        "keys": [
+          "blobs",
+          "faces"
+        ],
+        "arrayLength": null,
+        "blobs": 0,
+        "faces": 0
+      },
+      "scale": 1,
+      "documentGeneration": 2,
+      "sameVisibleCanvas": true
+    },
+    "sameRenderAndDiagnosticsReceiver": true,
+    "state": {
+      "title": "tac_picture_behindtext_textbox.hwpx - rhwp-studio",
+      "status": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      tac_picture_behindtext_textbox.hwpx — 1페이지 (247.2ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+      "globals": {
+        "wasm": false,
+        "canvasView": false
+      },
+      "fonts": [
+        {
+          "family": "함초롬돋움",
+          "status": "unloaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "함초롬바탕",
+          "status": "unloaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "RHWP Old Hangul",
+          "status": "unloaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "\"RHWP Old Hangul\"",
+          "status": "loaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "함초롬돋움",
+          "status": "loaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "함초롬바탕",
+          "status": "loaded",
+          "style": "normal",
+          "weight": "normal"
+        }
+      ],
+      "canvases": [
+        {
+          "id": "",
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "3563713",
+            "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+            "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "891662",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+          },
+          "parent": "<div id=\"scroll-content\" style=\"width: 833.7px; height: 1142.5px;\"><canvas class=\"document-page-canvas\" width=\"794\" height=\"1123\" data-rhwp-rendered-zoom=\"1\" data-rhwp-render-tier=\"screen\" data-rhwp-render-bucket=\"1\" data-rhwp-requested-dpr=\"1\" data-rhwp-render-scale=\"1\" data-rhwp-raw-dpr=\"1\" data-rhwp-effective-dpr=\"1\" data-rhwp-surface-visible=\"true\" data-rhwp-surface-layer-count=\"1\" data-rhwp-estimated-surface-bytes=\"3563713\" data-rhwp-estimated-visible-surface-bytes=\"3563713\" data-rhwp-estimated-retained-surface-bytes=\"3563713\" data-rhwp-surface-budget-state=\"within\" data-rhwp-actual-surface-pixels=\"891662\" data-rhwp-surface-cache-lookup-key=\"blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1\" data-rhwp-surface-cache-key=\"blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123\" style=\"top: 10px; left: 50%; transform: translateX("
+        }
+      ],
+      "images": [],
+      "dialogs": [],
+      "composition": [
+        {
+          "tag": "CANVAS",
+          "className": "document-page-canvas",
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "3563713",
+            "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+            "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "891662",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+          },
+          "rect": {
+            "x": 253.15625,
+            "y": 150,
+            "width": 793.6875,
+            "height": 1122.5,
+            "top": 150,
+            "right": 1046.84375,
+            "bottom": 1272.5,
+            "left": 253.15625
+          }
+        },
+        {
+          "tag": "DIV",
+          "className": "caret",
+          "dataset": {},
+          "rect": {
+            "x": 366.703125,
+            "y": 322,
+            "width": 2,
+            "height": 13.296875,
+            "top": 322,
+            "right": 368.703125,
+            "bottom": 335.296875,
+            "left": 366.703125
+          }
+        },
+        {
+          "tag": "DIV",
+          "className": "caret-composition",
+          "dataset": {},
+          "rect": {
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0,
+            "top": 0,
+            "right": 0,
+            "bottom": 0,
+            "left": 0
+          }
+        }
+      ],
+      "fontStatus": "loaded",
+      "dpr": 1
+    },
+    "imageLayers": [],
+    "planes": [
+      {
+        "plane": "flow",
+        "id": "",
+        "dataset": {
+          "rhwpRenderedZoom": "1",
+          "rhwpRenderTier": "screen",
+          "rhwpRenderBucket": "1",
+          "rhwpRequestedDpr": "1",
+          "rhwpRenderScale": "1",
+          "rhwpRawDpr": "1",
+          "rhwpEffectiveDpr": "1",
+          "rhwpSurfaceVisible": "true",
+          "rhwpSurfaceLayerCount": "1",
+          "rhwpEstimatedSurfaceBytes": "3563713",
+          "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+          "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+          "rhwpSurfaceBudgetState": "within",
+          "rhwpActualSurfacePixels": "891662",
+          "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+          "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+        },
+        "width": 794,
+        "height": 1123,
+        "rect": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "relative": {
+          "x": 0,
+          "y": 0,
+          "width": 793.6875,
+          "height": 1122.5
+        },
+        "zIndex": "0",
+        "pointerEvents": "auto",
+        "connected": true,
+        "samePageParent": true,
+        "siblingIndex": 0,
+        "alphaPixels": null,
+        "inkBounds": null
+      }
+    ],
+    "readiness": [
+      {
+        "diagnostics": {
+          "surfaceCreated": 2,
+          "surfaceReused": 2,
+          "staticPictureCacheEntries": 8,
+          "staticPictureCacheBytes": 16740480,
+          "staticPictureCacheHits": 8,
+          "staticPictureCacheMisses": 8,
+          "staticPictureCacheEvictions": 0,
+          "textBlobCacheEntries": 7,
+          "textBlobCacheBytes": 1908,
+          "textBlobCacheHits": 7,
+          "textBlobCacheMisses": 7,
+          "fallbackFamilyCacheEntries": 8,
+          "paragraphFontEntries": 4,
+          "paragraphFontBytes": 13900744,
+          "paragraphProviderBuilds": 0,
+          "paragraphFontRejections": 0,
+          "pendingImageLoads": 0,
+          "mode": "default",
+          "surfacePreference": "software",
+          "surfaceBackend": "software",
+          "surfaceFallbackReason": null,
+          "lastRenderCompleted": true,
+          "lastUnsupportedOps": [],
+          "lastExpectedUnsupportedOps": [],
+          "lastUnexpectedUnsupportedOps": [],
+          "lastRenderError": null,
+          "passesRuntimeReadinessGate": true,
+          "readinessBlockers": [],
+          "hiddenCanvas2dOverlayUsed": false,
+          "lastRenderDurationMs": 22.19999998807907,
+          "renderCount": 2,
+          "imageCacheEntries": 1,
+          "imageCacheLimit": 128,
+          "imageCachePixels": 523000,
+          "imageCachePixelLimit": 67108864,
+          "imageCacheHits": 3,
+          "imageCacheMisses": 1,
+          "imageCacheEvictions": 0,
+          "mipmapCacheEntries": 0,
+          "mipmapCacheBytes": 0,
+          "mipmapCacheHits": 0,
+          "mipmapCacheMisses": 0,
+          "imageFailureCacheHits": 0,
+          "imageFailures": [],
+          "localTypefaceCount": 0,
+          "localTypefaceLoadFailureCount": 0,
+          "localTypefacePendingCount": 0,
+          "bundledTypefaceCount": 1,
+          "bundledTypefaceLoadFailureCount": 0,
+          "glyphRunFontBlobCount": 0,
+          "glyphRunFontBlobBytes": 0,
+          "glyphRunTypefaceCount": 0,
+          "glyphRunFontCount": 0,
+          "fontSubstitutionLimit": 4096,
+          "unregisteredFontFallbacks": 0,
+          "fontSubstitutions": [],
+          "replayFeatureCounts": {
+            "dashedStrokes": 0,
+            "glyphRuns": 0,
+            "tabLeaders": 0,
+            "charOverlaps": 0,
+            "verticalPresentationPunctuation": 0,
+            "verticalTextRuns": 0
+          },
+          "textVariantDiagnosticGroups": 0,
+          "textVariantDiagnosticParts": 0,
+          "replayDiagnosticsDropped": 0
+        },
+        "surface": {
+          "created": 2,
+          "reused": 2,
+          "backend": "software",
+          "preference": "software",
+          "fallbackReason": null
+        },
+        "requirePreparedFontFamilies": true,
+        "imageCacheState": [
+          {
+            "keyPrefix": "document:1|source:bin:0:1:src:bytes:eeeb38f5b43263337ba88c52f009eb2c6d2334d2e9ee33b5a5db4bb98c2d202b",
+            "keyLength": 114,
+            "width": 1000,
+            "height": 523,
+            "pixels": 523000
+          }
+        ],
+        "connected": true,
+        "sameVisibleCanvas": true,
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "backend": "software"
+        },
+        "glyphBlobHashes": [],
+        "typefaceKeys": [],
+        "bundledAliases": [
+          {
+            "family": "새바탕",
+            "faces": [
+              {
+                "family": "HCR Batang",
+                "samePreparedTypeface": true
+              }
+            ]
+          },
+          {
+            "family": "한컴바탕",
+            "faces": [
+              {
+                "family": "HCR Batang",
+                "samePreparedTypeface": true
+              }
+            ]
+          },
+          {
+            "family": "함초롬바탕",
+            "faces": [
+              {
+                "family": "HCR Batang",
+                "samePreparedTypeface": true
+              }
+            ]
+          },
+          {
+            "family": "함초롱바탕",
+            "faces": [
+              {
+                "family": "HCR Batang",
+                "samePreparedTypeface": true
+              }
+            ]
+          }
+        ],
+        "preparedTypefaces": [
+          {
+            "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+            "family": "HCR Batang",
+            "bytes": 11613312,
+            "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c",
+            "coverageText": " 글다단뒤문앞요음중",
+            "glyphIDs": [
+              5,
+              39894,
+              41146,
+              41150,
+              41594,
+              43278,
+              45876,
+              46186,
+              46370,
+              46823
+            ]
+          }
+        ],
+        "resolvedFamilyCache": [
+          {
+            "key": "[\"함초롬바탕\",false,false,0]",
+            "family": "HCR Batang",
+            "samePreparedTypeface": true
+          },
+          {
+            "key": "[\"Batang\",false,false,0]",
+            "family": null,
+            "samePreparedTypeface": false
+          },
+          {
+            "key": "[\"AppleMyungjo\",false,false,0]",
+            "family": null,
+            "samePreparedTypeface": false
+          },
+          {
+            "key": "[\"Noto Serif KR\",false,false,0]",
+            "family": null,
+            "samePreparedTypeface": false
+          },
+          {
+            "key": "[\"Segoe UI Emoji\",false,false,0]",
+            "family": null,
+            "samePreparedTypeface": false
+          },
+          {
+            "key": "[\"Noto Emoji\",false,false,0]",
+            "family": null,
+            "samePreparedTypeface": false
+          },
+          {
+            "key": "[\"Noto Color Emoji\",false,false,0]",
+            "family": null,
+            "samePreparedTypeface": false
+          },
+          {
+            "key": "[\"serif\",false,false,0]",
+            "family": null,
+            "samePreparedTypeface": false
+          }
+        ]
+      }
+    ],
+    "rendererBefore": {
+      "diagnostics": {
+        "surfaceCreated": 2,
+        "surfaceReused": 2,
+        "staticPictureCacheEntries": 8,
+        "staticPictureCacheBytes": 16740480,
+        "staticPictureCacheHits": 8,
+        "staticPictureCacheMisses": 8,
+        "staticPictureCacheEvictions": 0,
+        "textBlobCacheEntries": 7,
+        "textBlobCacheBytes": 1908,
+        "textBlobCacheHits": 7,
+        "textBlobCacheMisses": 7,
+        "fallbackFamilyCacheEntries": 8,
+        "paragraphFontEntries": 4,
+        "paragraphFontBytes": 13900744,
+        "paragraphProviderBuilds": 0,
+        "paragraphFontRejections": 0,
+        "pendingImageLoads": 0,
+        "mode": "default",
+        "surfacePreference": "software",
+        "surfaceBackend": "software",
+        "surfaceFallbackReason": null,
+        "lastRenderCompleted": true,
+        "lastUnsupportedOps": [],
+        "lastExpectedUnsupportedOps": [],
+        "lastUnexpectedUnsupportedOps": [],
+        "lastRenderError": null,
+        "passesRuntimeReadinessGate": true,
+        "readinessBlockers": [],
+        "hiddenCanvas2dOverlayUsed": false,
+        "lastRenderDurationMs": 22.19999998807907,
+        "renderCount": 2,
+        "imageCacheEntries": 1,
+        "imageCacheLimit": 128,
+        "imageCachePixels": 523000,
+        "imageCachePixelLimit": 67108864,
+        "imageCacheHits": 3,
+        "imageCacheMisses": 1,
+        "imageCacheEvictions": 0,
+        "mipmapCacheEntries": 0,
+        "mipmapCacheBytes": 0,
+        "mipmapCacheHits": 0,
+        "mipmapCacheMisses": 0,
+        "imageFailureCacheHits": 0,
+        "imageFailures": [],
+        "localTypefaceCount": 0,
+        "localTypefaceLoadFailureCount": 0,
+        "localTypefacePendingCount": 0,
+        "bundledTypefaceCount": 1,
+        "bundledTypefaceLoadFailureCount": 0,
+        "glyphRunFontBlobCount": 0,
+        "glyphRunFontBlobBytes": 0,
+        "glyphRunTypefaceCount": 0,
+        "glyphRunFontCount": 0,
+        "fontSubstitutionLimit": 4096,
+        "unregisteredFontFallbacks": 0,
+        "fontSubstitutions": [],
+        "replayFeatureCounts": {
+          "dashedStrokes": 0,
+          "glyphRuns": 0,
+          "tabLeaders": 0,
+          "charOverlaps": 0,
+          "verticalPresentationPunctuation": 0,
+          "verticalTextRuns": 0
+        },
+        "textVariantDiagnosticGroups": 0,
+        "textVariantDiagnosticParts": 0,
+        "replayDiagnosticsDropped": 0
+      },
+      "surface": {
+        "created": 2,
+        "reused": 2,
+        "backend": "software",
+        "preference": "software",
+        "fallbackReason": null
+      },
+      "requirePreparedFontFamilies": true,
+      "imageCacheState": [
+        {
+          "keyPrefix": "document:1|source:bin:0:1:src:bytes:eeeb38f5b43263337ba88c52f009eb2c6d2334d2e9ee33b5a5db4bb98c2d202b",
+          "keyLength": 114,
+          "width": 1000,
+          "height": 523,
+          "pixels": 523000
+        }
+      ],
+      "connected": true,
+      "sameVisibleCanvas": true,
+      "canvas": {
+        "width": 794,
+        "height": 1123,
+        "backend": "software"
+      },
+      "glyphBlobHashes": [],
+      "typefaceKeys": [],
+      "bundledAliases": [
+        {
+          "family": "새바탕",
+          "faces": [
+            {
+              "family": "HCR Batang",
+              "samePreparedTypeface": true
+            }
+          ]
+        },
+        {
+          "family": "한컴바탕",
+          "faces": [
+            {
+              "family": "HCR Batang",
+              "samePreparedTypeface": true
+            }
+          ]
+        },
+        {
+          "family": "함초롬바탕",
+          "faces": [
+            {
+              "family": "HCR Batang",
+              "samePreparedTypeface": true
+            }
+          ]
+        },
+        {
+          "family": "함초롱바탕",
+          "faces": [
+            {
+              "family": "HCR Batang",
+              "samePreparedTypeface": true
+            }
+          ]
+        }
+      ],
+      "preparedTypefaces": [
+        {
+          "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+          "family": "HCR Batang",
+          "bytes": 11613312,
+          "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c",
+          "coverageText": " 글다단뒤문앞요음중",
+          "glyphIDs": [
+            5,
+            39894,
+            41146,
+            41150,
+            41594,
+            43278,
+            45876,
+            46186,
+            46370,
+            46823
+          ]
+        }
+      ],
+      "resolvedFamilyCache": [
+        {
+          "key": "[\"함초롬바탕\",false,false,0]",
+          "family": "HCR Batang",
+          "samePreparedTypeface": true
+        },
+        {
+          "key": "[\"Batang\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        },
+        {
+          "key": "[\"AppleMyungjo\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        },
+        {
+          "key": "[\"Noto Serif KR\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        },
+        {
+          "key": "[\"Segoe UI Emoji\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        },
+        {
+          "key": "[\"Noto Emoji\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        },
+        {
+          "key": "[\"Noto Color Emoji\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        },
+        {
+          "key": "[\"serif\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        }
+      ]
+    },
+    "sourceJsSha256": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa",
+    "screen": {
+      "width": 1280,
+      "height": 1500,
+      "attempt": 1,
+      "sha256": "dec955e1ea78db40db5da06b86f6d374a01735de1cd55217b57219a88b400ce6"
+    },
+    "stableScreen": {
+      "width": 1280,
+      "height": 1500,
+      "attempt": 1,
+      "sha256": "dec955e1ea78db40db5da06b86f6d374a01735de1cd55217b57219a88b400ce6"
+    },
+    "stable": true,
+    "pageClip": {
+      "x": 253.15625,
+      "y": 150,
+      "width": 793.6875,
+      "height": 1122.5
+    },
+    "pageCapture": {
+      "width": 794,
+      "height": 1123,
+      "attempt": 1,
+      "sha256": "d5f9e17d129ffd767f9bc29197014ebd8739db7361ca8648b96c939ac165a8ad"
+    },
+    "afterCaptureDpr": 1,
+    "rendererAfter": {
+      "diagnostics": {
+        "surfaceCreated": 2,
+        "surfaceReused": 2,
+        "staticPictureCacheEntries": 8,
+        "staticPictureCacheBytes": 16740480,
+        "staticPictureCacheHits": 8,
+        "staticPictureCacheMisses": 8,
+        "staticPictureCacheEvictions": 0,
+        "textBlobCacheEntries": 7,
+        "textBlobCacheBytes": 1908,
+        "textBlobCacheHits": 7,
+        "textBlobCacheMisses": 7,
+        "fallbackFamilyCacheEntries": 8,
+        "paragraphFontEntries": 4,
+        "paragraphFontBytes": 13900744,
+        "paragraphProviderBuilds": 0,
+        "paragraphFontRejections": 0,
+        "pendingImageLoads": 0,
+        "mode": "default",
+        "surfacePreference": "software",
+        "surfaceBackend": "software",
+        "surfaceFallbackReason": null,
+        "lastRenderCompleted": true,
+        "lastUnsupportedOps": [],
+        "lastExpectedUnsupportedOps": [],
+        "lastUnexpectedUnsupportedOps": [],
+        "lastRenderError": null,
+        "passesRuntimeReadinessGate": true,
+        "readinessBlockers": [],
+        "hiddenCanvas2dOverlayUsed": false,
+        "lastRenderDurationMs": 22.19999998807907,
+        "renderCount": 2,
+        "imageCacheEntries": 1,
+        "imageCacheLimit": 128,
+        "imageCachePixels": 523000,
+        "imageCachePixelLimit": 67108864,
+        "imageCacheHits": 3,
+        "imageCacheMisses": 1,
+        "imageCacheEvictions": 0,
+        "mipmapCacheEntries": 0,
+        "mipmapCacheBytes": 0,
+        "mipmapCacheHits": 0,
+        "mipmapCacheMisses": 0,
+        "imageFailureCacheHits": 0,
+        "imageFailures": [],
+        "localTypefaceCount": 0,
+        "localTypefaceLoadFailureCount": 0,
+        "localTypefacePendingCount": 0,
+        "bundledTypefaceCount": 1,
+        "bundledTypefaceLoadFailureCount": 0,
+        "glyphRunFontBlobCount": 0,
+        "glyphRunFontBlobBytes": 0,
+        "glyphRunTypefaceCount": 0,
+        "glyphRunFontCount": 0,
+        "fontSubstitutionLimit": 4096,
+        "unregisteredFontFallbacks": 0,
+        "fontSubstitutions": [],
+        "replayFeatureCounts": {
+          "dashedStrokes": 0,
+          "glyphRuns": 0,
+          "tabLeaders": 0,
+          "charOverlaps": 0,
+          "verticalPresentationPunctuation": 0,
+          "verticalTextRuns": 0
+        },
+        "textVariantDiagnosticGroups": 0,
+        "textVariantDiagnosticParts": 0,
+        "replayDiagnosticsDropped": 0
+      },
+      "surface": {
+        "created": 2,
+        "reused": 2,
+        "backend": "software",
+        "preference": "software",
+        "fallbackReason": null
+      },
+      "requirePreparedFontFamilies": true,
+      "imageCacheState": [
+        {
+          "keyPrefix": "document:1|source:bin:0:1:src:bytes:eeeb38f5b43263337ba88c52f009eb2c6d2334d2e9ee33b5a5db4bb98c2d202b",
+          "keyLength": 114,
+          "width": 1000,
+          "height": 523,
+          "pixels": 523000
+        }
+      ],
+      "connected": true,
+      "sameVisibleCanvas": true,
+      "canvas": {
+        "width": 794,
+        "height": 1123,
+        "backend": "software"
+      },
+      "glyphBlobHashes": [],
+      "typefaceKeys": [],
+      "bundledAliases": [
+        {
+          "family": "새바탕",
+          "faces": [
+            {
+              "family": "HCR Batang",
+              "samePreparedTypeface": true
+            }
+          ]
+        },
+        {
+          "family": "한컴바탕",
+          "faces": [
+            {
+              "family": "HCR Batang",
+              "samePreparedTypeface": true
+            }
+          ]
+        },
+        {
+          "family": "함초롬바탕",
+          "faces": [
+            {
+              "family": "HCR Batang",
+              "samePreparedTypeface": true
+            }
+          ]
+        },
+        {
+          "family": "함초롱바탕",
+          "faces": [
+            {
+              "family": "HCR Batang",
+              "samePreparedTypeface": true
+            }
+          ]
+        }
+      ],
+      "preparedTypefaces": [
+        {
+          "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+          "family": "HCR Batang",
+          "bytes": 11613312,
+          "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c",
+          "coverageText": " 글다단뒤문앞요음중",
+          "glyphIDs": [
+            5,
+            39894,
+            41146,
+            41150,
+            41594,
+            43278,
+            45876,
+            46186,
+            46370,
+            46823
+          ]
+        }
+      ],
+      "resolvedFamilyCache": [
+        {
+          "key": "[\"함초롬바탕\",false,false,0]",
+          "family": "HCR Batang",
+          "samePreparedTypeface": true
+        },
+        {
+          "key": "[\"Batang\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        },
+        {
+          "key": "[\"AppleMyungjo\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        },
+        {
+          "key": "[\"Noto Serif KR\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        },
+        {
+          "key": "[\"Segoe UI Emoji\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        },
+        {
+          "key": "[\"Noto Emoji\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        },
+        {
+          "key": "[\"Noto Color Emoji\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        },
+        {
+          "key": "[\"serif\",false,false,0]",
+          "family": null,
+          "samePreparedTypeface": false
+        }
+      ]
+    },
+    "preparedTypefacesVerified": [
+      {
+        "family": "HCR Batang",
+        "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c",
+        "bytes": 11613312,
+        "responseUrl": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      }
+    ],
+    "passed": true
+  },
+  "comparison": {
+    "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+    "page_count": 1,
+    "raw": {
+      "page": "1",
+      "tolerant_content_match_percent": "100.00",
+      "below_90": "0",
+      "silhouette_raw_match_percent": "100.00",
+      "silhouette_boundary_reconciled_pixels": "0"
+    },
+    "reference_sha256": "387d24d72a54d2a43686150b7b95a27ab08884917bdf236725955f5aa80aac95",
+    "bytes_collected": 225280
+  },
+  "comparison_manifest": {
+    "key": "canvaskit-behind",
+    "mode": "silhouette_only",
+    "run_state": "complete",
+    "requested_pages": [
+      1
+    ],
+    "completed_pages": [
+      1
+    ],
+    "missing_pages": [],
+    "tsv": "C:\\Users\\seman\\Documents\\ChatGPT\\hannote\\.playwright-mcp\\studio-canvaskit-behind-proof\\score\\silhouette.tsv",
+    "radius_px": 2,
+    "inputs": [
+      {
+        "page": 1,
+        "rhwp_png": "C:\\Users\\seman\\Documents\\ChatGPT\\hannote\\.playwright-mcp\\studio-canvaskit-behind-proof\\score\\page-1.png",
+        "rhwp_sha256": "d5f9e17d129ffd767f9bc29197014ebd8739db7361ca8648b96c939ac165a8ad",
+        "pdf_png": "C:\\Users\\seman\\Documents\\ChatGPT\\hannote\\.playwright-mcp\\studio-behind-plane-proof\\collected\\reference.png",
+        "pdf_sha256": "387d24d72a54d2a43686150b7b95a27ab08884917bdf236725955f5aa80aac95"
+      }
+    ],
+    "metrics": [
+      {
+        "page": 1,
+        "silhouette_method": "threshold_boundary_color_support_v1",
+        "silhouette_raw_match_percent": 100.0,
+        "silhouette_boundary_reconciled_pixels": 0,
+        "silhouette_color_tolerance": 32,
+        "silhouette_content_union_pixels": 8865,
+        "tolerant_content_match_percent": 100.0
+      }
+    ],
+    "silhouette_method": "threshold_boundary_color_support_v1",
+    "image_decoding": {
+      "alpha_background": "#ffffff",
+      "script_sha256": "08dc51bc238330d254d773de3b5479ec662d2318353e49d8e4bce204b1c30ccb"
+    },
+    "color_tolerance": 32,
+    "pr_review_gate": {
+      "status": "not_evaluated",
+      "metric": "silhouette_raw_match_percent",
+      "minimum_silhouette_raw_match_percent": 90.0,
+      "below_threshold_pages": [],
+      "unavailable_metric_pages": [],
+      "font_mismatch_evidence": null,
+      "document_page_counts": {
+        "rhwp": 1,
+        "pdf": 1
+      },
+      "page_count_mismatch": false,
+      "reason": "실루엣 보조값만 산출; 직접 시각·각주·본문 소유 검토 필요"
+    }
+  },
+  "reused_native": {
+    "verification_url": "https://github.com/semanticist21/rhwp/blob/3deefcc6937015121e7cd63927ec30dc9f9404a7/mydocs/pr/assets/studio-behind-plane/verification.md",
+    "image_url": "https://github.com/semanticist21/rhwp/blob/3deefcc6937015121e7cd63927ec30dc9f9404a7/mydocs/pr/assets/studio-behind-plane/native-skia.png",
+    "producer_sha256": "a6c32ee47df10497b0b3994d9a0184723a3f69308c28cc8d6cef3bc1ef8d12ec"
+  },
+  "scope": "CanvasKit software initial BehindText/TextRun/image consumption of one HWPX; no transition or pixel-identity claim"
+}
