@@ -1,0 +1,4566 @@
+{
+  "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+  "tree": "1ff3de58d486cdfcf0b36247d430609d7fb81869",
+  "evidence_parent": "d290570765560d28b41acc32f8f2e4020289c981",
+  "scope": "controlled software CanvasKit path-only front transitions; observed surfaces only",
+  "runtime": {
+    "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+    "sourceTree": "1ff3de58d486cdfcf0b36247d430609d7fb81869",
+    "phase": "candidate",
+    "backend": "canvaskit",
+    "specimen": "front",
+    "browser": "156.0.8078.73",
+    "production": true,
+    "consoleLog": [
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[FontLoader] 웹폰트 로드 시작: 3개 파일 (이미 요청함: 0개)"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: 함초롬돋움 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: 함초롬바탕 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: RHWP Old Hangul <- fonts/RHWPOldHangul-Regular.woff2"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: RHWP Old Hangul <- fonts/RHWPOldHangul-Regular.woff2"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: 함초롬돋움 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff"
+      },
+      {
+        "type": "warning",
+        "text": "Service Worker registration blocked by Playwright"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: 함초롬바탕 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      },
+      {
+        "type": "log",
+        "text": "[FontLoader] 폰트 로드 완료: 3개 성공, 0개 실패 (총 3개 파일 요청)"
+      },
+      {
+        "type": "log",
+        "text": "[WasmBridge] WASM 초기화 완료 (rhwp 0.9.0)"
+      },
+      {
+        "type": "log",
+        "text": "[WasmBridge] 새 문서 생성: 1페이지"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 1. 폰트 로딩 시작"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 2. 폰트 로딩 완료"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 3. inputHandler deactivate"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 4. canvasView loadDocument"
+      },
+      {
+        "type": "log",
+        "text": "[CanvasView] 1/1페이지 로드, 총 높이: 1142.5px"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 5. toolbar setEnabled"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 6. toolbar initFontDropdown + initStyleDropdown"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 7. 사전 검증 및 로컬 글꼴 확인"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 8. inputHandler activateWithCaretPosition"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 9. 완료"
+      },
+      {
+        "type": "debug",
+        "text": "[autosave] draft deleted: b7394511-fe7b-4770-9624-1d77469873ea (document-replaced)"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 1. 폰트 로딩 시작"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 2. 폰트 로딩 완료"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 3. inputHandler deactivate"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 4. canvasView loadDocument"
+      },
+      {
+        "type": "log",
+        "text": "[CanvasView] 1/1페이지 로드, 총 높이: 1142.5px"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 5. toolbar setEnabled"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 6. toolbar initFontDropdown + initStyleDropdown"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 7. 사전 검증 및 로컬 글꼴 확인"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 8. inputHandler activateWithCaretPosition"
+      },
+      {
+        "type": "warning",
+        "text": "[CursorState] updateRect 실패 → rect=null pos=(%d,%d,%d) cell=(%s,%s,%s,%s): 0 0 0 undefined undefined undefined undefined 렌더링 오류: 커서 위치를 찾을 수 없습니다: sec=0, para=0, offset=0"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 9. 완료"
+      },
+      {
+        "type": "warning",
+        "text": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+      }
+    ],
+    "pageErrors": [],
+    "responses": [
+      {
+        "url": "http://127.0.0.1:42789/theme-init.js",
+        "status": 200,
+        "sha256": "5a3afcc0139187bfe509414cd60fde2a0dfea72fd72751c4e6e696cdc0f6c587"
+      },
+      {
+        "url": "http://127.0.0.1:42789/locale-init.js",
+        "status": 200,
+        "sha256": "633d47a6a53b2211cf816769f8c084b097c1b60b6ab263803d8610c0531539fa"
+      },
+      {
+        "url": "http://127.0.0.1:42789/registerSW.js",
+        "status": 200,
+        "sha256": "9742073ef7fc795e7673d98f272992843298426a0ffd8cb3507784df5143608b"
+      },
+      {
+        "url": "http://127.0.0.1:42789/assets/index-B7ByZimA.js",
+        "status": 200,
+        "sha256": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa"
+      },
+      {
+        "url": "http://127.0.0.1:42789/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "sha256": "1a45a61e9a320c1bc62ca1401f7b23ceffffe8133dc2a9650ad4e12524f8dcab"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff",
+        "status": 200,
+        "sha256": "49bf312aec309ba88c3eb612c591c2d8e28b765c156c808691850137431bb1bf"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+        "status": 200,
+        "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c"
+      },
+      {
+        "url": "http://127.0.0.1:42789/assets/plugin-DO1SH32F.js",
+        "status": 200,
+        "sha256": "fd4da7dc0aae8f64ed16f659004a1c73757dc928d1515f632f0c35695e655823"
+      },
+      {
+        "url": "http://127.0.0.1:42789/assets/canvaskit-renderer-S10QNEZn.js",
+        "status": 200,
+        "sha256": "34f1c749212f8a65ca6f9f636b672f384acb9924628f5dbb157995052d9763b6"
+      },
+      {
+        "url": "http://127.0.0.1:42789/fonts/NotoSansKR-Regular.woff2",
+        "status": 200,
+        "sha256": "d1bf8649914a4fe9477a8735bf056383e44e466141fb3d61897252e06d900c1a"
+      },
+      {
+        "url": "http://127.0.0.1:42789/fonts/D2Coding-Regular.woff2",
+        "status": 200,
+        "sha256": "4d3fa8ed66fedcb1787f200bd75637b816b09057fc06da0aa783e3b305a726d8"
+      },
+      {
+        "url": "http://127.0.0.1:42789/fonts/LatinModernMath-Regular.woff2",
+        "status": 200,
+        "sha256": "b11060f37967c090457580275129d0d7da1d5fbfc82b04e78c91aa31977f547c"
+      },
+      {
+        "url": "http://127.0.0.1:42789/fonts/NotoSansMath-Regular.woff2",
+        "status": 200,
+        "sha256": "6836027b99d29fd0e6f668cf0c2e89107de4131b91116cd96516ad4a7e19d66d"
+      },
+      {
+        "url": "http://127.0.0.1:42789/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "sha256": "1a45a61e9a320c1bc62ca1401f7b23ceffffe8133dc2a9650ad4e12524f8dcab"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+        "status": 200,
+        "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c"
+      },
+      {
+        "url": "http://127.0.0.1:42789/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "error": "response.body: Protocol error (Network.getResponseBody): No data found for resource with given identifier"
+      },
+      {
+        "url": "http://127.0.0.1:42789/assets/rhwp_bg-MJdpQrZt.wasm",
+        "status": 200,
+        "sha256": "f5c1452c503bd7789d126a78ff5004e7c8ca282ab08822dbfb9bbd04bc759791",
+        "observedDuringInitialization": true
+      },
+      {
+        "url": "http://127.0.0.1:42789/assets/canvaskit-SCAxUyCS.wasm",
+        "status": 200,
+        "sha256": "25ebed8e60158c5854f8dc807b936daca21354f8bfb6a2231266b0a93812f301",
+        "observedDuringInitialization": true
+      }
+    ],
+    "failures": [],
+    "input": {
+      "name": "shape-group-02.hwp",
+      "sha256": "12a4b4962a57b4d292d23a1809255ddb7e8400af4dc7884c5bcb7b4767a6628f"
+    },
+    "actualRenderInput": {
+      "profile": "screen",
+      "pageWidth": 793.707,
+      "pageHeight": 1122.507,
+      "layers": [
+        {
+          "path": "root.children.3",
+          "layer": {
+            "textWrap": "inFrontOfText",
+            "zOrder": 0,
+            "stableIndex": 2
+          },
+          "kind": "group",
+          "children": 2
+        }
+      ],
+      "counts": {
+        "pageBackground": 1,
+        "path": 2
+      },
+      "fontResources": 0,
+      "scale": 1,
+      "documentGeneration": 2,
+      "sameVisibleCanvas": true
+    },
+    "sameRenderAndDiagnosticsReceiver": true,
+    "stages": [
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "1",
+              "rhwpEstimatedSurfaceBytes": "3563713",
+              "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+              "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "891662",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; width: 793.7px; height: 1122.5px;",
+            "zIndex": "0",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (220.3ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "3563713",
+            "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+            "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "891662",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "rendererBefore": {
+          "diagnostics": {
+            "surfaceCreated": 2,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 8,
+            "staticPictureCacheBytes": 4480,
+            "staticPictureCacheHits": 8,
+            "staticPictureCacheMisses": 8,
+            "staticPictureCacheEvictions": 0,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 33.6000000089407,
+            "renderCount": 2,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 2,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 794,
+            "height": 1123,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceBefore": {
+          "surfaceId": 1,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": false
+            }
+          ]
+        },
+        "raster": {
+          "bytes": 3566648,
+          "nonWhitePixels": 146037,
+          "rgbaSha256": "9c2e7b5e1a7e21cc23fac1c970772f9c17b350844b501e8bd2c94fc31929b6b8"
+        },
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "ce8aedd74f229c7c80abd40f9888e90c30a59104aae41805e510f9660d225fb5"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "ce8aedd74f229c7c80abd40f9888e90c30a59104aae41805e510f9660d225fb5"
+        },
+        "stable": true,
+        "renderer": {
+          "diagnostics": {
+            "surfaceCreated": 2,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 8,
+            "staticPictureCacheBytes": 4480,
+            "staticPictureCacheHits": 8,
+            "staticPictureCacheMisses": 8,
+            "staticPictureCacheEvictions": 0,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 33.6000000089407,
+            "renderCount": 2,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 2,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 794,
+            "height": 1123,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceAfter": {
+          "surfaceId": 1,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": false
+            }
+          ]
+        },
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "3c6fc245f39b0de8c854412e446534ef334d1caeda301619dc55b7d95110c433"
+        },
+        "pageSha256": "3c6fc245f39b0de8c854412e446534ef334d1caeda301619dc55b7d95110c433",
+        "events": [],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "initial"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "2",
+              "rhwpRequestedDpr": "2",
+              "rhwpRenderScale": "2",
+              "rhwpRawDpr": "2",
+              "rhwpEffectiveDpr": "2",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "1",
+              "rhwpEstimatedSurfaceBytes": "14254852",
+              "rhwpEstimatedVisibleSurfaceBytes": "14254852",
+              "rhwpEstimatedRetainedSurfaceBytes": "14254852",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "3566648",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:2|layers:1",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:2|layers:1|surfaces:main:1588x2246"
+            },
+            "width": 1588,
+            "height": 2246,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: auto; width: 793.7px; height: 1122.5px;",
+            "zIndex": "0",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          }
+        ],
+        "dpr": 2,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (220.3ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 1588,
+          "height": 2246,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "2",
+            "rhwpRequestedDpr": "2",
+            "rhwpRenderScale": "2",
+            "rhwpRawDpr": "2",
+            "rhwpEffectiveDpr": "2",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "14254852",
+            "rhwpEstimatedVisibleSurfaceBytes": "14254852",
+            "rhwpEstimatedRetainedSurfaceBytes": "14254852",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "3566648",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:2|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:2|layers:1|surfaces:main:1588x2246"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "rendererBefore": {
+          "diagnostics": {
+            "surfaceCreated": 3,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 16,
+            "staticPictureCacheBytes": 8960,
+            "staticPictureCacheHits": 8,
+            "staticPictureCacheMisses": 16,
+            "staticPictureCacheEvictions": 0,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 118.20000000298023,
+            "renderCount": 3,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 3,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 1588,
+            "height": 2246,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceBefore": {
+          "surfaceId": 2,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": false
+            }
+          ]
+        },
+        "raster": {
+          "bytes": 14266592,
+          "nonWhitePixels": 580599,
+          "rgbaSha256": "2765337685c60340c7ad7f8248020a8931475b0ad2a51ef83a0dea7db2b29d49"
+        },
+        "screenPng": {
+          "width": 2560,
+          "height": 3000,
+          "sha256": "010d4a5481a11cb997503deaf3f83f8351a903739d29a94680e90f640fda88d5"
+        },
+        "stableScreenPng": {
+          "width": 2560,
+          "height": 3000,
+          "sha256": "010d4a5481a11cb997503deaf3f83f8351a903739d29a94680e90f640fda88d5"
+        },
+        "stable": true,
+        "renderer": {
+          "diagnostics": {
+            "surfaceCreated": 3,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 16,
+            "staticPictureCacheBytes": 8960,
+            "staticPictureCacheHits": 8,
+            "staticPictureCacheMisses": 16,
+            "staticPictureCacheEvictions": 0,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 118.20000000298023,
+            "renderCount": 3,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 3,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 1588,
+            "height": 2246,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceAfter": {
+          "surfaceId": 2,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": false
+            }
+          ]
+        },
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 1588,
+          "height": 2246,
+          "sha256": "af3a4d6c25456d241c3fa95dd96bb334b76126fef53c29336e87876b542b89ee"
+        },
+        "pageSha256": "af3a4d6c25456d241c3fa95dd96bb334b76126fef53c29336e87876b542b89ee",
+        "events": [
+          {
+            "phase": "dpr2-only",
+            "kind": "resolution-media-query",
+            "timestamp": 9440.70000000298,
+            "dpr": 2,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1dppx)",
+            "matches": false
+          },
+          {
+            "phase": "dpr2-only",
+            "kind": "resolution-media-query",
+            "timestamp": 9440.70000000298,
+            "dpr": 2,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 2dppx)",
+            "matches": true
+          }
+        ],
+        "afterCaptureDpr": 2,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 1588,
+            "height": 2246,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr2-only"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "3",
+              "rhwpRequestedDpr": "3",
+              "rhwpRenderScale": "3",
+              "rhwpRawDpr": "3",
+              "rhwpEffectiveDpr": "3",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "1",
+              "rhwpEstimatedSurfaceBytes": "32073417",
+              "rhwpEstimatedVisibleSurfaceBytes": "32073417",
+              "rhwpEstimatedRetainedSurfaceBytes": "32073417",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "8022576",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:3|layers:1",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:3|layers:1|surfaces:main:2382x3368"
+            },
+            "width": 2382,
+            "height": 3368,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; width: 793.7px; height: 1122.5px;",
+            "zIndex": "0",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          }
+        ],
+        "dpr": 3,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (220.3ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 2382,
+          "height": 3368,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "3",
+            "rhwpRequestedDpr": "3",
+            "rhwpRenderScale": "3",
+            "rhwpRawDpr": "3",
+            "rhwpEffectiveDpr": "3",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "32073417",
+            "rhwpEstimatedVisibleSurfaceBytes": "32073417",
+            "rhwpEstimatedRetainedSurfaceBytes": "32073417",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "8022576",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:3|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:3|layers:1|surfaces:main:2382x3368"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "rendererBefore": {
+          "diagnostics": {
+            "surfaceCreated": 4,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 24,
+            "staticPictureCacheBytes": 13440,
+            "staticPictureCacheHits": 8,
+            "staticPictureCacheMisses": 24,
+            "staticPictureCacheEvictions": 0,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 237.90000000596046,
+            "renderCount": 4,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 4,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 2382,
+            "height": 3368,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceBefore": {
+          "surfaceId": 3,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": false
+            }
+          ]
+        },
+        "raster": {
+          "bytes": 32090304,
+          "nonWhitePixels": 1303621,
+          "rgbaSha256": "08681c48d395114ab4032e81beae00fce6a9354973afd8bba558d578e177c5fc"
+        },
+        "screenPng": {
+          "width": 3840,
+          "height": 4500,
+          "sha256": "8aeec730cbdd9b4fec7b0e06976c22cab75f197229c72b1279ac6ec04e24ee3e"
+        },
+        "stableScreenPng": {
+          "width": 3840,
+          "height": 4500,
+          "sha256": "8aeec730cbdd9b4fec7b0e06976c22cab75f197229c72b1279ac6ec04e24ee3e"
+        },
+        "stable": true,
+        "renderer": {
+          "diagnostics": {
+            "surfaceCreated": 4,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 24,
+            "staticPictureCacheBytes": 13440,
+            "staticPictureCacheHits": 8,
+            "staticPictureCacheMisses": 24,
+            "staticPictureCacheEvictions": 0,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 237.90000000596046,
+            "renderCount": 4,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 4,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 2382,
+            "height": 3368,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceAfter": {
+          "surfaceId": 3,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": false
+            }
+          ]
+        },
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 2382,
+          "height": 3369,
+          "sha256": "ba2a32e8f7ba2018fa8039f6f381cf9928869b46d94fd77dfcfea12ee6553684"
+        },
+        "pageSha256": "ba2a32e8f7ba2018fa8039f6f381cf9928869b46d94fd77dfcfea12ee6553684",
+        "events": [
+          {
+            "phase": "dpr3-only",
+            "kind": "resolution-media-query",
+            "timestamp": 12412.70000000298,
+            "dpr": 3,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 2dppx)",
+            "matches": false
+          },
+          {
+            "phase": "dpr3-only",
+            "kind": "resolution-media-query",
+            "timestamp": 12412.70000000298,
+            "dpr": 3,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 3dppx)",
+            "matches": true
+          }
+        ],
+        "afterCaptureDpr": 3,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 2382,
+            "height": 3368,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr3-only"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1.25",
+              "rhwpRequestedDpr": "1.25",
+              "rhwpRenderScale": "1.25",
+              "rhwpRawDpr": "1.25",
+              "rhwpEffectiveDpr": "1.25",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "1",
+              "rhwpEstimatedSurfaceBytes": "5568301.5625",
+              "rhwpEstimatedVisibleSurfaceBytes": "5568301.5625",
+              "rhwpEstimatedRetainedSurfaceBytes": "5568301.5625",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "1394172",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1.25|layers:1",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1.25|layers:1|surfaces:main:993x1404"
+            },
+            "width": 993,
+            "height": 1404,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; width: 793.7px; height: 1122.5px;",
+            "zIndex": "0",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          }
+        ],
+        "dpr": 1.25,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (220.3ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 993,
+          "height": 1404,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1.25",
+            "rhwpRequestedDpr": "1.25",
+            "rhwpRenderScale": "1.25",
+            "rhwpRawDpr": "1.25",
+            "rhwpEffectiveDpr": "1.25",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "5568301.5625",
+            "rhwpEstimatedVisibleSurfaceBytes": "5568301.5625",
+            "rhwpEstimatedRetainedSurfaceBytes": "5568301.5625",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "1394172",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1.25|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1.25|layers:1|surfaces:main:993x1404"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "rendererBefore": {
+          "diagnostics": {
+            "surfaceCreated": 5,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 32,
+            "staticPictureCacheBytes": 17920,
+            "staticPictureCacheHits": 8,
+            "staticPictureCacheMisses": 32,
+            "staticPictureCacheEvictions": 0,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 51.29999999701977,
+            "renderCount": 5,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 5,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 993,
+            "height": 1404,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceBefore": {
+          "surfaceId": 4,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": true
+            },
+            {
+              "surfaceId": 4,
+              "deleted": false
+            }
+          ]
+        },
+        "raster": {
+          "bytes": 5576688,
+          "nonWhitePixels": 227664,
+          "rgbaSha256": "025abdcf356de61f3ff820845b26e73ee9f0f38d5a7b570743816f17da9401f3"
+        },
+        "screenPng": {
+          "width": 1600,
+          "height": 1875,
+          "sha256": "a93bf6d66ef29ba1fac41c06005d10b0fad6af5471f2e94f6e4da4110abab822"
+        },
+        "stableScreenPng": {
+          "width": 1600,
+          "height": 1875,
+          "sha256": "a93bf6d66ef29ba1fac41c06005d10b0fad6af5471f2e94f6e4da4110abab822"
+        },
+        "stable": true,
+        "renderer": {
+          "diagnostics": {
+            "surfaceCreated": 5,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 32,
+            "staticPictureCacheBytes": 17920,
+            "staticPictureCacheHits": 8,
+            "staticPictureCacheMisses": 32,
+            "staticPictureCacheEvictions": 0,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 51.29999999701977,
+            "renderCount": 5,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 5,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 993,
+            "height": 1404,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceAfter": {
+          "surfaceId": 4,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": true
+            },
+            {
+              "surfaceId": 4,
+              "deleted": false
+            }
+          ]
+        },
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 993,
+          "height": 1404,
+          "sha256": "8605bd047170a815f8b899a8f311cd949efeb96617f784cbb76c2a17dd940cdd"
+        },
+        "pageSha256": "8605bd047170a815f8b899a8f311cd949efeb96617f784cbb76c2a17dd940cdd",
+        "events": [
+          {
+            "phase": "dpr125-only",
+            "kind": "resolution-media-query",
+            "timestamp": 16110.5,
+            "dpr": 1.25,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1.25dppx)",
+            "matches": true
+          },
+          {
+            "phase": "dpr125-only",
+            "kind": "resolution-media-query",
+            "timestamp": 16110.5,
+            "dpr": 1.25,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 3dppx)",
+            "matches": false
+          }
+        ],
+        "afterCaptureDpr": 1.25,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 993,
+            "height": 1404,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr125-only"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "1",
+              "rhwpEstimatedSurfaceBytes": "3563713",
+              "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+              "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "891662",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; width: 793.7px; height: 1122.5px;",
+            "zIndex": "0",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (220.3ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "3563713",
+            "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+            "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "891662",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "rendererBefore": {
+          "diagnostics": {
+            "surfaceCreated": 6,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 32,
+            "staticPictureCacheBytes": 17920,
+            "staticPictureCacheHits": 16,
+            "staticPictureCacheMisses": 32,
+            "staticPictureCacheEvictions": 0,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 35,
+            "renderCount": 6,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 6,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 794,
+            "height": 1123,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceBefore": {
+          "surfaceId": 5,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": true
+            },
+            {
+              "surfaceId": 4,
+              "deleted": true
+            },
+            {
+              "surfaceId": 5,
+              "deleted": false
+            }
+          ]
+        },
+        "raster": {
+          "bytes": 3566648,
+          "nonWhitePixels": 146037,
+          "rgbaSha256": "9c2e7b5e1a7e21cc23fac1c970772f9c17b350844b501e8bd2c94fc31929b6b8"
+        },
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "1ae32e57698287514da2cae98ff3439918c0ba36e92ca6218cba58c3ab722c0c"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "1ae32e57698287514da2cae98ff3439918c0ba36e92ca6218cba58c3ab722c0c"
+        },
+        "stable": true,
+        "renderer": {
+          "diagnostics": {
+            "surfaceCreated": 6,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 32,
+            "staticPictureCacheBytes": 17920,
+            "staticPictureCacheHits": 16,
+            "staticPictureCacheMisses": 32,
+            "staticPictureCacheEvictions": 0,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 35,
+            "renderCount": 6,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 6,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 794,
+            "height": 1123,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceAfter": {
+          "surfaceId": 5,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": true
+            },
+            {
+              "surfaceId": 4,
+              "deleted": true
+            },
+            {
+              "surfaceId": 5,
+              "deleted": false
+            }
+          ]
+        },
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "3c6fc245f39b0de8c854412e446534ef334d1caeda301619dc55b7d95110c433"
+        },
+        "pageSha256": "3c6fc245f39b0de8c854412e446534ef334d1caeda301619dc55b7d95110c433",
+        "events": [
+          {
+            "phase": "dpr-restored",
+            "kind": "resolution-media-query",
+            "timestamp": 18686.79999999702,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1dppx)",
+            "matches": true
+          },
+          {
+            "phase": "dpr-restored",
+            "kind": "resolution-media-query",
+            "timestamp": 18686.79999999702,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1.25dppx)",
+            "matches": false
+          }
+        ],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr-restored"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1.25",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1.25",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "1",
+              "rhwpEstimatedSurfaceBytes": "5568301.5625",
+              "rhwpEstimatedVisibleSurfaceBytes": "5568301.5625",
+              "rhwpEstimatedRetainedSurfaceBytes": "5568301.5625",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "1394172",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1.25|layers:1",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1.25|layers:1|surfaces:main:993x1404"
+            },
+            "width": 993,
+            "height": 1404,
+            "rect": {
+              "x": 153.9375,
+              "y": 89.5,
+              "width": 992.125,
+              "height": 1403.125,
+              "top": 89.5,
+              "right": 1146.0625,
+              "bottom": 1492.625,
+              "left": 153.9375
+            },
+            "style": "top: 12.5px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; width: 992.125px; height: 1403.12px;",
+            "zIndex": "0",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "125%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (220.3ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          125%\n        \n      \n    ",
+        "canvas": {
+          "width": 993,
+          "height": 1404,
+          "dataset": {
+            "rhwpRenderedZoom": "1.25",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1.25",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "5568301.5625",
+            "rhwpEstimatedVisibleSurfaceBytes": "5568301.5625",
+            "rhwpEstimatedRetainedSurfaceBytes": "5568301.5625",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "1394172",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1.25|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1.25|layers:1|surfaces:main:993x1404"
+          }
+        },
+        "paper": {
+          "x": 153.9375,
+          "y": 89.5,
+          "width": 992.125,
+          "height": 1403.125,
+          "top": 89.5,
+          "right": 1146.0625,
+          "bottom": 1492.625,
+          "left": 153.9375
+        },
+        "scroll": {
+          "top": 63,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "rendererBefore": {
+          "diagnostics": {
+            "surfaceCreated": 7,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 32,
+            "staticPictureCacheBytes": 17920,
+            "staticPictureCacheHits": 24,
+            "staticPictureCacheMisses": 32,
+            "staticPictureCacheEvictions": 0,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 51.69999998807907,
+            "renderCount": 7,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 7,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 993,
+            "height": 1404,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceBefore": {
+          "surfaceId": 6,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": true
+            },
+            {
+              "surfaceId": 4,
+              "deleted": true
+            },
+            {
+              "surfaceId": 5,
+              "deleted": true
+            },
+            {
+              "surfaceId": 6,
+              "deleted": false
+            }
+          ]
+        },
+        "raster": {
+          "bytes": 5576688,
+          "nonWhitePixels": 227664,
+          "rgbaSha256": "025abdcf356de61f3ff820845b26e73ee9f0f38d5a7b570743816f17da9401f3"
+        },
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "7c30bec51a0acf0cc82a13e67b276ce6c3ada1b6f02ec8f8f1812378796551cd"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "7c30bec51a0acf0cc82a13e67b276ce6c3ada1b6f02ec8f8f1812378796551cd"
+        },
+        "stable": true,
+        "renderer": {
+          "diagnostics": {
+            "surfaceCreated": 7,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 32,
+            "staticPictureCacheBytes": 17920,
+            "staticPictureCacheHits": 24,
+            "staticPictureCacheMisses": 32,
+            "staticPictureCacheEvictions": 0,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 51.69999998807907,
+            "renderCount": 7,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 7,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 993,
+            "height": 1404,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceAfter": {
+          "surfaceId": 6,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": true
+            },
+            {
+              "surfaceId": 4,
+              "deleted": true
+            },
+            {
+              "surfaceId": 5,
+              "deleted": true
+            },
+            {
+              "surfaceId": 6,
+              "deleted": false
+            }
+          ]
+        },
+        "fullPageVisible": false,
+        "events": [],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 993,
+            "height": 1404,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "zoom125"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "1",
+              "rhwpEstimatedSurfaceBytes": "3563713",
+              "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+              "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "891662",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; width: 793.7px; height: 1122.5px;",
+            "zIndex": "0",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (220.3ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "3563713",
+            "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+            "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "891662",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "rendererBefore": {
+          "diagnostics": {
+            "surfaceCreated": 10,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 32,
+            "staticPictureCacheBytes": 17920,
+            "staticPictureCacheHits": 32,
+            "staticPictureCacheMisses": 48,
+            "staticPictureCacheEvictions": 16,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 38.400000005960464,
+            "renderCount": 10,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 10,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 794,
+            "height": 1123,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceBefore": {
+          "surfaceId": 7,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": true
+            },
+            {
+              "surfaceId": 4,
+              "deleted": true
+            },
+            {
+              "surfaceId": 5,
+              "deleted": true
+            },
+            {
+              "surfaceId": 6,
+              "deleted": true
+            },
+            {
+              "surfaceId": 7,
+              "deleted": false
+            }
+          ]
+        },
+        "raster": {
+          "bytes": 3566648,
+          "nonWhitePixels": 146037,
+          "rgbaSha256": "9c2e7b5e1a7e21cc23fac1c970772f9c17b350844b501e8bd2c94fc31929b6b8"
+        },
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "68b73e6b6b2d380638c4184254e08c26ec18ed5628d45495ca9760112d58c875"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "68b73e6b6b2d380638c4184254e08c26ec18ed5628d45495ca9760112d58c875"
+        },
+        "stable": true,
+        "renderer": {
+          "diagnostics": {
+            "surfaceCreated": 10,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 32,
+            "staticPictureCacheBytes": 17920,
+            "staticPictureCacheHits": 32,
+            "staticPictureCacheMisses": 48,
+            "staticPictureCacheEvictions": 16,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 38.400000005960464,
+            "renderCount": 10,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 10,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 794,
+            "height": 1123,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceAfter": {
+          "surfaceId": 7,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": true
+            },
+            {
+              "surfaceId": 4,
+              "deleted": true
+            },
+            {
+              "surfaceId": 5,
+              "deleted": true
+            },
+            {
+              "surfaceId": 6,
+              "deleted": true
+            },
+            {
+              "surfaceId": 7,
+              "deleted": false
+            }
+          ]
+        },
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "3c6fc245f39b0de8c854412e446534ef334d1caeda301619dc55b7d95110c433"
+        },
+        "pageSha256": "3c6fc245f39b0de8c854412e446534ef334d1caeda301619dc55b7d95110c433",
+        "events": [],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "zoom-restored"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "2",
+              "rhwpRequestedDpr": "2",
+              "rhwpRenderScale": "2",
+              "rhwpRawDpr": "2",
+              "rhwpEffectiveDpr": "2",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "1",
+              "rhwpEstimatedSurfaceBytes": "14254852",
+              "rhwpEstimatedVisibleSurfaceBytes": "14254852",
+              "rhwpEstimatedRetainedSurfaceBytes": "14254852",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "3566648",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:2|layers:1",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:2|layers:1|surfaces:main:1588x2246"
+            },
+            "width": 1588,
+            "height": 2246,
+            "rect": {
+              "x": 333.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1126.84375,
+              "bottom": 1272.5,
+              "left": 333.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: auto; width: 793.7px; height: 1122.5px;",
+            "zIndex": "0",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          }
+        ],
+        "dpr": 2,
+        "viewport": {
+          "width": 1440,
+          "height": 1600
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (220.3ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 1588,
+          "height": 2246,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "2",
+            "rhwpRequestedDpr": "2",
+            "rhwpRenderScale": "2",
+            "rhwpRawDpr": "2",
+            "rhwpEffectiveDpr": "2",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "14254852",
+            "rhwpEstimatedVisibleSurfaceBytes": "14254852",
+            "rhwpEstimatedRetainedSurfaceBytes": "14254852",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "3566648",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:2|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:2|layers:1|surfaces:main:1588x2246"
+          }
+        },
+        "paper": {
+          "x": 333.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1126.84375,
+          "bottom": 1272.5,
+          "left": 333.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1420,
+            "height": 1438,
+            "top": 140,
+            "right": 1440,
+            "bottom": 1578,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "rendererBefore": {
+          "diagnostics": {
+            "surfaceCreated": 11,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 32,
+            "staticPictureCacheBytes": 17920,
+            "staticPictureCacheHits": 32,
+            "staticPictureCacheMisses": 56,
+            "staticPictureCacheEvictions": 24,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 119.29999999701977,
+            "renderCount": 11,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 11,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 1588,
+            "height": 2246,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceBefore": {
+          "surfaceId": 8,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": true
+            },
+            {
+              "surfaceId": 4,
+              "deleted": true
+            },
+            {
+              "surfaceId": 5,
+              "deleted": true
+            },
+            {
+              "surfaceId": 6,
+              "deleted": true
+            },
+            {
+              "surfaceId": 7,
+              "deleted": true
+            },
+            {
+              "surfaceId": 8,
+              "deleted": false
+            }
+          ]
+        },
+        "raster": {
+          "bytes": 14266592,
+          "nonWhitePixels": 580599,
+          "rgbaSha256": "2765337685c60340c7ad7f8248020a8931475b0ad2a51ef83a0dea7db2b29d49"
+        },
+        "screenPng": {
+          "width": 2880,
+          "height": 3200,
+          "sha256": "c78ac4d4b194cd3376c6c42ed1460626ac085f832308c38ff708f99e1ba34d8a"
+        },
+        "stableScreenPng": {
+          "width": 2880,
+          "height": 3200,
+          "sha256": "c78ac4d4b194cd3376c6c42ed1460626ac085f832308c38ff708f99e1ba34d8a"
+        },
+        "stable": true,
+        "renderer": {
+          "diagnostics": {
+            "surfaceCreated": 11,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 32,
+            "staticPictureCacheBytes": 17920,
+            "staticPictureCacheHits": 32,
+            "staticPictureCacheMisses": 56,
+            "staticPictureCacheEvictions": 24,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 119.29999999701977,
+            "renderCount": 11,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 11,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 1588,
+            "height": 2246,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceAfter": {
+          "surfaceId": 8,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": true
+            },
+            {
+              "surfaceId": 4,
+              "deleted": true
+            },
+            {
+              "surfaceId": 5,
+              "deleted": true
+            },
+            {
+              "surfaceId": 6,
+              "deleted": true
+            },
+            {
+              "surfaceId": 7,
+              "deleted": true
+            },
+            {
+              "surfaceId": 8,
+              "deleted": false
+            }
+          ]
+        },
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 1588,
+          "height": 2246,
+          "sha256": "af3a4d6c25456d241c3fa95dd96bb334b76126fef53c29336e87876b542b89ee"
+        },
+        "pageSha256": "af3a4d6c25456d241c3fa95dd96bb334b76126fef53c29336e87876b542b89ee",
+        "events": [
+          {
+            "phase": "dpr2-resized",
+            "kind": "window-resize",
+            "timestamp": 26207.70000000298,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": true
+          },
+          {
+            "phase": "dpr2-resized",
+            "kind": "visual-viewport-resize",
+            "timestamp": 26207.70000000298,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": true
+          },
+          {
+            "phase": "dpr2-resized",
+            "kind": "resolution-media-query",
+            "timestamp": 26207.70000000298,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": true,
+            "query": "(resolution: 1dppx)",
+            "matches": false
+          },
+          {
+            "phase": "dpr2-resized",
+            "kind": "resolution-media-query",
+            "timestamp": 26207.70000000298,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": true,
+            "query": "(resolution: 2dppx)",
+            "matches": true
+          },
+          {
+            "phase": "dpr2-resized",
+            "kind": "container-resize-observer",
+            "timestamp": 26207.79999999702,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": null,
+            "containerWidth": 1420,
+            "containerHeight": 1438
+          }
+        ],
+        "afterCaptureDpr": 2,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 1588,
+            "height": 2246,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr2-resized"
+      },
+      {
+        "planes": [
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "1",
+              "rhwpEstimatedSurfaceBytes": "3563713",
+              "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+              "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "891662",
+              "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+              "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; width: 793.7px; height: 1122.5px;",
+            "zIndex": "0",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": null,
+            "inkBounds": null
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (220.3ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "3563713",
+            "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+            "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "891662",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "rendererBefore": {
+          "diagnostics": {
+            "surfaceCreated": 12,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 32,
+            "staticPictureCacheBytes": 17920,
+            "staticPictureCacheHits": 40,
+            "staticPictureCacheMisses": 56,
+            "staticPictureCacheEvictions": 24,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 35,
+            "renderCount": 12,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 12,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 794,
+            "height": 1123,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceBefore": {
+          "surfaceId": 9,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": true
+            },
+            {
+              "surfaceId": 4,
+              "deleted": true
+            },
+            {
+              "surfaceId": 5,
+              "deleted": true
+            },
+            {
+              "surfaceId": 6,
+              "deleted": true
+            },
+            {
+              "surfaceId": 7,
+              "deleted": true
+            },
+            {
+              "surfaceId": 8,
+              "deleted": true
+            },
+            {
+              "surfaceId": 9,
+              "deleted": false
+            }
+          ]
+        },
+        "raster": {
+          "bytes": 3566648,
+          "nonWhitePixels": 146037,
+          "rgbaSha256": "9c2e7b5e1a7e21cc23fac1c970772f9c17b350844b501e8bd2c94fc31929b6b8"
+        },
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "68b73e6b6b2d380638c4184254e08c26ec18ed5628d45495ca9760112d58c875"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "68b73e6b6b2d380638c4184254e08c26ec18ed5628d45495ca9760112d58c875"
+        },
+        "stable": true,
+        "renderer": {
+          "diagnostics": {
+            "surfaceCreated": 12,
+            "surfaceReused": 2,
+            "staticPictureCacheEntries": 32,
+            "staticPictureCacheBytes": 17920,
+            "staticPictureCacheHits": 40,
+            "staticPictureCacheMisses": 56,
+            "staticPictureCacheEvictions": 24,
+            "textBlobCacheEntries": 0,
+            "textBlobCacheBytes": 0,
+            "textBlobCacheHits": 0,
+            "textBlobCacheMisses": 0,
+            "fallbackFamilyCacheEntries": 0,
+            "paragraphFontEntries": 3,
+            "paragraphFontBytes": 2287432,
+            "paragraphProviderBuilds": 0,
+            "paragraphFontRejections": 0,
+            "pendingImageLoads": 0,
+            "mode": "default",
+            "surfacePreference": "software",
+            "surfaceBackend": "software",
+            "surfaceFallbackReason": null,
+            "lastRenderCompleted": true,
+            "lastUnsupportedOps": [],
+            "lastExpectedUnsupportedOps": [],
+            "lastUnexpectedUnsupportedOps": [],
+            "lastRenderError": null,
+            "passesRuntimeReadinessGate": true,
+            "readinessBlockers": [],
+            "hiddenCanvas2dOverlayUsed": false,
+            "lastRenderDurationMs": 35,
+            "renderCount": 12,
+            "imageCacheEntries": 0,
+            "imageCacheLimit": 128,
+            "imageCachePixels": 0,
+            "imageCachePixelLimit": 67108864,
+            "imageCacheHits": 0,
+            "imageCacheMisses": 0,
+            "imageCacheEvictions": 0,
+            "mipmapCacheEntries": 0,
+            "mipmapCacheBytes": 0,
+            "mipmapCacheHits": 0,
+            "mipmapCacheMisses": 0,
+            "imageFailureCacheHits": 0,
+            "imageFailures": [],
+            "localTypefaceCount": 0,
+            "localTypefaceLoadFailureCount": 0,
+            "localTypefacePendingCount": 0,
+            "bundledTypefaceCount": 0,
+            "bundledTypefaceLoadFailureCount": 0,
+            "glyphRunFontBlobCount": 0,
+            "glyphRunFontBlobBytes": 0,
+            "glyphRunTypefaceCount": 0,
+            "glyphRunFontCount": 0,
+            "fontSubstitutionLimit": 4096,
+            "unregisteredFontFallbacks": 0,
+            "fontSubstitutions": [],
+            "replayFeatureCounts": {
+              "dashedStrokes": 0,
+              "glyphRuns": 0,
+              "tabLeaders": 0,
+              "charOverlaps": 0,
+              "verticalPresentationPunctuation": 0,
+              "verticalTextRuns": 0
+            },
+            "textVariantDiagnosticGroups": 0,
+            "textVariantDiagnosticParts": 0,
+            "replayDiagnosticsDropped": 0
+          },
+          "surface": {
+            "created": 12,
+            "reused": 2,
+            "backend": "software",
+            "preference": "software",
+            "fallbackReason": null
+          },
+          "connected": true,
+          "sameVisibleCanvas": true,
+          "canvas": {
+            "width": 794,
+            "height": 1123,
+            "backend": "software"
+          },
+          "glyphBlobHashes": [],
+          "typefaceKeys": [],
+          "bundledAliases": [],
+          "preparedTypefaces": [],
+          "resolvedFamilyCache": []
+        },
+        "surfaceAfter": {
+          "surfaceId": 9,
+          "canvasId": 1,
+          "deletion": [
+            {
+              "surfaceId": 1,
+              "deleted": true
+            },
+            {
+              "surfaceId": 2,
+              "deleted": true
+            },
+            {
+              "surfaceId": 3,
+              "deleted": true
+            },
+            {
+              "surfaceId": 4,
+              "deleted": true
+            },
+            {
+              "surfaceId": 5,
+              "deleted": true
+            },
+            {
+              "surfaceId": 6,
+              "deleted": true
+            },
+            {
+              "surfaceId": 7,
+              "deleted": true
+            },
+            {
+              "surfaceId": 8,
+              "deleted": true
+            },
+            {
+              "surfaceId": 9,
+              "deleted": false
+            }
+          ]
+        },
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "3c6fc245f39b0de8c854412e446534ef334d1caeda301619dc55b7d95110c433"
+        },
+        "pageSha256": "3c6fc245f39b0de8c854412e446534ef334d1caeda301619dc55b7d95110c433",
+        "events": [
+          {
+            "phase": "all-restored",
+            "kind": "window-resize",
+            "timestamp": 29279.40000000596,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true
+          },
+          {
+            "phase": "all-restored",
+            "kind": "visual-viewport-resize",
+            "timestamp": 29279.40000000596,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true
+          },
+          {
+            "phase": "all-restored",
+            "kind": "resolution-media-query",
+            "timestamp": 29279.40000000596,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1dppx)",
+            "matches": true
+          },
+          {
+            "phase": "all-restored",
+            "kind": "resolution-media-query",
+            "timestamp": 29279.40000000596,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 2dppx)",
+            "matches": false
+          },
+          {
+            "phase": "all-restored",
+            "kind": "container-resize-observer",
+            "timestamp": 29279.5,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": null,
+            "containerWidth": 1260,
+            "containerHeight": 1338
+          }
+        ],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "flow",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "all-restored"
+      }
+    ],
+    "metricsProtocol": "CDP device metrics + screen resolution media feature; no product dispatch",
+    "environmentChanges": [
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 2,
+        "mobile": false
+      },
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 3,
+        "mobile": false
+      },
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 1.25,
+        "mobile": false
+      },
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 1,
+        "mobile": false
+      },
+      {
+        "width": 1440,
+        "height": 1600,
+        "deviceScaleFactor": 2,
+        "mobile": false
+      },
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 1,
+        "mobile": false
+      }
+    ],
+    "caretCapturePhases": [
+      {
+        "name": "initial-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "initial-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "initial-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr2-only-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr2-only-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr2-only-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr3-only-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr3-only-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr3-only-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr125-only-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr125-only-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr125-only-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr-restored-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr-restored-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr-restored-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "zoom125-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "zoom125-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "zoom-restored-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "zoom-restored-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "zoom-restored-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr2-resized-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr2-resized-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "dpr2-resized-page.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "all-restored-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "all-restored-stable-screen.png",
+        "attempt": 1,
+        "phase": []
+      },
+      {
+        "name": "all-restored-page.png",
+        "attempt": 1,
+        "phase": []
+      }
+    ],
+    "events": [
+      {
+        "phase": "observer-initialization",
+        "kind": "container-resize-observer",
+        "timestamp": 5846.100000008941,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": null,
+        "containerWidth": 1260,
+        "containerHeight": 1338
+      },
+      {
+        "phase": "dpr2-only",
+        "kind": "resolution-media-query",
+        "timestamp": 9440.70000000298,
+        "dpr": 2,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr2-only",
+        "kind": "resolution-media-query",
+        "timestamp": 9440.70000000298,
+        "dpr": 2,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 2dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr3-only",
+        "kind": "resolution-media-query",
+        "timestamp": 12412.70000000298,
+        "dpr": 3,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 2dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr3-only",
+        "kind": "resolution-media-query",
+        "timestamp": 12412.70000000298,
+        "dpr": 3,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 3dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr125-only",
+        "kind": "resolution-media-query",
+        "timestamp": 16110.5,
+        "dpr": 1.25,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1.25dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr125-only",
+        "kind": "resolution-media-query",
+        "timestamp": 16110.5,
+        "dpr": 1.25,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 3dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr-restored",
+        "kind": "resolution-media-query",
+        "timestamp": 18686.79999999702,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr-restored",
+        "kind": "resolution-media-query",
+        "timestamp": 18686.79999999702,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1.25dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "window-resize",
+        "timestamp": 26207.70000000298,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": true
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "visual-viewport-resize",
+        "timestamp": 26207.70000000298,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": true
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "resolution-media-query",
+        "timestamp": 26207.70000000298,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": true,
+        "query": "(resolution: 1dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "resolution-media-query",
+        "timestamp": 26207.70000000298,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": true,
+        "query": "(resolution: 2dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "container-resize-observer",
+        "timestamp": 26207.79999999702,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": null,
+        "containerWidth": 1420,
+        "containerHeight": 1438
+      },
+      {
+        "phase": "all-restored",
+        "kind": "window-resize",
+        "timestamp": 29279.40000000596,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true
+      },
+      {
+        "phase": "all-restored",
+        "kind": "visual-viewport-resize",
+        "timestamp": 29279.40000000596,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true
+      },
+      {
+        "phase": "all-restored",
+        "kind": "resolution-media-query",
+        "timestamp": 29279.40000000596,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1dppx)",
+        "matches": true
+      },
+      {
+        "phase": "all-restored",
+        "kind": "resolution-media-query",
+        "timestamp": 29279.40000000596,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 2dppx)",
+        "matches": false
+      },
+      {
+        "phase": "all-restored",
+        "kind": "container-resize-observer",
+        "timestamp": 29279.5,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": null,
+        "containerWidth": 1260,
+        "containerHeight": 1338
+      }
+    ],
+    "trustedKeys": [
+      {
+        "key": "PageUp",
+        "trusted": true
+      },
+      {
+        "key": "PageUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "PageDown",
+        "trusted": true
+      },
+      {
+        "key": "PageDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      }
+    ],
+    "finalPageRestored": true,
+    "dprOnlyRepainted": true,
+    "resizedDprRepainted": true,
+    "dprOnlyMediaQueryDelivered": true,
+    "dprOnlyContainerResizeDelivered": false,
+    "dprOnlyWindowResizeDelivered": false,
+    "buildTree": "1ff3de58d486cdfcf0b36247d430609d7fb81869",
+    "initialJsSha256": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa",
+    "initialWasmSha256": "f5c1452c503bd7789d126a78ff5004e7c8ca282ab08822dbfb9bbd04bc759791",
+    "finalSurfaceState": {
+      "surfaceId": 9,
+      "canvasId": 1,
+      "deletion": [
+        {
+          "surfaceId": 1,
+          "deleted": true
+        },
+        {
+          "surfaceId": 2,
+          "deleted": true
+        },
+        {
+          "surfaceId": 3,
+          "deleted": true
+        },
+        {
+          "surfaceId": 4,
+          "deleted": true
+        },
+        {
+          "surfaceId": 5,
+          "deleted": true
+        },
+        {
+          "surfaceId": 6,
+          "deleted": true
+        },
+        {
+          "surfaceId": 7,
+          "deleted": true
+        },
+        {
+          "surfaceId": 8,
+          "deleted": true
+        },
+        {
+          "surfaceId": 9,
+          "deleted": false
+        }
+      ]
+    },
+    "sameScaleRasterEqual": true,
+    "restoredScroll": true,
+    "passed": true,
+    "allChecksPassed": true
+  },
+  "summary": {
+    "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+    "stages": 9,
+    "all_checks_passed": true,
+    "stable_screens": 9,
+    "baseline_commit": "d290570765560d28b41acc32f8f2e4020289c981",
+    "baseline_page_sha256": "3c6fc245f39b0de8c854412e446534ef334d1caeda301619dc55b7d95110c433",
+    "bytes_collected": 3184640,
+    "same_scale_raster_equal": true,
+    "final_surface_state": {
+      "surfaceId": 9,
+      "canvasId": 1,
+      "deletion": [
+        {
+          "surfaceId": 1,
+          "deleted": true
+        },
+        {
+          "surfaceId": 2,
+          "deleted": true
+        },
+        {
+          "surfaceId": 3,
+          "deleted": true
+        },
+        {
+          "surfaceId": 4,
+          "deleted": true
+        },
+        {
+          "surfaceId": 5,
+          "deleted": true
+        },
+        {
+          "surfaceId": 6,
+          "deleted": true
+        },
+        {
+          "surfaceId": 7,
+          "deleted": true
+        },
+        {
+          "surfaceId": 8,
+          "deleted": true
+        },
+        {
+          "surfaceId": 9,
+          "deleted": false
+        }
+      ]
+    },
+    "response_body_errors": [
+      {
+        "url": "http://127.0.0.1:42789/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "error": "response.body: Protocol error (Network.getResponseBody): No data found for resource with given identifier"
+      }
+    ],
+    "rows": [
+      {
+        "stage": "initial",
+        "zoom": "1",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          794,
+          1123
+        ],
+        "budget": "within",
+        "surface_id": 1,
+        "canvas_id": 1,
+        "surface_created": 2,
+        "surface_reused": 2,
+        "static_entries": 8,
+        "static_hits": 8,
+        "static_misses": 8,
+        "static_evictions": 0,
+        "non_white_pixels": 146037,
+        "rgba_sha256": "9c2e7b5e1a7e21cc23fac1c970772f9c17b350844b501e8bd2c94fc31929b6b8",
+        "full_page_visible": true
+      },
+      {
+        "stage": "dpr2-only",
+        "zoom": "1",
+        "window_dpr": 2,
+        "raw_dpr": "2",
+        "effective_dpr": "2",
+        "backing": [
+          1588,
+          2246
+        ],
+        "budget": "within",
+        "surface_id": 2,
+        "canvas_id": 1,
+        "surface_created": 3,
+        "surface_reused": 2,
+        "static_entries": 16,
+        "static_hits": 8,
+        "static_misses": 16,
+        "static_evictions": 0,
+        "non_white_pixels": 580599,
+        "rgba_sha256": "2765337685c60340c7ad7f8248020a8931475b0ad2a51ef83a0dea7db2b29d49",
+        "full_page_visible": true
+      },
+      {
+        "stage": "dpr3-only",
+        "zoom": "1",
+        "window_dpr": 3,
+        "raw_dpr": "3",
+        "effective_dpr": "3",
+        "backing": [
+          2382,
+          3368
+        ],
+        "budget": "within",
+        "surface_id": 3,
+        "canvas_id": 1,
+        "surface_created": 4,
+        "surface_reused": 2,
+        "static_entries": 24,
+        "static_hits": 8,
+        "static_misses": 24,
+        "static_evictions": 0,
+        "non_white_pixels": 1303621,
+        "rgba_sha256": "08681c48d395114ab4032e81beae00fce6a9354973afd8bba558d578e177c5fc",
+        "full_page_visible": true
+      },
+      {
+        "stage": "dpr125-only",
+        "zoom": "1",
+        "window_dpr": 1.25,
+        "raw_dpr": "1.25",
+        "effective_dpr": "1.25",
+        "backing": [
+          993,
+          1404
+        ],
+        "budget": "within",
+        "surface_id": 4,
+        "canvas_id": 1,
+        "surface_created": 5,
+        "surface_reused": 2,
+        "static_entries": 32,
+        "static_hits": 8,
+        "static_misses": 32,
+        "static_evictions": 0,
+        "non_white_pixels": 227664,
+        "rgba_sha256": "025abdcf356de61f3ff820845b26e73ee9f0f38d5a7b570743816f17da9401f3",
+        "full_page_visible": true
+      },
+      {
+        "stage": "dpr-restored",
+        "zoom": "1",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          794,
+          1123
+        ],
+        "budget": "within",
+        "surface_id": 5,
+        "canvas_id": 1,
+        "surface_created": 6,
+        "surface_reused": 2,
+        "static_entries": 32,
+        "static_hits": 16,
+        "static_misses": 32,
+        "static_evictions": 0,
+        "non_white_pixels": 146037,
+        "rgba_sha256": "9c2e7b5e1a7e21cc23fac1c970772f9c17b350844b501e8bd2c94fc31929b6b8",
+        "full_page_visible": true
+      },
+      {
+        "stage": "zoom125",
+        "zoom": "1.25",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          993,
+          1404
+        ],
+        "budget": "within",
+        "surface_id": 6,
+        "canvas_id": 1,
+        "surface_created": 7,
+        "surface_reused": 2,
+        "static_entries": 32,
+        "static_hits": 24,
+        "static_misses": 32,
+        "static_evictions": 0,
+        "non_white_pixels": 227664,
+        "rgba_sha256": "025abdcf356de61f3ff820845b26e73ee9f0f38d5a7b570743816f17da9401f3",
+        "full_page_visible": false
+      },
+      {
+        "stage": "zoom-restored",
+        "zoom": "1",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          794,
+          1123
+        ],
+        "budget": "within",
+        "surface_id": 7,
+        "canvas_id": 1,
+        "surface_created": 10,
+        "surface_reused": 2,
+        "static_entries": 32,
+        "static_hits": 32,
+        "static_misses": 48,
+        "static_evictions": 16,
+        "non_white_pixels": 146037,
+        "rgba_sha256": "9c2e7b5e1a7e21cc23fac1c970772f9c17b350844b501e8bd2c94fc31929b6b8",
+        "full_page_visible": true
+      },
+      {
+        "stage": "dpr2-resized",
+        "zoom": "1",
+        "window_dpr": 2,
+        "raw_dpr": "2",
+        "effective_dpr": "2",
+        "backing": [
+          1588,
+          2246
+        ],
+        "budget": "within",
+        "surface_id": 8,
+        "canvas_id": 1,
+        "surface_created": 11,
+        "surface_reused": 2,
+        "static_entries": 32,
+        "static_hits": 32,
+        "static_misses": 56,
+        "static_evictions": 24,
+        "non_white_pixels": 580599,
+        "rgba_sha256": "2765337685c60340c7ad7f8248020a8931475b0ad2a51ef83a0dea7db2b29d49",
+        "full_page_visible": true
+      },
+      {
+        "stage": "all-restored",
+        "zoom": "1",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          794,
+          1123
+        ],
+        "budget": "within",
+        "surface_id": 9,
+        "canvas_id": 1,
+        "surface_created": 12,
+        "surface_reused": 2,
+        "static_entries": 32,
+        "static_hits": 40,
+        "static_misses": 56,
+        "static_evictions": 24,
+        "non_white_pixels": 146037,
+        "rgba_sha256": "9c2e7b5e1a7e21cc23fac1c970772f9c17b350844b501e8bd2c94fc31929b6b8",
+        "full_page_visible": true
+      }
+    ]
+  },
+  "source_blobs": {
+    "rhwp-studio/src/view/canvaskit-renderer.ts": "b303400cc346e546ebc17e4c8b88065b24a188bd",
+    "rhwp-studio/src/view/canvaskit/surface-cache.ts": "ff848a07dc440a3ed28822cb7b68b18639c3a7a4",
+    "rhwp-studio/src/view/canvas-view.ts": "85fd20d071f226e3e341dccab09712c8064e6329",
+    "rhwp-studio/src/view/viewport-manager.ts": "3a5c1bafafebac9b388580e29c87c451b312fb24"
+  },
+  "reused_independent_verification": "https://github.com/semanticist21/rhwp/blob/d290570765560d28b41acc32f8f2e4020289c981/mydocs/pr/assets/studio-canvaskit-front/verification.md"
+}

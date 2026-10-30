@@ -1,0 +1,20 @@
+phase	kind	timestamp	dpr	width	height	trusted	query	matches	containerWidth	containerHeight
+observer-initialization	container-resize-observer	5846.100000008941	1	1280	1500		not-applicable	not-applicable	1260	1338
+dpr2-only	resolution-media-query	9440.70000000298	2	1280	1500	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+dpr2-only	resolution-media-query	9440.70000000298	2	1280	1500	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+dpr3-only	resolution-media-query	12412.70000000298	3	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+dpr3-only	resolution-media-query	12412.70000000298	3	1280	1500	True	(resolution: 3dppx)	True	not-applicable	not-applicable
+dpr125-only	resolution-media-query	16110.5	1.25	1280	1500	True	(resolution: 1.25dppx)	True	not-applicable	not-applicable
+dpr125-only	resolution-media-query	16110.5	1.25	1280	1500	True	(resolution: 3dppx)	False	not-applicable	not-applicable
+dpr-restored	resolution-media-query	18686.79999999702	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+dpr-restored	resolution-media-query	18686.79999999702	1	1280	1500	True	(resolution: 1.25dppx)	False	not-applicable	not-applicable
+dpr2-resized	window-resize	26207.70000000298	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+dpr2-resized	visual-viewport-resize	26207.70000000298	2	1440	1600	True	not-applicable	not-applicable	not-applicable	not-applicable
+dpr2-resized	resolution-media-query	26207.70000000298	2	1440	1600	True	(resolution: 1dppx)	False	not-applicable	not-applicable
+dpr2-resized	resolution-media-query	26207.70000000298	2	1440	1600	True	(resolution: 2dppx)	True	not-applicable	not-applicable
+dpr2-resized	container-resize-observer	26207.79999999702	2	1440	1600		not-applicable	not-applicable	1420	1438
+all-restored	window-resize	29279.40000000596	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+all-restored	visual-viewport-resize	29279.40000000596	1	1280	1500	True	not-applicable	not-applicable	not-applicable	not-applicable
+all-restored	resolution-media-query	29279.40000000596	1	1280	1500	True	(resolution: 1dppx)	True	not-applicable	not-applicable
+all-restored	resolution-media-query	29279.40000000596	1	1280	1500	True	(resolution: 2dppx)	False	not-applicable	not-applicable
+all-restored	container-resize-observer	29279.5	1	1280	1500		not-applicable	not-applicable	1260	1338
