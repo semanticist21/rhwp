@@ -1,0 +1,5305 @@
+{
+  "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+  "source_tree": "1ff3de58d486cdfcf0b36247d430609d7fb81869",
+  "summary": {
+    "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+    "stages": 9,
+    "all_checks_passed": true,
+    "stable_screens": 9,
+    "baseline_commit": "3deefcc6937015121e7cd63927ec30dc9f9404a7",
+    "baseline_page_sha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c",
+    "bytes_collected": 3194880,
+    "rows": [
+      {
+        "stage": "initial",
+        "zoom": "1",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          794,
+          1123
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c"
+        },
+        "full_page_visible": true,
+        "behind_ink": {
+          "minX": 116,
+          "minY": 203,
+          "maxX": 344,
+          "maxY": 279
+        },
+        "image_chromatic_pixels": 6780,
+        "alpha_pixels": {
+          "background-0": 891662,
+          "behind-0": 17633,
+          "flow": 7627
+        }
+      },
+      {
+        "stage": "dpr2-only",
+        "zoom": "1",
+        "window_dpr": 2,
+        "raw_dpr": "2",
+        "effective_dpr": "2",
+        "backing": [
+          1588,
+          2245
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 1588,
+          "height": 2246,
+          "sha256": "61cdff44cd5715d5c817989db3792d48d0627eec8923124ffb0f748453b99653"
+        },
+        "full_page_visible": true,
+        "behind_ink": {
+          "minX": 233,
+          "minY": 407,
+          "maxX": 688,
+          "maxY": 559
+        },
+        "image_chromatic_pixels": 26784,
+        "alpha_pixels": {
+          "background-0": 3565060,
+          "behind-0": 69768,
+          "flow": 29332
+        }
+      },
+      {
+        "stage": "dpr3-only",
+        "zoom": "1",
+        "window_dpr": 3,
+        "raw_dpr": "3",
+        "effective_dpr": "3",
+        "backing": [
+          2382,
+          3368
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 2382,
+          "height": 3369,
+          "sha256": "82c1c0b6da3aaba4fc14e9a02539fe31757a3c631840c027c6da253eb0903788"
+        },
+        "full_page_visible": true,
+        "behind_ink": {
+          "minX": 350,
+          "minY": 610,
+          "maxX": 1032,
+          "maxY": 838
+        },
+        "image_chromatic_pixels": 60516,
+        "alpha_pixels": {
+          "background-0": 8022576,
+          "behind-0": 156407,
+          "flow": 65404
+        }
+      },
+      {
+        "stage": "dpr125-only",
+        "zoom": "1",
+        "window_dpr": 1.25,
+        "raw_dpr": "1.25",
+        "effective_dpr": "1.25",
+        "backing": [
+          993,
+          1404
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 993,
+          "height": 1404,
+          "sha256": "28c0f0ee3b2b06bc1095d1d8b2c322a4bda3f7dfeda5d8fa4eea4fe9ff67ce81"
+        },
+        "full_page_visible": true,
+        "behind_ink": {
+          "minX": 145,
+          "minY": 254,
+          "maxX": 430,
+          "maxY": 349
+        },
+        "image_chromatic_pixels": 10506,
+        "alpha_pixels": {
+          "background-0": 1394172,
+          "behind-0": 27456,
+          "flow": 11597
+        }
+      },
+      {
+        "stage": "dpr-restored",
+        "zoom": "1",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          794,
+          1123
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c"
+        },
+        "full_page_visible": true,
+        "behind_ink": {
+          "minX": 116,
+          "minY": 203,
+          "maxX": 344,
+          "maxY": 279
+        },
+        "image_chromatic_pixels": 6780,
+        "alpha_pixels": {
+          "background-0": 891662,
+          "behind-0": 17633,
+          "flow": 7627
+        }
+      },
+      {
+        "stage": "zoom125",
+        "zoom": "1.25",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          993,
+          1404
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 153.9375,
+          "y": 89.5,
+          "width": 992.125,
+          "height": 1403.125,
+          "top": 89.5,
+          "right": 1146.0625,
+          "bottom": 1492.625,
+          "left": 153.9375
+        },
+        "page_png": null,
+        "full_page_visible": false,
+        "behind_ink": {
+          "minX": 145,
+          "minY": 254,
+          "maxX": 430,
+          "maxY": 349
+        },
+        "image_chromatic_pixels": 10506,
+        "alpha_pixels": {
+          "background-0": 1394172,
+          "behind-0": 27456,
+          "flow": 11597
+        }
+      },
+      {
+        "stage": "zoom-restored",
+        "zoom": "1",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          794,
+          1123
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c"
+        },
+        "full_page_visible": true,
+        "behind_ink": {
+          "minX": 116,
+          "minY": 203,
+          "maxX": 344,
+          "maxY": 279
+        },
+        "image_chromatic_pixels": 6780,
+        "alpha_pixels": {
+          "background-0": 891662,
+          "behind-0": 17633,
+          "flow": 7627
+        }
+      },
+      {
+        "stage": "dpr2-resized",
+        "zoom": "1",
+        "window_dpr": 2,
+        "raw_dpr": "2",
+        "effective_dpr": "2",
+        "backing": [
+          1588,
+          2245
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 333.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1126.84375,
+          "bottom": 1272.5,
+          "left": 333.15625
+        },
+        "page_png": {
+          "width": 1588,
+          "height": 2246,
+          "sha256": "61cdff44cd5715d5c817989db3792d48d0627eec8923124ffb0f748453b99653"
+        },
+        "full_page_visible": true,
+        "behind_ink": {
+          "minX": 233,
+          "minY": 407,
+          "maxX": 688,
+          "maxY": 559
+        },
+        "image_chromatic_pixels": 26784,
+        "alpha_pixels": {
+          "background-0": 3565060,
+          "behind-0": 69768,
+          "flow": 29332
+        }
+      },
+      {
+        "stage": "all-restored",
+        "zoom": "1",
+        "window_dpr": 1,
+        "raw_dpr": "1",
+        "effective_dpr": "1",
+        "backing": [
+          794,
+          1123
+        ],
+        "budget": "within",
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "page_png": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c"
+        },
+        "full_page_visible": true,
+        "behind_ink": {
+          "minX": 116,
+          "minY": 203,
+          "maxX": 344,
+          "maxY": 279
+        },
+        "image_chromatic_pixels": 6780,
+        "alpha_pixels": {
+          "background-0": 891662,
+          "behind-0": 17633,
+          "flow": 7627
+        }
+      }
+    ]
+  },
+  "runtime": {
+    "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+    "sourceTree": "1ff3de58d486cdfcf0b36247d430609d7fb81869",
+    "phase": "candidate",
+    "backend": "canvas2d",
+    "specimen": "behind",
+    "browser": "156.0.8078.73",
+    "production": true,
+    "consoleLog": [
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[FontLoader] 웹폰트 로드 시작: 3개 파일 (이미 요청함: 0개)"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: 함초롬돋움 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: 함초롬바탕 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: RHWP Old Hangul <- fonts/RHWPOldHangul-Regular.woff2"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: RHWP Old Hangul <- fonts/RHWPOldHangul-Regular.woff2"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: 함초롬돋움 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff"
+      },
+      {
+        "type": "warning",
+        "text": "Service Worker registration blocked by Playwright"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: 함초롬바탕 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      },
+      {
+        "type": "log",
+        "text": "[FontLoader] 폰트 로드 완료: 3개 성공, 0개 실패 (총 3개 파일 요청)"
+      },
+      {
+        "type": "log",
+        "text": "[WasmBridge] WASM 초기화 완료 (rhwp 0.9.0)"
+      },
+      {
+        "type": "log",
+        "text": "[WasmBridge] 새 문서 생성: 1페이지"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 1. 폰트 로딩 시작"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 2. 폰트 로딩 완료"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 3. inputHandler deactivate"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 4. canvasView loadDocument"
+      },
+      {
+        "type": "log",
+        "text": "[CanvasView] 1/1페이지 로드, 총 높이: 1142.5px"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 5. toolbar setEnabled"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 6. toolbar initFontDropdown + initStyleDropdown"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 7. 사전 검증 및 로컬 글꼴 확인"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 8. inputHandler activateWithCaretPosition"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 9. 완료"
+      },
+      {
+        "type": "debug",
+        "text": "[autosave] draft deleted: fc718bec-c839-4c67-bfc7-f932e9a2d049 (document-replaced)"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 1. 폰트 로딩 시작"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 2. 폰트 로딩 완료"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 3. inputHandler deactivate"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 4. canvasView loadDocument"
+      },
+      {
+        "type": "log",
+        "text": "[CanvasView] 1/1페이지 로드, 총 높이: 1142.5px"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 5. toolbar setEnabled"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 6. toolbar initFontDropdown + initStyleDropdown"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 7. 사전 검증 및 로컬 글꼴 확인"
+      },
+      {
+        "type": "log",
+        "text": "[validation] 1 warnings — 그대로 보기 (#2527) {lineseg 배열이 비어있음: 1}"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 8. inputHandler activateWithCaretPosition"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 9. 완료"
+      },
+      {
+        "type": "warning",
+        "text": "Canvas2D: Multiple readback operations using getImageData are faster with the willReadFrequently attribute set to true. See: https://html.spec.whatwg.org/multipage/canvas.html#concept-canvas-will-read-frequently"
+      }
+    ],
+    "pageErrors": [],
+    "responses": [
+      {
+        "url": "http://127.0.0.1:43259/theme-init.js",
+        "status": 200,
+        "sha256": "5a3afcc0139187bfe509414cd60fde2a0dfea72fd72751c4e6e696cdc0f6c587"
+      },
+      {
+        "url": "http://127.0.0.1:43259/locale-init.js",
+        "status": 200,
+        "sha256": "633d47a6a53b2211cf816769f8c084b097c1b60b6ab263803d8610c0531539fa"
+      },
+      {
+        "url": "http://127.0.0.1:43259/registerSW.js",
+        "status": 200,
+        "sha256": "9742073ef7fc795e7673d98f272992843298426a0ffd8cb3507784df5143608b"
+      },
+      {
+        "url": "http://127.0.0.1:43259/assets/index-B7ByZimA.js",
+        "status": 200,
+        "sha256": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa"
+      },
+      {
+        "url": "http://127.0.0.1:43259/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "sha256": "1a45a61e9a320c1bc62ca1401f7b23ceffffe8133dc2a9650ad4e12524f8dcab"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff",
+        "status": 200,
+        "sha256": "49bf312aec309ba88c3eb612c591c2d8e28b765c156c808691850137431bb1bf"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+        "status": 200,
+        "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c"
+      },
+      {
+        "url": "http://127.0.0.1:43259/assets/plugin-DO1SH32F.js",
+        "status": 200,
+        "sha256": "fd4da7dc0aae8f64ed16f659004a1c73757dc928d1515f632f0c35695e655823"
+      },
+      {
+        "url": "http://127.0.0.1:43259/assets/rhwp_bg-MJdpQrZt.wasm",
+        "status": 200,
+        "sha256": "f5c1452c503bd7789d126a78ff5004e7c8ca282ab08822dbfb9bbd04bc759791",
+        "observedDuringInitialization": true
+      }
+    ],
+    "failures": [],
+    "input": {
+      "name": "tac_picture_behindtext_textbox.hwpx",
+      "sha256": "19ac4952c2d2254fce267b950b40dba10cfe607c9c6bf9b6139804dfdbbc7b00"
+    },
+    "stages": [
+      {
+        "planes": [
+          {
+            "plane": "background-0",
+            "dataset": {
+              "rhwpLayerKind": "background",
+              "rhwpOverlay": "background-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 0; image-rendering: crisp-edges;",
+            "zIndex": "0",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": 891662,
+            "inkBounds": {
+              "minX": 0,
+              "minY": 0,
+              "maxX": 793,
+              "maxY": 1122
+            },
+            "imageRegion": null,
+            "font": "10px sans-serif"
+          },
+          {
+            "plane": "behind-0",
+            "dataset": {
+              "rhwpLayerKind": "behind",
+              "rhwpOverlay": "behind-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 1; image-rendering: crisp-edges;",
+            "zIndex": "1",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 17633,
+            "inkBounds": {
+              "minX": 116,
+              "minY": 203,
+              "maxX": 344,
+              "maxY": 279
+            },
+            "imageRegion": null,
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          },
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "3",
+              "rhwpEstimatedSurfaceBytes": "10691139",
+              "rhwpEstimatedVisibleSurfaceBytes": "10691139",
+              "rhwpEstimatedRetainedSurfaceBytes": "10691139",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "2674986",
+              "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3",
+              "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3|surfaces:background:794x1123,behind:794x1123,main:794x1123"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; background: transparent; z-index: 2; width: 793.7px; height: 1122.5px;",
+            "zIndex": "2",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 2,
+            "alphaPixels": 7627,
+            "inkBounds": {
+              "minX": 91,
+              "minY": 110,
+              "maxX": 702,
+              "maxY": 1031
+            },
+            "imageRegion": {
+              "scope": "presence diagnostic from existing flow canvas, not a PDF shape metric",
+              "box": {
+                "x": 133.013,
+                "y": 132.267,
+                "width": 113.387,
+                "height": 59.293
+              },
+              "left": 133,
+              "top": 132,
+              "right": 247,
+              "bottom": 192,
+              "chromaticPixels": 6780
+            },
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          }
+        ],
+        "fontStatus": "loaded",
+        "fonts": [
+          {
+            "family": "함초롬돋움",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "RHWP Old Hangul",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "\"RHWP Old Hangul\"",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬돋움",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      tac_picture_behindtext_textbox.hwpx — 1페이지 (195.6ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "3",
+            "rhwpEstimatedSurfaceBytes": "10691139",
+            "rhwpEstimatedVisibleSurfaceBytes": "10691139",
+            "rhwpEstimatedRetainedSurfaceBytes": "10691139",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "2674986",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3|surfaces:background:794x1123,behind:794x1123,main:794x1123"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": [
+          {
+            "plane": "background-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "behind-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "flow",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "c0b51cf52b7539ff393d2a96a9ec250c3ca199e75e90daaa81bbc254e496da27"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "c0b51cf52b7539ff393d2a96a9ec250c3ca199e75e90daaa81bbc254e496da27"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c"
+        },
+        "pageSha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c",
+        "events": [],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "background-0",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "behind-0",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "flow",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "initial"
+      },
+      {
+        "planes": [
+          {
+            "plane": "background-0",
+            "dataset": {
+              "rhwpLayerKind": "background",
+              "rhwpOverlay": "background-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=2|width=1588|height=2245|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 1588,
+            "height": 2245,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 0; image-rendering: crisp-edges;",
+            "zIndex": "0",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": 3565060,
+            "inkBounds": {
+              "minX": 0,
+              "minY": 0,
+              "maxX": 1587,
+              "maxY": 2244
+            },
+            "imageRegion": null,
+            "font": "10px sans-serif"
+          },
+          {
+            "plane": "behind-0",
+            "dataset": {
+              "rhwpLayerKind": "behind",
+              "rhwpOverlay": "behind-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=2|width=1588|height=2245|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 1588,
+            "height": 2245,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 1; image-rendering: crisp-edges;",
+            "zIndex": "1",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 69768,
+            "inkBounds": {
+              "minX": 233,
+              "minY": 407,
+              "maxX": 688,
+              "maxY": 559
+            },
+            "imageRegion": null,
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          },
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "2",
+              "rhwpRequestedDpr": "2",
+              "rhwpRenderScale": "2",
+              "rhwpRawDpr": "2",
+              "rhwpEffectiveDpr": "2",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "3",
+              "rhwpEstimatedSurfaceBytes": "42764556",
+              "rhwpEstimatedVisibleSurfaceBytes": "42764556",
+              "rhwpEstimatedRetainedSurfaceBytes": "42764556",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "10695180",
+              "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:3",
+              "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:3|surfaces:background:1588x2245,behind:1588x2245,main:1588x2245"
+            },
+            "width": 1588,
+            "height": 2245,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; background: transparent; z-index: 2; width: 793.7px; height: 1122.5px;",
+            "zIndex": "2",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 2,
+            "alphaPixels": 29332,
+            "inkBounds": {
+              "minX": 182,
+              "minY": 220,
+              "maxX": 1404,
+              "maxY": 2062
+            },
+            "imageRegion": {
+              "scope": "presence diagnostic from existing flow canvas, not a PDF shape metric",
+              "box": {
+                "x": 133.013,
+                "y": 132.267,
+                "width": 113.387,
+                "height": 59.293
+              },
+              "left": 266,
+              "top": 264,
+              "right": 493,
+              "bottom": 384,
+              "chromaticPixels": 26784
+            },
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          }
+        ],
+        "fontStatus": "loaded",
+        "fonts": [
+          {
+            "family": "함초롬돋움",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "RHWP Old Hangul",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "\"RHWP Old Hangul\"",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬돋움",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          }
+        ],
+        "dpr": 2,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      tac_picture_behindtext_textbox.hwpx — 1페이지 (195.6ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 1588,
+          "height": 2245,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "2",
+            "rhwpRequestedDpr": "2",
+            "rhwpRenderScale": "2",
+            "rhwpRawDpr": "2",
+            "rhwpEffectiveDpr": "2",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "3",
+            "rhwpEstimatedSurfaceBytes": "42764556",
+            "rhwpEstimatedVisibleSurfaceBytes": "42764556",
+            "rhwpEstimatedRetainedSurfaceBytes": "42764556",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "10695180",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:3",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:3|surfaces:background:1588x2245,behind:1588x2245,main:1588x2245"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": [
+          {
+            "plane": "background-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "behind-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "flow",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "screenPng": {
+          "width": 2560,
+          "height": 3000,
+          "sha256": "e7409a6c1dc2f4686d9d24968cbb48d302b559e7cc933e07f9f047416e0870f5"
+        },
+        "stableScreenPng": {
+          "width": 2560,
+          "height": 3000,
+          "sha256": "e7409a6c1dc2f4686d9d24968cbb48d302b559e7cc933e07f9f047416e0870f5"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 1588,
+          "height": 2246,
+          "sha256": "61cdff44cd5715d5c817989db3792d48d0627eec8923124ffb0f748453b99653"
+        },
+        "pageSha256": "61cdff44cd5715d5c817989db3792d48d0627eec8923124ffb0f748453b99653",
+        "events": [
+          {
+            "phase": "dpr2-only",
+            "kind": "resolution-media-query",
+            "timestamp": 10373,
+            "dpr": 2,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1dppx)",
+            "matches": false
+          },
+          {
+            "phase": "dpr2-only",
+            "kind": "resolution-media-query",
+            "timestamp": 10373,
+            "dpr": 2,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 2dppx)",
+            "matches": true
+          }
+        ],
+        "afterCaptureDpr": 2,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "background-0",
+            "width": 1588,
+            "height": 2245,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "behind-0",
+            "width": 1588,
+            "height": 2245,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "flow",
+            "width": 1588,
+            "height": 2245,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr2-only"
+      },
+      {
+        "planes": [
+          {
+            "plane": "background-0",
+            "dataset": {
+              "rhwpLayerKind": "background",
+              "rhwpOverlay": "background-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=3|width=2382|height=3368|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 2382,
+            "height": 3368,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 0; image-rendering: crisp-edges;",
+            "zIndex": "0",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": 8022576,
+            "inkBounds": {
+              "minX": 0,
+              "minY": 0,
+              "maxX": 2381,
+              "maxY": 3367
+            },
+            "imageRegion": null,
+            "font": "10px sans-serif"
+          },
+          {
+            "plane": "behind-0",
+            "dataset": {
+              "rhwpLayerKind": "behind",
+              "rhwpOverlay": "behind-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=3|width=2382|height=3368|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 2382,
+            "height": 3368,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 1; image-rendering: crisp-edges;",
+            "zIndex": "1",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 156407,
+            "inkBounds": {
+              "minX": 350,
+              "minY": 610,
+              "maxX": 1032,
+              "maxY": 838
+            },
+            "imageRegion": null,
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          },
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "3",
+              "rhwpRequestedDpr": "3",
+              "rhwpRenderScale": "3",
+              "rhwpRawDpr": "3",
+              "rhwpEffectiveDpr": "3",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "3",
+              "rhwpEstimatedSurfaceBytes": "96220251",
+              "rhwpEstimatedVisibleSurfaceBytes": "96220251",
+              "rhwpEstimatedRetainedSurfaceBytes": "96220251",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "24067728",
+              "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:3|layers:3",
+              "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:3|layers:3|surfaces:background:2382x3368,behind:2382x3368,main:2382x3368"
+            },
+            "width": 2382,
+            "height": 3368,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; background: transparent; z-index: 2; width: 793.7px; height: 1122.5px;",
+            "zIndex": "2",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 2,
+            "alphaPixels": 65404,
+            "inkBounds": {
+              "minX": 274,
+              "minY": 331,
+              "maxX": 2106,
+              "maxY": 3093
+            },
+            "imageRegion": {
+              "scope": "presence diagnostic from existing flow canvas, not a PDF shape metric",
+              "box": {
+                "x": 133.013,
+                "y": 132.267,
+                "width": 113.387,
+                "height": 59.293
+              },
+              "left": 399,
+              "top": 396,
+              "right": 740,
+              "bottom": 575,
+              "chromaticPixels": 60516
+            },
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          }
+        ],
+        "fontStatus": "loaded",
+        "fonts": [
+          {
+            "family": "함초롬돋움",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "RHWP Old Hangul",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "\"RHWP Old Hangul\"",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬돋움",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          }
+        ],
+        "dpr": 3,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      tac_picture_behindtext_textbox.hwpx — 1페이지 (195.6ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 2382,
+          "height": 3368,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "3",
+            "rhwpRequestedDpr": "3",
+            "rhwpRenderScale": "3",
+            "rhwpRawDpr": "3",
+            "rhwpEffectiveDpr": "3",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "3",
+            "rhwpEstimatedSurfaceBytes": "96220251",
+            "rhwpEstimatedVisibleSurfaceBytes": "96220251",
+            "rhwpEstimatedRetainedSurfaceBytes": "96220251",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "24067728",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:3|layers:3",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:3|layers:3|surfaces:background:2382x3368,behind:2382x3368,main:2382x3368"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": [
+          {
+            "plane": "background-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "behind-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "flow",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "screenPng": {
+          "width": 3840,
+          "height": 4500,
+          "sha256": "d5410845e28a14dda3349ee58b210409ea69ab08627d3e0ba34a8d9c17283308"
+        },
+        "stableScreenPng": {
+          "width": 3840,
+          "height": 4500,
+          "sha256": "d5410845e28a14dda3349ee58b210409ea69ab08627d3e0ba34a8d9c17283308"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 2382,
+          "height": 3369,
+          "sha256": "82c1c0b6da3aaba4fc14e9a02539fe31757a3c631840c027c6da253eb0903788"
+        },
+        "pageSha256": "82c1c0b6da3aaba4fc14e9a02539fe31757a3c631840c027c6da253eb0903788",
+        "events": [
+          {
+            "phase": "dpr3-only",
+            "kind": "resolution-media-query",
+            "timestamp": 15486.90000000596,
+            "dpr": 3,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 2dppx)",
+            "matches": false
+          },
+          {
+            "phase": "dpr3-only",
+            "kind": "resolution-media-query",
+            "timestamp": 15486.90000000596,
+            "dpr": 3,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 3dppx)",
+            "matches": true
+          }
+        ],
+        "afterCaptureDpr": 3,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "background-0",
+            "width": 2382,
+            "height": 3368,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "behind-0",
+            "width": 2382,
+            "height": 3368,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "flow",
+            "width": 2382,
+            "height": 3368,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr3-only"
+      },
+      {
+        "planes": [
+          {
+            "plane": "background-0",
+            "dataset": {
+              "rhwpLayerKind": "background",
+              "rhwpOverlay": "background-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1.25|width=993|height=1404|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 993,
+            "height": 1404,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 0; image-rendering: crisp-edges;",
+            "zIndex": "0",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": 1394172,
+            "inkBounds": {
+              "minX": 0,
+              "minY": 0,
+              "maxX": 992,
+              "maxY": 1403
+            },
+            "imageRegion": null,
+            "font": "10px sans-serif"
+          },
+          {
+            "plane": "behind-0",
+            "dataset": {
+              "rhwpLayerKind": "behind",
+              "rhwpOverlay": "behind-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1.25|width=993|height=1404|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 993,
+            "height": 1404,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 1; image-rendering: crisp-edges;",
+            "zIndex": "1",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 27456,
+            "inkBounds": {
+              "minX": 145,
+              "minY": 254,
+              "maxX": 430,
+              "maxY": 349
+            },
+            "imageRegion": null,
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          },
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1.25",
+              "rhwpRequestedDpr": "1.25",
+              "rhwpRenderScale": "1.25",
+              "rhwpRawDpr": "1.25",
+              "rhwpEffectiveDpr": "1.25",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "3",
+              "rhwpEstimatedSurfaceBytes": "16704904.6875",
+              "rhwpEstimatedVisibleSurfaceBytes": "16704904.6875",
+              "rhwpEstimatedRetainedSurfaceBytes": "16704904.6875",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "4182516",
+              "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:3",
+              "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:3|surfaces:background:993x1404,behind:993x1404,main:993x1404"
+            },
+            "width": 993,
+            "height": 1404,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; background: transparent; z-index: 2; width: 793.7px; height: 1122.5px;",
+            "zIndex": "2",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 2,
+            "alphaPixels": 11597,
+            "inkBounds": {
+              "minX": 114,
+              "minY": 138,
+              "maxX": 877,
+              "maxY": 1288
+            },
+            "imageRegion": {
+              "scope": "presence diagnostic from existing flow canvas, not a PDF shape metric",
+              "box": {
+                "x": 133.013,
+                "y": 132.267,
+                "width": 113.387,
+                "height": 59.293
+              },
+              "left": 166,
+              "top": 165,
+              "right": 308,
+              "bottom": 240,
+              "chromaticPixels": 10506
+            },
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          }
+        ],
+        "fontStatus": "loaded",
+        "fonts": [
+          {
+            "family": "함초롬돋움",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "RHWP Old Hangul",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "\"RHWP Old Hangul\"",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬돋움",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          }
+        ],
+        "dpr": 1.25,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      tac_picture_behindtext_textbox.hwpx — 1페이지 (195.6ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 993,
+          "height": 1404,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1.25",
+            "rhwpRequestedDpr": "1.25",
+            "rhwpRenderScale": "1.25",
+            "rhwpRawDpr": "1.25",
+            "rhwpEffectiveDpr": "1.25",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "3",
+            "rhwpEstimatedSurfaceBytes": "16704904.6875",
+            "rhwpEstimatedVisibleSurfaceBytes": "16704904.6875",
+            "rhwpEstimatedRetainedSurfaceBytes": "16704904.6875",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "4182516",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:3",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:3|surfaces:background:993x1404,behind:993x1404,main:993x1404"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": [
+          {
+            "plane": "background-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "behind-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "flow",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "screenPng": {
+          "width": 1600,
+          "height": 1875,
+          "sha256": "ad9e9b01c2bd3d8fa2bf7a33c3d05905a1850d10be6c929f8939f05dddb02e37"
+        },
+        "stableScreenPng": {
+          "width": 1600,
+          "height": 1875,
+          "sha256": "ad9e9b01c2bd3d8fa2bf7a33c3d05905a1850d10be6c929f8939f05dddb02e37"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 993,
+          "height": 1404,
+          "sha256": "28c0f0ee3b2b06bc1095d1d8b2c322a4bda3f7dfeda5d8fa4eea4fe9ff67ce81"
+        },
+        "pageSha256": "28c0f0ee3b2b06bc1095d1d8b2c322a4bda3f7dfeda5d8fa4eea4fe9ff67ce81",
+        "events": [
+          {
+            "phase": "dpr125-only",
+            "kind": "resolution-media-query",
+            "timestamp": 20741.60000000894,
+            "dpr": 1.25,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1.25dppx)",
+            "matches": true
+          },
+          {
+            "phase": "dpr125-only",
+            "kind": "resolution-media-query",
+            "timestamp": 20741.60000000894,
+            "dpr": 1.25,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 3dppx)",
+            "matches": false
+          }
+        ],
+        "afterCaptureDpr": 1.25,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "background-0",
+            "width": 993,
+            "height": 1404,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "behind-0",
+            "width": 993,
+            "height": 1404,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "flow",
+            "width": 993,
+            "height": 1404,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr125-only"
+      },
+      {
+        "planes": [
+          {
+            "plane": "background-0",
+            "dataset": {
+              "rhwpLayerKind": "background",
+              "rhwpOverlay": "background-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 0; image-rendering: crisp-edges;",
+            "zIndex": "0",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": 891662,
+            "inkBounds": {
+              "minX": 0,
+              "minY": 0,
+              "maxX": 793,
+              "maxY": 1122
+            },
+            "imageRegion": null,
+            "font": "10px sans-serif"
+          },
+          {
+            "plane": "behind-0",
+            "dataset": {
+              "rhwpLayerKind": "behind",
+              "rhwpOverlay": "behind-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 1; image-rendering: crisp-edges;",
+            "zIndex": "1",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 17633,
+            "inkBounds": {
+              "minX": 116,
+              "minY": 203,
+              "maxX": 344,
+              "maxY": 279
+            },
+            "imageRegion": null,
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          },
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "3",
+              "rhwpEstimatedSurfaceBytes": "10691139",
+              "rhwpEstimatedVisibleSurfaceBytes": "10691139",
+              "rhwpEstimatedRetainedSurfaceBytes": "10691139",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "2674986",
+              "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3",
+              "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3|surfaces:background:794x1123,behind:794x1123,main:794x1123"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; background: transparent; z-index: 2; width: 793.7px; height: 1122.5px;",
+            "zIndex": "2",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 2,
+            "alphaPixels": 7627,
+            "inkBounds": {
+              "minX": 91,
+              "minY": 110,
+              "maxX": 702,
+              "maxY": 1031
+            },
+            "imageRegion": {
+              "scope": "presence diagnostic from existing flow canvas, not a PDF shape metric",
+              "box": {
+                "x": 133.013,
+                "y": 132.267,
+                "width": 113.387,
+                "height": 59.293
+              },
+              "left": 133,
+              "top": 132,
+              "right": 247,
+              "bottom": 192,
+              "chromaticPixels": 6780
+            },
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          }
+        ],
+        "fontStatus": "loaded",
+        "fonts": [
+          {
+            "family": "함초롬돋움",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "RHWP Old Hangul",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "\"RHWP Old Hangul\"",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬돋움",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      tac_picture_behindtext_textbox.hwpx — 1페이지 (195.6ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "3",
+            "rhwpEstimatedSurfaceBytes": "10691139",
+            "rhwpEstimatedVisibleSurfaceBytes": "10691139",
+            "rhwpEstimatedRetainedSurfaceBytes": "10691139",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "2674986",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3|surfaces:background:794x1123,behind:794x1123,main:794x1123"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": [
+          {
+            "plane": "background-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "behind-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "flow",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "7069885bcc44bf1808bf27305d5ebce16b5de2840329137cf7be1038dd1256c7"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "7069885bcc44bf1808bf27305d5ebce16b5de2840329137cf7be1038dd1256c7"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c"
+        },
+        "pageSha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c",
+        "events": [
+          {
+            "phase": "dpr-restored",
+            "kind": "resolution-media-query",
+            "timestamp": 25378,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1dppx)",
+            "matches": true
+          },
+          {
+            "phase": "dpr-restored",
+            "kind": "resolution-media-query",
+            "timestamp": 25378,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1.25dppx)",
+            "matches": false
+          }
+        ],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "background-0",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "behind-0",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "flow",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr-restored"
+      },
+      {
+        "planes": [
+          {
+            "plane": "background-0",
+            "dataset": {
+              "rhwpLayerKind": "background",
+              "rhwpOverlay": "background-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1.25|width=993|height=1404|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 993,
+            "height": 1404,
+            "rect": {
+              "x": 153.9375,
+              "y": 89.5,
+              "width": 992.125,
+              "height": 1403.125,
+              "top": 89.5,
+              "right": 1146.0625,
+              "bottom": 1492.625,
+              "left": 153.9375
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 12.5px; left: 50%; transform: translateX(-50%); width: 992.125px; height: 1403.12px; overflow: hidden; z-index: 0; image-rendering: crisp-edges;",
+            "zIndex": "0",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": 1394172,
+            "inkBounds": {
+              "minX": 0,
+              "minY": 0,
+              "maxX": 992,
+              "maxY": 1403
+            },
+            "imageRegion": null,
+            "font": "10px sans-serif"
+          },
+          {
+            "plane": "behind-0",
+            "dataset": {
+              "rhwpLayerKind": "behind",
+              "rhwpOverlay": "behind-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1.25|width=993|height=1404|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 993,
+            "height": 1404,
+            "rect": {
+              "x": 153.9375,
+              "y": 89.5,
+              "width": 992.125,
+              "height": 1403.125,
+              "top": 89.5,
+              "right": 1146.0625,
+              "bottom": 1492.625,
+              "left": 153.9375
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 12.5px; left: 50%; transform: translateX(-50%); width: 992.125px; height: 1403.12px; overflow: hidden; z-index: 1; image-rendering: crisp-edges;",
+            "zIndex": "1",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 27456,
+            "inkBounds": {
+              "minX": 145,
+              "minY": 254,
+              "maxX": 430,
+              "maxY": 349
+            },
+            "imageRegion": null,
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          },
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1.25",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1.25",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "3",
+              "rhwpEstimatedSurfaceBytes": "16704904.6875",
+              "rhwpEstimatedVisibleSurfaceBytes": "16704904.6875",
+              "rhwpEstimatedRetainedSurfaceBytes": "16704904.6875",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "4182516",
+              "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:3",
+              "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:3|surfaces:background:993x1404,behind:993x1404,main:993x1404"
+            },
+            "width": 993,
+            "height": 1404,
+            "rect": {
+              "x": 153.9375,
+              "y": 89.5,
+              "width": 992.125,
+              "height": 1403.125,
+              "top": 89.5,
+              "right": 1146.0625,
+              "bottom": 1492.625,
+              "left": 153.9375
+            },
+            "style": "top: 12.5px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; background: transparent; z-index: 2; width: 992.125px; height: 1403.12px;",
+            "zIndex": "2",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 2,
+            "alphaPixels": 11597,
+            "inkBounds": {
+              "minX": 114,
+              "minY": 138,
+              "maxX": 877,
+              "maxY": 1288
+            },
+            "imageRegion": {
+              "scope": "presence diagnostic from existing flow canvas, not a PDF shape metric",
+              "box": {
+                "x": 133.013,
+                "y": 132.267,
+                "width": 113.387,
+                "height": 59.293
+              },
+              "left": 166,
+              "top": 165,
+              "right": 308,
+              "bottom": 240,
+              "chromaticPixels": 10506
+            },
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          }
+        ],
+        "fontStatus": "loaded",
+        "fonts": [
+          {
+            "family": "함초롬돋움",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "RHWP Old Hangul",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "\"RHWP Old Hangul\"",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬돋움",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "125%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      tac_picture_behindtext_textbox.hwpx — 1페이지 (195.6ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          125%\n        \n      \n    ",
+        "canvas": {
+          "width": 993,
+          "height": 1404,
+          "dataset": {
+            "rhwpRenderedZoom": "1.25",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1.25",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "3",
+            "rhwpEstimatedSurfaceBytes": "16704904.6875",
+            "rhwpEstimatedVisibleSurfaceBytes": "16704904.6875",
+            "rhwpEstimatedRetainedSurfaceBytes": "16704904.6875",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "4182516",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:3",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1.25|layers:3|surfaces:background:993x1404,behind:993x1404,main:993x1404"
+          }
+        },
+        "paper": {
+          "x": 153.9375,
+          "y": 89.5,
+          "width": 992.125,
+          "height": 1403.125,
+          "top": 89.5,
+          "right": 1146.0625,
+          "bottom": 1492.625,
+          "left": 153.9375
+        },
+        "scroll": {
+          "top": 63,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": [
+          {
+            "plane": "background-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "behind-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "flow",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "7b6e8ab11c8844b4b1054d80bc322c84ece9ac9a52ec06224e3ea6f0d0834d97"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "7b6e8ab11c8844b4b1054d80bc322c84ece9ac9a52ec06224e3ea6f0d0834d97"
+        },
+        "stable": true,
+        "fullPageVisible": false,
+        "events": [],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "background-0",
+            "width": 993,
+            "height": 1404,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "behind-0",
+            "width": 993,
+            "height": 1404,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "flow",
+            "width": 993,
+            "height": 1404,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "zoom125"
+      },
+      {
+        "planes": [
+          {
+            "plane": "background-0",
+            "dataset": {
+              "rhwpLayerKind": "background",
+              "rhwpOverlay": "background-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 0; image-rendering: crisp-edges;",
+            "zIndex": "0",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": 891662,
+            "inkBounds": {
+              "minX": 0,
+              "minY": 0,
+              "maxX": 793,
+              "maxY": 1122
+            },
+            "imageRegion": null,
+            "font": "10px sans-serif"
+          },
+          {
+            "plane": "behind-0",
+            "dataset": {
+              "rhwpLayerKind": "behind",
+              "rhwpOverlay": "behind-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 1; image-rendering: crisp-edges;",
+            "zIndex": "1",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 17633,
+            "inkBounds": {
+              "minX": 116,
+              "minY": 203,
+              "maxX": 344,
+              "maxY": 279
+            },
+            "imageRegion": null,
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          },
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "3",
+              "rhwpEstimatedSurfaceBytes": "10691139",
+              "rhwpEstimatedVisibleSurfaceBytes": "10691139",
+              "rhwpEstimatedRetainedSurfaceBytes": "10691139",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "2674986",
+              "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3",
+              "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3|surfaces:background:794x1123,behind:794x1123,main:794x1123"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; background: transparent; z-index: 2; width: 793.7px; height: 1122.5px;",
+            "zIndex": "2",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 2,
+            "alphaPixels": 7627,
+            "inkBounds": {
+              "minX": 91,
+              "minY": 110,
+              "maxX": 702,
+              "maxY": 1031
+            },
+            "imageRegion": {
+              "scope": "presence diagnostic from existing flow canvas, not a PDF shape metric",
+              "box": {
+                "x": 133.013,
+                "y": 132.267,
+                "width": 113.387,
+                "height": 59.293
+              },
+              "left": 133,
+              "top": 132,
+              "right": 247,
+              "bottom": 192,
+              "chromaticPixels": 6780
+            },
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          }
+        ],
+        "fontStatus": "loaded",
+        "fonts": [
+          {
+            "family": "함초롬돋움",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "RHWP Old Hangul",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "\"RHWP Old Hangul\"",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬돋움",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      tac_picture_behindtext_textbox.hwpx — 1페이지 (195.6ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "3",
+            "rhwpEstimatedSurfaceBytes": "10691139",
+            "rhwpEstimatedVisibleSurfaceBytes": "10691139",
+            "rhwpEstimatedRetainedSurfaceBytes": "10691139",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "2674986",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3|surfaces:background:794x1123,behind:794x1123,main:794x1123"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": [
+          {
+            "plane": "background-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "behind-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "flow",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "eb6c8a61cddb5d63a22beae440715b7e7c0cf3b7bc392ac78f0241701e3335e0"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "eb6c8a61cddb5d63a22beae440715b7e7c0cf3b7bc392ac78f0241701e3335e0"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c"
+        },
+        "pageSha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c",
+        "events": [],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "background-0",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "behind-0",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "flow",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "zoom-restored"
+      },
+      {
+        "planes": [
+          {
+            "plane": "background-0",
+            "dataset": {
+              "rhwpLayerKind": "background",
+              "rhwpOverlay": "background-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=2|width=1588|height=2245|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 1588,
+            "height": 2245,
+            "rect": {
+              "x": 333.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1126.84375,
+              "bottom": 1272.5,
+              "left": 333.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 0; image-rendering: crisp-edges;",
+            "zIndex": "0",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": 3565060,
+            "inkBounds": {
+              "minX": 0,
+              "minY": 0,
+              "maxX": 1587,
+              "maxY": 2244
+            },
+            "imageRegion": null,
+            "font": "10px sans-serif"
+          },
+          {
+            "plane": "behind-0",
+            "dataset": {
+              "rhwpLayerKind": "behind",
+              "rhwpOverlay": "behind-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=2|width=1588|height=2245|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 1588,
+            "height": 2245,
+            "rect": {
+              "x": 333.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1126.84375,
+              "bottom": 1272.5,
+              "left": 333.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 1; image-rendering: crisp-edges;",
+            "zIndex": "1",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 69768,
+            "inkBounds": {
+              "minX": 233,
+              "minY": 407,
+              "maxX": 688,
+              "maxY": 559
+            },
+            "imageRegion": null,
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          },
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "2",
+              "rhwpRequestedDpr": "2",
+              "rhwpRenderScale": "2",
+              "rhwpRawDpr": "2",
+              "rhwpEffectiveDpr": "2",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "3",
+              "rhwpEstimatedSurfaceBytes": "42764556",
+              "rhwpEstimatedVisibleSurfaceBytes": "42764556",
+              "rhwpEstimatedRetainedSurfaceBytes": "42764556",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "10695180",
+              "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:3",
+              "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:3|surfaces:background:1588x2245,behind:1588x2245,main:1588x2245"
+            },
+            "width": 1588,
+            "height": 2245,
+            "rect": {
+              "x": 333.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1126.84375,
+              "bottom": 1272.5,
+              "left": 333.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; background: transparent; z-index: 2; width: 793.7px; height: 1122.5px;",
+            "zIndex": "2",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 2,
+            "alphaPixels": 29332,
+            "inkBounds": {
+              "minX": 182,
+              "minY": 220,
+              "maxX": 1404,
+              "maxY": 2062
+            },
+            "imageRegion": {
+              "scope": "presence diagnostic from existing flow canvas, not a PDF shape metric",
+              "box": {
+                "x": 133.013,
+                "y": 132.267,
+                "width": 113.387,
+                "height": 59.293
+              },
+              "left": 266,
+              "top": 264,
+              "right": 493,
+              "bottom": 384,
+              "chromaticPixels": 26784
+            },
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          }
+        ],
+        "fontStatus": "loaded",
+        "fonts": [
+          {
+            "family": "함초롬돋움",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "RHWP Old Hangul",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "\"RHWP Old Hangul\"",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬돋움",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          }
+        ],
+        "dpr": 2,
+        "viewport": {
+          "width": 1440,
+          "height": 1600
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      tac_picture_behindtext_textbox.hwpx — 1페이지 (195.6ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 1588,
+          "height": 2245,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "2",
+            "rhwpRequestedDpr": "2",
+            "rhwpRenderScale": "2",
+            "rhwpRawDpr": "2",
+            "rhwpEffectiveDpr": "2",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "3",
+            "rhwpEstimatedSurfaceBytes": "42764556",
+            "rhwpEstimatedVisibleSurfaceBytes": "42764556",
+            "rhwpEstimatedRetainedSurfaceBytes": "42764556",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "10695180",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:3",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:2|layers:3|surfaces:background:1588x2245,behind:1588x2245,main:1588x2245"
+          }
+        },
+        "paper": {
+          "x": 333.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1126.84375,
+          "bottom": 1272.5,
+          "left": 333.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1420,
+            "height": 1438,
+            "top": 140,
+            "right": 1440,
+            "bottom": 1578,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": [
+          {
+            "plane": "background-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "behind-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "flow",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "screenPng": {
+          "width": 2880,
+          "height": 3200,
+          "sha256": "2b761e969a60f7b6b996e2cb1a9cfefe850f27a83369fbf4985061520c781997"
+        },
+        "stableScreenPng": {
+          "width": 2880,
+          "height": 3200,
+          "sha256": "2b761e969a60f7b6b996e2cb1a9cfefe850f27a83369fbf4985061520c781997"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 1588,
+          "height": 2246,
+          "sha256": "61cdff44cd5715d5c817989db3792d48d0627eec8923124ffb0f748453b99653"
+        },
+        "pageSha256": "61cdff44cd5715d5c817989db3792d48d0627eec8923124ffb0f748453b99653",
+        "events": [
+          {
+            "phase": "dpr2-resized",
+            "kind": "window-resize",
+            "timestamp": 39373.70000000298,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": true
+          },
+          {
+            "phase": "dpr2-resized",
+            "kind": "visual-viewport-resize",
+            "timestamp": 39373.70000000298,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": true
+          },
+          {
+            "phase": "dpr2-resized",
+            "kind": "resolution-media-query",
+            "timestamp": 39373.70000000298,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": true,
+            "query": "(resolution: 1dppx)",
+            "matches": false
+          },
+          {
+            "phase": "dpr2-resized",
+            "kind": "resolution-media-query",
+            "timestamp": 39373.80000001192,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": true,
+            "query": "(resolution: 2dppx)",
+            "matches": true
+          },
+          {
+            "phase": "dpr2-resized",
+            "kind": "container-resize-observer",
+            "timestamp": 39373.90000000596,
+            "dpr": 2,
+            "width": 1440,
+            "height": 1600,
+            "trusted": null,
+            "containerWidth": 1420,
+            "containerHeight": 1438
+          }
+        ],
+        "afterCaptureDpr": 2,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "background-0",
+            "width": 1588,
+            "height": 2245,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "behind-0",
+            "width": 1588,
+            "height": 2245,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "flow",
+            "width": 1588,
+            "height": 2245,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "dpr2-resized"
+      },
+      {
+        "planes": [
+          {
+            "plane": "background-0",
+            "dataset": {
+              "rhwpLayerKind": "background",
+              "rhwpOverlay": "background-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=background|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 0; image-rendering: crisp-edges;",
+            "zIndex": "0",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 0,
+            "alphaPixels": 891662,
+            "inkBounds": {
+              "minX": 0,
+              "minY": 0,
+              "maxX": 793,
+              "maxY": 1122
+            },
+            "imageRegion": null,
+            "font": "10px sans-serif"
+          },
+          {
+            "plane": "behind-0",
+            "dataset": {
+              "rhwpLayerKind": "behind",
+              "rhwpOverlay": "behind-0",
+              "rhwpOverlayPage": "0",
+              "rhwpStaticOverlayKey": "page=0|scale=1|width=794|height=1123|layer=behind|profile=screen|backend=canvas2d|summary=overlay:1:0:1:0:1:0:0:#ffffff:0:215"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "pointer-events: none; background: transparent; position: absolute; top: 10px; left: 50%; transform: translateX(-50%); width: 793.7px; height: 1122.5px; overflow: hidden; z-index: 1; image-rendering: crisp-edges;",
+            "zIndex": "1",
+            "pointerEvents": "none",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 1,
+            "alphaPixels": 17633,
+            "inkBounds": {
+              "minX": 116,
+              "minY": 203,
+              "maxX": 344,
+              "maxY": 279
+            },
+            "imageRegion": null,
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          },
+          {
+            "plane": "flow",
+            "dataset": {
+              "rhwpRenderedZoom": "1",
+              "rhwpRenderTier": "screen",
+              "rhwpRenderBucket": "1",
+              "rhwpRequestedDpr": "1",
+              "rhwpRenderScale": "1",
+              "rhwpRawDpr": "1",
+              "rhwpEffectiveDpr": "1",
+              "rhwpSurfaceVisible": "true",
+              "rhwpSurfaceLayerCount": "3",
+              "rhwpEstimatedSurfaceBytes": "10691139",
+              "rhwpEstimatedVisibleSurfaceBytes": "10691139",
+              "rhwpEstimatedRetainedSurfaceBytes": "10691139",
+              "rhwpSurfaceBudgetState": "within",
+              "rhwpActualSurfacePixels": "2674986",
+              "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3",
+              "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3|surfaces:background:794x1123,behind:794x1123,main:794x1123"
+            },
+            "width": 794,
+            "height": 1123,
+            "rect": {
+              "x": 253.15625,
+              "y": 150,
+              "width": 793.6875,
+              "height": 1122.5,
+              "top": 150,
+              "right": 1046.84375,
+              "bottom": 1272.5,
+              "left": 253.15625
+            },
+            "style": "top: 10px; left: 50%; transform: translateX(-50%); image-rendering: crisp-edges; background: transparent; z-index: 2; width: 793.7px; height: 1122.5px;",
+            "zIndex": "2",
+            "pointerEvents": "auto",
+            "samePageParent": true,
+            "connected": true,
+            "siblingIndex": 2,
+            "alphaPixels": 7627,
+            "inkBounds": {
+              "minX": 91,
+              "minY": 110,
+              "maxX": 702,
+              "maxY": 1031
+            },
+            "imageRegion": {
+              "scope": "presence diagnostic from existing flow canvas, not a PDF shape metric",
+              "box": {
+                "x": 133.013,
+                "y": 132.267,
+                "width": 113.387,
+                "height": 59.293
+              },
+              "left": 133,
+              "top": 132,
+              "right": 247,
+              "bottom": 192,
+              "chromaticPixels": 6780
+            },
+            "font": "13.333px 함초롬바탕, \"Haansoft Batang\", Batang, 바탕, \"Nanum Myeongjo\", AppleMyungjo, \"Noto Serif KR\", \"Noto Serif CJK KR\", \"HCR Batang\", \"HCR Batang Ext\", \"함초롬바탕 확장\", \"HCR Batang ExtB\", \"함초롬바탕 확장B\", \"RHWP Old Hangul\", \"Segoe UI Emoji\", \"Noto Emoji\", \"Noto Color Emoji\", serif"
+          }
+        ],
+        "fontStatus": "loaded",
+        "fonts": [
+          {
+            "family": "함초롬돋움",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "RHWP Old Hangul",
+            "status": "unloaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "\"RHWP Old Hangul\"",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬돋움",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          },
+          {
+            "family": "함초롬바탕",
+            "status": "loaded",
+            "weight": "normal",
+            "style": "normal"
+          }
+        ],
+        "dpr": 1,
+        "viewport": {
+          "width": 1280,
+          "height": 1500
+        },
+        "statusZoom": "100%",
+        "pageCanvasCount": 1,
+        "statusText": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      tac_picture_behindtext_textbox.hwpx — 1페이지 (195.6ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "3",
+            "rhwpEstimatedSurfaceBytes": "10691139",
+            "rhwpEstimatedVisibleSurfaceBytes": "10691139",
+            "rhwpEstimatedRetainedSurfaceBytes": "10691139",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "2674986",
+            "rhwpSurfaceCacheLookupKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3",
+            "rhwpSurfaceCacheKey": "blake3:900b9fed97579becdc9a1677a13a579fc92508c9863bb95312bc0e40d1927a35|revision:3|profile:screen|resources:3|request:canvas2d|mode:default|page:0|geometry:793.7x1122.5|backend:canvas2d|profile:screen|scale:1|layers:3|surfaces:background:794x1123,behind:794x1123,main:794x1123"
+          }
+        },
+        "paper": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "scroll": {
+          "top": 0,
+          "left": 0,
+          "rect": {
+            "x": 20,
+            "y": 140,
+            "width": 1260,
+            "height": 1338,
+            "top": 140,
+            "right": 1280,
+            "bottom": 1478,
+            "left": 20
+          }
+        },
+        "imageLayers": [],
+        "dialogs": [],
+        "planeRectDelta": [
+          {
+            "plane": "background-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "behind-0",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          },
+          {
+            "plane": "flow",
+            "x": 0,
+            "y": 0,
+            "width": 0,
+            "height": 0
+          }
+        ],
+        "screenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "eb6c8a61cddb5d63a22beae440715b7e7c0cf3b7bc392ac78f0241701e3335e0"
+        },
+        "stableScreenPng": {
+          "width": 1280,
+          "height": 1500,
+          "sha256": "eb6c8a61cddb5d63a22beae440715b7e7c0cf3b7bc392ac78f0241701e3335e0"
+        },
+        "stable": true,
+        "fullPageVisible": true,
+        "pagePng": {
+          "width": 794,
+          "height": 1123,
+          "sha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c"
+        },
+        "pageSha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c",
+        "events": [
+          {
+            "phase": "all-restored",
+            "kind": "window-resize",
+            "timestamp": 44468.20000000298,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true
+          },
+          {
+            "phase": "all-restored",
+            "kind": "visual-viewport-resize",
+            "timestamp": 44468.20000000298,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true
+          },
+          {
+            "phase": "all-restored",
+            "kind": "resolution-media-query",
+            "timestamp": 44468.20000000298,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 1dppx)",
+            "matches": true
+          },
+          {
+            "phase": "all-restored",
+            "kind": "resolution-media-query",
+            "timestamp": 44468.20000000298,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": true,
+            "query": "(resolution: 2dppx)",
+            "matches": false
+          },
+          {
+            "phase": "all-restored",
+            "kind": "container-resize-observer",
+            "timestamp": 44468.30000001192,
+            "dpr": 1,
+            "width": 1280,
+            "height": 1500,
+            "trusted": null,
+            "containerWidth": 1260,
+            "containerHeight": 1338
+          }
+        ],
+        "afterCaptureDpr": 1,
+        "rawDprMatches": true,
+        "afterCapturePlanes": [
+          {
+            "plane": "background-0",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "behind-0",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          },
+          {
+            "plane": "flow",
+            "width": 794,
+            "height": 1123,
+            "connected": true,
+            "samePageParent": true
+          }
+        ],
+        "label": "all-restored"
+      }
+    ],
+    "metricsProtocol": "CDP device metrics + screen resolution media feature; no product dispatch",
+    "environmentChanges": [
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 2,
+        "mobile": false
+      },
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 3,
+        "mobile": false
+      },
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 1.25,
+        "mobile": false
+      },
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 1,
+        "mobile": false
+      },
+      {
+        "width": 1440,
+        "height": 1600,
+        "deviceScaleFactor": 2,
+        "mobile": false
+      },
+      {
+        "width": 1280,
+        "height": 1500,
+        "deviceScaleFactor": 1,
+        "mobile": false
+      }
+    ],
+    "caretCapturePhases": [
+      {
+        "name": "initial-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 367,
+            "top": 323,
+            "bottom": 334,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 11,
+            "total": 11,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 118.91695900000013
+      },
+      {
+        "name": "initial-stable-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 367,
+            "top": 323,
+            "bottom": 334,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 11,
+            "total": 11,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 134.9870549999996
+      },
+      {
+        "name": "initial-page.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 114,
+            "top": 173,
+            "bottom": 184,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 11,
+            "total": 11,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 91.32673699999941
+      },
+      {
+        "name": "dpr2-only-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 735,
+            "top": 646,
+            "bottom": 668,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 22,
+            "total": 22,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 472.7344789999988
+      },
+      {
+        "name": "dpr2-only-stable-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 735,
+            "top": 646,
+            "bottom": 668,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 22,
+            "total": 22,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 449.8292110000002
+      },
+      {
+        "name": "dpr2-only-page.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 229,
+            "top": 346,
+            "bottom": 368,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 22,
+            "total": 22,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 207.7227270000003
+      },
+      {
+        "name": "dpr3-only-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "0",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 1103,
+            "top": 969,
+            "bottom": 1002,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 33,
+            "total": 33,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 952.827529000002
+      },
+      {
+        "name": "dpr3-only-stable-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "0",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 1103,
+            "top": 969,
+            "bottom": 1002,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 33,
+            "total": 33,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 933.7307000000001
+      },
+      {
+        "name": "dpr3-only-page.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 343,
+            "top": 519,
+            "bottom": 552,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 33,
+            "total": 33,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 462.2522119999994
+      },
+      {
+        "name": "dpr125-only-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 459,
+            "top": 404,
+            "bottom": 417,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 13,
+            "total": 13,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 207.8422329999994
+      },
+      {
+        "name": "dpr125-only-stable-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 459,
+            "top": 404,
+            "bottom": 417,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 13,
+            "total": 13,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 193.35798099999738
+      },
+      {
+        "name": "dpr125-only-page.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 143,
+            "top": 217,
+            "bottom": 230,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 13,
+            "total": 13,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 98.17781999999715
+      },
+      {
+        "name": "dpr-restored-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 367,
+            "top": 323,
+            "bottom": 334,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 11,
+            "total": 11,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 110.01500500000111
+      },
+      {
+        "name": "dpr-restored-stable-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 367,
+            "top": 323,
+            "bottom": 334,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 11,
+            "total": 11,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 114.10598799999934
+      },
+      {
+        "name": "dpr-restored-page.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 114,
+            "top": 173,
+            "bottom": 184,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 11,
+            "total": 11,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 88.20065600000089
+      },
+      {
+        "name": "zoom125-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 295.625,
+              "y": 304.5,
+              "width": 2,
+              "height": 16.625,
+              "top": 304.5,
+              "right": 297.625,
+              "bottom": 321.125,
+              "left": 295.625
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 296,
+            "top": 306,
+            "bottom": 320,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 14,
+            "total": 14,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 111.98194800000056
+      },
+      {
+        "name": "zoom125-stable-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 295.625,
+              "y": 304.5,
+              "width": 2,
+              "height": 16.625,
+              "top": 304.5,
+              "right": 297.625,
+              "bottom": 321.125,
+              "left": 295.625
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 296,
+            "top": 306,
+            "bottom": 320,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 14,
+            "total": 14,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 129.24842100000387
+      },
+      {
+        "name": "zoom-restored-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 367,
+            "top": 323,
+            "bottom": 334,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 11,
+            "total": 11,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 117.56661100000201
+      },
+      {
+        "name": "zoom-restored-stable-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 367,
+            "top": 323,
+            "bottom": 334,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 11,
+            "total": 11,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 119.5692410000047
+      },
+      {
+        "name": "zoom-restored-page.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 114,
+            "top": 173,
+            "bottom": 184,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 11,
+            "total": 11,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 85.49939699999959
+      },
+      {
+        "name": "dpr2-resized-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 446.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 448.703125,
+              "bottom": 335.296875,
+              "left": 446.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 895,
+            "top": 646,
+            "bottom": 668,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 22,
+            "total": 22,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 502.403585
+      },
+      {
+        "name": "dpr2-resized-stable-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 446.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 448.703125,
+              "bottom": 335.296875,
+              "left": 446.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 895,
+            "top": 646,
+            "bottom": 668,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 22,
+            "total": 22,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 497.6851390000011
+      },
+      {
+        "name": "dpr2-resized-page.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 446.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 448.703125,
+              "bottom": 335.296875,
+              "left": 446.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 229,
+            "top": 346,
+            "bottom": 368,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 22,
+            "total": 22,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 187.2325090000013
+      },
+      {
+        "name": "all-restored-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 367,
+            "top": 323,
+            "bottom": 334,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 11,
+            "total": 11,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 104.8072450000036
+      },
+      {
+        "name": "all-restored-stable-screen.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 367,
+            "top": 323,
+            "bottom": 334,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 11,
+            "total": 11,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 120.98686699999962
+      },
+      {
+        "name": "all-restored-page.png",
+        "attempt": 1,
+        "phase": [
+          {
+            "display": "block",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 366.703125,
+              "y": 322,
+              "width": 2,
+              "height": 13.296875,
+              "top": 322,
+              "right": 368.703125,
+              "bottom": 335.296875,
+              "left": 366.703125
+            }
+          },
+          {
+            "display": "none",
+            "opacity": "1",
+            "color": "rgb(0, 0, 0)",
+            "rect": {
+              "x": 0,
+              "y": 0,
+              "width": 0,
+              "height": 0,
+              "top": 0,
+              "right": 0,
+              "bottom": 0,
+              "left": 0
+            }
+          }
+        ],
+        "caretPixels": [
+          {
+            "x": 114,
+            "top": 173,
+            "bottom": 184,
+            "color": [
+              0,
+              0,
+              0
+            ],
+            "matching": 11,
+            "total": 11,
+            "visibleInPng": true
+          }
+        ],
+        "optimizeForSpeed": false,
+        "captureMs": 100.02350400000432
+      }
+    ],
+    "captureEncoding": "Original CDP PNG, default encoding; installed Playwright PNG decoder reads actual caret interior pixels without rewriting the image.",
+    "events": [
+      {
+        "phase": "observer-initialization",
+        "kind": "container-resize-observer",
+        "timestamp": 4323.100000008941,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": null,
+        "containerWidth": 1260,
+        "containerHeight": 1338
+      },
+      {
+        "phase": "dpr2-only",
+        "kind": "resolution-media-query",
+        "timestamp": 10373,
+        "dpr": 2,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr2-only",
+        "kind": "resolution-media-query",
+        "timestamp": 10373,
+        "dpr": 2,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 2dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr3-only",
+        "kind": "resolution-media-query",
+        "timestamp": 15486.90000000596,
+        "dpr": 3,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 2dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr3-only",
+        "kind": "resolution-media-query",
+        "timestamp": 15486.90000000596,
+        "dpr": 3,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 3dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr125-only",
+        "kind": "resolution-media-query",
+        "timestamp": 20741.60000000894,
+        "dpr": 1.25,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1.25dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr125-only",
+        "kind": "resolution-media-query",
+        "timestamp": 20741.60000000894,
+        "dpr": 1.25,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 3dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr-restored",
+        "kind": "resolution-media-query",
+        "timestamp": 25378,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr-restored",
+        "kind": "resolution-media-query",
+        "timestamp": 25378,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1.25dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "window-resize",
+        "timestamp": 39373.70000000298,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": true
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "visual-viewport-resize",
+        "timestamp": 39373.70000000298,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": true
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "resolution-media-query",
+        "timestamp": 39373.70000000298,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": true,
+        "query": "(resolution: 1dppx)",
+        "matches": false
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "resolution-media-query",
+        "timestamp": 39373.80000001192,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": true,
+        "query": "(resolution: 2dppx)",
+        "matches": true
+      },
+      {
+        "phase": "dpr2-resized",
+        "kind": "container-resize-observer",
+        "timestamp": 39373.90000000596,
+        "dpr": 2,
+        "width": 1440,
+        "height": 1600,
+        "trusted": null,
+        "containerWidth": 1420,
+        "containerHeight": 1438
+      },
+      {
+        "phase": "all-restored",
+        "kind": "window-resize",
+        "timestamp": 44468.20000000298,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true
+      },
+      {
+        "phase": "all-restored",
+        "kind": "visual-viewport-resize",
+        "timestamp": 44468.20000000298,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true
+      },
+      {
+        "phase": "all-restored",
+        "kind": "resolution-media-query",
+        "timestamp": 44468.20000000298,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 1dppx)",
+        "matches": true
+      },
+      {
+        "phase": "all-restored",
+        "kind": "resolution-media-query",
+        "timestamp": 44468.20000000298,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": true,
+        "query": "(resolution: 2dppx)",
+        "matches": false
+      },
+      {
+        "phase": "all-restored",
+        "kind": "container-resize-observer",
+        "timestamp": 44468.30000001192,
+        "dpr": 1,
+        "width": 1280,
+        "height": 1500,
+        "trusted": null,
+        "containerWidth": 1260,
+        "containerHeight": 1338
+      }
+    ],
+    "trustedKeys": [
+      {
+        "key": "PageUp",
+        "trusted": true
+      },
+      {
+        "key": "PageUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "ArrowUp",
+        "trusted": true
+      },
+      {
+        "key": "PageDown",
+        "trusted": true
+      },
+      {
+        "key": "PageDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      },
+      {
+        "key": "ArrowDown",
+        "trusted": true
+      }
+    ],
+    "finalPageRestored": true,
+    "dprOnlyRepainted": true,
+    "resizedDprRepainted": true,
+    "dprOnlyMediaQueryDelivered": true,
+    "dprOnlyContainerResizeDelivered": false,
+    "dprOnlyWindowResizeDelivered": false,
+    "baselinePageSha256": "b10fad9a0298c5936a993792c85c3000ca0981eb0e0906c28ead32170c04775c",
+    "baselinePageIdentical": true,
+    "buildTree": "1ff3de58d486cdfcf0b36247d430609d7fb81869",
+    "initialJsSha256": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa",
+    "initialWasmSha256": "f5c1452c503bd7789d126a78ff5004e7c8ca282ab08822dbfb9bbd04bc759791",
+    "restoredScroll": true,
+    "passed": true,
+    "allChecksPassed": true
+  },
+  "scope": "controlled Canvas2D background/BehindText/flow transitions of one existing HWPX; no product change",
+  "baseline": {
+    "commit": "3deefcc6937015121e7cd63927ec30dc9f9404a7",
+    "page_url": "https://github.com/semanticist21/rhwp/blob/3deefcc6937015121e7cd63927ec30dc9f9404a7/mydocs/pr/assets/studio-behind-plane/canvas2d-page.png",
+    "verification_url": "https://github.com/semanticist21/rhwp/blob/3deefcc6937015121e7cd63927ec30dc9f9404a7/mydocs/pr/assets/studio-behind-plane/verification.md",
+    "source_blobs_equal": true
+  },
+  "source_blobs": {
+    "rhwp-studio/src/view/viewport-manager.ts": "3a5c1bafafebac9b388580e29c87c451b312fb24",
+    "rhwp-studio/src/view/canvas-view.ts": "85fd20d071f226e3e341dccab09712c8064e6329",
+    "rhwp-studio/src/view/page-renderer.ts": "f21e857f1ab6acbf2b77cc724f75c81c49c827f2",
+    "rhwp-studio/src/view/render-surface-budget.ts": "87b8473ee28c59f0db975f15328e162d0577f0d2",
+    "rhwp-studio/src/engine/caret-renderer.ts": "1e2a69864efee9ef74459ecc5bf64e8532ecb1c1"
+  },
+  "latest_source_intake": {
+    "latest_devel": "168aaaf2bf5a4ef5ecc70a61087aeabf2d9d2433",
+    "ahead_by": 5,
+    "commits": [
+      [
+        "e9e4fcb0a15077dc6f230eeac606492f8648eb73",
+        "fix(renderer): cellzone 배경도 끝 주소를 병합 span 으로 환산한다"
+      ],
+      [
+        "a88d758d6f80e7b4b5a788f4dc70df7c865b6516",
+        "docs(pr): cellzone 배경 병합 끝 칸 환산의 Visual Sweep 증적"
+      ],
+      [
+        "d456f3dd25074baed4b291d665ef4cae6c199747",
+        "Merge pull request #8145 from pblsketch/fix/cellzone-fill-span"
+      ],
+      [
+        "599f325849ff6d798f50d20d174a1f93433ec10d",
+        "docs(pr): record independent validation and acceptance of PR 8145"
+      ],
+      [
+        "168aaaf2bf5a4ef5ecc70a61087aeabf2d9d2433",
+        "docs(pr): finalize PR 8145 follow-up and cleanup"
+      ]
+    ],
+    "files": [
+      "samples/cellzone-merged-end-fill.hwpx",
+      "src/renderer/layout/table_layout.rs",
+      "tests/cases/cellzone_merged_end_fill_row.rs"
+    ]
+  },
+  "other_work": {
+    "files": [
+      {
+        "path": "pdf/rowspan_staggered_heights/equal-height-partial-block-hancom-mac-12.30.pdf",
+        "additions": 0,
+        "deletions": 0
+      },
+      {
+        "path": "pdf/table_equal_cell_sizes/equal-width-partial-block-hancom-mac-12.30.pdf",
+        "additions": 0,
+        "deletions": 0
+      },
+      {
+        "path": "pdf/table_equal_cell_sizes/uneven-height-hancom-mac-12.30.pdf",
+        "additions": 0,
+        "deletions": 0
+      },
+      {
+        "path": "pdf/table_equal_cell_sizes/uneven-width-hancom-mac-12.30.pdf",
+        "additions": 0,
+        "deletions": 0
+      },
+      {
+        "path": "src/document_core/commands/table_ops.rs",
+        "additions": 94,
+        "deletions": 0
+      },
+      {
+        "path": "src/model/table.rs",
+        "additions": 4,
+        "deletions": 0
+      },
+      {
+        "path": "src/model/table_equal_size.rs",
+        "additions": 280,
+        "deletions": 0
+      },
+      {
+        "path": "src/wasm_api.rs",
+        "additions": 33,
+        "deletions": 0
+      },
+      {
+        "path": "tests/cases/table_equal_cell_sizes.rs",
+        "additions": 253,
+        "deletions": 0
+      },
+      {
+        "path": "tests/fixtures/rowspan_staggered_heights/equal-height-partial-block.hwp",
+        "additions": 0,
+        "deletions": 0
+      },
+      {
+        "path": "tests/fixtures/table_equal_cell_sizes/equal-width-partial-block.hwp",
+        "additions": 0,
+        "deletions": 0
+      },
+      {
+        "path": "tests/fixtures/table_equal_cell_sizes/original.hwp",
+        "additions": 0,
+        "deletions": 0
+      },
+      {
+        "path": "tests/fixtures/table_equal_cell_sizes/uneven-height-hancom.hwp",
+        "additions": 0,
+        "deletions": 0
+      },
+      {
+        "path": "tests/fixtures/table_equal_cell_sizes/uneven-height.hwp",
+        "additions": 0,
+        "deletions": 0
+      },
+      {
+        "path": "tests/fixtures/table_equal_cell_sizes/uneven-width-hancom.hwp",
+        "additions": 0,
+        "deletions": 0
+      },
+      {
+        "path": "tests/fixtures/table_equal_cell_sizes/uneven-width.hwp",
+        "additions": 0,
+        "deletions": 0
+      }
+    ],
+    "headRefName": "feat/table-equal-cell-sizes",
+    "headRefOid": "6a31cb47a088ac13ecbe641900318c9dbc9ff4e3",
+    "isDraft": false,
+    "reviewRequests": [],
+    "title": "feat(table): 셀 블록의 너비·높이를 한컴처럼 격자를 나눠 같게 맞춘다"
+  }
+}
