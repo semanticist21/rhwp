@@ -1,0 +1,785 @@
+{
+  "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+  "tree": "1ff3de58d486cdfcf0b36247d430609d7fb81869",
+  "evidence_parent": "e57ebde70dbb70120d32080dac08ba0f1e34e4da",
+  "input_pdf": {
+    "samples/shape-group-02.hwp": {
+      "bytes": 16384,
+      "sha256": "12a4b4962a57b4d292d23a1809255ddb7e8400af4dc7884c5bcb7b4767a6628f",
+      "blob": "ceb34fdaad8f81674881bfeae7a1089e68aab262"
+    },
+    "pdf/shape-group-02-hwp-2020.pdf": {
+      "bytes": 89651,
+      "sha256": "ab759c9c2031f4a6fe64c75381a2c5dbf215777a98b1b0b7cd0243f801662dc7",
+      "blob": "58e8dc8d8a4c11df34acee1058470239c4aea1e3"
+    }
+  },
+  "source_blobs": {
+    "rhwp-studio/src/view/page-renderer.ts": "f21e857f1ab6acbf2b77cc724f75c81c49c827f2",
+    "rhwp-studio/src/view/canvaskit-renderer.ts": "b303400cc346e546ebc17e4c8b88065b24a188bd",
+    "rhwp-studio/src/view/canvas-view.ts": "85fd20d071f226e3e341dccab09712c8064e6329"
+  },
+  "runtime": {
+    "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+    "browser": "156.0.8078.73",
+    "production": true,
+    "backend": "canvaskit",
+    "consoleLog": [
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[FontLoader] 웹폰트 로드 시작: 3개 파일 (이미 요청함: 0개)"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: 함초롬돋움 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: 함초롬바탕 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 시작: RHWP Old Hangul <- fonts/RHWPOldHangul-Regular.woff2"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: RHWP Old Hangul <- fonts/RHWPOldHangul-Regular.woff2"
+      },
+      {
+        "type": "warning",
+        "text": "Service Worker registration blocked by Playwright"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: 함초롬돋움 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 로드 성공: 함초롬바탕 <- https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff"
+      },
+      {
+        "type": "log",
+        "text": "[FontLoader] 폰트 로드 완료: 3개 성공, 0개 실패 (총 3개 파일 요청)"
+      },
+      {
+        "type": "log",
+        "text": "[WasmBridge] WASM 초기화 완료 (rhwp 0.9.0)"
+      },
+      {
+        "type": "log",
+        "text": "[WasmBridge] 새 문서 생성: 1페이지"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 1. 폰트 로딩 시작"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 2. 폰트 로딩 완료"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 3. inputHandler deactivate"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 4. canvasView loadDocument"
+      },
+      {
+        "type": "log",
+        "text": "[CanvasView] 1/1페이지 로드, 총 높이: 1142.5px"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 5. toolbar setEnabled"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 6. toolbar initFontDropdown + initStyleDropdown"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 7. 사전 검증 및 로컬 글꼴 확인"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 8. inputHandler activateWithCaretPosition"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 9. 완료"
+      },
+      {
+        "type": "debug",
+        "text": "[autosave] draft deleted: 92713373-f2f3-42a9-8309-71c84f9f0a76 (document-replaced)"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 1. 폰트 로딩 시작"
+      },
+      {
+        "type": "debug",
+        "text": "[FontLoader][debug] CDN 후보: 함초롬돋움, 함초롬바탕, RHWP Old Hangul"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 2. 폰트 로딩 완료"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 3. inputHandler deactivate"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 4. canvasView loadDocument"
+      },
+      {
+        "type": "log",
+        "text": "[CanvasView] 1/1페이지 로드, 총 높이: 1142.5px"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 5. toolbar setEnabled"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 6. toolbar initFontDropdown + initStyleDropdown"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 7. 사전 검증 및 로컬 글꼴 확인"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 8. inputHandler activateWithCaretPosition"
+      },
+      {
+        "type": "warning",
+        "text": "[CursorState] updateRect 실패 → rect=null pos=(%d,%d,%d) cell=(%s,%s,%s,%s): 0 0 0 undefined undefined undefined undefined 렌더링 오류: 커서 위치를 찾을 수 없습니다: sec=0, para=0, offset=0"
+      },
+      {
+        "type": "log",
+        "text": "[initDoc] 9. 완료"
+      }
+    ],
+    "pageErrors": [],
+    "responses": [
+      {
+        "url": "http://127.0.0.1:38051/theme-init.js",
+        "status": 200,
+        "sha256": "5a3afcc0139187bfe509414cd60fde2a0dfea72fd72751c4e6e696cdc0f6c587"
+      },
+      {
+        "url": "http://127.0.0.1:38051/locale-init.js",
+        "status": 200,
+        "sha256": "633d47a6a53b2211cf816769f8c084b097c1b60b6ab263803d8610c0531539fa"
+      },
+      {
+        "url": "http://127.0.0.1:38051/registerSW.js",
+        "status": 200,
+        "sha256": "9742073ef7fc795e7673d98f272992843298426a0ffd8cb3507784df5143608b"
+      },
+      {
+        "url": "http://127.0.0.1:38051/assets/index-B7ByZimA.js",
+        "status": 200,
+        "sha256": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa"
+      },
+      {
+        "url": "http://127.0.0.1:38051/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "sha256": "1a45a61e9a320c1bc62ca1401f7b23ceffffe8133dc2a9650ad4e12524f8dcab"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_four@1.0/HCRDotum.woff",
+        "status": 200,
+        "sha256": "49bf312aec309ba88c3eb612c591c2d8e28b765c156c808691850137431bb1bf"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+        "status": 200,
+        "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c"
+      },
+      {
+        "url": "http://127.0.0.1:38051/assets/plugin-DO1SH32F.js",
+        "status": 200,
+        "sha256": "fd4da7dc0aae8f64ed16f659004a1c73757dc928d1515f632f0c35695e655823"
+      },
+      {
+        "url": "http://127.0.0.1:38051/assets/canvaskit-renderer-S10QNEZn.js",
+        "status": 200,
+        "sha256": "34f1c749212f8a65ca6f9f636b672f384acb9924628f5dbb157995052d9763b6"
+      },
+      {
+        "url": "http://127.0.0.1:38051/fonts/NotoSansKR-Regular.woff2",
+        "status": 200,
+        "sha256": "d1bf8649914a4fe9477a8735bf056383e44e466141fb3d61897252e06d900c1a"
+      },
+      {
+        "url": "http://127.0.0.1:38051/fonts/D2Coding-Regular.woff2",
+        "status": 200,
+        "sha256": "4d3fa8ed66fedcb1787f200bd75637b816b09057fc06da0aa783e3b305a726d8"
+      },
+      {
+        "url": "http://127.0.0.1:38051/fonts/LatinModernMath-Regular.woff2",
+        "status": 200,
+        "sha256": "b11060f37967c090457580275129d0d7da1d5fbfc82b04e78c91aa31977f547c"
+      },
+      {
+        "url": "http://127.0.0.1:38051/fonts/NotoSansMath-Regular.woff2",
+        "status": 200,
+        "sha256": "6836027b99d29fd0e6f668cf0c2e89107de4131b91116cd96516ad4a7e19d66d"
+      },
+      {
+        "url": "http://127.0.0.1:38051/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "sha256": "1a45a61e9a320c1bc62ca1401f7b23ceffffe8133dc2a9650ad4e12524f8dcab"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+        "status": 200,
+        "sha256": "b3192018e3bd4da76b29b0530f71c79fb6f465a2b7cd41308bc38f9a4ae09a6c"
+      },
+      {
+        "url": "https://cdn.jsdelivr.net/gh/projectnoonnu/noonfonts_2104@1.0/HANBatang.woff",
+        "status": 200,
+        "error": "response.body: Protocol error (Network.getResponseBody): No data found for resource with given identifier"
+      },
+      {
+        "url": "http://127.0.0.1:38051/fonts/RHWPOldHangul-Regular.woff2",
+        "status": 200,
+        "error": "response.body: Protocol error (Network.getResponseBody): No data found for resource with given identifier"
+      },
+      {
+        "url": "http://127.0.0.1:38051/assets/rhwp_bg-MJdpQrZt.wasm",
+        "status": 200,
+        "sha256": "f5c1452c503bd7789d126a78ff5004e7c8ca282ab08822dbfb9bbd04bc759791",
+        "observedDuringInitialization": true
+      },
+      {
+        "url": "http://127.0.0.1:38051/assets/canvaskit-SCAxUyCS.wasm",
+        "status": 200,
+        "sha256": "25ebed8e60158c5854f8dc807b936daca21354f8bfb6a2231266b0a93812f301",
+        "observedDuringInitialization": true
+      }
+    ],
+    "failures": [],
+    "input": {
+      "name": "shape-group-02.hwp",
+      "sha256": "12a4b4962a57b4d292d23a1809255ddb7e8400af4dc7884c5bcb7b4767a6628f"
+    },
+    "actualRenderInput": {
+      "profile": "screen",
+      "pageWidth": 793.707,
+      "pageHeight": 1122.507,
+      "layers": [
+        {
+          "path": "root.children.3",
+          "layer": {
+            "textWrap": "inFrontOfText",
+            "zOrder": 0,
+            "stableIndex": 2
+          },
+          "kind": "group",
+          "children": 2
+        }
+      ],
+      "counts": {
+        "pageBackground": 1,
+        "path": 2
+      },
+      "fontResources": 0,
+      "scale": 1,
+      "documentGeneration": 2,
+      "sameVisibleCanvas": true
+    },
+    "sameRenderAndDiagnosticsReceiver": true,
+    "state": {
+      "title": "shape-group-02.hwp - rhwp-studio",
+      "status": "\n      1 / 1 쪽\n      \n      구역: 1 / 1\n      \n      삽입\n      \n      \n      shape-group-02.hwp — 1페이지 (251.2ms)\n      \n        \n        \n        \n        \n          \n          \n        \n        \n        \n          \n            \n            \n          \n          100%\n        \n      \n    ",
+      "globals": {
+        "wasm": false,
+        "canvasView": false
+      },
+      "fonts": [
+        {
+          "family": "함초롬돋움",
+          "status": "unloaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "함초롬바탕",
+          "status": "unloaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "RHWP Old Hangul",
+          "status": "unloaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "\"RHWP Old Hangul\"",
+          "status": "loaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "함초롬돋움",
+          "status": "loaded",
+          "style": "normal",
+          "weight": "normal"
+        },
+        {
+          "family": "함초롬바탕",
+          "status": "loaded",
+          "style": "normal",
+          "weight": "normal"
+        }
+      ],
+      "canvases": [
+        {
+          "id": "",
+          "width": 794,
+          "height": 1123,
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "3563713",
+            "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+            "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "891662",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+          },
+          "parent": "<div id=\"scroll-content\" style=\"width: 833.7px; height: 1142.5px;\"><canvas class=\"document-page-canvas\" width=\"794\" height=\"1123\" data-rhwp-rendered-zoom=\"1\" data-rhwp-render-tier=\"screen\" data-rhwp-render-bucket=\"1\" data-rhwp-requested-dpr=\"1\" data-rhwp-render-scale=\"1\" data-rhwp-raw-dpr=\"1\" data-rhwp-effective-dpr=\"1\" data-rhwp-surface-visible=\"true\" data-rhwp-surface-layer-count=\"1\" data-rhwp-estimated-surface-bytes=\"3563713\" data-rhwp-estimated-visible-surface-bytes=\"3563713\" data-rhwp-estimated-retained-surface-bytes=\"3563713\" data-rhwp-surface-budget-state=\"within\" data-rhwp-actual-surface-pixels=\"891662\" data-rhwp-surface-cache-lookup-key=\"blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1\" data-rhwp-surface-cache-key=\"blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123\" style=\"top: 10px; left: 50%; transform: translateX("
+        }
+      ],
+      "images": [],
+      "dialogs": [],
+      "composition": [
+        {
+          "tag": "CANVAS",
+          "className": "document-page-canvas",
+          "dataset": {
+            "rhwpRenderedZoom": "1",
+            "rhwpRenderTier": "screen",
+            "rhwpRenderBucket": "1",
+            "rhwpRequestedDpr": "1",
+            "rhwpRenderScale": "1",
+            "rhwpRawDpr": "1",
+            "rhwpEffectiveDpr": "1",
+            "rhwpSurfaceVisible": "true",
+            "rhwpSurfaceLayerCount": "1",
+            "rhwpEstimatedSurfaceBytes": "3563713",
+            "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+            "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+            "rhwpSurfaceBudgetState": "within",
+            "rhwpActualSurfacePixels": "891662",
+            "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+            "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+          },
+          "rect": {
+            "x": 253.15625,
+            "y": 150,
+            "width": 793.6875,
+            "height": 1122.5,
+            "top": 150,
+            "right": 1046.84375,
+            "bottom": 1272.5,
+            "left": 253.15625
+          }
+        }
+      ],
+      "fontStatus": "loaded",
+      "dpr": 1
+    },
+    "imageLayers": [],
+    "planes": [
+      {
+        "plane": "flow",
+        "id": "",
+        "dataset": {
+          "rhwpRenderedZoom": "1",
+          "rhwpRenderTier": "screen",
+          "rhwpRenderBucket": "1",
+          "rhwpRequestedDpr": "1",
+          "rhwpRenderScale": "1",
+          "rhwpRawDpr": "1",
+          "rhwpEffectiveDpr": "1",
+          "rhwpSurfaceVisible": "true",
+          "rhwpSurfaceLayerCount": "1",
+          "rhwpEstimatedSurfaceBytes": "3563713",
+          "rhwpEstimatedVisibleSurfaceBytes": "3563713",
+          "rhwpEstimatedRetainedSurfaceBytes": "3563713",
+          "rhwpSurfaceBudgetState": "within",
+          "rhwpActualSurfacePixels": "891662",
+          "rhwpSurfaceCacheLookupKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1",
+          "rhwpSurfaceCacheKey": "blake3:92a8fbca861a5cf58d84e0da9ddf37f6a0dd7d82fcc577c0d3be293e5d98aed3|revision:4|profile:screen|resources:4|request:canvaskit|mode:default|page:0|geometry:793.7x1122.5|backend:canvaskit|profile:screen|scale:1|layers:1|surfaces:main:794x1123"
+        },
+        "width": 794,
+        "height": 1123,
+        "rect": {
+          "x": 253.15625,
+          "y": 150,
+          "width": 793.6875,
+          "height": 1122.5,
+          "top": 150,
+          "right": 1046.84375,
+          "bottom": 1272.5,
+          "left": 253.15625
+        },
+        "relative": {
+          "x": 0,
+          "y": 0,
+          "width": 793.6875,
+          "height": 1122.5
+        },
+        "zIndex": "0",
+        "pointerEvents": "auto",
+        "connected": true,
+        "samePageParent": true,
+        "siblingIndex": 0,
+        "alphaPixels": null,
+        "inkBounds": null
+      }
+    ],
+    "readiness": [
+      {
+        "diagnostics": {
+          "surfaceCreated": 2,
+          "surfaceReused": 2,
+          "staticPictureCacheEntries": 8,
+          "staticPictureCacheBytes": 4480,
+          "staticPictureCacheHits": 8,
+          "staticPictureCacheMisses": 8,
+          "staticPictureCacheEvictions": 0,
+          "textBlobCacheEntries": 0,
+          "textBlobCacheBytes": 0,
+          "textBlobCacheHits": 0,
+          "textBlobCacheMisses": 0,
+          "fallbackFamilyCacheEntries": 0,
+          "paragraphFontEntries": 3,
+          "paragraphFontBytes": 2287432,
+          "paragraphProviderBuilds": 0,
+          "paragraphFontRejections": 0,
+          "pendingImageLoads": 0,
+          "mode": "default",
+          "surfacePreference": "software",
+          "surfaceBackend": "software",
+          "surfaceFallbackReason": null,
+          "lastRenderCompleted": true,
+          "lastUnsupportedOps": [],
+          "lastExpectedUnsupportedOps": [],
+          "lastUnexpectedUnsupportedOps": [],
+          "lastRenderError": null,
+          "passesRuntimeReadinessGate": true,
+          "readinessBlockers": [],
+          "hiddenCanvas2dOverlayUsed": false,
+          "lastRenderDurationMs": 32.79999999701977,
+          "renderCount": 2,
+          "imageCacheEntries": 0,
+          "imageCacheLimit": 128,
+          "imageCachePixels": 0,
+          "imageCachePixelLimit": 67108864,
+          "imageCacheHits": 0,
+          "imageCacheMisses": 0,
+          "imageCacheEvictions": 0,
+          "mipmapCacheEntries": 0,
+          "mipmapCacheBytes": 0,
+          "mipmapCacheHits": 0,
+          "mipmapCacheMisses": 0,
+          "imageFailureCacheHits": 0,
+          "imageFailures": [],
+          "localTypefaceCount": 0,
+          "localTypefaceLoadFailureCount": 0,
+          "localTypefacePendingCount": 0,
+          "bundledTypefaceCount": 0,
+          "bundledTypefaceLoadFailureCount": 0,
+          "glyphRunFontBlobCount": 0,
+          "glyphRunFontBlobBytes": 0,
+          "glyphRunTypefaceCount": 0,
+          "glyphRunFontCount": 0,
+          "fontSubstitutionLimit": 4096,
+          "unregisteredFontFallbacks": 0,
+          "fontSubstitutions": [],
+          "replayFeatureCounts": {
+            "dashedStrokes": 0,
+            "glyphRuns": 0,
+            "tabLeaders": 0,
+            "charOverlaps": 0,
+            "verticalPresentationPunctuation": 0,
+            "verticalTextRuns": 0
+          },
+          "textVariantDiagnosticGroups": 0,
+          "textVariantDiagnosticParts": 0,
+          "replayDiagnosticsDropped": 0
+        },
+        "surface": {
+          "created": 2,
+          "reused": 2,
+          "backend": "software",
+          "preference": "software",
+          "fallbackReason": null
+        },
+        "connected": true,
+        "sameVisibleCanvas": true,
+        "canvas": {
+          "width": 794,
+          "height": 1123,
+          "backend": "software"
+        },
+        "glyphBlobHashes": [],
+        "typefaceKeys": [],
+        "bundledAliases": [],
+        "preparedTypefaces": [],
+        "resolvedFamilyCache": []
+      }
+    ],
+    "rendererBefore": {
+      "diagnostics": {
+        "surfaceCreated": 2,
+        "surfaceReused": 2,
+        "staticPictureCacheEntries": 8,
+        "staticPictureCacheBytes": 4480,
+        "staticPictureCacheHits": 8,
+        "staticPictureCacheMisses": 8,
+        "staticPictureCacheEvictions": 0,
+        "textBlobCacheEntries": 0,
+        "textBlobCacheBytes": 0,
+        "textBlobCacheHits": 0,
+        "textBlobCacheMisses": 0,
+        "fallbackFamilyCacheEntries": 0,
+        "paragraphFontEntries": 3,
+        "paragraphFontBytes": 2287432,
+        "paragraphProviderBuilds": 0,
+        "paragraphFontRejections": 0,
+        "pendingImageLoads": 0,
+        "mode": "default",
+        "surfacePreference": "software",
+        "surfaceBackend": "software",
+        "surfaceFallbackReason": null,
+        "lastRenderCompleted": true,
+        "lastUnsupportedOps": [],
+        "lastExpectedUnsupportedOps": [],
+        "lastUnexpectedUnsupportedOps": [],
+        "lastRenderError": null,
+        "passesRuntimeReadinessGate": true,
+        "readinessBlockers": [],
+        "hiddenCanvas2dOverlayUsed": false,
+        "lastRenderDurationMs": 32.79999999701977,
+        "renderCount": 2,
+        "imageCacheEntries": 0,
+        "imageCacheLimit": 128,
+        "imageCachePixels": 0,
+        "imageCachePixelLimit": 67108864,
+        "imageCacheHits": 0,
+        "imageCacheMisses": 0,
+        "imageCacheEvictions": 0,
+        "mipmapCacheEntries": 0,
+        "mipmapCacheBytes": 0,
+        "mipmapCacheHits": 0,
+        "mipmapCacheMisses": 0,
+        "imageFailureCacheHits": 0,
+        "imageFailures": [],
+        "localTypefaceCount": 0,
+        "localTypefaceLoadFailureCount": 0,
+        "localTypefacePendingCount": 0,
+        "bundledTypefaceCount": 0,
+        "bundledTypefaceLoadFailureCount": 0,
+        "glyphRunFontBlobCount": 0,
+        "glyphRunFontBlobBytes": 0,
+        "glyphRunTypefaceCount": 0,
+        "glyphRunFontCount": 0,
+        "fontSubstitutionLimit": 4096,
+        "unregisteredFontFallbacks": 0,
+        "fontSubstitutions": [],
+        "replayFeatureCounts": {
+          "dashedStrokes": 0,
+          "glyphRuns": 0,
+          "tabLeaders": 0,
+          "charOverlaps": 0,
+          "verticalPresentationPunctuation": 0,
+          "verticalTextRuns": 0
+        },
+        "textVariantDiagnosticGroups": 0,
+        "textVariantDiagnosticParts": 0,
+        "replayDiagnosticsDropped": 0
+      },
+      "surface": {
+        "created": 2,
+        "reused": 2,
+        "backend": "software",
+        "preference": "software",
+        "fallbackReason": null
+      },
+      "connected": true,
+      "sameVisibleCanvas": true,
+      "canvas": {
+        "width": 794,
+        "height": 1123,
+        "backend": "software"
+      },
+      "glyphBlobHashes": [],
+      "typefaceKeys": [],
+      "bundledAliases": [],
+      "preparedTypefaces": [],
+      "resolvedFamilyCache": []
+    },
+    "sourceJsSha256": "1e069446d51bc2ef56646ee0a6321dc2610c912f6ca3b6043ec028be781b13aa",
+    "screen": {
+      "width": 1280,
+      "height": 1500,
+      "attempt": 1,
+      "sha256": "7640aad684e285803f8671ef5d84c6fe60fcf35a1c265630435cece7022e0cee"
+    },
+    "stableScreen": {
+      "width": 1280,
+      "height": 1500,
+      "attempt": 1,
+      "sha256": "7640aad684e285803f8671ef5d84c6fe60fcf35a1c265630435cece7022e0cee"
+    },
+    "stable": true,
+    "pageClip": {
+      "x": 253.15625,
+      "y": 150,
+      "width": 793.6875,
+      "height": 1122.5
+    },
+    "pageCapture": {
+      "width": 794,
+      "height": 1123,
+      "attempt": 1,
+      "sha256": "3c6fc245f39b0de8c854412e446534ef334d1caeda301619dc55b7d95110c433"
+    },
+    "afterCaptureDpr": 1,
+    "rendererAfter": {
+      "diagnostics": {
+        "surfaceCreated": 2,
+        "surfaceReused": 2,
+        "staticPictureCacheEntries": 8,
+        "staticPictureCacheBytes": 4480,
+        "staticPictureCacheHits": 8,
+        "staticPictureCacheMisses": 8,
+        "staticPictureCacheEvictions": 0,
+        "textBlobCacheEntries": 0,
+        "textBlobCacheBytes": 0,
+        "textBlobCacheHits": 0,
+        "textBlobCacheMisses": 0,
+        "fallbackFamilyCacheEntries": 0,
+        "paragraphFontEntries": 3,
+        "paragraphFontBytes": 2287432,
+        "paragraphProviderBuilds": 0,
+        "paragraphFontRejections": 0,
+        "pendingImageLoads": 0,
+        "mode": "default",
+        "surfacePreference": "software",
+        "surfaceBackend": "software",
+        "surfaceFallbackReason": null,
+        "lastRenderCompleted": true,
+        "lastUnsupportedOps": [],
+        "lastExpectedUnsupportedOps": [],
+        "lastUnexpectedUnsupportedOps": [],
+        "lastRenderError": null,
+        "passesRuntimeReadinessGate": true,
+        "readinessBlockers": [],
+        "hiddenCanvas2dOverlayUsed": false,
+        "lastRenderDurationMs": 32.79999999701977,
+        "renderCount": 2,
+        "imageCacheEntries": 0,
+        "imageCacheLimit": 128,
+        "imageCachePixels": 0,
+        "imageCachePixelLimit": 67108864,
+        "imageCacheHits": 0,
+        "imageCacheMisses": 0,
+        "imageCacheEvictions": 0,
+        "mipmapCacheEntries": 0,
+        "mipmapCacheBytes": 0,
+        "mipmapCacheHits": 0,
+        "mipmapCacheMisses": 0,
+        "imageFailureCacheHits": 0,
+        "imageFailures": [],
+        "localTypefaceCount": 0,
+        "localTypefaceLoadFailureCount": 0,
+        "localTypefacePendingCount": 0,
+        "bundledTypefaceCount": 0,
+        "bundledTypefaceLoadFailureCount": 0,
+        "glyphRunFontBlobCount": 0,
+        "glyphRunFontBlobBytes": 0,
+        "glyphRunTypefaceCount": 0,
+        "glyphRunFontCount": 0,
+        "fontSubstitutionLimit": 4096,
+        "unregisteredFontFallbacks": 0,
+        "fontSubstitutions": [],
+        "replayFeatureCounts": {
+          "dashedStrokes": 0,
+          "glyphRuns": 0,
+          "tabLeaders": 0,
+          "charOverlaps": 0,
+          "verticalPresentationPunctuation": 0,
+          "verticalTextRuns": 0
+        },
+        "textVariantDiagnosticGroups": 0,
+        "textVariantDiagnosticParts": 0,
+        "replayDiagnosticsDropped": 0
+      },
+      "surface": {
+        "created": 2,
+        "reused": 2,
+        "backend": "software",
+        "preference": "software",
+        "fallbackReason": null
+      },
+      "connected": true,
+      "sameVisibleCanvas": true,
+      "canvas": {
+        "width": 794,
+        "height": 1123,
+        "backend": "software"
+      },
+      "glyphBlobHashes": [],
+      "typefaceKeys": [],
+      "bundledAliases": [],
+      "preparedTypefaces": [],
+      "resolvedFamilyCache": []
+    },
+    "preparedTypefacesVerified": [],
+    "passed": true
+  },
+  "comparison": {
+    "source": "3ef5046f42042c6ad50d47e0054e2132467395cd",
+    "page_count": 1,
+    "raw": {
+      "page": "1",
+      "tolerant_content_match_percent": "100.00",
+      "below_90": "0",
+      "silhouette_raw_match_percent": "100.00",
+      "silhouette_boundary_reconciled_pixels": "0"
+    },
+    "reference_sha256": "4efa2f2202003deb7d0d12acb8b7050926e2b72dce8adbe2c27cfac8bfa3aee1",
+    "bytes_collected": 235520
+  },
+  "reused_native": {
+    "verification_url": "https://github.com/semanticist21/rhwp/blob/e3b9f441e0d7c0979827aa37bbabb70f0b70f1fd/mydocs/pr/assets/studio-front-plane/verification.md",
+    "image_url": "https://github.com/semanticist21/rhwp/blob/e3b9f441e0d7c0979827aa37bbabb70f0b70f1fd/mydocs/pr/assets/studio-front-plane/native-skia.png",
+    "producer_sha256": "a6c32ee47df10497b0b3994d9a0184723a3f69308c28cc8d6cef3bc1ef8d12ec"
+  },
+  "scope": "CanvasKit software initial path-only InFrontOfText consumption; no active Typeface/glyph validation"
+}
