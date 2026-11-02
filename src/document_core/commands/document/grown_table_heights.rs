@@ -58,19 +58,14 @@ impl DocumentCore {
                             })
                         })
                         .map(|m| content_height(m, self.dpi));
+                    let reflowed = has_reflowed_cell_text(table)
+                        || self.table_text_reflowed_path_exists(section_idx, para_idx, control_idx);
                     out.push(
                         content
-                            .filter(|_| {
-                                has_reflowed_cell_text(table)
-                                    || self.table_text_reflowed_path_exists(
-                                        section_idx,
-                                        para_idx,
-                                        control_idx,
-                                    )
-                            })
+                            .filter(|_| reflowed)
                             .and_then(|content| grown(table.common.height, content)),
                     );
-                    self.push_nested_grown_heights(&table.cells, &mut out);
+                    self.push_nested_grown_heights(&table.cells, reflowed, &mut out);
                 }
             }
         }
@@ -82,6 +77,7 @@ impl DocumentCore {
     fn push_nested_grown_heights(
         &self,
         cells: &[crate::model::table::Cell],
+        parent_reflowed: bool,
         out: &mut Vec<Option<u32>>,
     ) {
         for cell in cells {
@@ -91,8 +87,10 @@ impl DocumentCore {
                         continue;
                     };
                     // 한컴이 저장한 줄을 그대로 가진 중첩 표도 그 높이가 한컴 조판값이다.
+                    // 바깥 표를 이번에 다시 짰거나 rhwp가 줄을 만든 표만 키운다.
+                    let reflowed = parent_reflowed || has_reflowed_cell_text(table);
                     out.push(
-                        has_reflowed_cell_text(table)
+                        reflowed
                             .then(|| {
                                 let measured = HeightMeasurer::new(self.dpi).measure_table(
                                     table,
@@ -104,7 +102,7 @@ impl DocumentCore {
                             })
                             .flatten(),
                     );
-                    self.push_nested_grown_heights(&table.cells, out);
+                    self.push_nested_grown_heights(&table.cells, reflowed, out);
                 }
             }
         }

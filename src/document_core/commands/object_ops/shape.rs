@@ -1391,16 +1391,22 @@ impl DocumentCore {
                 } else {
                     None
                 };
+                let started_right_or_bottom = !is_connector && (line_flip_x || line_flip_y);
+                // 방향 플래그가 있는 선은 저장 끝점이 논리 시작이다(HWP5 표 92, 렌더러와 같은 계약).
+                let (start, end) = if started_right_or_bottom {
+                    ((ex, ey), (sx, sy))
+                } else {
+                    ((sx, sy), (ex, ey))
+                };
                 ShapeObject::Line(LineShape {
                     common,
                     drawing,
-                    start: crate::model::Point { x: sx, y: sy },
-                    end: crate::model::Point { x: ex, y: ey },
-                    started_right_or_bottom: if is_connector {
-                        false
-                    } else {
-                        line_flip_x || line_flip_y
+                    start: crate::model::Point {
+                        x: start.0,
+                        y: start.1,
                     },
+                    end: crate::model::Point { x: end.0, y: end.1 },
+                    started_right_or_bottom,
                     connector,
                 })
             }

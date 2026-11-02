@@ -582,10 +582,20 @@ impl DocumentCore {
         line.common.vertical_offset = min_y as u32;
         line.common.width = w as u32;
         line.common.height = h.max(1) as u32;
-        line.start.x = start_x - min_x;
-        line.start.y = start_y - min_y;
-        line.end.x = end_x - min_x;
-        line.end.y = end_y - min_y;
+        // 방향 플래그가 있는 선은 저장 끝점이 논리 시작이다(HWP5 표 92, 렌더러와 같은 계약).
+        let start = crate::model::Point {
+            x: start_x - min_x,
+            y: start_y - min_y,
+        };
+        let end = crate::model::Point {
+            x: end_x - min_x,
+            y: end_y - min_y,
+        };
+        (line.start, line.end) = if line.started_right_or_bottom {
+            (end, start)
+        } else {
+            (start, end)
+        };
 
         line.drawing.shape_attr.current_width = w as u32;
         line.drawing.shape_attr.original_width = w as u32;
