@@ -317,6 +317,9 @@ impl DocumentCore {
         }
 
         self.document.sections[section_idx].raw_stream = None;
+        // 붙이기 전부터 캐럿 문단에 있던 표는 붙인 표와 구별한다.
+        let existing_tables =
+            Self::paragraph_table_keys(&self.document.sections[section_idx].paragraphs[para_idx]);
 
         let clip_count = parsed_paras.len();
         let first_inline_paragraph = Self::html_markup_len(html) <= Self::HTML_PASTE_MAX_BYTES
@@ -480,6 +483,11 @@ impl DocumentCore {
                 doc_hwp3_layout,
             );
 
+            self.mark_pasted_tables_reflowed(
+                section_idx,
+                para_idx..=last_para_idx,
+                &existing_tables,
+            )?;
             // 선택적 재구성: 원본 문단 재구성 + 삽입 문단 composed 추가
             self.recompose_paragraph(section_idx, para_idx);
             // 역순(.rev()) 삽입은 composed 길이가 paragraphs 보다 짧은 시점에
@@ -558,6 +566,7 @@ impl DocumentCore {
             doc_hwp3_layout,
         );
 
+        self.mark_pasted_tables_reflowed(section_idx, para_idx..=last_para_idx, &existing_tables)?;
         // 선택적 재구성: 원본 문단 재구성 + 삽입 문단 composed 추가
         self.recompose_paragraph(section_idx, para_idx);
         for i in para_idx + 1..=last_para_idx {
@@ -573,6 +582,52 @@ impl DocumentCore {
             "{{\"ok\":true,\"paraIdx\":{},\"charOffset\":{}}}",
             last_para_idx, merge_point
         ))
+    }
+
+    fn paragraph_table_keys(
+        paragraph: &Paragraph,
+    ) -> std::collections::HashSet<crate::document_core::TableTextReflowKey> {
+        paragraph
+            .controls
+            .iter()
+            .filter_map(|control| match control {
+                Control::Table(table) => {
+                    Some(crate::document_core::TableTextReflowKey::from_table(table))
+                }
+                _ => None,
+            })
+            .collect()
+    }
+
+    /// HTML에서 만든 표의 칸 글은 rhwp가 짠 줄이다. 셀 편집처럼 재조판한 표로 등록해
+    /// 저장 때 넘친 높이를 표 크기에 적는다. 붙이기 전부터 있던 표는 건드리지 않는다.
+    fn mark_pasted_tables_reflowed(
+        &mut self,
+        section_idx: usize,
+        paragraphs: std::ops::RangeInclusive<usize>,
+        existing: &std::collections::HashSet<crate::document_core::TableTextReflowKey>,
+    ) -> Result<(), HwpError> {
+        for para_idx in paragraphs {
+            let pasted: Vec<usize> = self.document.sections[section_idx].paragraphs[para_idx]
+                .controls
+                .iter()
+                .enumerate()
+                .filter_map(|(index, control)| match control {
+                    Control::Table(table)
+                        if !existing.contains(
+                            &crate::document_core::TableTextReflowKey::from_table(table),
+                        ) =>
+                    {
+                        Some(index)
+                    }
+                    _ => None,
+                })
+                .collect();
+            for control_idx in pasted {
+                self.mark_table_text_reflowed_after_edit(section_idx, para_idx, control_idx)?;
+            }
+        }
+        Ok(())
     }
 
     fn normalize_html_paragraphs_for_cell_paste(parsed_paras: Vec<Paragraph>) -> Vec<Paragraph> {
