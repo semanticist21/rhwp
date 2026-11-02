@@ -2564,83 +2564,141 @@ impl DocumentCore {
             }
         }
     }
-    /// 문단들의 미주에 문서 순서대로 `counter` 다음 번호를 매긴다. 미주 번호의 "새 번호로
-    /// 시작"은 다음 미주 번호를 그 값으로 정한다. 번호가 바뀐 미주가 있으면 true.
-    fn number_paragraph_endnotes(paragraphs: &mut [Paragraph], counter: &mut u16) -> bool {
-        use crate::model::control::AutoNumberType;
-
+    /// 문단들의 `kind` 주석(각주·미주)에 문서 순서대로 `counter` 다음 번호를 매긴다. 같은
+    /// 종류의 "새 번호로 시작"은 다음 번호를 그 값으로 정한다. `assign`이 거짓인 각주의 "쪽마다
+    /// 새로 시작" 구역은 번호를 두고 `counter`를 1로 둔다. 한/글 12.30은 그 뒤에 이어 세는 구역을
+    /// 그 구역의 각주 수·쪽 배치와 상관없이 2부터 센다(1·2|1, 1·2|1·2, 1·2|1|1, 1|1·2 모두 2·3).
+    /// 번호가 바뀐 주석이 있으면 true.
+    fn number_paragraph_notes(
+        paragraphs: &mut [Paragraph],
+        kind: crate::model::control::AutoNumberType,
+        counter: &mut u16,
+        assign: bool,
+    ) -> bool {
         let mut changed = false;
         for para in paragraphs {
             for ctrl in &mut para.controls {
-                match ctrl {
-                    Control::NewNumber(new_number)
-                        if new_number.number_type == AutoNumberType::Endnote =>
-                    {
+                let (number, note_paragraphs) = match ctrl {
+                    Control::NewNumber(new_number) if new_number.number_type == kind => {
                         *counter = new_number.number.saturating_sub(1);
+                        continue;
                     }
-                    Control::Endnote(endnote) => {
-                        *counter = counter.saturating_add(1);
-                        if endnote.number == *counter {
-                            continue;
-                        }
-                        endnote.number = *counter;
-                        for note_para in &mut endnote.paragraphs {
-                            for note_ctrl in &mut note_para.controls {
-                                if let Control::AutoNumber(auto_num) = note_ctrl {
-                                    if auto_num.number_type == AutoNumberType::Endnote {
-                                        auto_num.number = *counter;
-                                        auto_num.assigned_number = *counter;
-                                    }
-                                }
-                            }
-                        }
-                        changed = true;
+                    Control::Footnote(note)
+                        if kind == crate::model::control::AutoNumberType::Footnote =>
+                    {
+                        (&mut note.number, &mut note.paragraphs)
+                    }
+                    Control::Endnote(note)
+                        if kind == crate::model::control::AutoNumberType::Endnote =>
+                    {
+                        (&mut note.number, &mut note.paragraphs)
                     }
                     Control::Table(table) => {
                         for cell in &mut table.cells {
-                            changed |=
-                                Self::number_paragraph_endnotes(&mut cell.paragraphs, counter);
+                            changed |= Self::number_paragraph_notes(
+                                &mut cell.paragraphs,
+                                kind,
+                                counter,
+                                assign,
+                            );
                         }
+                        continue;
                     }
                     Control::Shape(shape) => {
                         if let Some(text_box) =
                             shape.drawing_mut().and_then(|d| d.text_box.as_mut())
                         {
-                            changed |=
-                                Self::number_paragraph_endnotes(&mut text_box.paragraphs, counter);
+                            changed |= Self::number_paragraph_notes(
+                                &mut text_box.paragraphs,
+                                kind,
+                                counter,
+                                assign,
+                            );
+                        }
+                        continue;
+                    }
+                    _ => continue,
+                };
+                if !assign {
+                    *counter = 1;
+                    continue;
+                }
+                *counter = counter.saturating_add(1);
+                if *number == *counter {
+                    continue;
+                }
+                *number = *counter;
+                for note_para in note_paragraphs {
+                    for note_ctrl in &mut note_para.controls {
+                        if let Control::AutoNumber(auto_num) = note_ctrl {
+                            if auto_num.number_type == kind {
+                                auto_num.number = *counter;
+                                auto_num.assigned_number = *counter;
+                            }
                         }
                     }
-                    _ => {}
+                }
+                changed = true;
+            }
+        }
+        changed
+    }
+    /// 문서의 `kind` 주석 번호를 구역마다 주석 모양의 번호 매기기대로 다시 매기고, 번호가 바뀐
+    /// 구역을 돌려준다. 한/글처럼 "앞 구역에 이어서"는 앞 구역의 번호를 잇고, "현재 구역부터 새로
+    /// 시작"은 주석이 없는 구역이라도 그 구역의 시작 번호에서 다시 센다. 각주의 "쪽마다 새로
+    /// 시작" 구역은 쪽 배정 뒤에 번호를 매기므로 여기서는 매기지 않는다. 번호가 바뀐 구역은 다시
+    /// 조판하되, `edited` 구역은 호출자가 이어서 다시 조판하므로 건너뛴다.
+    pub(crate) fn number_notes_by_section(
+        &mut self,
+        kind: crate::model::control::AutoNumberType,
+        edited: Option<usize>,
+    ) -> Vec<usize> {
+        use crate::model::control::AutoNumberType;
+        use crate::model::footnote::FootnoteNumbering;
+
+        let start = match kind {
+            AutoNumberType::Footnote => self.document.doc_properties.footnote_start_num,
+            _ => self.document.doc_properties.endnote_start_num,
+        };
+        let mut counter = start.max(1) - 1;
+        let mut changed = Vec::new();
+        for index in 0..self.document.sections.len() {
+            let section = &mut self.document.sections[index];
+            let shape = match kind {
+                AutoNumberType::Footnote => &section.section_def.footnote_shape,
+                _ => &section.section_def.endnote_shape,
+            };
+            if shape.numbering != FootnoteNumbering::Continue {
+                counter = shape.start_number.max(1) - 1;
+            }
+            let assign = kind != AutoNumberType::Footnote
+                || shape.numbering != FootnoteNumbering::RestartPage;
+            if Self::number_paragraph_notes(&mut section.paragraphs, kind, &mut counter, assign) {
+                section.raw_stream = None;
+                changed.push(index);
+                if Some(index) != edited {
+                    self.recompose_section(index);
                 }
             }
         }
         changed
     }
-    /// 문서의 미주 번호를 구역마다 미주 모양의 번호 매기기대로 다시 매긴다. 한/글처럼 "앞 구역에
-    /// 이어서"는 앞 구역의 번호를 잇고, "현재 구역부터 새로 시작"은 미주가 없는 구역이라도 그
-    /// 구역의 시작 번호에서 다시 센다. 번호가 바뀐 구역은 다시 조판한다. `edited` 구역은 호출자가
-    /// 이어서 다시 조판하므로 건너뛴다.
+    /// 문서의 미주 번호를 구역마다 미주 모양의 번호 매기기대로 다시 매긴다
+    /// ([`Self::number_notes_by_section`]).
     pub(crate) fn refresh_endnote_numbers(&mut self, edited: usize) {
-        use crate::model::footnote::{FootnoteNumbering, FootnotePlacement};
+        use crate::model::footnote::FootnotePlacement;
 
-        let mut counter = self.document.doc_properties.endnote_start_num.max(1) - 1;
-        let mut document_end_changed = false;
-        for index in 0..self.document.sections.len() {
-            let section = &mut self.document.sections[index];
-            let shape = &section.section_def.endnote_shape;
-            if shape.numbering != FootnoteNumbering::Continue {
-                counter = shape.start_number.max(1) - 1;
-            }
-            let document_end = matches!(shape.placement, FootnotePlacement::EachColumn);
-            if Self::number_paragraph_endnotes(&mut section.paragraphs, &mut counter) {
-                section.raw_stream = None;
-                document_end_changed |= document_end;
-                if index != edited {
-                    self.recompose_section(index);
-                }
-            }
-        }
-        if document_end_changed {
+        let changed = self
+            .number_notes_by_section(crate::model::control::AutoNumberType::Endnote, Some(edited));
+        if changed.iter().any(|&index| {
+            matches!(
+                self.document.sections[index]
+                    .section_def
+                    .endnote_shape
+                    .placement,
+                FootnotePlacement::EachColumn
+            )
+        }) {
             // 문서 끝 미주는 마지막 구역이 모아 그린다.
             self.mark_section_dirty(self.document.sections.len() - 1);
         }

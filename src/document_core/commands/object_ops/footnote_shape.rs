@@ -407,7 +407,7 @@ impl DocumentCore {
         .to_string())
     }
 
-    /// 구역의 각주 모양을 바꾸고, 그 구역(과 이어 세는 뒤 구역)의 각주 번호·모양을 맞춘다.
+    /// 구역의 각주 모양을 바꾸고, 그 구역 각주의 모양과 문서의 각주 번호를 맞춘다.
     pub fn apply_footnote_shape_native(
         &mut self,
         section_idx: usize,
@@ -428,62 +428,32 @@ impl DocumentCore {
         Ok(json_ok())
     }
 
-    /// `from_section`부터 각주 번호와 모양을 각 구역의 각주 모양대로 맞춘다. 앞 구역에 이어
-    /// 세는 뒤 구역까지 따라가고, 바뀐 구역은 다시 조판한다. 쪽마다 새로 시작하는 구역은 쪽
-    /// 배정을 마친 뒤 번호를 매기고, 번호 폭이 쪽 배정을 바꿀 수 있어 안정될 때까지(최대 3번)
-    /// 되풀이한다.
-    pub(crate) fn refresh_footnote_numbers(&mut self, from_section: usize) {
-        let mut carry = self.document.sections[..from_section]
-            .iter_mut()
-            .rev()
-            .find_map(|section| {
-                let mut last = None;
-                for_each_footnote(&mut section.paragraphs, &mut |note| {
-                    last = Some(note.number)
-                });
-                last
-            })
-            .unwrap_or(self.document.doc_properties.footnote_start_num.max(1) - 1);
-        let mut per_page = Vec::new();
-        for index in from_section..self.document.sections.len() {
-            let section = &mut self.document.sections[index];
-            let shape = section.section_def.footnote_shape.clone();
-            if index > from_section && shape.numbering != FootnoteNumbering::Continue {
-                break;
-            }
-            let mut next = match shape.numbering {
-                FootnoteNumbering::Continue => carry.saturating_add(1),
-                FootnoteNumbering::RestartSection => shape.start_number.max(1),
-                // 쪽 배정 뒤 다시 센다. 지금은 모양만 맞춘다.
-                FootnoteNumbering::RestartPage => 0,
-            };
-            let mut changed = false;
-            for_each_footnote(&mut section.paragraphs, &mut |note| {
-                let number = (next > 0).then_some(next);
-                changed |= sync_footnote(note, &shape, number);
-                if next > 0 {
-                    next = next.saturating_add(1);
-                }
-                carry = note.number;
-            });
-            if shape.numbering == FootnoteNumbering::RestartPage {
-                per_page.push(index);
-            }
-            if changed {
-                section.raw_stream = None;
-                self.recompose_section(index);
-            }
+    /// `section_idx` 구역 각주의 번호 모양·장식 문자를 그 구역의 각주 모양과 맞추고, 문서의 각주
+    /// 번호를 구역마다 번호 매기기대로 다시 매긴다(미주와 같은 [`Self::number_notes_by_section`]).
+    /// 바뀐 구역은 다시 조판한다. 쪽마다 새로 시작하는 구역은 쪽 배정을 마친 뒤 번호를 매기고,
+    /// 번호 폭이 쪽 배정을 바꿀 수 있어 안정될 때까지(최대 3번) 되풀이한다.
+    pub(crate) fn refresh_footnote_numbers(&mut self, section_idx: usize) {
+        let section = &mut self.document.sections[section_idx];
+        let shape = section.section_def.footnote_shape.clone();
+        let mut styled = false;
+        for_each_footnote(&mut section.paragraphs, &mut |note| {
+            styled |= sync_footnote(note, &shape, None);
+        });
+        if styled {
+            section.raw_stream = None;
+        }
+        let renumbered = self.number_notes_by_section(AutoNumberType::Footnote, None);
+        if styled && !renumbered.contains(&section_idx) {
+            self.recompose_section(section_idx);
         }
         self.paginate_if_needed();
-        if !self.batch_mode {
-            for index in per_page {
-                for _ in 0..3 {
-                    if !self.number_footnotes_per_page(index) {
-                        break;
-                    }
-                    self.recompose_section(index);
-                    self.paginate();
+        if shape.numbering == FootnoteNumbering::RestartPage && !self.batch_mode {
+            for _ in 0..3 {
+                if !self.number_footnotes_per_page(section_idx) {
+                    break;
                 }
+                self.recompose_section(section_idx);
+                self.paginate();
             }
         }
         self.invalidate_page_tree_cache();
