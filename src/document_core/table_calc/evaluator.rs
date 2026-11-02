@@ -9,6 +9,28 @@ use std::collections::BTreeSet;
 /// (col_index: 0-based, row_index: 0-based) → Option<f64>
 pub type CellValueFn<'a> = &'a dyn Fn(usize, usize) -> Option<f64>;
 
+/// 셀의 계산식이 주어진 방향 지정자를 쓰는지 묻는 함수 타입
+/// (col_index: 0-based, row_index: 0-based, 방향) → bool
+pub type SameDirectionFn<'a> = &'a dyn Fn(usize, usize, DirectionKind) -> bool;
+
+/// 0으로 나눈 계산식의 오류. 한/글 12.30은 이런 셀에 "잘못된 계산식"을 쓴다.
+pub(crate) const DIVIDE_BY_ZERO: &str = "0으로 나눌 수 없음";
+/// 결과가 유한한 숫자가 아닌 계산식(SQRT(-1)·LN(0) 등)의 오류.
+pub(crate) const NOT_FINITE: &str = "계산 결과가 유한한 숫자가 아닙니다";
+
+/// 구문·참조는 맞지만 값을 낼 수 없는 계산식인가. 한/글 12.30은 1/0·MOD(5,0)·SQRT(-1)·LN(0)·
+/// ASIN(2)를 모두 셀에 "잘못된 계산식"으로 쓴다.
+pub(crate) fn is_invalid_result_error(error: &str) -> bool {
+    error == DIVIDE_BY_ZERO || error == NOT_FINITE
+}
+
+/// 평가 중 셀을 읽는 두 함수와 함수 결과 반올림 여부.
+struct Cells<'a> {
+    value: CellValueFn<'a>,
+    same_direction: SameDirectionFn<'a>,
+    round: bool,
+}
+
 /// 표 정보
 pub struct TableContext {
     /// 행 수
@@ -40,6 +62,51 @@ pub(crate) fn evaluate_formula_with_cells(
     ctx: &TableContext,
     get_cell: CellValueFn,
 ) -> Result<(f64, Vec<(usize, usize)>), String> {
+    evaluate(
+        formula,
+        ctx,
+        &Cells {
+            value: get_cell,
+            same_direction: &|_, _, _| false,
+            round: false,
+        },
+    )
+}
+
+/// 한/글 계산식 필드의 평가. 함수 결과를 소수 여섯째 자리로 맞춘 뒤 다음 연산에 쓰고(한/글 12.30:
+/// SQRT(2)*1000000000=1,414,214,000, SUM(0.1234567,0)*10=1.23457, ABS(-1/3)*3=0.999999), 방향
+/// 평균(AVG(LEFT) 등)은 같은 방향 계산식이 든 셀을 뺀다. 한/글 12.30: 가로 합계 옆 가로 평균은 합계
+/// 칸을, 세로 곱 아래 세로 평균은 곱 칸을 빼고, 다른 방향(SUM(ABOVE))·방향 없는 식(=A5+B5,
+/// SUM(A13:B13))·범위 평균(AVG(A6:C6))은 넣는다.
+pub(crate) fn evaluate_formula_in_table(
+    formula: &str,
+    ctx: &TableContext,
+    get_cell: CellValueFn,
+    same_direction: SameDirectionFn,
+) -> Result<(f64, Vec<(usize, usize)>), String> {
+    evaluate(
+        formula,
+        ctx,
+        &Cells {
+            value: get_cell,
+            same_direction,
+            round: true,
+        },
+    )
+}
+
+/// 계산식이 참조하는 0-based (열, 행) 목록. 값은 계산하지 않는다.
+pub(crate) fn formula_references(
+    formula: &str,
+    ctx: &TableContext,
+) -> Result<Vec<(usize, usize)>, String> {
+    parse_with_references(formula, ctx).map(|(_, cells)| cells)
+}
+
+fn parse_with_references(
+    formula: &str,
+    ctx: &TableContext,
+) -> Result<(FormulaNode, Vec<(usize, usize)>), String> {
     if ctx.current_row >= ctx.row_count || ctx.current_col >= ctx.col_count {
         return Err("결과 셀이 표 범위 밖에 있습니다".into());
     }
@@ -47,14 +114,23 @@ pub(crate) fn evaluate_formula_with_cells(
     let mut cells = BTreeSet::new();
     let mut count = 0;
     collect_references(&ast, ctx, &mut cells, &mut count)?;
-    let result = eval_node(&ast, ctx, get_cell)?;
-    if !result.is_finite() {
-        return Err("계산 결과가 유한한 숫자가 아닙니다".into());
-    }
     Ok((
-        result,
+        ast,
         cells.into_iter().map(|(row, col)| (col, row)).collect(),
     ))
+}
+
+fn evaluate(
+    formula: &str,
+    ctx: &TableContext,
+    get_cell: &Cells,
+) -> Result<(f64, Vec<(usize, usize)>), String> {
+    let (ast, cells) = parse_with_references(formula, ctx)?;
+    let result = eval_node(&ast, ctx, get_cell)?;
+    if !result.is_finite() {
+        return Err(NOT_FINITE.into());
+    }
+    Ok((result, cells))
 }
 
 fn collect_references(
@@ -90,13 +166,13 @@ fn collect_references(
     Ok(())
 }
 
-fn eval_node(node: &FormulaNode, ctx: &TableContext, get_cell: CellValueFn) -> Result<f64, String> {
+fn eval_node(node: &FormulaNode, ctx: &TableContext, get_cell: &Cells) -> Result<f64, String> {
     match node {
         FormulaNode::Number(n) => Ok(*n),
 
         FormulaNode::CellRef { col, row } => {
             let (c, r) = resolve_cell_ref(col, *row, ctx)?;
-            Ok(get_cell(c, r).unwrap_or(0.0))
+            Ok((get_cell.value)(c, r).unwrap_or(0.0))
         }
 
         FormulaNode::Negate(inner) => Ok(-eval_node(inner, ctx, get_cell)?),
@@ -110,7 +186,7 @@ fn eval_node(node: &FormulaNode, ctx: &TableContext, get_cell: CellValueFn) -> R
                 BinOpKind::Mul => Ok(l * r),
                 BinOpKind::Div => {
                     if r == 0.0 {
-                        Err("0으로 나눌 수 없음".into())
+                        Err(DIVIDE_BY_ZERO.into())
                     } else {
                         Ok(l / r)
                     }
@@ -122,7 +198,14 @@ fn eval_node(node: &FormulaNode, ctx: &TableContext, get_cell: CellValueFn) -> R
 
         FormulaNode::Direction(_) => Err("방향 지정자는 함수 인수로만 사용 가능".into()),
 
-        FormulaNode::FuncCall { name, args } => eval_function(name, args, ctx, get_cell),
+        FormulaNode::FuncCall { name, args } => {
+            let value = eval_function(name, args, ctx, get_cell)?;
+            Ok(if get_cell.round {
+                round_function_result(value)
+            } else {
+                value
+            })
+        }
     }
 }
 
@@ -226,26 +309,43 @@ fn collect_cells(arg: &FormulaNode, ctx: &TableContext) -> Result<Vec<(usize, us
     }
 }
 
-/// 함수 인수에서 셀 값들을 수집
+/// 소수 여섯째 자리로 맞춘다. 기본 표시 형식(printf "%.6f")과 같은 반올림이다.
+fn round_function_result(value: f64) -> f64 {
+    if !value.is_finite() {
+        return value;
+    }
+    format!("{value:.6}").parse().unwrap_or(value)
+}
+
+/// 함수 인수에서 셀 값들을 수집한다. `skip_same_direction`이면 방향 인수에서 같은 방향
+/// 계산식이 든 셀을 뺀다(평균).
 fn collect_values(
     args: &[FormulaNode],
     ctx: &TableContext,
-    get_cell: CellValueFn,
+    get_cell: &Cells,
+    skip_same_direction: bool,
 ) -> Result<Vec<f64>, String> {
     let mut values = Vec::new();
     for arg in args {
         match arg {
             FormulaNode::Range { .. } | FormulaNode::Direction(_) => {
+                let direction = match arg {
+                    FormulaNode::Direction(dir) if skip_same_direction => Some(*dir),
+                    _ => None,
+                };
                 let cells = collect_cells(arg, ctx)?;
                 for (c, r) in cells {
-                    if let Some(v) = get_cell(c, r) {
+                    if direction.is_some_and(|dir| (get_cell.same_direction)(c, r, dir)) {
+                        continue;
+                    }
+                    if let Some(v) = (get_cell.value)(c, r) {
                         values.push(v);
                     }
                 }
             }
             FormulaNode::CellRef { col, row } => {
                 let (c, r) = resolve_cell_ref(col, *row, ctx)?;
-                if let Some(v) = get_cell(c, r) {
+                if let Some(v) = (get_cell.value)(c, r) {
                     values.push(v);
                 }
             }
@@ -262,35 +362,35 @@ fn eval_function(
     name: &str,
     args: &[FormulaNode],
     ctx: &TableContext,
-    get_cell: CellValueFn,
+    get_cell: &Cells,
 ) -> Result<f64, String> {
     validate_function_args(name, args.len())?;
     match name {
         "SUM" => {
-            let vals = collect_values(args, ctx, get_cell)?;
+            let vals = collect_values(args, ctx, get_cell, false)?;
             Ok(vals.iter().sum())
         }
         "AVERAGE" | "AVG" => {
-            let vals = collect_values(args, ctx, get_cell)?;
+            let vals = collect_values(args, ctx, get_cell, true)?;
             if vals.is_empty() {
                 return Ok(0.0);
             }
             Ok(vals.iter().sum::<f64>() / vals.len() as f64)
         }
         "PRODUCT" => {
-            let vals = collect_values(args, ctx, get_cell)?;
+            let vals = collect_values(args, ctx, get_cell, false)?;
             Ok(vals.iter().product())
         }
         "MIN" => {
-            let vals = collect_values(args, ctx, get_cell)?;
+            let vals = collect_values(args, ctx, get_cell, false)?;
             Ok(vals.iter().cloned().fold(f64::INFINITY, f64::min))
         }
         "MAX" => {
-            let vals = collect_values(args, ctx, get_cell)?;
+            let vals = collect_values(args, ctx, get_cell, false)?;
             Ok(vals.iter().cloned().fold(f64::NEG_INFINITY, f64::max))
         }
         "COUNT" => {
-            let vals = collect_values(args, ctx, get_cell)?;
+            let vals = collect_values(args, ctx, get_cell, false)?;
             Ok(vals.len() as f64)
         }
         // 단항 수학 함수
@@ -335,7 +435,7 @@ fn eval_function(
             let a = eval_node(&args[0], ctx, get_cell)?;
             let b = eval_node(&args[1], ctx, get_cell)?;
             if b == 0.0 {
-                Err("0으로 나눌 수 없음".into())
+                Err(DIVIDE_BY_ZERO.into())
             } else {
                 Ok(a % b)
             }
@@ -400,7 +500,7 @@ fn round_to_digits(value: f64, digits: f64) -> f64 {
 fn unary_fn(
     args: &[FormulaNode],
     ctx: &TableContext,
-    get_cell: CellValueFn,
+    get_cell: &Cells,
     f: impl Fn(f64) -> f64,
 ) -> Result<f64, String> {
     let v = eval_node(&args[0], ctx, get_cell)?;
