@@ -149,7 +149,12 @@ fn import(html: &str) -> DocumentCore {
     core
 }
 
-fn assert_saved_geometry(mut core: DocumentCore, expected: &Geometry) {
+fn assert_saved_geometry(core: DocumentCore, expected: &Geometry) {
+    assert_saved_geometry_as(core, expected, expected);
+}
+
+/// 저장은 rhwp가 짠 표의 실제 높이를 표 크기로 적는다(#8298). 칸 크기는 그대로다.
+fn assert_saved_geometry_as(mut core: DocumentCore, expected: &Geometry, saved_shape: &Geometry) {
     assert_eq!(&geometry(&core), expected);
     let (_, _, table) = table(&core);
     assert_eq!(
@@ -166,7 +171,7 @@ fn assert_saved_geometry(mut core: DocumentCore, expected: &Geometry) {
     ];
     for bytes in saved {
         let reopened = DocumentCore::from_bytes(&bytes).expect("reopen saved table");
-        assert_eq!(&geometry(&reopened), expected);
+        assert_eq!(&geometry(&reopened), saved_shape);
     }
 }
 
@@ -362,7 +367,15 @@ fn invalid_or_zero_css_dimensions_fall_back_and_oversized_grids_or_heights_fail(
         let shape = geometry(&target);
         assert_eq!(shape.height, 1000, "invalid size {value}");
         assert!(shape.width > 0);
-        assert_saved_geometry(target, &shape);
+        // 대체 높이 1000은 빈 글줄과 위아래 안 여백을 담지 못한다. 칸은 1000을 지키고,
+        // 붙인 표는 rhwp가 짠 표라 저장은 실제로 차지한 높이를 표 크기로 적는다.
+        let padding = table(&target).2.padding;
+        let laid_out = Geometry {
+            height: (1000 + i32::from(padding.top) + i32::from(padding.bottom)) as u32,
+            cells: shape.cells.clone(),
+            ..shape
+        };
+        assert_saved_geometry_as(target, &shape, &laid_out);
     }
     for html in [
         r#"<table><tr><td rowspan="65535"></td></tr><tr><td rowspan="65535"></td></tr></table>"#,
