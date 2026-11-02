@@ -23,7 +23,7 @@ use super::text_measurement::{
 };
 use super::utils::{
     expand_numbering_format, extract_picture_transform, find_bin_data_bytes,
-    numbering_format_to_number_format, picture_display_size_hu, resolve_numbering_id,
+    picture_display_size_hu, resolve_numbering_id,
 };
 use super::{
     fill_background::ParagraphFillBand, CellContext, LayoutEngine, ParagraphVerticalSpacing,
@@ -1589,21 +1589,6 @@ fn repeated_empty_tac_line_offset(
     }
 }
 
-fn note_number_format_from_hwp_code(code: u8) -> NumFmt {
-    match code {
-        0 => NumFmt::Digit,
-        1 => NumFmt::CircledDigit,
-        2 => NumFmt::RomanUpper,
-        3 => NumFmt::RomanLower,
-        4 => NumFmt::LatinUpper,
-        5 => NumFmt::LatinLower,
-        8 => NumFmt::HangulGaNaDa,
-        12 => NumFmt::HangulNumber,
-        13 => NumFmt::HanjaNumber,
-        _ => NumFmt::Digit,
-    }
-}
-
 fn note_decoration_char(value: u16) -> Option<char> {
     if value == 0 {
         None
@@ -1618,7 +1603,7 @@ fn format_note_marker_text(
     before_decoration_letter: u16,
     after_decoration_letter: u16,
 ) -> String {
-    let number = format_number(number, note_number_format_from_hwp_code(number_shape as u8));
+    let number = format_number(number, NumFmt::from_hwp_format(number_shape as u8));
     let prefix = note_decoration_char(before_decoration_letter)
         .map(|ch| ch.to_string())
         .unwrap_or_default();

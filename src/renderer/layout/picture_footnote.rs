@@ -158,7 +158,7 @@ fn stored_footnote_number_prefix(para: &Paragraph, number: u16) -> Option<(Strin
         };
         if auto.number_type != crate::model::control::AutoNumberType::Footnote
             || auto.superscript
-            || auto.format > 8
+            || auto.format > 16
             || positions.get(index) != Some(&index)
             || para.text.chars().nth(index) != Some(' ')
         {
@@ -2331,21 +2331,6 @@ fn get_footnote_paragraphs<'a>(
     }
 }
 
-fn note_number_format_from_hwp_code(code: u8) -> NumFmt {
-    match code {
-        0 => NumFmt::Digit,
-        1 => NumFmt::CircledDigit,
-        2 => NumFmt::RomanUpper,
-        3 => NumFmt::RomanLower,
-        4 => NumFmt::LatinUpper,
-        5 => NumFmt::LatinLower,
-        8 => NumFmt::HangulGaNaDa,
-        12 => NumFmt::HangulNumber,
-        13 => NumFmt::HanjaNumber,
-        _ => NumFmt::Digit,
-    }
-}
-
 fn note_decoration_char(value: u16) -> Option<char> {
     if value == 0 {
         None
@@ -2360,7 +2345,7 @@ fn format_control_note_marker(
     before_decoration_letter: u16,
     after_decoration_letter: u16,
 ) -> String {
-    let number = format_number(number, note_number_format_from_hwp_code(number_shape as u8));
+    let number = format_number(number, NumFmt::from_hwp_format(number_shape as u8));
     let prefix = note_decoration_char(before_decoration_letter)
         .map(|ch| ch.to_string())
         .unwrap_or_default();
@@ -2377,38 +2362,9 @@ fn format_footnote_number(
     prefix: char,
     suffix: char,
 ) -> String {
-    let num_str = match format {
-        NumberFormat::Digit => number.to_string(),
-        NumberFormat::CircledDigit => {
-            // ① ~ ⑳
-            if number >= 1 && number <= 20 {
-                char::from_u32(0x2460 + (number - 1) as u32)
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| number.to_string())
-            } else {
-                number.to_string()
-            }
-        }
-        NumberFormat::LowerAlpha => {
-            if number >= 1 && number <= 26 {
-                char::from_u32(b'a' as u32 + (number - 1) as u32)
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| number.to_string())
-            } else {
-                number.to_string()
-            }
-        }
-        NumberFormat::UpperAlpha => {
-            if number >= 1 && number <= 26 {
-                char::from_u32(b'A' as u32 + (number - 1) as u32)
-                    .map(|c| c.to_string())
-                    .unwrap_or_else(|| number.to_string())
-            } else {
-                number.to_string()
-            }
-        }
-        _ => number.to_string(), // 기타 형식은 숫자로 fallback
-    };
+    // 본문 각주 표시와 같은 번호 모양 코드(표 134)로 그린다.
+    let code = FootnoteShape::number_format_attr_code(*format) as u8;
+    let num_str = format_number(number, NumFmt::from_hwp_format(code));
 
     let prefix_str = if prefix != '\0' {
         prefix.to_string()

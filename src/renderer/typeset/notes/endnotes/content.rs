@@ -25,23 +25,6 @@ pub(in crate::renderer::typeset) fn resolve_endnote_content<'a>(
     }
 }
 
-pub(in crate::renderer::typeset) fn note_number_format_from_hwp_code(
-    code: u8,
-) -> RenderNumberFormat {
-    match code {
-        0 => RenderNumberFormat::Digit,
-        1 => RenderNumberFormat::CircledDigit,
-        2 => RenderNumberFormat::RomanUpper,
-        3 => RenderNumberFormat::RomanLower,
-        4 => RenderNumberFormat::LatinUpper,
-        5 => RenderNumberFormat::LatinLower,
-        8 => RenderNumberFormat::HangulGaNaDa,
-        12 => RenderNumberFormat::HangulNumber,
-        13 => RenderNumberFormat::HanjaNumber,
-        _ => RenderNumberFormat::Digit,
-    }
-}
-
 pub(in crate::renderer::typeset) fn note_decoration_char(value: u16) -> Option<char> {
     if value == 0 {
         None
@@ -55,7 +38,7 @@ pub(in crate::renderer::typeset) fn format_endnote_marker_text(
 ) -> String {
     let number = format_number(
         endnote.number,
-        note_number_format_from_hwp_code(endnote.number_shape as u8),
+        RenderNumberFormat::from_hwp_format(endnote.number_shape as u8),
     );
     let prefix = note_decoration_char(endnote.before_decoration_letter)
         .map(|ch| ch.to_string())
