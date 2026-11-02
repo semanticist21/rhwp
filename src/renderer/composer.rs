@@ -63,8 +63,11 @@ pub struct CharOverlapInfo {
     /// 원문 컨트롤의 문자별 스타일과 펼침. 폰트 인코딩 PUA는 별도 계약을 쓴다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub composition: Option<Box<super::char_overlap::Composition>>,
+    /// 겹침 프레임은 보존하되 구성 글자의 잉크를 출력하지 않는다.
+    #[serde(skip)]
+    pub empty_ink: bool,
 }
-crate::storage::clone_fields!(CharOverlapInfo, {border_type, inner_char_size, composition});
+crate::storage::clone_fields!(CharOverlapInfo, {border_type, inner_char_size, composition, empty_ink});
 
 /// 구성된 텍스트 런 (줄 내 동일 스타일 + 동일 언어 구간)
 #[derive(Debug, Clone, Default)]
@@ -182,6 +185,7 @@ mod mapped_symbol_fonts;
 mod stored_row_fragments;
 mod text_metric_origin;
 pub(crate) use stored_row_fragments::crosses_physical_frame as stored_rows_cross_physical_frame;
+pub(crate) use text_metric_origin::regenerated_row as line_metrics_regenerated;
 pub(crate) mod stored_row_projection;
 pub(crate) mod supplemental_clusters;
 
@@ -324,21 +328,23 @@ include!("composer/pua_surface.inc.rs");
 mod empty_line_metrics;
 pub(crate) mod inline_box_rows;
 mod line_breaking;
+pub(crate) use line_breaking::condense_space_savings_px;
 pub(crate) use line_breaking::try_reflow_line_segs;
 
 mod picture_anchor_projection;
 pub(crate) use line_breaking::{
-    control_is_width_neutral_marker, frame_metrics_for_line, paragraph_end_font_size_px,
-    text_word_ranges, text_word_ranges_with_storage,
+    control_is_square_float_object, control_is_width_neutral_marker, frame_metrics_for_line,
+    paragraph_end_font_size_px, text_word_ranges, text_word_ranges_with_storage,
 };
 pub mod lineseg_compare;
 
 pub(crate) use line_breaking::{
-    is_line_end_forbidden, is_line_start_forbidden, layout_paragraph_in_frame,
-    layout_paragraph_in_frame_with_storage, layout_picture_anchor_in_frame, layout_picture_band,
-    paragraph_flow_end, paragraph_flow_state, recalculate_section_vpos, reflow_line_segs,
-    reflow_line_segs_after_cell_split, reflow_line_segs_after_cell_text_edit,
-    reflow_line_segs_in_stored_section, restamp_indentation, tokenize_paragraph, BreakToken,
+    control_owns_body_band, is_line_end_forbidden, is_line_start_forbidden,
+    layout_paragraph_in_frame, layout_paragraph_in_frame_with_storage,
+    layout_picture_anchor_in_frame, layout_picture_band, paragraph_flow_end, paragraph_flow_state,
+    recalculate_section_vpos, reflow_line_segs, reflow_line_segs_after_cell_split,
+    reflow_line_segs_after_cell_text_edit, reflow_line_segs_in_stored_section, restamp_indentation,
+    row_is_carved_from_box, supports_picture_band_frame_controls, tokenize_paragraph, BreakToken,
     StoredRowMissPolicy,
 };
 

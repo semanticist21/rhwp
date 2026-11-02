@@ -1,5 +1,8 @@
 //! PDF document model.
 
+mod import_encryption;
+mod pattern_images;
+
 use crate::encryption::EncryptionHandler;
 use crate::error::{Error, Result};
 use crate::layout::TextSpan;
@@ -526,6 +529,9 @@ pub struct PdfDocument {
     /// Bounded at [`DEFAULT_XOBJECT_CACHE_MAX_ENTRIES`] entries with FIFO eviction.
     pub(crate) form_xobject_images_cache:
         Mutex<BoundedEntryCache<ObjectRef, Vec<crate::extractors::PdfImage>>>,
+    /// Bounded import source pixels and encoded PNGs, owned by this request.
+    pub(crate) import_image_cache:
+        Mutex<BoundedEntryCache<ObjectRef, (crate::extractors::PdfImage, Option<bool>)>>,
     /// Regions marked for erasure per page. Mutex for `&self` write-path methods (#398).
     pub(crate) erase_regions: Mutex<HashMap<usize, Vec<crate::geometry::Rect>>>,
     /// LRU cache of decompressed page content streams, keyed by page index.
@@ -1393,9 +1399,6 @@ impl PdfDocument {
         // Note: Encryption initialization was originally lazy, but decode_stream_with_encryption
         // only has &self access which prevents initialization.
         // We now initialize eagerly to ensure the handler is ready when needed.
-        if import_budget.is_some() && trailer.as_dict().is_some_and(|d| d.contains_key("Encrypt")) {
-            return Err(Error::EncryptedPdf);
-        }
         let document = Self {
             reader: Mutex::new(reader),
             load_lock: Mutex::new(()),
@@ -1445,6 +1448,10 @@ impl PdfDocument {
                 DEFAULT_XOBJECT_CACHE_MAX_ENTRIES,
                 import_budget.clone(),
             )),
+            import_image_cache: Mutex::new(BoundedEntryCache::with_budget(
+                8,
+                import_budget.clone(),
+            )),
             erase_regions: Mutex::new(HashMap::new()),
             page_content_cache: Mutex::new(BoundedEntryCache::with_budget(
                 64,
@@ -1480,6 +1487,9 @@ impl PdfDocument {
 
         // Initialize encryption immediately
         if let Err(e) = document.ensure_encryption_initialized() {
+            if document.import_budget.is_some() {
+                return Err(e);
+            }
             log::error!("Failed to initialize encryption: {}", e);
             // We continue anyway, as it might just be an unsupported security handler
             // and maybe we can still read parts of the file (or fail later)
@@ -1565,13 +1575,20 @@ impl PdfDocument {
             };
 
             // Clone the encrypt entry (we'll load it outside this block)
-            let encrypt_ref = encrypt_entry.clone();
+            let encrypt_ref =
+                crate::object_copy::clone_object(encrypt_entry, self.import_budget.as_deref())?;
 
             // Get file ID (required for encryption key derivation)
             let file_id = match trailer_dict.get("ID") {
                 Some(Object::Array(arr)) => {
                     if let Some(first_id) = arr.first() {
                         if let Some(id_bytes) = first_id.as_string() {
+                            if let Some(budget) = self.import_budget.as_deref() {
+                                if id_bytes.len() > 1024 {
+                                    return Err(budget.reject("encryption file identifier"));
+                                }
+                                budget.charge_decoded(id_bytes.len())?;
+                            }
                             id_bytes.to_vec()
                         } else {
                             log::warn!(
@@ -1613,13 +1630,17 @@ impl PdfDocument {
 
         // Resolve any indirect references within the encrypt dictionary.
         // Some PDFs store /O, /U, /V, /R, /P as indirect references (e.g., `7 0 R`).
-        let encrypt_obj = if let Some(dict) = encrypt_obj.as_dict() {
-            let mut resolved_dict = dict.clone();
+        let mut encrypt_obj = if let Some(dict) = encrypt_obj.as_dict() {
+            let mut resolved_dict =
+                crate::object_copy::clone_dictionary(dict, self.import_budget.as_deref())?;
             for value in resolved_dict.values_mut() {
                 if let Object::Reference(obj_ref) = value {
                     match self.load_object(*obj_ref) {
                         Ok(resolved) => *value = resolved,
                         Err(e) => {
+                            if self.import_budget.is_some() {
+                                return Err(e);
+                            }
                             log::warn!("Failed to resolve indirect ref in /Encrypt dict: {}", e);
                         },
                     }
@@ -1631,7 +1652,9 @@ impl PdfDocument {
         };
 
         // Create encryption handler with the file_id we extracted above
+        self.validate_import_encryption(&mut encrypt_obj, &file_id)?;
         let mut handler = EncryptionHandler::new(&encrypt_obj, file_id)?;
+        self.reserve_import_authentication(b"")?;
 
         // Try to authenticate with empty password (common default)
         match handler.authenticate(b"") {
@@ -1813,6 +1836,12 @@ impl PdfDocument {
             .map(|h| h.is_authenticated())
             .unwrap_or(true);
 
+        if self.import_budget.is_some() && password.is_empty() {
+            return Ok(was_authenticated);
+        }
+        if self.is_encrypted() {
+            self.reserve_import_authentication(password)?;
+        }
         let result = match self.encryption_handler.lock_or_recover().as_mut() {
             Some(handler) => handler.authenticate(password),
             None => return Ok(true), // Not encrypted, always "authenticated"
@@ -3298,11 +3327,23 @@ impl PdfDocument {
         obj: &mut Object,
         obj_num: u32,
         gen_num: u32,
-    ) {
+        budget: Option<&crate::import_limits::ImportBudget>,
+    ) -> Result<()> {
+        if let Some(budget) = budget {
+            budget.check()?;
+            if let Object::String(bytes) = obj {
+                budget.charge_codec_allocation(bytes.len())?;
+                budget.charge_decoded(bytes.len().saturating_mul(2))?;
+                budget.charge_codec_work(bytes.len())?;
+            }
+        }
         match obj {
             Object::String(bytes) => match handler.decrypt_string(bytes, obj_num, gen_num) {
                 Ok(decrypted) => *bytes = decrypted,
                 Err(e) => {
+                    if budget.is_some() {
+                        return Err(e);
+                    }
                     log::debug!(
                         "String decryption failed for object {} {}: {}",
                         obj_num,
@@ -3313,12 +3354,12 @@ impl PdfDocument {
             },
             Object::Array(items) => {
                 for item in items {
-                    Self::decrypt_strings_in_object(handler, item, obj_num, gen_num);
+                    Self::decrypt_strings_in_object(handler, item, obj_num, gen_num, budget)?;
                 }
             },
             Object::Dictionary(dict) => {
                 for value in dict.values_mut() {
-                    Self::decrypt_strings_in_object(handler, value, obj_num, gen_num);
+                    Self::decrypt_strings_in_object(handler, value, obj_num, gen_num, budget)?;
                 }
             },
             Object::Stream { dict, .. } => {
@@ -3326,11 +3367,12 @@ impl PdfDocument {
                 // `decode_stream_with_encryption`. Its dict may still
                 // contain encrypted strings (e.g., /Metadata).
                 for value in dict.values_mut() {
-                    Self::decrypt_strings_in_object(handler, value, obj_num, gen_num);
+                    Self::decrypt_strings_in_object(handler, value, obj_num, gen_num, budget)?;
                 }
             },
             _ => {},
         }
+        Ok(())
     }
 
     /// Implementation with recursion guard to prevent infinite loops.
@@ -3357,7 +3399,7 @@ impl PdfDocument {
             {
                 return Err(parse_error());
             }
-            let (remaining, object) =
+            let (remaining, mut object) =
                 crate::parser::parse_indirect_prefix_with_budget(remaining, budget, |reference| {
                     self.load_object(reference)
                 })?;
@@ -3365,6 +3407,7 @@ impl PdfDocument {
             if end != crate::lexer::Token::ObjEnd {
                 return Err(parse_error());
             }
+            self.decrypt_loaded_object(&mut object, obj_ref)?;
             budget.check()?;
             self.object_cache
                 .lock_or_recover()
@@ -3632,27 +3675,9 @@ impl PdfDocument {
             }
         };
 
-        // Decrypt string values inside this uncompressed object before
-        // caching. Skip the /Encrypt dict (its entries are key material)
-        // and the non-authenticated case (no key derived yet). Strings
-        // inside compressed objects ride along with the ObjStm payload
-        // and are already in clear text per ISO 32000-1:2008 §7.6.2.
-        let is_encrypt_dict = *self.encrypt_dict_ref.lock_or_recover() == Some(obj_ref);
-        if !is_encrypt_dict {
-            let handler_guard = self.encryption_handler.lock_or_recover();
-            if let Some(handler) = handler_guard.as_ref() {
-                if handler.is_authenticated() {
-                    Self::decrypt_strings_in_object(
-                        handler,
-                        &mut obj,
-                        obj_ref.id,
-                        obj_ref.gen as u32,
-                    );
-                }
-            }
-        }
-
-        // Cache the object
+        self.decrypt_loaded_object(&mut obj, obj_ref)?;
+        // Cache the plaintext object: all bounded image/mask/content decoders
+        // consume this same representation, including encrypted ObjStm payloads.
         self.check_import_budget()?;
         self.object_cache.lock_or_recover().insert(
             obj_ref,
@@ -3741,7 +3766,11 @@ impl PdfDocument {
         // (non-standard), the unencrypted parse will fail and we fall back to
         // trying with decryption.
         let handler_ref = self.encryption_handler.lock_or_recover();
-        let objects_map = if handler_ref.is_some() {
+        let objects_map = if self.import_budget.is_some() {
+            // Bounded load has already decrypted the ObjStm, retaining its
+            // request context. Never retry ciphertext or bypass a budget error.
+            parse_object_stream_with_decryption(&stream_obj, None, 0, 0)?
+        } else if handler_ref.is_some() {
             // First try without decryption (spec-compliant path)
             match parse_object_stream_with_decryption(&stream_obj, None, 0, 0) {
                 Ok(map) => map,
@@ -12789,11 +12818,29 @@ impl PdfDocument {
         // five-degree quadrant snap. Glyph positions must use the same frame.
         for span in &mut spans {
             if let Some(crate::extractors::text::SpanPaintOrder {
-                basis: [a, b, _, _],
+                basis: [a, b, c, d],
                 ..
             }) = orders.get(&span.sequence)
             {
                 span.rotation_degrees = b.atan2(*a).to_degrees();
+                // The generic reading-order extractor uses matrix row norms.
+                // Editable rotated text needs the lengths of the transformed
+                // writing and glyph-height axes (ISO 32000-1 9.4.4).
+                if span.rotation_degrees != 0.0 {
+                    let sx = a.hypot(*b);
+                    let sy = c.hypot(*d);
+                    let old_x = a.hypot(*c);
+                    let old_y = b.hypot(*d);
+                    if sx > 0.0 && sy > 0.0 && old_x > 0.0 && old_y > 0.0 {
+                        span.font_size *= sy / old_y;
+                        span.bbox.height = span.font_size;
+                        span.bbox.width *= sx / old_x;
+                        for width in &mut span.char_widths {
+                            *width *= sx / old_x;
+                        }
+                        span.horizontal_scaling *= sx / sy;
+                    }
+                }
             }
         }
         let spans = self.postprocess_spans_for_import(page_index, spans)?;
@@ -18754,7 +18801,7 @@ impl PdfDocument {
         for (ordinal, op) in operators.into_iter().enumerate() {
             extractor.paint.source_order = vec![ordinal];
             extractor.paint.clip = clips.current().clip;
-            clips.apply(&op);
+            clips.apply(&op)?;
             if matches!(
                 &op,
                 Operator::Tj { .. }
@@ -18762,7 +18809,10 @@ impl PdfDocument {
                     | Operator::Quote { .. }
                     | Operator::DoubleQuote { .. }
             ) {
-                extractor.record_text_clip(self.import_budget().map(AsRef::as_ref))?;
+                extractor.record_text_clip(
+                    state_stack.current(),
+                    self.import_budget().map(AsRef::as_ref),
+                )?;
             }
             if self.process_path_color_operator(&op, &mut extractor, state_stack.current_mut())? {
                 continue;
@@ -18788,6 +18838,7 @@ impl PdfDocument {
                     if let Some(resources) = extractor.current_resources() {
                         let (fill, stroke) = self.paint_alpha(resources, &dict_name)?;
                         let state = state_stack.current_mut();
+                        self.apply_path_line_state(resources, &dict_name, state)?;
                         if let Some(alpha) = fill {
                             state.fill_alpha = alpha;
                         }
@@ -18803,6 +18854,12 @@ impl PdfDocument {
                     let state = state_stack.current_mut();
                     state.dash_pattern = (!array.is_empty()).then_some((array, phase));
                     extractor.update_from_path_state(state);
+                },
+                Operator::Tr { render } => {
+                    state_stack.current_mut().text_render_mode = render;
+                },
+                Operator::SetMiterLimit { limit } => {
+                    state_stack.current_mut().miter_limit = limit;
                 },
                 Operator::SetLineWidth { width } => {
                     state_stack.current_mut().line_width = width;
@@ -18905,6 +18962,12 @@ impl PdfDocument {
                         self.process_form_xobject_paths(&name, &mut extractor, &mut state_stack, 1)
                     {
                         self.check_import_budget()?;
+                        if matches!(
+                            e,
+                            Error::UnsupportedPattern(_) | Error::UnsupportedTextPaint(_)
+                        ) {
+                            return Err(e);
+                        }
                         log::warn!(
                             "Failed to process XObject '{}' in path extraction: {}",
                             name,
@@ -19425,7 +19488,7 @@ impl PdfDocument {
             extractor.paint.source_order = parent_paint.source_order.clone();
             extractor.paint.source_order.push(ordinal);
             extractor.paint.clip = clips.current().clip;
-            clips.apply(&op);
+            clips.apply(&op)?;
             if matches!(
                 &op,
                 Operator::Tj { .. }
@@ -19433,7 +19496,10 @@ impl PdfDocument {
                     | Operator::Quote { .. }
                     | Operator::DoubleQuote { .. }
             ) {
-                extractor.record_text_clip(self.import_budget().map(AsRef::as_ref))?;
+                extractor.record_text_clip(
+                    state_stack.current(),
+                    self.import_budget().map(AsRef::as_ref),
+                )?;
             }
             if self.process_path_color_operator(&op, extractor, state_stack.current_mut())? {
                 continue;
@@ -19459,6 +19525,7 @@ impl PdfDocument {
                     if let Some(resources) = extractor.current_resources() {
                         let (fill, stroke) = self.paint_alpha(resources, &dict_name)?;
                         let state = state_stack.current_mut();
+                        self.apply_path_line_state(resources, &dict_name, state)?;
                         if let Some(alpha) = fill {
                             state.fill_alpha = alpha;
                         }
@@ -19472,6 +19539,12 @@ impl PdfDocument {
                     let state = state_stack.current_mut();
                     state.dash_pattern = (!array.is_empty()).then_some((array, phase));
                     extractor.update_from_path_state(state);
+                },
+                Operator::Tr { render } => {
+                    state_stack.current_mut().text_render_mode = render;
+                },
+                Operator::SetMiterLimit { limit } => {
+                    state_stack.current_mut().miter_limit = limit;
                 },
                 Operator::SetLineWidth { width } => {
                     state_stack.current_mut().line_width = width;
@@ -19551,6 +19624,12 @@ impl PdfDocument {
                         depth + 1,
                     ) {
                         self.check_import_budget()?;
+                        if matches!(
+                            e,
+                            Error::UnsupportedPattern(_) | Error::UnsupportedTextPaint(_)
+                        ) {
+                            return Err(e);
+                        }
                         log::warn!("Failed to process nested XObject '{}': {}", nested_name, e);
                     }
                 },
@@ -23237,9 +23316,7 @@ impl PdfDocument {
         page_index: usize,
     ) -> Result<Vec<crate::extractors::images::PdfImageHandle<'_>>> {
         use crate::content::parse_content_stream;
-        use crate::content::Operator;
         use crate::extractors::image_clip::{ImageClip, ImageClipTracker};
-        use crate::extractors::images::image_handle_from_inline;
 
         self.require_authenticated()?;
 
@@ -23271,92 +23348,21 @@ impl PdfDocument {
                 },
             };
 
-        // Resource-name colour-space map for this page scope (§8.6.6 / §8.9.7).
-        let cs_map = self.build_color_space_map(resources.as_ref())?;
-
-        // Pre-resolve the XObject dictionary once
-        let xobject_dict = if let Some(ref res) = resources {
-            if let Some(res_dict) = res.as_dict() {
-                if let Some(xobj_entry) = res_dict.get("XObject") {
-                    let resolved = if let Some(ref_obj) = xobj_entry.as_reference() {
-                        self.load_object(ref_obj)?
-                    } else {
-                        crate::object_copy::clone_object(xobj_entry, self.import_budget.as_deref())?
-                    };
-                    resolved
-                        .as_dict()
-                        .map(|dict| {
-                            crate::object_copy::clone_dictionary(
-                                dict,
-                                self.import_budget.as_deref(),
-                            )
-                        })
-                        .transpose()?
-                } else {
-                    None
-                }
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
-        let mut handles = Vec::new();
         let (left, bottom, right, top) = self.get_page_visible_box(page_index)?;
-        let page_clip = ImageClip::transformed_rectangle(
+        let clip = ImageClip::transformed_image_rectangle(
             crate::content::Matrix::identity(),
             [left, bottom, right, top],
         );
-        let mut graphics =
-            ImageClipTracker::for_images(crate::content::Matrix::identity(), page_clip);
-        let mut paint_order: usize = 0;
-        let mut xobject_stack: Vec<crate::object::ObjectRef> = Vec::new();
-
-        for (ordinal, op) in operators.into_iter().enumerate() {
-            if let Operator::SetExtGState { ref dict_name } = op {
-                if let Some(resources) = resources.as_ref() {
-                    if let Some(alpha) = self.paint_alpha(resources, dict_name)?.0 {
-                        graphics.set_alpha(alpha);
-                    }
-                }
-            }
-            self.process_image_colour_operator(&op, resources.as_ref(), &mut graphics)?;
-            graphics.apply(&op);
-            let state = graphics.current();
-            match op {
-                Operator::Do { name } => {
-                    if let Some(ref xobj_dict_map) = xobject_dict {
-                        if let Ok(mut more) = self.collect_handles_from_do(
-                            &name,
-                            xobj_dict_map,
-                            resources.as_ref(),
-                            state,
-                            &mut paint_order,
-                            &mut xobject_stack,
-                        ) {
-                            for h in &mut more {
-                                h.source_order.insert(0, ordinal);
-                            }
-                            handles.append(&mut more);
-                        }
-                    }
-                },
-                Operator::InlineImage { dict, data } => {
-                    if let Some(mut handle) =
-                        image_handle_from_inline(self, &dict, data, state.ctm, paint_order, &cs_map)
-                    {
-                        handle.opacity = state.alpha;
-                        handle.stencil_colour = state.fill_colour;
-                        handle.source_order.push(ordinal);
-                        handle.clip = state.clip;
-                        handles.push(handle);
-                        paint_order += 1;
-                    }
-                },
-                _ => {},
-            }
-        }
+        let state =
+            ImageClipTracker::for_images(crate::content::Matrix::identity(), clip).current();
+        let handles = self.walk_image_handles(
+            &operators,
+            resources.as_ref(),
+            state,
+            &mut 0,
+            &mut Vec::new(),
+            false,
+        )?;
 
         self.check_import_budget()?;
         Ok(handles)
@@ -23376,6 +23382,7 @@ impl PdfDocument {
         state: crate::extractors::image_clip::ImageGraphicsState,
         paint_order: &mut usize,
         xobject_stack: &mut Vec<crate::object::ObjectRef>,
+        image_only: bool,
     ) -> Result<Vec<crate::extractors::images::PdfImageHandle<'s>>> {
         use crate::extractors::images::image_handle_from_xobject;
 
@@ -23384,6 +23391,9 @@ impl PdfDocument {
         }
         let xobject_ref_obj = match xobject_dict.get(name) {
             Some(o) => o,
+            None if image_only => {
+                return Err(Error::UnsupportedPattern("missing pattern XObject".into()))
+            },
             None => return Ok(Vec::new()),
         };
 
@@ -23420,9 +23430,15 @@ impl PdfDocument {
                         h.stencil_colour = state.fill_colour;
                         *paint_order += 1;
                         Ok(vec![h])
+                    } else if image_only {
+                        Err(Error::UnsupportedPattern("invalid pattern image".into()))
                     } else {
                         Ok(Vec::new())
                     }
+                } else if image_only {
+                    Err(Error::UnsupportedPattern(
+                        "pattern image requires an indirect stream".into(),
+                    ))
                 } else {
                     Ok(Vec::new())
                 }
@@ -23436,11 +23452,13 @@ impl PdfDocument {
                         state,
                         paint_order,
                         xobject_stack,
+                        image_only,
                     )
                 } else {
                     Ok(Vec::new())
                 }
             },
+            _ if image_only => Err(Error::UnsupportedPattern("unsupported pattern XObject".into())),
             _ => Ok(Vec::new()),
         }
     }
@@ -23466,18 +23484,21 @@ impl PdfDocument {
         parent_state: crate::extractors::image_clip::ImageGraphicsState,
         paint_order: &mut usize,
         xobject_stack: &mut Vec<crate::object::ObjectRef>,
+        image_only: bool,
     ) -> Result<Vec<crate::extractors::images::PdfImageHandle<'s>>> {
         use crate::content::parse_content_stream;
-        use crate::content::Operator;
         use crate::extractors::image_clip::{ImageClip, ImageClipTracker};
-        use crate::extractors::images::image_handle_from_inline;
 
         // Cycle detection — identical policy to the materialised extraction path.
         if let Some(budget) = &self.import_budget {
             budget.form_depth(xobject_stack.len() + 1)?;
         }
         if xobject_stack.contains(&xobject_ref) || xobject_stack.len() >= 100 {
-            return Ok(Vec::new());
+            return if image_only {
+                Err(Error::UnsupportedPattern("cyclic or deeply nested pattern Form".into()))
+            } else {
+                Ok(Vec::new())
+            };
         }
 
         xobject_stack.push(xobject_ref);
@@ -23501,27 +23522,6 @@ impl PdfDocument {
             crate::object_copy::clone_object(parent_resources, self.import_budget.as_deref())?
         };
 
-        // Pre-resolve the XObject dictionary for *this* Form's Resources.
-        let form_xobject_dict = if let Some(res_dict) = form_resources.as_dict() {
-            if let Some(xobj_entry) = res_dict.get("XObject") {
-                let resolved = if let Some(ref_obj) = xobj_entry.as_reference() {
-                    self.load_object(ref_obj)?
-                } else {
-                    crate::object_copy::clone_object(xobj_entry, self.import_budget.as_deref())?
-                };
-                resolved
-                    .as_dict()
-                    .map(|dict| {
-                        crate::object_copy::clone_dictionary(dict, self.import_budget.as_deref())
-                    })
-                    .transpose()?
-            } else {
-                None
-            }
-        } else {
-            None
-        };
-
         // Form's own transformation matrix (default identity).
         let form_matrix = if let Some(matrix_obj) = xobj_dict.get("Matrix") {
             self.parse_matrix_from_object(matrix_obj)
@@ -23536,6 +23536,9 @@ impl PdfDocument {
                 log::warn!("Failed to decode Form XObject stream: {}, skipping", e);
                 xobject_stack.pop();
                 self.check_import_budget()?;
+                if image_only {
+                    return Err(e);
+                }
                 return Ok(Vec::new());
             },
         };
@@ -23543,8 +23546,12 @@ impl PdfDocument {
         // Keep path operators: image clipping depends on the current path.
         let operators = match self.parse_import_content(&stream_data, parse_content_stream) {
             Ok(ops) => ops,
-            Err(_) => {
+            Err(e) => {
                 xobject_stack.pop();
+                self.check_import_budget()?;
+                if image_only {
+                    return Err(e);
+                }
                 return Ok(Vec::new());
             },
         };
@@ -23575,61 +23582,17 @@ impl PdfDocument {
         let mut graphics = ImageClipTracker::for_images(start_ctm, clip);
         graphics.set_alpha(parent_state.alpha);
         graphics.set_fill_colour(parent_state.fill_space, parent_state.fill_colour);
-        let mut handles = Vec::new();
-
-        for (ordinal, op) in operators.into_iter().enumerate() {
-            if let Operator::SetExtGState { ref dict_name } = op {
-                if let Some(alpha) = self.paint_alpha(&form_resources, dict_name)?.0 {
-                    graphics.set_alpha(alpha);
-                }
-            }
-            self.process_image_colour_operator(&op, Some(&form_resources), &mut graphics)?;
-            graphics.apply(&op);
-            let state = graphics.current();
-            match op {
-                Operator::Do { name } => {
-                    if let Some(ref xobj_d) = form_xobject_dict {
-                        if let Ok(mut more) = self.collect_handles_from_do(
-                            &name,
-                            xobj_d,
-                            Some(&form_resources),
-                            state,
-                            paint_order,
-                            xobject_stack,
-                        ) {
-                            for h in &mut more {
-                                h.source_order.insert(0, ordinal);
-                            }
-                            handles.append(&mut more);
-                        }
-                    }
-                },
-
-                Operator::InlineImage { dict, data } => {
-                    let cs_map = self.build_color_space_map(Some(&form_resources))?;
-                    if let Some(mut h) = image_handle_from_inline(
-                        self,
-                        &dict,
-                        data,
-                        state.ctm,
-                        *paint_order,
-                        &cs_map,
-                    ) {
-                        h.opacity = state.alpha;
-                        h.stencil_colour = state.fill_colour;
-                        h.source_order.push(ordinal);
-                        h.clip = state.clip;
-                        handles.push(h);
-                        *paint_order += 1;
-                    }
-                },
-
-                _ => {},
-            }
-        }
+        let handles = self.walk_image_handles(
+            &operators,
+            Some(&form_resources),
+            graphics.current(),
+            paint_order,
+            xobject_stack,
+            image_only,
+        );
 
         xobject_stack.pop();
-        Ok(handles)
+        handles
     }
 
     /// Extract images with pre-decompression filtering.

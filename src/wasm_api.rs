@@ -46,6 +46,7 @@ use crate::renderer::DEFAULT_DPI;
 mod bitmap_raster;
 mod canvas_metrics;
 mod form_action;
+mod host_font_environment;
 mod hyperlink;
 mod layout_generation;
 #[cfg(all(feature = "pdf-import", target_arch = "wasm32"))]
@@ -804,6 +805,11 @@ impl HwpDocument {
     }
 
     /// 호스트가 실제 FontFace에 적재한 프로그램의 호환 글리프 지원을 등록한다.
+    #[wasm_bindgen(js_name = clearTextFontFamily)]
+    pub fn clear_text_font_family_wasm(&mut self, family: &str) {
+        self.clear_text_font_family_native(family);
+    }
+
     #[wasm_bindgen(js_name = registerTextFontGlyphCoverage)]
     pub fn register_text_font_glyph_coverage(
         &mut self,
@@ -844,10 +850,88 @@ impl HwpDocument {
             .map_err(JsValue::from)
     }
 
+    #[wasm_bindgen(js_name = getTextShadowFontRequests)]
+    pub fn get_text_shadow_font_requests(&self) -> Result<String, JsValue> {
+        self.get_text_shadow_font_requests_native()
+            .map_err(JsValue::from)
+    }
+
     #[wasm_bindgen(js_name = getNativePuaFontRequests)]
     pub fn get_native_pua_font_requests(&self) -> Result<String, JsValue> {
         serde_json::to_string(&self.native_pua_font_requests())
             .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    #[wasm_bindgen(js_name = getNativeOtfFontRequests)]
+    pub fn get_native_otf_font_requests_wasm(&self) -> Result<String, JsValue> {
+        serde_json::to_string(&self.native_otf_font_requests())
+            .map_err(|e| JsValue::from_str(&e.to_string()))
+    }
+
+    /// 미리 준비한 실제 face만 동기 공급하고 모든 선택을 한 번에 조판한다.
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen(js_name = prepareNativeOtfFonts)]
+    pub fn prepare_native_otf_fonts_wasm(
+        &mut self,
+        provider: &js_sys::Function,
+    ) -> Result<bool, JsValue> {
+        use wasm_bindgen::JsCast;
+        let mut prepared = std::collections::BTreeMap::new();
+        for request in self.native_otf_font_requests() {
+            let key = serde_json::to_string(&request)
+                .map_err(|error| JsValue::from_str(&error.to_string()))?;
+            let value = provider.call1(&JsValue::NULL, &JsValue::from_str(&key))?;
+            if value.is_null() || value.is_undefined() {
+                continue;
+            }
+            let values: Vec<JsValue> = if js_sys::Array::is_array(&value) {
+                let array = js_sys::Array::from(&value);
+                if array.length() > 256 {
+                    return Err(JsValue::from_str(
+                        "OTF provider program count exceeds limit",
+                    ));
+                }
+                array.iter().collect()
+            } else {
+                vec![value]
+            };
+            let mut programs = Vec::with_capacity(values.len());
+            let mut total_bytes = 0usize;
+            for value in values {
+                if !value.is_instance_of::<js_sys::Uint8Array>() {
+                    return Err(JsValue::from_str(
+                        "OTF provider must return Uint8Array, an array of Uint8Array, or null",
+                    ));
+                }
+                let array = js_sys::Uint8Array::new(&value);
+                let length = array.length() as usize;
+                total_bytes = total_bytes.saturating_add(length);
+                if length > 32 * 1024 * 1024 || total_bytes > 64 * 1024 * 1024 {
+                    return Err(JsValue::from_str("OTF provider program exceeds limit"));
+                }
+                programs.push((array.to_vec(), 0));
+            }
+            prepared.insert(
+                (
+                    request.family,
+                    request.bold,
+                    request.italic,
+                    request.source_ttf,
+                ),
+                programs,
+            );
+        }
+        self.prepare_native_otf_fonts_multiple_with(|request| {
+            prepared
+                .remove(&(
+                    request.family.clone(),
+                    request.bold,
+                    request.italic,
+                    request.source_ttf,
+                ))
+                .unwrap_or_default()
+        })
+        .map_err(JsValue::from)
     }
 
     #[wasm_bindgen(js_name = registerNativePuaFont)]
@@ -863,6 +947,22 @@ impl HwpDocument {
             .map_err(JsValue::from)
     }
 
+    #[wasm_bindgen(js_name = registerNativePuaFontForSource)]
+    pub fn register_native_pua_font_for_source_wasm(
+        &mut self,
+        family: &str,
+        bold: bool,
+        italic: bool,
+        source_ttf: bool,
+        bytes: &[u8],
+        face_index: u32,
+    ) -> Result<bool, JsValue> {
+        self.register_native_pua_font_for_source(
+            family, bold, italic, source_ttf, bytes, face_index,
+        )
+        .map_err(JsValue::from)
+    }
+
     #[wasm_bindgen(js_name = registerLiteralFigureSpaceFont)]
     pub fn register_literal_figure_space_font_wasm(
         &mut self,
@@ -874,6 +974,22 @@ impl HwpDocument {
     ) -> Result<bool, JsValue> {
         self.register_literal_figure_space_font(family, bold, italic, bytes, face_index)
             .map_err(JsValue::from)
+    }
+
+    #[wasm_bindgen(js_name = registerLiteralFigureSpaceFontForSource)]
+    pub fn register_literal_figure_space_font_for_source_wasm(
+        &mut self,
+        family: &str,
+        bold: bool,
+        italic: bool,
+        source_ttf: bool,
+        bytes: &[u8],
+        face_index: u32,
+    ) -> Result<bool, JsValue> {
+        self.register_literal_figure_space_font_for_source(
+            family, bold, italic, source_ttf, bytes, face_index,
+        )
+        .map_err(JsValue::from)
     }
 
     #[wasm_bindgen(js_name = clearNativePuaFonts)]
@@ -4039,6 +4155,62 @@ impl HwpDocument {
             row_count,
             col_count,
             treat_as_char,
+            col_widths.as_deref(),
+            row_heights.as_deref(),
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// [#8262] 표 칸 안 문단에 표를 만든다 — 셀 경로라 깊이에 상관없다.
+    ///
+    /// `cell_path_json`: 다른 by-path API 와 같은 `[{controlIndex, cellIndex, cellParaIndex}, ...]`.
+    /// 마지막 마디의 `cellParaIndex` 가 캐럿이 있는 칸 문단, `char_offset` 은 그 문단의 캐럿 offset.
+    ///
+    /// options JSON: `{ rowCount, colCount, colWidths?: [u32, ...], rowHeights?: [u32, ...],
+    ///                 treatAsChar?: bool }` — 칸 안 표는 **글자처럼 취급만** 만든다(한/글 기본값).
+    /// `treatAsChar:false` 는 조용히 무시하지 않고 오류로 돌려준다.
+    ///
+    /// 반환: `{"ok":true,"cellParaIdx":N,"controlIdx":0,"cellPath":[..안쪽 표 첫 칸까지]}`
+    #[wasm_bindgen(js_name = createTableInCellByPath)]
+    pub fn create_table_in_cell_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        char_offset: u32,
+        options_json: &str,
+    ) -> Result<String, JsValue> {
+        let options: serde_json::Value = serde_json::from_str(options_json)
+            .map_err(|e| JsValue::from_str(&format!("options JSON 파싱 실패: {}", e)))?;
+        if options.get("treatAsChar").and_then(|v| v.as_bool()) == Some(false) {
+            return Err(JsValue::from_str(
+                "칸 안 표는 글자처럼 취급만 지원한다 (treatAsChar:false 는 받지 않는다)",
+            ));
+        }
+        let count = |key: &str, default: u64| -> u16 {
+            options.get(key).and_then(|v| v.as_u64()).unwrap_or(default) as u16
+        };
+        let hu_list = |key: &str| -> Option<Vec<u32>> {
+            let list: Vec<u32> = options
+                .get(key)?
+                .as_array()?
+                .iter()
+                .filter_map(|v| v.as_u64().map(|n| n as u32))
+                .collect();
+            (!list.is_empty()).then_some(list)
+        };
+        let path = crate::document_core::DocumentCore::parse_cell_path(cell_path_json)
+            .map_err(|e| -> JsValue { e.into() })?;
+        let col_widths = hu_list("colWidths");
+        let row_heights = hu_list("rowHeights");
+
+        self.create_table_in_cell_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            char_offset as usize,
+            count("rowCount", 2),
+            count("colCount", 2),
             col_widths.as_deref(),
             row_heights.as_deref(),
         )
@@ -8792,6 +8964,58 @@ impl HwpDocument {
             cell_idx,
             cell_para_idx,
             props_json,
+        )
+        .map_err(|e| e.into())
+    }
+
+    #[wasm_bindgen(js_name = getCellParaPropertiesAtByPath)]
+    pub fn get_cell_para_properties_at_by_path_api(
+        &self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        self.get_cell_para_properties_at_by_path(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+        )
+        .map_err(|e| e.into())
+    }
+
+    #[wasm_bindgen(js_name = applyParaFormatInCellByPath)]
+    pub fn apply_para_format_in_cell_by_path_api(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+        props_json: &str,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        self.apply_para_format_in_cell_by_path(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            props_json,
+        )
+        .map_err(|e| e.into())
+    }
+
+    #[wasm_bindgen(js_name = setCellParaShapeIdByPath)]
+    pub fn set_cell_para_shape_id_by_path_api(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+        para_shape_id: u16,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        self.set_cell_para_shape_id_by_path(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            para_shape_id,
         )
         .map_err(|e| e.into())
     }

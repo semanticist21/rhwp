@@ -38,11 +38,12 @@ fn hwp_layout_contract_survives_repeated_hwpx_and_hwp_saves() {
                 DocumentCore::from_bytes(&current.export_hwpx_native().unwrap()).unwrap();
             assert_contract(&reopened, hwpx_lineage);
             // 계보 보존이 기존 문단 UTF-16 축 마커를 없애거나 줄 주소를 바꾸면 안 된다.
+            // HWPX 계보 HWP는 HWP5-origin 마커 없이 HWPX 출처처럼 내보낸다(#8302).
             assert_eq!(
                 reopened
                     .document()
                     .hwpx_aux_entry(HWP5_ORIGIN_HWPX_MARKER_PATH),
-                Some(rhwp::model::document::HWP5_ORIGIN_HWPX_PARAGRAPH_AXIS)
+                (!hwpx_lineage).then_some(rhwp::model::document::HWP5_ORIGIN_HWPX_PARAGRAPH_AXIS)
             );
             let before = &current.document().sections[0].paragraphs[0];
             let after = &reopened.document().sections[0].paragraphs[0];

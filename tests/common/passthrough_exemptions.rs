@@ -39,6 +39,25 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "검증한 본문 범위를 다시 접은 뒤 공통 구역 갱신에 위임한다. refresh_section_native가 구역 raw_stream과 렌더 캐시를 무효화하며 빈 범위는 무변경이다.",
     ),
     (
+        "host_font_environment.rs",
+        "prepare_declared_font_fallbacks_with",
+        Exempt::SessionState,
+        "실제 글꼴 공급 관측과 파생 조판 캐시만 갱신한다. issue_8153_scoped_host_font_selection에서 관측 적용 전후 원본 저장 바이트를 대조한다.",
+    ),
+    (
+        "host_font_environment.rs",
+        "set_observed_font_fallbacks_native",
+        Exempt::SessionState,
+        "공급 관측을 검증한 뒤 같은 세션 환경 갱신 경로에 전달한다. issue_8153_scoped_host_font_selection에서 공개 API 적용 전후 원본 저장 바이트를 대조한다.",
+    ),
+    (
+        "native_pua_fonts.rs",
+        "prepare_native_otf_fonts_with",
+        Exempt::SessionState,
+        "실제 OTF 프로그램과 파생 조판 캐시만 갱신한다. native_pua_host_font_protocol에서 공급·해제 전후 문서 IR과 HWP 저장 바이트 보존을 검사한다.",
+
+    ),
+    (
         "commands/border_paint_edit.rs",
         "discard_border_paint_undo_native",
         Exempt::SessionState,
@@ -58,9 +77,21 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     ),
     (
         "native_pua_fonts.rs",
+        "register_native_pua_font_for_source",
+        Exempt::SessionState,
+        "원본 글꼴 유형별 PUA 세션 프로그램과 파생 배치만 갱신하며 문서 IR과 저장 raw는 변경하지 않는다.",
+    ),
+    (
+        "native_pua_fonts.rs",
         "register_literal_figure_space_font",
         Exempt::SessionState,
         "리터럴 공백의 실제 공급 프로그램과 파생 조판 캐시만 갱신한다. native_pua_host_font_protocol에서 등록·해제 전후 명시 exact 소유권·문서 IR·저장 HWP 바이트 보존을 검사한다.",
+    ),
+    (
+        "native_pua_fonts.rs",
+        "register_literal_figure_space_font_for_source",
+        Exempt::SessionState,
+        "원본 글꼴 유형별 공백 세션 메트릭과 파생 배치만 갱신하며 문서 IR과 저장 raw는 변경하지 않는다.",
     ),
     (
         "native_pua_fonts.rs",
@@ -82,6 +113,12 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     ),
     (
         "commands/document/hft_outline_fonts.rs",
+        "clear_text_font_family_native",
+        Exempt::SessionState,
+        "선택한 family의 paint 전용 글꼴 공급과 coverage만 해제한다. hft_outline_font_contract에서 해제 전후 원본 IR과 저장 HWP 바이트 보존을 검사한다.",
+    ),
+    (
+        "commands/document/hft_outline_fonts.rs",
         "register_text_font_glyph_coverage_native",
         Exempt::SessionState,
         "원문 IR·raw stream 대신 paint용 pua_coverage 세션만 등록한다. text_font_coverage_registration의 registered_upright_face_resolves_quoted_css_and_keeps_document_source가 공개 등록 전후 HWP/HWPX 바이트 보존을 검사한다.",
@@ -98,8 +135,8 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         Exempt::SessionState,
         "#6389: 명시적 폰트 환경과 파생 조판·측정 캐시만 교체한다. issue_6389_environment_changes_measurement_and_paint_without_editing_document에서 적용·해제 전후 저장 bytes와 원본 face 보존을 검사한다.",
     ),
-    // #7084 render-session APIs do not mutate serialized document state.
-    // issue_7084_canvas_metric_session checks original HWP/HWPX IR and portable SVG preservation.
+    // #7084 렌더 세션 API는 직렬화된 문서 상태를 변경하지 않는다.
+    // issue_7084_canvas_metric_session은 원본 HWP/HWPX IR과 이동 가능한 SVG 보존을 검사한다.
     (
         "canvas_metric_requests.rs",
         "collect_canvas_metric_requests",
@@ -739,6 +776,14 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         Exempt::DelegatesTo("apply_para_format_native"),
         "리스트 아이디를 구역·문단으로 풀어 넘길 뿐이다. 서식 적용과 무효화는 본문 경로 \
          (`apply_para_format_native`)와 셀 경로(`apply_para_format_in_cell_native`)가 한다.",
+    ),
+    (
+        "commands/paragraph_format_path.rs",
+        "apply_para_format_in_cell_by_path",
+        Exempt::DelegatesTo("set_cell_para_shape_id_by_path"),
+        "#7637: 중첩 셀은 문단 모양 ID 적용 함수가 구역 raw_stream을 무효화한다. \
+         깊이 1은 직접 무효화하는 apply_para_format_in_cell_native에 위임한다. \
+         두 저장 경로는 nested-paragraph-format의 실제 WASM HWP/HWPX 왕복으로 검증한다.",
     ),
     // ── 판정 보류 ──────────────────────────────────────────────────────────
     (

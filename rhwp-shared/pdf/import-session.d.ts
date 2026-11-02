@@ -1,9 +1,18 @@
+export interface PdfPageProgress {
+  /** One-based original PDF page being converted. */
+  sourcePage: number;
+  sourcePageCount: number;
+  /** Completed selected pages, not elapsed-time progress. */
+  completedPages: number;
+  totalPages: number;
+}
 export interface PdfRequestOptions {
   signal?: AbortSignal;
   timeoutMs?: number;
-  onProgress?: (phase: 'initializing' | 'importing' | 'ready') => void;
+  onProgress?: (phase: 'initializing' | 'importing' | 'ready', progress?: PdfPageProgress) => void;
 }
 export interface PdfImportOptions {
+  password?: string;
   layout?: 'fidelity' | 'editable';
   resourceProfile?: 'standard' | 'constrained';
   resourceLimits?: Record<string, unknown>;

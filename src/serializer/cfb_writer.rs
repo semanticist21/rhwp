@@ -195,6 +195,7 @@ where
         if split_starts.is_empty() {
             let prepared =
                 super::form_identity::prepare_section(section, doc, &mut form_id_allocator)?;
+            let prepared = super::hwpx_lineage_lines::prepare_section(prepared, doc);
             let bytes = super::body_text::try_serialize_section_for_version(
                 &prepared,
                 output_version,
@@ -248,6 +249,7 @@ where
             };
             let prepared =
                 super::form_identity::prepare_section(&sub, doc, &mut form_id_allocator)?;
+            let prepared = super::hwpx_lineage_lines::prepare_section(prepared, doc);
             section_bytes_list.push(
                 super::body_text::try_serialize_section_for_version(
                     &prepared,
@@ -305,6 +307,17 @@ where
     let mut extra_streams = storage
         .clone_record(&doc.extra_streams)
         .map_err(storage_error)?;
+    // [#8374] Scripts 는 이 파일의 압축 비트를 따른다 — 원본과 형태가 다르면 맞춘다.
+    for (path, bytes) in &mut extra_streams {
+        if path.trim_start_matches('/') == "Scripts/DefaultJScript" {
+            if let Some(converted) =
+                crate::model::form_script::script_stream_for_hwp(doc, bytes, compressed)
+                    .map_err(|error| SerializeError::UnsupportedInput(error.to_string()))?
+            {
+                *bytes = converted;
+            }
+        }
+    }
     extra_streams.retain(|(path, _)| path != crate::model::border_paint::HWP_STREAM);
     if let Some(bytes) = crate::model::border_paint::encode_with_storage(doc, storage)
         .map_err(SerializeError::UnsupportedInput)?
@@ -346,6 +359,29 @@ where
         content_loss
             .record_with_storage(
                 crate::model::text_clip::native_visibility_loss_with_storage(storage)
+                    .map_err(storage_error)?,
+                storage,
+            )
+            .map_err(storage_error)?;
+    }
+    extra_streams.retain(|(path, _)| path != crate::model::text_paint::HWP_STREAM);
+    if let Some(bytes) = crate::model::text_paint::encode_with_storage(doc, storage)
+        .map_err(SerializeError::UnsupportedInput)?
+    {
+        storage
+            .push(
+                &mut extra_streams,
+                (
+                    storage
+                        .string(crate::model::text_paint::HWP_STREAM)
+                        .map_err(storage_error)?,
+                    bytes,
+                ),
+            )
+            .map_err(storage_error)?;
+        content_loss
+            .record_with_storage(
+                crate::model::text_paint::native_visibility_loss_with_storage(storage)
                     .map_err(storage_error)?,
                 storage,
             )

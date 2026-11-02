@@ -65,6 +65,18 @@ pub(crate) fn try_resolve_styles_for_document<S: storage::Storage>(
             style.default_tab_width = width;
         }
     }
+    styles.source_hwp3_native = profile.hwp3_native_layout();
+    if document.provenance.format == crate::model::provenance::SourceFormat::Hwp5
+        && !document.provenance.hwpx_lineage
+    {
+        // HWP5 FACE_NAME의 속성 하위 비트는 공식 표 20에서 글꼴 유형으로
+        // 정의하지 않는다. HWPX의 명시 type과 달리 이 값만으로 실제 TTF를
+        // 확정해 같은 family의 HFT 공급 순서를 덮어쓰지 않는다. HWPX에서
+        // rhwp가 변환한 문서는 명시적 type을 이 비트에 저장하므로 보존한다.
+        for style in &mut styles.char_styles {
+            style.font_families_source_ttf.fill(false);
+        }
+    }
     if missing_fonts::missing_char_table(document) {
         styles.page_number_char_style_id = Some(0);
         styles.page_number_font_is_hft = false;
@@ -149,6 +161,7 @@ pub(crate) fn resolve_styles_with_environment(
     profile: crate::model::provenance::LayoutCompatibilityProfile,
 ) -> ResolvedStyleSet {
     let mut styles = resolve_styles_for_document(document, dpi);
+    styles.script_metrics = super::script_metrics::ScriptMetricsContract::for_profile(profile);
     // 독립 동일 입력의 2020은 HCRDotum을 강제하고, 2024는 원 face/대체 face의
     // 자모 전진을 유지한다. 세대는 기존 명시적 출력 profile에서만 받는다.
     styles.isolated_jamo_font = (!profile.hangul2024_layout()
@@ -208,15 +221,14 @@ pub(crate) fn resolve_styles_with_environment(
                     // 자동 표시용 선택은 저장된 원본 HFT 메트릭의 변경이 아니다.
                     let keep_source_metrics = !primary_true_type_program
                         && environment.is_some_and(|env| env.preserves_source_metrics())
-                        && original.alt_type == Some(2)
+                        && (original.alt_type == Some(2)
+                            || style.font_families_source_hft[lang])
                         && original.embedded != Some(true)
                         && original.requested_face.as_deref().is_some_and(|face| {
                             crate::renderer::font_metrics_data::legacy_hft_metric_face(face).is_some()
                                 || has_own_metric_table(&face, style.bold, style.italic)
                                 || crate::renderer::font_metrics_data::has_declared_original_glyph_metrics(face)
                         });
-                    // 원 프로그램 선택이 이미 지정한 메트릭 face는 같은 표시
-                    // family의 다른 슬롯이 공급한 TTF 인증으로 다시 추측하지 않는다.
                     if keep_source_metrics
                         && source_font.is_none_or(|face| face.native_program.is_none())
                     {
@@ -371,7 +383,9 @@ fn try_resolve_styles_with_variant<S: storage::Storage>(
         page_number::resolve(doc_info, false);
 
     let mut styles = ResolvedStyleSet {
+        source_hwp3_native: false,
         source_program_projection_slots: Default::default(),
+        script_metrics: Default::default(),
         native_pua_fonts: Default::default(),
         char_overlap_size_bounds: None,
         source_char_shapes: {
@@ -416,7 +430,7 @@ fn refresh_source_program_projection_slots_with_storage<S: storage::Storage>(
     styles: &mut ResolvedStyleSet,
     storage: &S,
 ) -> Result<(), S::Error> {
-    styles.source_program_projection_slots.clear();
+    styles.source_program_projection_slots = Default::default();
     let dpi = styles.resolved_dpi.unwrap_or(96.0);
     let mut fallback_char_styles = None;
     let mut build_fallback = || -> Result<Vec<ResolvedCharStyle>, S::Error> {
@@ -466,15 +480,10 @@ fn refresh_source_program_projection_slots_with_storage<S: storage::Storage>(
             {
                 continue;
             }
-            let own_metric = style.font_metric_trusted_for_lang(language)
-                || super::font_metrics_data::layout_metric_face_name(
-                    primary,
-                    style.bold,
-                    style.italic,
-                )
-                .as_deref()
-                    == Some(primary);
-            if own_metric {
+            // 원본 프로그램의 전진폭이 검증된 경우에만 저장 줄을 다시 구성한다.
+            if style.font_metric_trusted_for_lang(language)
+                || super::layout::verified_source_projection_face(primary, style.bold, style.italic)
+            {
                 if fallback_char_styles.is_none() {
                     fallback_char_styles = Some(build_fallback()?);
                 }
@@ -484,7 +493,7 @@ fn refresh_source_program_projection_slots_with_storage<S: storage::Storage>(
                 {
                     let copied = crate::storage::try_clone(fallback, storage)?;
                     storage.insert_map(
-                        &mut styles.source_program_projection_slots,
+                        std::sync::Arc::make_mut(&mut styles.source_program_projection_slots),
                         (shape_id as u32, language),
                         copied,
                     )?;
@@ -656,6 +665,8 @@ pub(crate) fn try_resolve_single_char_style<A: storage::Storage>(
     let mut font_families_glyph_fallback_advance_explicit = storage.vec(LANG_COUNT)?;
     let mut font_families_hft_hangul = storage.vec(LANG_COUNT)?;
     let mut font_families_source_hft = storage.vec(LANG_COUNT)?;
+    let mut font_families_source_ttf = storage.vec(LANG_COUNT)?;
+    let mut font_families_verified_hft_bold_tracking = storage.vec(LANG_COUNT)?;
     let mut font_families_hft_print_frame = storage.vec(LANG_COUNT)?;
     let mut font_families_hft_fullwidth_dot = storage.vec(LANG_COUNT)?;
     let mut font_families_metric_face: Vec<Option<String>> = storage.vec(LANG_COUNT)?;
@@ -674,6 +685,10 @@ pub(crate) fn try_resolve_single_char_style<A: storage::Storage>(
             .get(lang)
             .and_then(|faces| faces.get(font_id as usize));
         font_families_source_hft.push(source_font.is_some_and(|face| face.alt_type == 2));
+        font_families_source_ttf.push(source_font.is_some_and(|face| face.alt_type == 1));
+        font_families_verified_hft_bold_tracking.push(source_font.is_some_and(
+            crate::renderer::legacy_font_advances::has_verified_hft_bold_tracking_source,
+        ));
         let decision = try_lookup_font_name_decision(doc_info, lang, font_id, storage)?;
         let substituted = decision.substitution_boundary.is_some()
             && decision.normalized_face != decision.requested_face;
@@ -853,6 +868,8 @@ pub(crate) fn try_resolve_single_char_style<A: storage::Storage>(
         font_families_glyph_fallback_advance_explicit,
         font_families_hft_hangul,
         font_families_source_hft,
+        font_families_source_ttf,
+        font_families_verified_hft_bold_tracking,
         font_families_hft_print_frame,
         font_families_preserve_glyph_ink: vec![false; LANG_COUNT],
         font_families_hft_fullwidth_dot,
@@ -876,6 +893,7 @@ pub(crate) fn try_resolve_single_char_style<A: storage::Storage>(
         ratio,
         ratios,
         border_fill_id: cs.border_fill_id,
+        text_paint: cs.text_paint.map(|paint| paint.at_dpi(dpi)),
         outline_type: cs.outline_type,
         shadow_type: cs.shadow_type,
         shadow_color: cs.shadow_color,
@@ -897,10 +915,52 @@ pub(crate) fn try_resolve_single_char_style<A: storage::Storage>(
 ///
 /// 글꼴 슬롯만 영문일 뿐 영문 낱말을 이루는 글자는 아니다 — 줄 나눔은 이 글자를
 /// 종전처럼 구두점으로 다룬다(`composer::line_breaking`).
+///
+/// [#8136] Latin-1 구두점·기호(U+00A1–00BF)와 아래 따옴표 ‚ ‛ „ ‟ 도 같다. 슬롯마다 다른
+/// 설치 글꼴을 준 합성 입력(`samples/lang_slot/gen_lang_slot_probe.py`, 한/글 2024 Print)에서
+/// `가X가` 의 X 가 영문 슬롯 Arial 로 그려지고, 영문 슬롯만 Courier New 로 바꾸면 따라 바뀐다.
+/// NBSP(U+00A0)와 소프트 하이픈(U+00AD)은 공백·줄 나눔 문자라 언어 중립으로 남긴다.
 pub(crate) fn is_latin_slot_symbol(ch: char) -> bool {
+    matches!(ch, '\u{00A1}'..='\u{00AC}' | '\u{00AE}'..='\u{00BF}')
+        || matches!(
+            ch,
+            '\u{2018}'
+                | '\u{2019}'
+                | '\u{201A}'
+                | '\u{201B}'
+                | '\u{201C}'
+                | '\u{201D}'
+                | '\u{201E}'
+                | '\u{201F}'
+        )
+}
+
+/// [#8136] 한/글이 앞 글자 언어와 무관하게 **기호 슬롯** 글꼴로 재고 그리는 글자 중, 블록 단위
+/// 분류(`detect_lang_category` 의 기호 범위) 밖에 있는 것.
+///
+/// 합성 입력(`samples/lang_slot/gen_lang_slot_probe.py`, 한/글 2024 Print)에서 기호 슬롯에만 둔
+/// 궁서로 그려지거나, 기호 슬롯만 함초롬바탕으로 바꾸면 따라 바뀐 글자다. 어느 슬롯 글꼴에도
+/// 글리프가 없어 한/글이 시스템 대체 글꼴로 그린 글자(‐ ‖ ⁰ ₀ 등)는 슬롯을 가를 수 없어 넣지 않았다.
+fn is_symbol_slot_char(cp: u32) -> bool {
     matches!(
-        ch,
-        '\u{00B0}' | '\u{00B7}' | '\u{2018}' | '\u{2019}' | '\u{201C}' | '\u{201D}'
+        cp,
+        // 그리스·키릴
+        0x0391..=0x03A1 | 0x03A3..=0x03A9 | 0x03B1..=0x03C9 | 0x0401 | 0x0410..=0x044F | 0x0451 |
+        // General Punctuation: – — ‗ † ‡ • ‥ … ‰ ′ ″ ‹ › ※ ‼ ‽ ‾ ⁄ ⁇ ⁎ ⁏ ⁓–⁞
+        0x2013..=0x2014 | 0x2017 | 0x2020..=0x2022 | 0x2025..=0x2026 | 0x2030 | 0x2032..=0x2033 |
+        0x2039..=0x203C | 0x203E | 0x2044 | 0x2047 | 0x204E..=0x204F | 0x2053..=0x205E |
+        // 위·아래 첨자 ⁴ ⁿ ₁–₄ ₐ–ₔ
+        0x2074 | 0x207F | 0x2081..=0x2084 | 0x2090..=0x2094 |
+        // 통화 ₣ ₤ ₧ ₩ €
+        0x20A3..=0x20A4 | 0x20A7 | 0x20A9 | 0x20AC |
+        // Letterlike ℃ ℅ ℉ ℓ № ℡ ™ Ω Å ℮ ℻–ⅎ
+        0x2103 | 0x2105 | 0x2109 | 0x2113 | 0x2116 | 0x2121..=0x2122 | 0x2126 | 0x212B | 0x212E |
+        0x213B..=0x214E |
+        // Number Forms ⅓ ⅔ ⅛–⅞
+        0x2153..=0x2154 | 0x215B..=0x215E |
+        // 괄호·원 한글 ㈀–㈜ ㉠–㉻ ㉿, 단위 ㎀–㎄ ㎈–㏊ ㏏ ㏐ ㏓ ㏖ ㏘ ㏛–㏝
+        0x3200..=0x321C | 0x3260..=0x327B | 0x327F | 0x3380..=0x3384 | 0x3388..=0x33CA |
+        0x33CF..=0x33D0 | 0x33D3 | 0x33D6 | 0x33D8 | 0x33DB..=0x33DD
     )
 }
 
@@ -924,8 +984,8 @@ pub fn detect_lang_category(ch: char) -> usize {
         // 다른 출현만 골라 정본 글자의 PDF face 와 대조하면, 영문 슬롯만 일치하는 문서가
         // ‘ 46 · ’ 39 · “ 29 · ” 27 개이고 한글 슬롯만 일치하는 문서는 0 개다(기호 슬롯만
         // 일치 1 개). 같은 General Punctuation 블록이라도 `․`(U+2024)는 기호 슬롯 쪽으로
-        // 갈리고 `…`·`–`·`—`·`※`·`•` 는 판별 가능한 표본이 없어, 블록 전체가 아니라
-        // 근거가 있는 네 글자만 옮긴다.
+        // 갈린다. 블록 전체가 아니라 근거가 있는 글자만 옮긴다 — `…`·`–`·`—`·`※`·`•` 등은
+        // 합성 입력으로 기호 슬롯을 확인했다(#8136, `is_symbol_slot_char`).
         0x2018 | 0x2019 | 0x201C | 0x201D => 1,
 
         // 독립 Print의 U+2024/U+2027은 앞 글자의 언어와 무관하게 기호
@@ -992,6 +1052,8 @@ pub fn detect_lang_category(ch: char) -> usize {
         // 간다. 한글 슬롯으로 재면 한글 글꼴에 없는 글자라 반각 대체 폭을 받는다. 기호 슬롯
         // 글꼴의 폭은 확인한 hmtx 표(`font_metric_math_symbol_blocks.rs`)가 보충한다.
         0x27C0..=0x27FF | 0x2900..=0x2BFF => 5,
+
+        _ if is_symbol_slot_char(cp) => 5,
 
         // 공백/ASCII 구두점/제어문자 → 한국어(기본값)로 반환
         // 호출부에서 "이전 문자의 언어를 따르는" 로직으로 처리
@@ -1397,6 +1459,7 @@ pub(crate) fn is_heavy_display_face(font_family: &str) -> bool {
             | "HY견명조B"
             | "HY그래픽"
             | "HY그래픽M"
+            | "휴먼엑스포"
     )
 }
 

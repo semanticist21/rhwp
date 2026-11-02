@@ -62,6 +62,7 @@ impl TypesetState {
                 page_anchored_bands: Vec::new(),
                 page_band_flow_starts: std::collections::HashMap::new(),
                 side_wrap_exclusions: std::collections::BTreeMap::new(),
+                unwitnessed_side_wraps: std::collections::BTreeSet::new(),
                 inline_placements: std::collections::HashMap::new(),
                 inline_flow_plans: std::collections::HashMap::new(),
                 paragraph_origins: Default::default(),
@@ -99,6 +100,7 @@ impl TypesetState {
                 has_stored_line_segs: false,
                 hide_empty_line: false,
                 hidden_empty_lines: 0,
+                hidden_line_reflow_active: false,
                 hidden_empty_page_idx: usize::MAX,
                 hidden_empty_paras: std::collections::HashSet::new(),
                 page_tail_spilled_floats: std::collections::HashSet::new(),
@@ -322,6 +324,10 @@ impl TypesetState {
     }
 
     /// 실제로 현재 단에 방출한 그림만 등록한다. 미래/다른 쪽의 그림은 예약하지 않는다.
+    ///
+    /// [#8282] 어울림 도형은 저장 줄이 없는 host 의 것만 등록한다. 저장 host 의 뒤 문단
+    /// 위치는 저장 vpos 가 증언하므로(`register_page_anchored_square_table` 과 같은 계약)
+    /// 저장 경로는 바꾸지 않는다.
     pub(in crate::renderer::typeset) fn register_side_wrap_picture(
         &mut self,
         para_index: usize,
@@ -330,12 +336,14 @@ impl TypesetState {
         paragraph_top: Option<f64>,
         styles: &ResolvedStyleSet,
     ) {
-        let Some(Control::Picture(picture)) = para.controls.get(control_index) else {
-            return;
+        let common = match para.controls.get(control_index) {
+            Some(Control::Picture(picture)) => &picture.common,
+            Some(Control::Shape(shape)) if crate::renderer::para_has_no_stored_line_segs(para) => {
+                shape.common()
+            }
+            _ => return,
         };
-        if picture.common.vert_rel_to == crate::model::shape::VertRelTo::Para
-            && paragraph_top.is_none()
-        {
+        if common.vert_rel_to == crate::model::shape::VertRelTo::Para && paragraph_top.is_none() {
             // 배치 소유자가 아직 문단 원점을 전달하지 않은 경로는 원시 vpos로 추정하지 않는다.
             return;
         }
@@ -369,7 +377,19 @@ impl TypesetState {
             alignment: style.map_or(crate::model::style::Alignment::Left, |s| s.alignment),
             dpi: self.data.layout.dpi,
         };
-        if let Some(exclusion) = frame.picture_exclusion(picture, para, control_index, styles) {
+        let exclusion = match &para.controls[control_index] {
+            Control::Picture(picture) => {
+                frame.picture_exclusion(picture, para, control_index, styles)
+            }
+            Control::Shape(shape) => frame.shape_exclusion(shape),
+            _ => None,
+        };
+        if let Some(exclusion) = exclusion {
+            if crate::renderer::para_has_no_stored_line_segs(para) {
+                self.data
+                    .unwitnessed_side_wraps
+                    .insert((para_index, control_index));
+            }
             self.data
                 .side_wrap_exclusions
                 .insert((para_index, control_index), exclusion);
@@ -444,9 +464,49 @@ impl TypesetState {
         para: &Paragraph,
         table: &crate::model::table::Table,
     ) {
-        if !crate::renderer::para_has_no_stored_line_segs(para) {
-            return;
+        match self.register_page_anchored_square_table_with_storage(
+            para_index,
+            control_index,
+            para,
+            table,
+            &crate::storage::Unbounded,
+        ) {
+            Ok(()) => {}
+            Err(never) => match never {},
         }
+    }
+
+    pub(in crate::renderer::typeset) fn register_page_anchored_square_table_with_storage<
+        S: crate::storage::Storage,
+    >(
+        &mut self,
+        para_index: usize,
+        control_index: usize,
+        para: &Paragraph,
+        table: &crate::model::table::Table,
+        storage: &S,
+    ) -> Result<(), S::Error> {
+        if !crate::renderer::para_has_no_stored_line_segs(para) {
+            return Ok(());
+        }
+        if let Some(exclusion) = self.page_anchored_square_table_exclusion(table) {
+            self.data
+                .unwitnessed_side_wraps
+                .insert((para_index, control_index));
+            storage.insert_tree_map(
+                &mut self.data.side_wrap_exclusions,
+                (para_index, control_index),
+                exclusion,
+            )?;
+        }
+        Ok(())
+    }
+
+    /// 쪽·종이 기준 어울림 표의 상자. 위치가 host 흐름과 무관하므로 단 원점만 쓴다.
+    fn page_anchored_square_table_exclusion(
+        &self,
+        table: &crate::model::table::Table,
+    ) -> Option<crate::renderer::layout_frame::FrameExclusion> {
         let column = self.inline_flow_column();
         let paper = crate::renderer::page_layout::LayoutRect {
             x: 0.0,
@@ -463,11 +523,7 @@ impl TypesetState {
             alignment: crate::model::style::Alignment::Left,
             dpi: self.data.layout.dpi,
         };
-        if let Some(exclusion) = frame.page_anchored_square_table_exclusion(table) {
-            self.data
-                .side_wrap_exclusions
-                .insert((para_index, control_index), exclusion);
-        }
+        frame.page_anchored_square_table_exclusion(table)
     }
 
     /// 본문 항목 외에 이 쪽에서 실제 방출할 개체·어울림도 단의 내용이다.
@@ -962,6 +1018,7 @@ impl TypesetState {
 
     pub(in crate::renderer::typeset) fn reset_for_new_page(&mut self) {
         self.data.side_wrap_exclusions.clear();
+        self.data.unwitnessed_side_wraps.clear();
         self.data.current_column = 0;
         self.data.current_height = 0.0;
         self.data.current_start_height = 0.0;

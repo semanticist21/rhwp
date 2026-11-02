@@ -616,6 +616,14 @@ fn parse_hwp_with_cfb(
     if let Some(idx) = doc
         .extra_streams
         .iter()
+        .position(|(p, _)| p == crate::model::text_paint::HWP_STREAM)
+    {
+        let (_, bytes) = doc.extra_streams.remove(idx);
+        crate::model::text_paint::decode(&mut doc, &bytes);
+    }
+    if let Some(idx) = doc
+        .extra_streams
+        .iter()
         .position(|(p, _)| p == crate::model::hyperlink_format::HWP_STREAM)
     {
         let (_, bytes) = doc.extra_streams.remove(idx);
@@ -1360,8 +1368,9 @@ pub(crate) fn parse_pdf_with_metadata_and_request(
     options: &pdf::PdfImportOptions,
     policy: pdf::PdfImportPolicy,
     request: std::sync::Arc<pdf_oxide::import_limits::ImportBudget>,
+    progress: &mut dyn FnMut(pdf::PdfImportProgress) -> Result<(), pdf::PdfImportError>,
 ) -> Result<ParsedDocument, ParseError> {
-    let result = pdf::parse_pdf_with_request(data, options, policy, request)
+    let result = pdf::parse_pdf_with_request_and_progress(data, options, policy, request, progress)
         .map_err(ParseError::PdfError)?;
     Ok(seal_parsed_document(ParsedDocument {
         document: result.document,
@@ -1506,7 +1515,10 @@ fn parse_document_inner_unsealed(
             })
         }
         #[cfg(feature = "pdf-import")]
-        FileFormat::Pdf => parse_pdf_unsealed(data, &pdf::PdfImportOptions::default()),
+        FileFormat::Pdf => parse_pdf_unsealed(
+            data,
+            &pdf::PdfImportOptions::with_password(password).map_err(ParseError::PdfError)?,
+        ),
         #[cfg(not(feature = "pdf-import"))]
         FileFormat::Pdf => Err(ParseError::UnsupportedFormat {
             code: "PDF_IMPORT_DISABLED",

@@ -1,12 +1,72 @@
 //! 이미 적재한 실제 문자 fallback을 원 PUA의 조판/paint 공급자로 준비한다.
 
 use super::super::font_lookup::{
-    font_style_for_text, select_typeface_for_character, text_typeface_candidates,
+    font_style_for_text, select_typeface_for_character, text_typeface_candidates_for_source,
 };
 use super::SkiaLayerRenderer;
 use crate::{document_core::DocumentCore, renderer::TextStyle, HwpError};
 
 impl SkiaLayerRenderer {
+    pub fn prepare_native_otf_fonts(&self, core: &mut DocumentCore) -> Result<bool, HwpError> {
+        core.prepare_native_otf_fonts_multiple_with(|request| {
+            let style = font_style_for_text(&TextStyle {
+                font_family: request.family.clone(),
+                // 명시적 TrueType의 굵은 글자 전진은 같은 family의 보통 면을 쓴다.
+                bold: request.bold && !request.source_ttf,
+                italic: request.italic,
+                ..Default::default()
+            });
+            let (_, candidates) = text_typeface_candidates_for_source(
+                &self.font_mgr,
+                &self.system_families,
+                &self.custom_typefaces,
+                &self.bundled_typefaces,
+                &request.family,
+                style,
+                request.source_ttf,
+            );
+            candidates
+                .into_iter()
+                .filter_map(|selected| {
+                    if selected.source == "legacy" {
+                        return None;
+                    }
+                    let (bytes, index) =
+                        if let Some((data, index)) = selected.typeface.to_existing_font_data() {
+                            (data.as_bytes().to_vec(), index)
+                        } else {
+                            selected.typeface.to_font_bytes()?
+                        };
+                    if !matches!(
+                        bytes.get(..4),
+                        Some(b"OTTO" | b"\0\x01\0\0" | b"true" | b"ttcf")
+                    ) || bytes.len() > 32 * 1024 * 1024
+                        || (request.source_ttf
+                            && u32::try_from(index).ok().is_none_or(|face| {
+                                crate::renderer::native_pua_fonts::is_cff_program(&bytes, face)
+                            }))
+                    {
+                        return None;
+                    }
+                    let names = super::super::font_lookup::supplied_family_names(
+                        &bytes,
+                        index,
+                        &selected.typeface.family_name(),
+                    );
+                    names
+                        .iter()
+                        .any(|name| {
+                            request
+                                .family
+                                .split(',')
+                                .any(|family| family.trim() == name)
+                        })
+                        .then_some((bytes, index))
+                })
+                .collect()
+        })
+    }
+
     pub fn prepare_native_pua_fonts(&self, core: &mut DocumentCore) -> Result<bool, HwpError> {
         core.prepare_native_pua_fonts_with(|request| {
             let style = font_style_for_text(&TextStyle {
@@ -15,13 +75,14 @@ impl SkiaLayerRenderer {
                 italic: request.italic,
                 ..Default::default()
             });
-            let (_, candidates) = text_typeface_candidates(
+            let (_, candidates) = text_typeface_candidates_for_source(
                 &self.font_mgr,
                 &self.system_families,
                 &self.custom_typefaces,
                 &self.bundled_typefaces,
                 &request.family,
                 style,
+                request.source_ttf,
             );
             let symbols: &[char] = if request.literal_figure_space {
                 &['\u{2007}', '0']

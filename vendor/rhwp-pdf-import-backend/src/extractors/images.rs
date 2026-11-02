@@ -6,13 +6,15 @@
 //!
 //! Phase 5
 
+use crate::cache::MutexExt;
 use crate::error::{Error, Result};
 use crate::extractors::ccitt_bilevel;
 use crate::geometry::Rect;
-use crate::object::ObjectRef;
+use crate::object::{Object, ObjectRef};
 use std::borrow::Cow;
 use std::cmp::min;
 use std::path::Path;
+use std::sync::{Arc, OnceLock};
 
 #[path = "image_mask_limited.rs"]
 mod image_mask_limited;
@@ -38,8 +40,13 @@ pub struct PdfImage {
     /// Bits per color component (typically 8)
     bits_per_component: u8,
     /// Image data (JPEG or raw pixels)
-    #[serde(skip_serializing_if = "ImageData::is_empty")]
-    data: ImageData,
+    #[serde(
+        skip_serializing_if = "ImageData::is_empty",
+        serialize_with = "serialize_image_data"
+    )]
+    data: Arc<ImageData>,
+    #[serde(skip)]
+    png_cache: PngCache,
     /// Optional bounding box in PDF user space (v0.3.14)
     bbox: Option<Rect>,
     /// Rotation in degrees (v0.3.14)
@@ -87,6 +94,21 @@ pub struct PdfImage {
     interpolate: Option<bool>,
 }
 
+// Encoded bytes are an optimization, not part of image value equality.
+#[derive(Debug, Clone, Default)]
+struct PngCache(Option<Arc<OnceLock<Vec<u8>>>>);
+impl PartialEq for PngCache {
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+fn serialize_image_data<S: serde::Serializer>(
+    data: &Arc<ImageData>,
+    serializer: S,
+) -> std::result::Result<S::Ok, S::Error> {
+    serde::Serialize::serialize(data.as_ref(), serializer)
+}
+
 impl PdfImage {
     /// Create a new PDF image.
     pub fn new(
@@ -101,7 +123,8 @@ impl PdfImage {
             height,
             color_space,
             bits_per_component,
-            data,
+            data: Arc::new(data),
+            png_cache: PngCache::default(),
             bbox: None,
             rotation_degrees: 0,
             matrix: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
@@ -118,12 +141,13 @@ impl PdfImage {
         &mut self,
         budget: &crate::import_limits::ImportBudget,
     ) -> Result<()> {
+        self.png_cache = PngCache::default();
         let Some(transform) = self.build_icc_transform().filter(|t| t.has_cmm()) else {
             budget.check()?;
             return Ok(());
         };
         budget.check()?;
-        let (pixels, format) = match &self.data {
+        let (pixels, format) = match self.data.as_ref() {
             ImageData::Raw {
                 pixels,
                 format: PixelFormat::RGBA,
@@ -162,7 +186,7 @@ impl PdfImage {
             _ => return Err(Error::Unsupported("ICC source sample depth".into())),
         };
         budget.check()?;
-        self.data = ImageData::Raw { pixels, format };
+        self.data = Arc::new(ImageData::Raw { pixels, format });
         self.color_space = ColorSpace::DeviceRGB;
         self.icc_profile = None;
         self.samples_are_raw = false;
@@ -174,12 +198,19 @@ impl PdfImage {
         opacity: f32,
         budget: &crate::import_limits::ImportBudget,
     ) -> Result<()> {
-        if let ImageData::Raw {
-            pixels,
-            format: PixelFormat::RGBA,
-        } = &mut self.data
-        {
-            for row in pixels.chunks_mut(self.width as usize * 4) {
+        self.png_cache = PngCache::default();
+        if matches!(
+            self.data.as_ref(),
+            ImageData::Raw {
+                format: PixelFormat::RGBA,
+                ..
+            }
+        ) {
+            let row_bytes = self.width as usize * 4;
+            let ImageData::Raw { pixels, .. } = self.samples_mut(budget)? else {
+                unreachable!()
+            };
+            for row in pixels.chunks_mut(row_bytes) {
                 budget.check()?;
                 for p in row.chunks_exact_mut(4) {
                     p[3] = (f32::from(p[3]) * opacity).round() as u8;
@@ -187,7 +218,7 @@ impl PdfImage {
             }
             return Ok(());
         }
-        let rgb: Cow<'_, [u8]> = match &self.data {
+        let rgb: Cow<'_, [u8]> = match self.data.as_ref() {
             ImageData::Raw {
                 pixels,
                 format: PixelFormat::RGB,
@@ -220,10 +251,10 @@ impl PdfImage {
                 pixels.extend_from_slice(&[c[0], c[1], c[2], (opacity * 255.0).round() as u8]);
             }
         }
-        self.data = ImageData::Raw {
+        self.data = Arc::new(ImageData::Raw {
             pixels,
             format: PixelFormat::RGBA,
-        };
+        });
         self.bits_per_component = 8;
         self.color_space = ColorSpace::DeviceRGB;
         Ok(())
@@ -268,11 +299,17 @@ impl PdfImage {
             || height < 1.0
             || width > 16_384.0
             || height > 16_384.0
-            || width * height > 16_000_000.0
+            || width * height > 64_000_000.0
         {
             return Err(budget.reject("clipped image raster dimensions"));
         }
         let (width, height) = (width as usize, height as usize);
+        let mask = match clip {
+            super::image_clip::ImageClip::Complex(c) => {
+                Some(c.raster(frame, width, height, budget)?)
+            },
+            _ => None,
+        };
         let mut output = sample_buffer(width * height * 4, Some(budget))?;
         // Use the existing bounded codec/colour conversion; existing alpha is
         // retained. Both this conversion and the destination are charged.
@@ -280,7 +317,7 @@ impl PdfImage {
         let ImageData::Raw {
             pixels,
             format: PixelFormat::RGBA,
-        } = &self.data
+        } = self.data.as_ref()
         else {
             return Err(Error::Image("clipped image requires RGBA samples".into()));
         };
@@ -338,14 +375,19 @@ impl PdfImage {
                     }
                     output.extend_from_slice(&rgba);
                 }
+                if let Some(mask) = &mask {
+                    let alpha = output.last_mut().expect("RGBA pixel was emitted");
+                    *alpha = ((u16::from(*alpha) * u16::from(mask.data()[y * width + x]) + 127)
+                        / 255) as u8;
+                }
             }
         }
         self.width = width as u32;
         self.height = height as u32;
-        self.data = ImageData::Raw {
+        self.data = Arc::new(ImageData::Raw {
             pixels: output,
             format: PixelFormat::RGBA,
-        };
+        });
         self.color_space = ColorSpace::DeviceRGB;
         self.bits_per_component = 8;
         self.set_bbox(frame);
@@ -389,7 +431,8 @@ impl PdfImage {
             height,
             color_space,
             bits_per_component,
-            data,
+            data: Arc::new(data),
+            png_cache: PngCache::default(),
             bbox: Some(bbox),
             rotation_degrees: rotation,
             matrix,
@@ -437,7 +480,8 @@ impl PdfImage {
             height,
             color_space,
             bits_per_component,
-            data,
+            data: Arc::new(data),
+            png_cache: PngCache::default(),
             bbox: None,
             rotation_degrees: 0,
             matrix: [1.0, 0.0, 0.0, 1.0, 0.0, 0.0],
@@ -472,7 +516,7 @@ impl PdfImage {
 
     /// Get the image data.
     pub fn data(&self) -> &ImageData {
-        &self.data
+        self.data.as_ref()
     }
 
     /// Get the bounding box if available.
@@ -507,6 +551,7 @@ impl PdfImage {
 
     /// Set CCITT decompression parameters for this image.
     pub fn set_ccitt_params(&mut self, params: crate::decoders::CcittParams) {
+        self.png_cache = PngCache::default();
         self.ccitt_params = Some(params);
     }
 
@@ -523,6 +568,7 @@ impl PdfImage {
     /// Attach an ICC profile (used by extractors; colour conversion
     /// picks it up automatically when present).
     pub fn set_icc_profile(&mut self, profile: std::sync::Arc<crate::color::IccProfile>) {
+        self.png_cache = PngCache::default();
         self.icc_profile = Some(profile);
     }
 
@@ -535,6 +581,7 @@ impl PdfImage {
     /// Set the rendering intent (used by extractors when they see an
     /// explicit `/Intent` entry on the image dictionary).
     pub fn set_rendering_intent(&mut self, intent: crate::color::RenderingIntent) {
+        self.png_cache = PngCache::default();
         self.rendering_intent = intent;
     }
 
@@ -555,7 +602,7 @@ impl PdfImage {
 
     /// Save the image as PNG format.
     pub fn save_as_png(&self, path: impl AsRef<Path>) -> Result<()> {
-        match &self.data {
+        match self.data.as_ref() {
             ImageData::Jpeg(jpeg_data) => {
                 if self.color_space.components() == 4 {
                     let transform = self.build_icc_transform();
@@ -595,7 +642,7 @@ impl PdfImage {
 
     /// Save the image as JPEG format.
     pub fn save_as_jpeg(&self, path: impl AsRef<Path>) -> Result<()> {
-        match &self.data {
+        match self.data.as_ref() {
             // Pass-through for RGB / grayscale JPEGs — viewers handle those
             // uniformly. CMYK JPEGs (4-channel ColorSpace such as DeviceCMYK
             // or ICCBased N=4) must be decoded and re-encoded as RGB because
@@ -658,11 +705,16 @@ impl PdfImage {
         if ![1, 2, 4, 8].contains(&self.bits_per_component) {
             return Err(Error::Unsupported("limited import image sample depth".into()));
         }
+        if let Some(bytes) = self.png_cache.0.as_ref().and_then(|cache| cache.get()) {
+            return budget.copy_bytes(bytes);
+        }
         // Legacy raw conversion still needs its conservative work allowance.
         // JPEG reservations now flow through the audited RGB/CMYK decoder hooks,
         // into_rgb_with_budget and the bounded PNG compressor/output writer.
         // Charging an additional imaginary 3*RGBA buffer counted that work twice.
-        if self.borrowed_png_samples().is_none() && !matches!(self.data, ImageData::Jpeg(_)) {
+        if self.borrowed_png_samples().is_none()
+            && !matches!(self.data.as_ref(), ImageData::Jpeg(_))
+        {
             budget.charge_decoded(
                 raw_size
                     .checked_mul(3)
@@ -673,14 +725,37 @@ impl PdfImage {
         let result = self.encode_png(&mut buffer, Some(budget));
         budget.check()?;
         result?;
-        Ok(buffer.finish())
+        let bytes = buffer.finish();
+        if let Some(cache) = &self.png_cache.0 {
+            let _ = cache.set(bytes);
+            return budget.copy_bytes(cache.get().expect("encoded PNG"));
+        }
+        Ok(bytes)
+    }
+
+    fn samples_mut(
+        &mut self,
+        budget: &crate::import_limits::ImportBudget,
+    ) -> Result<&mut ImageData> {
+        self.png_cache = PngCache::default();
+        if Arc::get_mut(&mut self.data).is_none() {
+            let copy = match self.data.as_ref() {
+                ImageData::Jpeg(bytes) => ImageData::Jpeg(budget.copy_bytes(bytes)?),
+                ImageData::Raw { pixels, format } => ImageData::Raw {
+                    pixels: budget.copy_bytes(pixels)?,
+                    format: *format,
+                },
+            };
+            self.data = Arc::new(copy);
+        }
+        Ok(Arc::get_mut(&mut self.data).expect("unique pixel copy"))
     }
 
     // This result is consumed by both budget accounting and encoding. Already
     // decoded samples need no image-sized decode/conversion scratch: PNG feeds
     // borrowed rows into the audited compressor and bounded output writer.
     fn borrowed_png_samples(&self) -> Option<(&[u8], usize)> {
-        let ImageData::Raw { pixels, format } = &self.data else {
+        let ImageData::Raw { pixels, format } = self.data.as_ref() else {
             return None;
         };
         if self.bits_per_component != 8 || self.ccitt_params.is_some() || self.icc_profile.is_some()
@@ -803,7 +878,7 @@ impl PdfImage {
             };
             return write_converted(pixels, color.channel_count() as usize);
         }
-        match &self.data {
+        match self.data.as_ref() {
             ImageData::Raw { pixels, format } => {
                 let expected_gray = (self.width as usize)
                     .checked_mul(self.height as usize)
@@ -972,7 +1047,9 @@ impl PdfImage {
         &self,
         budget: &crate::import_limits::ImportBudget,
     ) -> Result<image::DynamicImage> {
-        let (ImageData::Raw { pixels, .. }, Some(params)) = (&self.data, &self.ccitt_params) else {
+        let (ImageData::Raw { pixels, .. }, Some(params)) =
+            (self.data.as_ref(), &self.ccitt_params)
+        else {
             unreachable!()
         };
         let mut params = params.clone();
@@ -1014,7 +1091,7 @@ impl PdfImage {
         &self,
         budget: &crate::import_limits::ImportBudget,
     ) -> Result<image::DynamicImage> {
-        let ImageData::Jpeg(bytes) = &self.data else {
+        let ImageData::Jpeg(bytes) = self.data.as_ref() else {
             unreachable!()
         };
         if self.color_space.components() != 4 {
@@ -1078,7 +1155,7 @@ impl PdfImage {
     pub fn to_base64_data_uri(&self) -> Result<String> {
         use base64::{engine::general_purpose::STANDARD, Engine};
 
-        match &self.data {
+        match self.data.as_ref() {
             ImageData::Jpeg(jpeg_data) => {
                 let base64_str = STANDARD.encode(jpeg_data);
                 Ok(format!("data:image/jpeg;base64,{}", base64_str))
@@ -1093,7 +1170,7 @@ impl PdfImage {
 
     /// Convert this PDF image to a `DynamicImage`.
     pub fn to_dynamic_image(&self) -> Result<image::DynamicImage> {
-        match &self.data {
+        match self.data.as_ref() {
             ImageData::Jpeg(jpeg_data) => {
                 if self.color_space.components() == 4 {
                     // 4-component (DeviceCMYK / ICCBased N=4) JPEGs must go
@@ -2234,7 +2311,7 @@ pub fn extract_image_from_xobject_at(
     }
     if is_jpx
         && matches!(
-            &image.data,
+            image.data.as_ref(),
             ImageData::Raw {
                 format: PixelFormat::RGBA,
                 ..
@@ -4743,8 +4820,14 @@ pub struct PdfImageHandle<'doc> {
     /// For an Indexed image (`[/Indexed base hival lookup]`, §8.6.6.3), the
     /// resolved de-indexed *base* colour space; `None` for non-Indexed images.
     indexed_base: Option<ColorSpace>,
+    /// ImageMask can omit BitsPerComponent; it still consumes current paint colour.
+    uses_current_colour: bool,
     /// Current nonstroking solid colour at this invocation; None is unsupported.
     pub(crate) stencil_colour: Option<(f32, f32, f32)>,
+    /// Same pattern-cell paint invocation across tiles: decode/mask once, then
+    /// apply each placement's opacity, clip and CTM, copying pixels only on mutation.
+    pub(crate) pattern_pixels:
+        Option<std::sync::Arc<std::sync::OnceLock<(PdfImage, Option<bool>)>>>,
 }
 
 impl<'doc> PdfImageHandle<'doc> {
@@ -4757,6 +4840,97 @@ impl<'doc> PdfImageHandle<'doc> {
     /// decode flow ([`raw_compressed_bytes`](Self::raw_compressed_bytes) then
     /// `decode`) without re-enumerating the page.
     pub fn decode(&self) -> Result<PdfImage> {
+        self.doc.check_import_budget()?;
+        let (mut image, interpolation) = if let Some(cache) = &self.pattern_pixels {
+            if cache.get().is_none() {
+                let decoded = self.decode_base()?;
+                let _ = cache.set(decoded);
+            }
+            let (image, interpolation) = cache.get().expect("initialized pattern pixels");
+            if let Some(budget) = self.doc.import_budget() {
+                budget.charge_cache_copy(std::mem::size_of::<PdfImage>())?;
+            }
+            (image.clone(), *interpolation)
+        } else if let Some(key) = self.shared_base_key() {
+            let hit = self
+                .doc
+                .import_image_cache
+                .lock_or_recover()
+                .get(&key)
+                .cloned();
+            if let Some(decoded) = hit {
+                self.doc
+                    .import_budget()
+                    .expect("bounded shared image")
+                    .charge_cache_copy(std::mem::size_of::<PdfImage>())?;
+                decoded
+            } else {
+                let (mut image, interpolation) = self.decode_base()?;
+                image.png_cache = PngCache(Some(Arc::new(OnceLock::new())));
+                self.doc
+                    .import_image_cache
+                    .lock_or_recover()
+                    .insert(key, (image.clone(), interpolation));
+                self.doc.check_import_budget()?;
+                (image, interpolation)
+            }
+        } else {
+            self.decode_base()?
+        };
+        if self.opacity < 1.0 {
+            if let Some(budget) = self.doc.import_budget() {
+                image.apply_opacity(self.opacity, budget)?;
+            }
+        }
+        self.doc.check_import_budget()?;
+
+        // Use pre-computed bbox and rotation from Phase 1 — no need to call
+        // back into document.rs helpers here.
+        let needs_affine = matches!(
+            self.clip,
+            super::image_clip::ImageClip::Polygon(_) | super::image_clip::ImageClip::Complex(_)
+        ) || self.ctm.b != 0.0
+            || self.ctm.c != 0.0
+            || self.ctm.a <= 0.0
+            || self.ctm.d <= 0.0;
+        if let (true, Some(budget)) = (needs_affine, self.doc.import_budget()) {
+            let frame = self
+                .clip
+                .visible_bounds(self.bbox)?
+                .ok_or_else(|| Error::Image("empty image clip".into()))?;
+            let interpolate = image.interpolate.or(interpolation).unwrap_or(false);
+            image.apply_affine_clip(self.ctm, &self.clip, frame, interpolate, budget)?;
+            self.doc.check_import_budget()?;
+            return Ok(image);
+        }
+        image.set_bbox(self.bbox);
+        image.set_matrix([
+            self.ctm.a, self.ctm.b, self.ctm.c, self.ctm.d, self.ctm.e, self.ctm.f,
+        ]);
+        image.set_rotation_degrees(self.rotation_degrees as i32);
+
+        Ok(image)
+    }
+
+    // Only immutable, self-contained XObjects: a named colour space and a
+    // stencil's current paint colour depend on the invocation's resources.
+    // Decode/mask/ICC belong to the source; opacity, CTM and clip are applied
+    // after this request-local cache on every placement.
+    fn shared_base_key(&self) -> Option<ObjectRef> {
+        if self.doc.import_budget().is_none()
+            || self.uses_current_colour
+            || !self.color_space_resources.is_empty()
+            || self.indexed_base.is_some()
+        {
+            return None;
+        }
+        match self.source {
+            PdfImageSource::XObject(key) => Some(key),
+            _ => None,
+        }
+    }
+
+    fn decode_base(&self) -> Result<(PdfImage, Option<bool>)> {
         use crate::extractors::extract_image_from_xobject;
 
         self.doc.check_import_budget()?;
@@ -4860,7 +5034,7 @@ impl<'doc> PdfImageHandle<'doc> {
                 let ImageData::Raw {
                     pixels,
                     format: PixelFormat::RGBA,
-                } = &image.data
+                } = image.data.as_ref()
                 else {
                     unreachable!("composed mask is RGBA")
                 };
@@ -4890,34 +5064,7 @@ impl<'doc> PdfImageHandle<'doc> {
                 }
             }
         }
-        if self.opacity < 1.0 {
-            if let Some(budget) = self.doc.import_budget() {
-                image.apply_opacity(self.opacity, budget)?;
-            }
-        }
-        self.doc.check_import_budget()?;
-
-        // Use pre-computed bbox and rotation from Phase 1 — no need to call
-        // back into document.rs helpers here.
-        if let (super::image_clip::ImageClip::Polygon(_), Some(budget)) =
-            (&self.clip, self.doc.import_budget())
-        {
-            let frame = self
-                .clip
-                .visible_bounds(self.bbox)?
-                .ok_or_else(|| Error::Image("empty image clip".into()))?;
-            let interpolate = image.interpolate.or(interpolation).unwrap_or(false);
-            image.apply_affine_clip(self.ctm, &self.clip, frame, interpolate, budget)?;
-            self.doc.check_import_budget()?;
-            return Ok(image);
-        }
-        image.set_bbox(self.bbox);
-        image.set_matrix([
-            self.ctm.a, self.ctm.b, self.ctm.c, self.ctm.d, self.ctm.e, self.ctm.f,
-        ]);
-        image.set_rotation_degrees(self.rotation_degrees as i32);
-
-        Ok(image)
+        Ok((image, interpolation))
     }
 
     /// Return the raw compressed bytes exactly as stored in the PDF stream,
@@ -5210,13 +5357,28 @@ pub(crate) fn image_handle_from_xobject<'doc>(
         ctm,
         doc,
         source: PdfImageSource::XObject(obj_ref),
-        color_space_resources: crate::object_copy::clone_dictionary(
-            color_space_resources,
-            doc.import_budget().map(AsRef::as_ref),
-        )
-        .ok()?,
+        // A colour-space array, including an indirect one, is self-contained.
+        // Match the decoder: resolve the object first, then consult page
+        // resources only if it is a name. A resolution failure is not ignored
+        // by decode; it simply cannot make this source cacheable.
+        color_space_resources: if xobject_dict.get("ColorSpace").is_some_and(|value| {
+            matches!(resolve_image_object(Some(doc), value).as_deref(), Ok(Object::Array(_)))
+        }) {
+            std::collections::HashMap::new()
+        } else {
+            crate::object_copy::clone_dictionary(
+                color_space_resources,
+                doc.import_budget().map(AsRef::as_ref),
+            )
+            .ok()?
+        },
         indexed_base,
+        uses_current_colour: !matches!(
+            xobject_dict.get("ImageMask"),
+            None | Some(Object::Boolean(false) | Object::Null)
+        ),
         stencil_colour: Some((0., 0., 0.)),
+        pattern_pixels: None,
     })
 }
 
@@ -5308,7 +5470,9 @@ pub(crate) fn image_handle_from_inline<'doc>(
         )
         .ok()?,
         indexed_base,
+        uses_current_colour: true, // Inline sources never enter the XObject cache.
         stencil_colour: Some((0., 0., 0.)),
+        pattern_pixels: None,
     })
 }
 

@@ -16,7 +16,8 @@ pub(crate) use source_addresses::text_logical_starts;
 mod table_rows;
 pub(crate) use table_rows::{
     standalone_table_fragment_owner, standalone_table_fragment_owner_with_storage,
-    supports_table_text_rows, supports_table_text_rows_with_storage,
+    supports_page_square_table_rows, supports_table_text_rows,
+    supports_table_text_rows_with_storage,
 };
 
 mod stored_host;
@@ -53,6 +54,8 @@ pub enum InlineFlowContent {
     /// Width-neutral object anchored to the physical text row.
     FloatingTable {
         control: usize,
+        /// 쪽 기준 개체는 줄 회피와 동일한 프레임에서 확정한 본체 원점을 소비한다.
+        resolved_position: Option<(f64, f64)>,
     },
     FloatingShape {
         control: usize,
@@ -149,6 +152,22 @@ impl InlineFlowPlan {
             .fold(self.start, f64::max)
     }
 
+    /// 배제 영역이 실제로 줄을 바꿨고, 주어진 영역 중 하나가 이 문단의 세로 범위와 겹치는가.
+    /// 영역은 용지 좌표(HU), 이 plan 은 단 상대 좌표(px)다.
+    pub(crate) fn carved_by_any<'a>(
+        &self,
+        exclusions: impl IntoIterator<Item = &'a FrameExclusion>,
+        column_y: f64,
+        dpi: f64,
+    ) -> bool {
+        self.carved
+            && exclusions.into_iter().any(|exclusion| {
+                let top = hwpunit_to_px(exclusion.vertical.start, dpi) - column_y;
+                let bottom = hwpunit_to_px(exclusion.vertical.end, dpi) - column_y;
+                top < self.end && self.start < bottom
+            })
+    }
+
     pub(crate) fn relative_to(&mut self, x: f64, y: f64) {
         floating_shapes::relative_to(&mut self.floating_shapes, y);
         self.start -= y;
@@ -161,6 +180,14 @@ impl InlineFlowPlan {
             p.table_left = p.table_left.map(|left| left - x);
         }
         for item in &mut self.boxes {
+            if let InlineFlowContent::FloatingTable {
+                resolved_position: Some((left, top)),
+                ..
+            } = &mut item.content
+            {
+                *left -= x;
+                *top -= y;
+            }
             item.x -= x;
             item.y -= y;
         }
@@ -282,7 +309,10 @@ pub(crate) fn plan_with_storage<S: crate::storage::Storage>(
                     storage.push(
                         &mut atoms,
                         Atom::Box(InlineFlowBox {
-                            content: InlineFlowContent::FloatingTable { control: ci },
+                            content: InlineFlowContent::FloatingTable {
+                                control: ci,
+                                resolved_position: None,
+                            },
                             x: 0.0,
                             y: 0.0,
                             width: 0.0,
@@ -965,11 +995,84 @@ pub(crate) fn plan_plain_text_with_storage<S: crate::storage::Storage>(
     preceding: &[FrameExclusion],
     storage: &S,
 ) -> Result<Option<InlineFlowPlan>, S::Error> {
+    if !supports_plain_text(para) && !supports_stored_plain_text(para) {
+        return Ok(None);
+    }
+    plan_text_rows_with_storage(para, styles, placement, preceding, storage)
+}
+
+/// [#8282] 저장 줄이 있는 개체 없는 본문. 저장 줄 없는 host 의 어울림 개체는 한/글이 배치한
+/// 적이 없어 이 저장 줄이 그 개체를 피했다는 증언이 될 수 없다. 호출자가 그런 개체와 실제로
+/// 겹칠 때만 현재 frame 에서 다시 짠다.
+pub(crate) fn supports_stored_plain_text(para: &Paragraph) -> bool {
+    !super::para_has_no_stored_line_segs(para)
+        && !para.text.trim().is_empty()
+        && para.controls.is_empty()
+}
+
+/// [#8282] 저장 줄 없는 문단의 자기 어울림 그림·도형도 그 문단 줄의 배제 영역이다.
+/// 한/글은 개체 앵커가 문단 끝에 있어도 앞 줄부터 개체 옆으로 흘린다(같은 입력의
+/// 2020 Print PDF). 개체 상자는 기존 개체 소유자가 배치하고, 이 frame 은 글자와 글자처럼
+/// 그림의 줄만 짠다. 어울림 개체가 없거나 frame 이 받지 않는 문단은 사양한다.
+pub(crate) fn supports_square_float_host(para: &Paragraph) -> bool {
+    super::para_has_no_stored_line_segs(para)
+        && !para.text.trim().is_empty()
+        && para
+            .controls
+            .iter()
+            .any(super::composer::control_is_square_float_object)
+        && para.controls.iter().all(|control| match control {
+            Control::Picture(picture) => picture.caption.is_none(),
+            Control::Shape(shape) => {
+                super::composer::control_is_square_float_object(control)
+                    && super::composer::shape_caption_for_layout(shape).is_none()
+            }
+            Control::SectionDef(_)
+            | Control::ColumnDef(_)
+            | Control::PageNumberPos(_)
+            | Control::PageNumCtrl(_) => true,
+            _ => false,
+        })
+        && super::composer::supports_picture_band_frame_controls(para)
+}
+
+pub(crate) fn plan_square_float_host_with_storage<S: crate::storage::Storage>(
+    para: &Paragraph,
+    styles: &ResolvedStyleSet,
+    placement: &ObjectPlacementFrame<'_>,
+    preceding: &[FrameExclusion],
+    storage: &S,
+) -> Result<Option<InlineFlowPlan>, S::Error> {
+    if !supports_square_float_host(para) {
+        return Ok(None);
+    }
+    let mut exclusions = storage.collect(preceding.iter().cloned())?;
+    for (index, control) in para.controls.iter().enumerate() {
+        let own = match control {
+            Control::Picture(picture) => placement.picture_exclusion(picture, para, index, styles),
+            Control::Shape(shape) => placement.shape_exclusion(shape),
+            _ => None,
+        };
+        if let Some(own) = own {
+            storage.push(&mut exclusions, own)?;
+        }
+    }
+    plan_text_rows_with_storage(para, styles, placement, &exclusions, storage)
+}
+
+/// 앞 개체와 자기 개체의 배제 영역을 받은 현재 물리 frame 에서 본문 줄을 한 번 짠다.
+fn plan_text_rows_with_storage<S: crate::storage::Storage>(
+    para: &Paragraph,
+    styles: &ResolvedStyleSet,
+    placement: &ObjectPlacementFrame<'_>,
+    preceding: &[FrameExclusion],
+    storage: &S,
+) -> Result<Option<InlineFlowPlan>, S::Error> {
     use super::composer::{layout_paragraph_in_frame_with_storage, ParagraphBox};
     let Some(style) = styles.para_styles.get(para.para_shape_id as usize) else {
         return Ok(None);
     };
-    if !supports_plain_text(para) || style.head_type != crate::model::style::HeadType::None {
+    if style.head_type != crate::model::style::HeadType::None {
         return Ok(None);
     }
     let mut exclusions = storage.collect(preceding.iter().cloned())?;

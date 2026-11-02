@@ -214,10 +214,28 @@ pub(crate) fn project_current_source_program_rows_with_storage<S: crate::storage
             super::compose_paragraph_in_context_with_storage(para, styles, storage),
             failure,
         )?;
-        // 모든 글자 묶음의 대체가 확인된 뒤에만 전체 스타일을 복사한다.
-        let mut overrides = crate::storage::optional(storage.vec(0), failure)?;
+        let mut fallbacks = crate::storage::optional(storage.vec(0), failure)?;
         for run in composed.lines.iter().flat_map(|line| &line.runs) {
             if run.text.chars().all(char::is_whitespace) {
+                let original = styles.char_styles.get(run.char_style_id as usize)?;
+                let primary = super::super::style_resolver::primary_font_name(
+                    original.font_family_for_lang(run.lang_index),
+                );
+                if !original.font_metric_trusted_for_lang(run.lang_index)
+                    && crate::renderer::layout::verified_source_projection_face(
+                        primary,
+                        original.bold,
+                        original.italic,
+                    )
+                    && !crate::renderer::layout::verified_source_projection_text(
+                        primary,
+                        original.bold,
+                        original.italic,
+                        &run.text,
+                    )
+                {
+                    return None;
+                }
                 continue;
             }
             let fallback = styles
@@ -226,20 +244,32 @@ pub(crate) fn project_current_source_program_rows_with_storage<S: crate::storage
             if run.inserted_control_text {
                 return None;
             }
-            styles.char_styles.get(run.char_style_id as usize)?;
+            let original = styles.char_styles.get(run.char_style_id as usize)?;
+            if !original.font_metric_trusted_for_lang(run.lang_index)
+                && !crate::renderer::layout::verified_source_projection_text(
+                    super::super::style_resolver::primary_font_name(
+                        original.font_family_for_lang(run.lang_index),
+                    ),
+                    original.bold,
+                    original.italic,
+                    &run.text,
+                )
+            {
+                return None;
+            }
             crate::storage::optional(
-                storage.push(&mut overrides, (run.char_style_id as usize, fallback)),
+                storage.push(&mut fallbacks, (run.char_style_id, fallback)),
                 failure,
             )?;
         }
-        if overrides.is_empty() {
+        if fallbacks.is_empty() {
             return None;
         }
         let mut fallback_styles =
             crate::storage::optional(crate::storage::try_clone(styles, storage), failure)?;
-        fallback_styles.source_program_projection_slots.clear();
-        for (id, fallback) in overrides {
-            fallback_styles.char_styles[id] =
+        fallback_styles.source_program_projection_slots = Default::default();
+        for (id, fallback) in fallbacks {
+            *fallback_styles.char_styles.get_mut(id as usize)? =
                 crate::storage::optional(crate::storage::try_clone(fallback, storage), failure)?;
         }
         let first = para.line_segs.first()?.vertical_pos;

@@ -46,17 +46,26 @@ pub struct PdfImportPolicy {
 impl Default for PdfImportPolicy {
     fn default() -> Self {
         let backend = PdfImportLimits {
-            // Absolute request ceilings. Page-local work is narrowed after the
-            // bounded page-tree traversal; shared collection structure retains
-            // its document-wide cap. These are not live-heap limits.
+            // Absolute request ceilings. Page count does not predict content
+            // complexity or shared resources. These are not live-heap limits.
             operators: 8_000_000,
+            // Includes scalar values inside dictionaries/arrays, not just xref
+            // objects. A 57-page authenticated input needs 81,182 values.
+            objects: 200_000,
+            // A 64-megapixel RGBA image fits in one bounded output buffer.
+            // Keep scratch, cumulative work and host memory limits independent.
+            stream_bytes: 256 * 1024 * 1024,
+            codec_allocation_bytes: 256 * 1024 * 1024,
             // Independent interpreter passes revisit the same parsed operators.
             // Keep their cumulative work independently finite.
             xobject_visits: 4_000_000,
             reference_visits: 4_000_000,
             spans: 120_000,
             entries: 400_000,
-            decoded_bytes: 2 * 1024 * 1024 * 1024,
+            // Cumulative allocations/copies, not simultaneously resident memory.
+            // Large image documents exceed 4 GiB of work on wasm32 as well.
+            decoded_bytes: 8 * 1024 * 1024 * 1024,
+            codec_work_units: 2_000_000_000,
             // Full CJK faces commonly carry tens of thousands of CID widths
             // and TrueType mappings each, even on a single page. Allow several
             // such faces while retaining a finite request-wide expansion cap.
@@ -76,8 +85,8 @@ impl Default for PdfImportPolicy {
             // Same finite request scale as XObject visits; inline images also
             // consume a placement even though they do not invoke an XObject.
             max_document_image_placements: backend.xobject_visits,
-            max_image_pixels: 16_000_000,
-            max_document_image_pixels: 64_000_000,
+            max_image_pixels: 64_000_000,
+            max_document_image_pixels: 2_000_000_000,
             max_text_bytes: 2 * 1024 * 1024,
             backend,
         }
@@ -158,11 +167,9 @@ impl PdfImportPolicy {
 
     pub(crate) fn for_selected_pages(mut self, pages: usize) -> Self {
         let selected_work_limit = pages.saturating_mul(100_000).max(250_000);
-        // Each page keeps the same operator allowance as a one-page request.
-        // Lexical parses, including repeated parses, remain cumulative;
-        // batching ordinary pages must not shrink that per-page allowance.
-        // The profile's absolute ceiling and any lower host cap still apply.
-        self.backend.operators = self.backend.operators.min(pages.saturating_mul(250_000));
+        // One dense page may need more operators than a long text document.
+        // Keep the profile/host request ceiling; collection buffers and decoded
+        // work remain independently bounded before allocation.
         // Each explicit host cap governs its own counter. A small operator
         // budget must not also reduce reference/XObject traversal to that
         // number before even the selected page's content can be visited.
@@ -180,9 +187,8 @@ impl PdfImportPolicy {
         // and diagnostics. Shared source resources and repeated format copies
         // cannot be predicted from selected page count. Keep the finite
         // profile/host ceiling, just as for document-wide collection entries.
-        self.max_document_path_operations = self
-            .max_document_path_operations
-            .min(pages.saturating_mul(20_000).max(80_000));
+        // Path work follows the same request-wide rule as parsed operators.
+        // Individual paths retain max_path_operations and lower host caps.
         self
     }
 
@@ -196,16 +202,24 @@ impl PdfImportPolicy {
 // duplicate keys, including inside backend, before any input document is read.
 #[derive(Debug, Deserialize)]
 #[serde(transparent)]
-struct Limit(usize);
+struct Limit(u64);
 
-fn lower_cap(target: &mut usize, value: Limit) -> Result<(), super::PdfImportError> {
-    if value.0 == 0 || value.0 > *target {
+fn lower_cap<T: Copy + TryFrom<u64> + TryInto<u64>>(
+    target: &mut T,
+    value: Limit,
+) -> Result<(), super::PdfImportError> {
+    if value.0 == 0 || value.0 > (*target).try_into().unwrap_or(0) {
         return Err(super::PdfImportError::new(
             "PDF_RESOURCE_POLICY",
             "resource limits must be positive and not exceed the selected profile",
         ));
     }
-    *target = value.0;
+    *target = T::try_from(value.0).map_err(|_| {
+        super::PdfImportError::new(
+            "PDF_RESOURCE_POLICY",
+            "resource limit is not representable on this target",
+        )
+    })?;
     Ok(())
 }
 

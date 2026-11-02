@@ -449,6 +449,7 @@ pub(crate) fn parse_hwpx_with_reservation(
         crate::model::document::HWP5_ORIGIN_HWPX_MARKER_PATH,
         crate::model::document::HWPX_ORIGIN_HWPX_MARKER_PATH,
         crate::model::document::HWP3_ORIGIN_HWPX_MARKER_PATH,
+        crate::model::document::HWP3_ORIGIN_HWPX_PARAGRAPH_AXIS_PATH,
         crate::model::document::HWP3_EXTERNAL_REALIGN_HWPX_PATH,
     ];
     let mut hwpx_aux_entries: Vec<(String, Vec<u8>)> = Vec::new();
@@ -513,6 +514,8 @@ pub(crate) fn parse_hwpx_with_reservation(
         &canonicalize_header_image_refs(&header_xml, &package_info.bin_data_items),
         physical_plain_margin,
     )?;
+    let default_para_shape_id = u16::try_from(doc_info.para_shapes.len()).ok();
+    let default_para_shape_scope = section::DefaultParaShapeScope::enter(default_para_shape_id);
     if let Ok(bytes) = reader.read_file_bytes_limited(
         crate::model::native_font_program::HWPX_ENTRY,
         crate::model::native_font_program::MAX_BYTES,
@@ -576,8 +579,11 @@ pub(crate) fn parse_hwpx_with_reservation(
     let has_hwpx_origin = hwpx_aux_entries
         .iter()
         .any(|(path, _)| path == crate::model::document::HWPX_ORIGIN_HWPX_MARKER_PATH);
+    // [#8303] HWP3 원본 산출물도 같은 문단 축 표지를 별도 엔트리로 싣는다.
     let paragraph_axis = hwpx_aux_entries.iter().any(|(path, value)| {
-        path == crate::model::document::HWP5_ORIGIN_HWPX_MARKER_PATH
+        (path == crate::model::document::HWP5_ORIGIN_HWPX_MARKER_PATH
+            || (has_hwp3_origin
+                && path == crate::model::document::HWP3_ORIGIN_HWPX_PARAGRAPH_AXIS_PATH))
             && value == crate::model::document::HWP5_ORIGIN_HWPX_PARAGRAPH_AXIS
     });
     let _hwp5_origin_guard = section::Hwp5OriginSourceGuard::set(has_hwp5_origin, paragraph_axis);
@@ -761,6 +767,17 @@ pub(crate) fn parse_hwpx_with_reservation(
     }
 
     // Document 조립
+    if default_para_shape_scope.used() {
+        // 한컴 2020 저장 대조: 참조 생략은 명시적 0번이 아닌 160% 기본 모양이다.
+        // 명시 참조는 그대로 보존하며 중첩 문단도 같은 모델 모양을 사용한다.
+        doc_info.para_shapes.push(crate::model::style::ParaShape {
+            attr1: 0x180,
+            line_spacing: 160,
+            line_spacing_v2: 160,
+            border_fill_id: u16::from(!doc_info.border_fills.is_empty()),
+            ..Default::default()
+        });
+    }
     let model_header = FileHeader {
         version: HwpVersion {
             major: 5,
@@ -837,6 +854,12 @@ pub(crate) fn parse_hwpx_with_reservation(
         crate::model::text_clip::MAX_BYTES,
     ) {
         crate::model::text_clip::decode(&mut doc, &bytes);
+    }
+    if let Ok(bytes) = reader.read_file_bytes_limited(
+        crate::model::text_paint::HWPX_ENTRY,
+        crate::model::text_paint::MAX_BYTES,
+    ) {
+        crate::model::text_paint::decode(&mut doc, &bytes);
     }
     if let Ok(bytes) =
         reader.read_file_bytes_limited(crate::model::hyperlink_format::HWPX_ENTRY, 16 * 1024 * 1024)

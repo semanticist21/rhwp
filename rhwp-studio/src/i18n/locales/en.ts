@@ -7,6 +7,16 @@
  */
 
 const catalog = {
+  "dialog.localFontList.button": "Local font list",
+  "dialog.localFontList.title": "Local font list",
+  "dialog.localFontList.close": "Close",
+  "dialog.localFontList.search": "Search font names",
+  "dialog.localFontList.count": "{p1} shown / {p2} faces",
+  "dialog.localFontList.family": "Font family",
+  "dialog.localFontList.names": "Names and aliases",
+  "dialog.localFontList.style": "Style",
+  "dialog.localFontList.postscript": "PostScript name",
+  "dialog.localFontList.presenceOnly": "Presence only",
   "editor.crossSectionSelectionUnsupported": "Editing a selection across sections is not supported yet. Select and edit one section at a time.",
   "dialog.fill.keepGradient": "Keep existing gradient",
   "dialog.fill.keepImage": "Keep existing image fill",
@@ -1765,6 +1775,7 @@ const catalog = {
   "dialog.tableCreate.okBtn.text": "Create",
   "dialog.tableCreate.title.text": "Insert Table",
   "dialog.tableCreate.treatLbl.text": " Treat as character",
+  "dialog.tableCreate.treatInCell.title": "Tables inside a table cell are always treated as characters",
   "dialog.tableRowColumn.clampInsertCount.title": "Insert Rows/Columns",
   "dialog.tableRowColumn.confirmBtn.text": "Add",
   "dialog.tableRowColumn.confirmBtn.text.x5c6c6e": "Delete",

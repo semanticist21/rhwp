@@ -2222,6 +2222,7 @@ fn clip_kind_detail(clip_kind: ClipKind) -> &'static str {
         ClipKind::TableCell => "tableCell",
         ClipKind::TextBox => "textBox",
         ClipKind::Generic => "generic",
+        ClipKind::PrintBitmapFill => "printBitmapFill",
     }
 }
 
@@ -2236,7 +2237,8 @@ fn text_run_transition_detail(
     if !text_visual_geometry_is_valid(bbox, run, &display_text) {
         return Some("invalidGeometry");
     }
-    let has_paint_effects = run.style.outline_type != 0
+    let has_paint_effects = run.style.text_paint.is_some()
+        || run.style.outline_type != 0
         || run.style.shadow_type != 0
         || run.style.emboss
         || run.style.engrave
@@ -2248,7 +2250,7 @@ fn text_run_transition_detail(
             0x1100..=0x11ff | 0xa960..=0xa97f | 0xd7b0..=0xd7ff
         )
     });
-    // Boxed-PUA + 장평/effects already replay as a vector box; old Hangul does not.
+    // Enclosed PUA + 장평/effects already replay as a vector frame; old Hangul does not.
     if text_requires_complex_shaping(&display_text) || (has_paint_effects && has_old_hangul) {
         return Some("scriptTextRequiresShaping");
     }
@@ -2262,8 +2264,9 @@ fn text_requires_complex_shaping(text: &str) -> bool {
             code_point,
             0x1100..=0x11ff | 0xa960..=0xa97f | 0xd7b0..=0xd7ff
         );
-        let is_boxed_pua = matches!(code_point, 0xf02b1..=0xf02c4);
-        if is_old_hangul || is_boxed_pua {
+        // 합성 PUA 기호는 글리프가 아니라 테두리와 안쪽 글자로 replay 한다.
+        // Studio nominal replay 와 같은 판정이다(네모 0 U+F02B0 포함).
+        if is_old_hangul || super::enclosed_pua(ch).is_some() {
             return false;
         }
 
@@ -2393,6 +2396,7 @@ fn resolved_image_kind_detail(value: ResolvedImageKind) -> &'static str {
         ResolvedImageKind::FormatConverted => "formatConverted",
         ResolvedImageKind::SourceWindow => "sourceWindow",
         ResolvedImageKind::OutputDevice => "outputDevice",
+        ResolvedImageKind::OutputDeviceWindow => "outputDeviceWindow",
         ResolvedImageKind::BakedWatermark => "bakedWatermark",
     }
 }
@@ -3145,6 +3149,7 @@ mod tests {
             border_type: 1,
             inner_char_size: 100,
             composition: None,
+            empty_ink: false,
         });
         superscript
             .style
@@ -3204,6 +3209,7 @@ mod tests {
             border_type: 1,
             inner_char_size: 100,
             composition: None,
+            empty_ink: false,
         });
         let rotated_tree = tree_with_ops(vec![PaintOp::char_overlap(bbox(), rotated)]);
         let rotated_plan =
@@ -3223,6 +3229,7 @@ mod tests {
             border_type: 9,
             inner_char_size: 100,
             composition: None,
+            empty_ink: false,
         });
         let mut invalid_leader = text_run("A");
         invalid_leader
@@ -3303,8 +3310,9 @@ mod tests {
             CanvasKitBoundedWorkCount::Exceeded
         );
 
+        // Hanyang PUA 옛한글 한 글자는 자모 셋으로 펼쳐진다(1→3 표시 투영).
         let pua_source =
-            "\u{F012B}".repeat(crate::paint::MAX_POSITIONED_CONTROL_MARKS_PER_RUN / 3 + 1);
+            "\u{E0BC}".repeat(crate::paint::MAX_POSITIONED_CONTROL_MARKS_PER_RUN / 3 + 1);
         assert!(pua_source.chars().count() <= crate::paint::MAX_POSITIONED_CONTROL_MARKS_PER_RUN);
         assert!(
             expand_pua_render_text(&pua_source).chars().count()
@@ -3350,7 +3358,7 @@ mod tests {
         );
 
         let projected_text =
-            "\u{F012B}".repeat(CANVASKIT_DOCUMENT_PREFLIGHT_MAX_WORK_UNITS as usize / 3 + 1);
+            "\u{E0BC}".repeat(CANVASKIT_DOCUMENT_PREFLIGHT_MAX_WORK_UNITS as usize / 3 + 1);
         assert!(
             projected_text.chars().count() < CANVASKIT_DOCUMENT_PREFLIGHT_MAX_WORK_UNITS as usize
         );

@@ -563,6 +563,28 @@ fn transform_steps(
             ),
         });
     }
+    // [#8079] 실제 Bold 면도 전진폭은 보통 면에서 — 측정과 같은 조건·helper 로 판정한다.
+    let latin_slot = ch
+        .is_ascii_punctuation()
+        .then_some(run.style.ascii_punct_latin.as_deref())
+        .flatten();
+    let source_font_is_hft =
+        latin_slot.map_or(run.style.source_font_is_hft, |l| l.source_font_is_hft);
+    if !source_font_is_hft
+        && decision.width_source == "embeddedMetric"
+        && decision.metric.is_some_and(|metric| {
+            crate::renderer::font_metrics_data::regular_advance_metric(metric.metric)
+                .and_then(|regular| regular.get_width(ch))
+                .is_some()
+        })
+    {
+        steps.push(DecisionStep {
+            kind: "regularAdvanceForBold".into(),
+            input: Some("bold".into()),
+            output: Some("regularMetricAdvance".into()),
+            reason: Some("boldFaceDrawsAtRegularAdvance".into()),
+        });
+    }
     if (run.style.ratio - 1.0).abs() > f64::EPSILON {
         steps.push(DecisionStep {
             kind: "ratio".into(),
@@ -863,7 +885,13 @@ impl DocumentCore {
         page_num: u32,
         options_json: &str,
         native_observer: Option<
-            &dyn Fn(&str, char, bool, bool) -> crate::renderer::font_decision::BackendDecision,
+            &dyn Fn(
+                &str,
+                char,
+                bool,
+                bool,
+                bool,
+            ) -> crate::renderer::font_decision::BackendDecision,
         >,
         native_unavailable_reason: &'static str,
     ) -> Result<String, HwpError> {
@@ -886,7 +914,13 @@ impl DocumentCore {
         page_num: u32,
         requested_limits: TraceLimits,
         native_observer: Option<
-            &dyn Fn(&str, char, bool, bool) -> crate::renderer::font_decision::BackendDecision,
+            &dyn Fn(
+                &str,
+                char,
+                bool,
+                bool,
+                bool,
+            ) -> crate::renderer::font_decision::BackendDecision,
         >,
         native_unavailable_reason: &'static str,
         tree: &PageRenderTree,
@@ -927,7 +961,7 @@ impl DocumentCore {
                                 &self.document.doc_info,
                                 language_slot,
                                 shape.font_ids[language_slot],
-                                self.font_environment.as_ref(),
+                                self.resolved_font_environment(),
                             )
                         })
                 });
@@ -1122,13 +1156,14 @@ impl DocumentCore {
                                 ch,
                                 run.style.bold,
                                 run.style.italic,
+                                run.style.source_font_is_ttf,
                             )
                         }),
                         native_unavailable_reason,
                     ),
                     layout_metric,
                     provenance,
-                    oracle: self.font_environment.as_ref().map_or_else(
+                    oracle: self.resolved_font_environment().map_or_else(
                         OracleDecision::not_provided,
                         |env| OracleDecision {
                             status: "declared".into(),

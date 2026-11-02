@@ -254,9 +254,8 @@ where
                 "배포 표시 없는 암호화 스크립트입니다".into(),
             ));
         }
-        let (header, source) =
-            crate::model::form_script::script_parts_from_streams(&doc.extra_streams)
-                .map_err(|error| SerializeError::UnsupportedInput(error.to_string()))?;
+        let (header, source) = crate::model::form_script::script_parts_from_streams(doc)
+            .map_err(|error| SerializeError::UnsupportedInput(error.to_string()))?;
         if !header.is_empty() || !source.is_empty() {
             for (id, path, bytes) in [
                 ("rhwpHeaderScript", "Scripts/headerScripts", header),
@@ -301,6 +300,18 @@ where
         ctx.content_loss
             .record_with_storage(
                 crate::model::text_clip::native_visibility_loss_with_storage(storage)
+                    .map_err(context::context_error)?,
+                storage,
+            )
+            .map_err(context::context_error)?;
+    }
+    if let Some(bytes) = crate::model::text_paint::encode_with_storage(doc, storage)
+        .map_err(SerializeError::UnsupportedInput)?
+    {
+        z.write_deflated(crate::model::text_paint::HWPX_ENTRY, &bytes)?;
+        ctx.content_loss
+            .record_with_storage(
+                crate::model::text_paint::native_visibility_loss_with_storage(storage)
                     .map_err(context::context_error)?,
                 storage,
             )
@@ -503,6 +514,11 @@ where
         z.write_deflated(
             crate::model::document::HWP3_ORIGIN_HWPX_MARKER_PATH,
             encoded.as_deref().unwrap_or(marker),
+        )?;
+        // [#8303] 위 `line_segs_on_paragraph_axis` 로 낸 `textpos` 축을 표시한다.
+        z.write_deflated(
+            crate::model::document::HWP3_ORIGIN_HWPX_PARAGRAPH_AXIS_PATH,
+            crate::model::document::HWP5_ORIGIN_HWPX_PARAGRAPH_AXIS,
         )?;
     }
     if doc.layout_profile().hwp3_external_realign() {

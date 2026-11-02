@@ -200,6 +200,7 @@ fn op_from_matrix_row(row: &serde_json::Value) -> PaintOp {
                         border_type: 1,
                         inner_char_size: 100,
                         composition: None,
+                        empty_ink: false,
                     });
                     PaintOp::char_overlap(bbox(), run)
                 }
@@ -365,6 +366,7 @@ fn m07_pack_visual_item_limit_stays_fail_closed_at_4096() {
         border_type: 1,
         inner_char_size: 100,
         composition: None,
+        empty_ink: false,
     });
     let bound_plan = analyze_canvaskit_replay_plan(
         &tree_with_ops(vec![PaintOp::char_overlap(bbox(), at_bound)]),
@@ -377,6 +379,7 @@ fn m07_pack_visual_item_limit_stays_fail_closed_at_4096() {
         border_type: 1,
         inner_char_size: 100,
         composition: None,
+        empty_ink: false,
     });
     let over_plan = analyze_canvaskit_replay_plan(
         &tree_with_ops(vec![PaintOp::char_overlap(bbox(), over)]),

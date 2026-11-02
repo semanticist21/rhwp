@@ -37,8 +37,12 @@ use super::diagnostics::ReplayDiagnostics;
 use super::equation_conv::{render_equation, EquationFonts};
 use super::fill_shader::shape_fill;
 use super::font_catalog::TypefaceCatalog;
+#[path = "declared_font_fallbacks.rs"]
+mod declared_font_fallbacks;
 #[path = "native_pua_fonts.rs"]
 mod native_pua_fonts;
+#[path = "text_shadow_fonts.rs"]
+mod text_shadow_fonts;
 use super::font_lookup::{
     collect_system_families, font_style_for_text, legacy_typeface_for_style, match_supplied_family,
     match_system_family_style, SystemFontFamilies,
@@ -490,9 +494,10 @@ impl SkiaLayerRenderer {
         page_num: u32,
         options_json: &str,
     ) -> Result<String, crate::error::HwpError> {
-        let observe = |requested: &str, character: char, bold: bool, italic: bool| {
-            self.font_decision(requested, character, bold, italic)
-        };
+        let observe =
+            |requested: &str, character: char, bold: bool, italic: bool, source_ttf: bool| {
+                self.font_decision(requested, character, bold, italic, source_ttf)
+            };
         core.get_font_decision_trace_with_native_observer(
             page_num,
             options_json,
@@ -558,8 +563,11 @@ impl SkiaLayerRenderer {
         character: char,
         bold: bool,
         italic: bool,
+        source_ttf: bool,
     ) -> crate::renderer::font_decision::BackendDecision {
-        use super::font_lookup::{select_typeface_for_character, text_typeface_candidates};
+        use super::font_lookup::{
+            select_typeface_for_character, text_typeface_candidates_for_source,
+        };
 
         let style = font_style_for_text(&crate::renderer::TextStyle {
             font_family: requested.into(),
@@ -567,13 +575,14 @@ impl SkiaLayerRenderer {
             italic,
             ..Default::default()
         });
-        let (candidates, typefaces) = text_typeface_candidates(
+        let (candidates, typefaces) = text_typeface_candidates_for_source(
             &self.font_mgr,
             &self.system_families,
             &self.custom_typefaces,
             &self.bundled_typefaces,
             requested,
             style,
+            source_ttf,
         );
         let selected = select_typeface_for_character(&typefaces, character);
         let mut failures = Vec::new();
@@ -1178,7 +1187,8 @@ impl SkiaLayerRenderer {
                           crop_reference_size,
                           effect,
                           brightness,
-                          contrast| {
+                          contrast,
+                          print_area| {
             draw_image_bytes(
                 canvas,
                 &self.image_cache,
@@ -1197,7 +1207,12 @@ impl SkiaLayerRenderer {
                 cache_context
                     .policy
                     .image_sampling()
-                    .with_paper_grid(cache_context.bitmap_paper_grid),
+                    .with_paper_grid(cache_context.bitmap_paper_grid)
+                    .with_print_page((print_area && cache_context.raster_target).then_some((
+                        cache_context.page_extent.0,
+                        cache_context.page_extent.1,
+                        f64::from(fallback_raster_scale),
+                    ))),
             )
         };
         let equation_fonts = EquationFonts {
@@ -1209,6 +1224,7 @@ impl SkiaLayerRenderer {
         let text_replay = SkiaTextReplay {
             canvas,
             raster_target: cache_context.raster_target,
+            geometric_text: cache_context.raster_target && cache_context.geometric_text,
             hft_outline_enabled,
             font_mgr: &self.font_mgr,
             text_shaper: &self.text_shaper,
@@ -1410,6 +1426,28 @@ impl SkiaLayerRenderer {
                     );
                 }
                 canvas.save();
+                let clip = if cache_context.raster_target && cache_context.device_clip {
+                    let matrix = canvas.local_to_device_as_3x3();
+                    (!matrix.has_perspective())
+                        .then(|| {
+                            crate::paint::device_clip::rectangle(
+                                *clip,
+                                [
+                                    matrix.scale_x(),
+                                    matrix.skew_y(),
+                                    matrix.skew_x(),
+                                    matrix.scale_y(),
+                                    matrix.translate_x(),
+                                    matrix.translate_y(),
+                                ]
+                                .map(f64::from),
+                            )
+                        })
+                        .flatten()
+                        .unwrap_or(*clip)
+                } else {
+                    *clip
+                };
                 canvas.clip_rect(
                     Rect::from_xywh(
                         clip.x as f32,
@@ -1688,6 +1726,7 @@ impl SkiaLayerRenderer {
                                     } else {
                                         image.display_brightness_contrast().1
                                     },
+                                    false,
                                 );
                                 if needs_watermark_opacity {
                                     canvas.restore();
@@ -1855,6 +1894,19 @@ impl SkiaLayerRenderer {
                             if line.transform.has_transform() {
                                 open_shape_transform(line.transform, bbox);
                             }
+                            let minimum_width = cache_context
+                                .policy
+                                .print_stroke_adjustment()
+                                .then(|| canvas.local_to_device_as_3x3())
+                                .filter(|matrix| !matrix.has_perspective())
+                                .and_then(|matrix| {
+                                    crate::renderer::raster_stroke::minimum_width([
+                                        f64::from(matrix.scale_x()),
+                                        f64::from(matrix.skew_y()),
+                                        f64::from(matrix.skew_x()),
+                                        f64::from(matrix.scale_y()),
+                                    ])
+                                });
                             draw_line(
                                 canvas,
                                 line,
@@ -1886,10 +1938,19 @@ impl SkiaLayerRenderer {
                                 bbox.width as f32,
                                 bbox.height as f32,
                             );
-                            if let Some(fill) =
+                            if let Some(mut fill) =
                                 shape_fill(bbox, &rect.style, rect.gradient.as_deref(), antialias)
                             {
-                                if rect.corner_radius > 0.0 {
+                                if let Some(fill_rect) = super::rectangle_fill::bounds(
+                                    canvas,
+                                    *bbox,
+                                    rect,
+                                    cache_context.raster_target
+                                        && cache_context.policy.print_stroke_adjustment(),
+                                ) {
+                                    fill.set_anti_alias(false);
+                                    canvas.draw_rect(fill_rect, &fill);
+                                } else if rect.corner_radius > 0.0 {
                                     canvas.draw_round_rect(
                                         sk_rect,
                                         rect.corner_radius as f32,
@@ -1901,6 +1962,28 @@ impl SkiaLayerRenderer {
                                 }
                             }
                             if let Some(mut stroke) = make_stroke_paint(&rect.style) {
+                                if cache_context.raster_target
+                                    && cache_context.policy.print_stroke_adjustment()
+                                {
+                                    let matrix = canvas.local_to_device_as_3x3();
+                                    let minimum = (!matrix.has_perspective())
+                                        .then(|| {
+                                            crate::renderer::raster_stroke::minimum_width([
+                                                f64::from(matrix.scale_x()),
+                                                f64::from(matrix.skew_y()),
+                                                f64::from(matrix.skew_x()),
+                                                f64::from(matrix.scale_y()),
+                                            ])
+                                        })
+                                        .flatten();
+                                    if let Some(width) = rect.print_picture_pen.and_then(|pen| {
+                                        crate::renderer::print_picture_pen::raster_width(
+                                            pen, minimum,
+                                        )
+                                    }) {
+                                        stroke.set_stroke_width(width as f32);
+                                    }
+                                }
                                 if rect.round_stroke_join {
                                     stroke.set_stroke_join(skia_safe::paint::Join::Round);
                                 }
@@ -2031,6 +2114,11 @@ impl SkiaLayerRenderer {
                                 })
                                 .flatten();
                             let resolved = resolved.as_deref().or(fallback.as_ref());
+                            let prepared =
+                                crate::renderer::image_resolver::image_for_resolved_window(
+                                    image, resolved,
+                                );
+                            let image = prepared.as_ref();
                             let effective_bbox = image.transformed_paint_bbox(bbox);
                             // 저장 viewport는 그림 변환 바깥의 페이지 좌표 clip이다.
                             let _source_clip_restore = image.source_clip_path(bbox).map(|points| {
@@ -2047,6 +2135,13 @@ impl SkiaLayerRenderer {
                             if image.transform.has_transform() {
                                 open_shape_transform(image.transform, &effective_bbox);
                             }
+                            let effective_bbox = super::image_coverage::bounds(
+                                canvas,
+                                effective_bbox,
+                                image,
+                                cache_context.raster_target
+                                    && cache_context.policy.print_stroke_adjustment(),
+                            );
                             let data = resolved
                                 .map(|payload| &payload.data[..])
                                 .or(image.data.as_deref());
@@ -2083,6 +2178,9 @@ impl SkiaLayerRenderer {
                                         image.brightness
                                     },
                                     if suppress_effects { 0 } else { image.contrast },
+                                    crate::renderer::image_resolver::print_area_sampling(
+                                        image, resolved,
+                                    ),
                                 );
                                 if opacity < 1.0 {
                                     canvas.restore();
@@ -2222,6 +2320,18 @@ impl SkiaLayerRenderer {
     ) {
         use crate::renderer::form_appearance::{form_drawing, FormPrimitive};
         let drawing = form_drawing(form, bbox);
+        // 컨트롤은 자기 영역 밖을 그리지 않는다. 폭보다 긴 캡션은 영역 경계에서 잘린다.
+        canvas.save();
+        canvas.clip_rect(
+            Rect::from_xywh(
+                bbox.x as f32,
+                bbox.y as f32,
+                bbox.width as f32,
+                bbox.height as f32,
+            ),
+            None,
+            Some(true),
+        );
         for primitive in drawing.primitives {
             let mut paint = Paint::default();
             paint.set_anti_alias(true);
@@ -2307,6 +2417,7 @@ impl SkiaLayerRenderer {
                 &paint,
             );
         }
+        canvas.restore();
     }
 }
 
@@ -3941,6 +4052,7 @@ mod tests {
                 border_type: 1,
                 inner_char_size: 90,
                 composition: None,
+                empty_ink: false,
             }),
             border_fill_id: 0,
             baseline: 22.0,
@@ -4065,6 +4177,11 @@ mod tests {
             ..Default::default()
         });
         let output = SkiaLayerRenderer::new()
+            .try_with_font_data(&[include_bytes!(
+                "../../../ttfs/opensource/RHWPPublicBatang-Regular.ttf"
+            )
+            .to_vec()])
+            .expect("load licensed test font")
             .render_raster_with_options(&tree, RasterRenderOptions::default())
             .expect("render control marks");
         let image = decode_rgba(&output.bytes);
@@ -4286,6 +4403,13 @@ mod tests {
             ),
         );
         let output = SkiaLayerRenderer::new()
+            .try_with_font_data(&[include_bytes!(
+                "../../../assets/fonts/LatinModernMath-VariableOutline-subset.otf"
+            )
+            .to_vec()])
+            .expect("load licensed test font")
+            .with_font_family_alias("Latin Modern Math", "RHWP LMM Variable Outline")
+            .expect("bind equation family to the supplied fixture")
             .render_raster_with_options(&tree, RasterRenderOptions::default())
             .expect("render atop equation");
         let image = decode_rgba(&output.bytes);

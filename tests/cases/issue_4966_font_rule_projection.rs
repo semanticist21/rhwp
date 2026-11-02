@@ -1,3 +1,7 @@
+//! 관계형·고정형: 검사 대상 — 글꼴 규칙 레지스트리의 투영·추적·교체 계약.
+//! 주석 갱신: 2026-11-01T06:03:27+09:00; 직전 파일 커밋: 2026-10-25T22:58:32+09:00 (`3e02fe2749866a8453af3eb3901b9c1a674cccaf`).
+//! 입력·기준: `assets/font-rules/` 레지스트리와 합성 빈 문서.
+//! API·데이터 계약을 검사하며 화면 시각 일치율은 측정하지 않는다.
 use std::collections::{BTreeMap, BTreeSet};
 
 use rhwp::document_core::DocumentCore;

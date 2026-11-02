@@ -20,6 +20,7 @@ pub(super) fn apply_font(run: &ComposedTextRun, style: &mut TextStyle) {
         style.metric_font_family = Some("함초롬돋움".to_owned());
         style.font_metric_trusted = true;
         style.source_font_is_hft = false;
+        style.source_font_is_ttf = false;
         style.hft_hangul_face = false;
         style.hft_font_face = false;
         style.hft_fullwidth_dot = false;

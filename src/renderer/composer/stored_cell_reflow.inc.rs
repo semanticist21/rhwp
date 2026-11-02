@@ -72,6 +72,12 @@ pub(crate) fn recompose_stored_lines_in_frame_with_known_square_band_with_storag
 ) -> Result<Option<ComposedParagraph>, S::Error> {
     Ok({
         let stored_geometry_policy = stored_geometry_policy.into();
+        // [#8399] 어울림 밴드 소유자(`layout_picture_band`)가 낸 줄은 이 프레임이 다시 만들 수 없다 —
+        // 이 프레임에는 개체 배제가 없어 전폭으로 채운다. 원문 분할이 그대로면 그 줄이 구성의 권위다.
+        // 편집은 밴드 소유자가 줄을 다시 낸다.
+        if para.layout_float_band && !para.stored_text_partition_is_dirty() {
+            return Ok(None);
+        }
         // loader가 만든 합성 줄은 원본 저장 캐시가 아니다. 독립 개체가 없는
         // 본문은 현재 프레임에서 다시 구성하며 원본 IR은 보존한다.
         let fresh_body = if !para.line_segs.is_empty()
@@ -139,11 +145,10 @@ pub(crate) fn recompose_stored_lines_in_frame_with_known_square_band_with_storag
             }))
         || (crate::renderer::para_has_no_stored_line_segs(para)
             && (known_square_band
-                || para.controls.iter().any(|control| {
-                    matches!(control, crate::model::control::Control::Picture(picture)
-                    if !picture.common.treat_as_char
-                    && picture.common.text_wrap == crate::model::shape::TextWrap::Square)
-                }))
+                || para
+                    .controls
+                    .iter()
+                    .any(line_breaking::control_is_square_float_object))
             && line_breaking::supports_picture_band_frame_controls(para))
         // 실측 인라인 표의 현재 프레임은 글자 없는 host와 여러 표도 구성한다.
         // 나머지 경로는 기존의 보이는 글자+단일 TAC 표 수용 계약을 유지한다.
@@ -249,6 +254,7 @@ pub(crate) fn recompose_stored_lines_in_frame_with_known_square_band_with_storag
                 preserve_context_resolved_runs_with_storage(composed, &mut reflowed, storage)?;
                 // 부분 재조판 앞행은 원래 저장 축과 이미 해석한 줄 소유를 보존한다.
                 // HWPX의 저장 축 보정을 새 HWP5 축의 뒤쪽에 다시 적용하지 않는다.
+                let mut preserved_tab_count = 0;
                 if let Some(prefix_len) = line_breaking::remeasured_equation_start_row(para) {
                     if prefix_len <= composed.lines.len() && prefix_len <= reflowed.lines.len() {
                         for (dst, source) in reflowed.lines[..prefix_len]
@@ -257,10 +263,13 @@ pub(crate) fn recompose_stored_lines_in_frame_with_known_square_band_with_storag
                         {
                             *dst = crate::storage::try_clone(source, storage)?;
                         }
+                        preserved_tab_count = composed.lines[..prefix_len].iter().flat_map(|line| &line.runs).flat_map(|run| run.text.chars()).filter(|&ch| ch == '\t').count();
                     }
                 }
                 let mut reconciled = crate::storage::try_clone(composed, storage)?;
                 reconciled.lines = reflowed.lines;
+                // 보존한 앞행의 탭만 남기고 재조판 줄은 현재 TabDef로 계산한다.
+                reconciled.tab_extended.truncate(preserved_tab_count);
                 let uncached_inline_frame = inline_frame_admission::supports_uncached_inline_host(para);
                 let uncached_form_frame = crate::renderer::para_has_no_stored_line_segs(para)
                     && line_breaking::supports_inline_form_frame_controls(para);

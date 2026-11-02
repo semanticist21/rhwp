@@ -380,3 +380,80 @@ test('diagnostic decoding cannot fulfill a request after its deadline', async ()
     assert.equal(f.workers[0].terminated, true);
   } finally { JSON.parse = original; f.session.dispose(); }
 });
+
+test('opening password is snapshotted, sent to worker and omitted from retained reopen options', async () => {
+  const f = fixture();
+  const options = { password: 'synthetic opening password' };
+  const imported = f.session.importPdf(bytes, options);
+  options.password = 'changed by caller';
+  await ready();
+  assert.equal(f.workers[0].messages.at(-1).options.password, 'synthetic opening password');
+  f.workers[0].reply({ pageCount: 1 }); await imported;
+  assert.equal(f.session._active.options.password, undefined);
+  assert.equal(JSON.stringify(f.session.getEditorReopenLimits()).includes('synthetic opening password'), false);
+  f.session.dispose();
+});
+
+test('password errors allow retry and invalid credential metadata fails before worker creation', async () => {
+  for (const password of [null, 17, 'x'.repeat(1025), '가'.repeat(342)]) {
+    const f = fixture();
+    await assert.rejects(f.session.importPdf(bytes, { password }), rejected('PDF_IMPORT_OPTIONS'));
+    assert.equal(f.workers.length, 0); f.session.dispose();
+  }
+  const f = fixture();
+  const first = f.session.importPdf(bytes); await ready();
+  f.workers[0].reply(null, { code: 'PDF_PASSWORD_REQUIRED', message: 'opening password required' });
+  await assert.rejects(first, rejected('PDF_PASSWORD_REQUIRED'));
+  const second = f.session.importPdf(bytes, { password: 'wrong' }); await ready();
+  f.workers[0].reply(null, { code: 'PDF_PASSWORD_INVALID', message: 'incorrect opening password' });
+  await assert.rejects(second, rejected('PDF_PASSWORD_INVALID'));
+  const third = f.session.importPdf(bytes, { password: 'correct' }); await ready();
+  f.workers[0].reply({ pageCount: 1 }); await third;
+  assert.equal(f.session._active.options.password, undefined); f.session.dispose();
+});
+
+test('actual page progress reaches observers without completing the request', async () => {
+  const f = fixture(), updates = [];
+  const pending = f.session.importPdf(bytes, {}, {onProgress: (phase, p) => updates.push([phase, p])});
+  await ready(); const worker = f.workers[0], id = worker.messages.at(-1).id;
+  for (const [sourcePage, completedPages] of [[2, 0], [2, 1], [5, 1], [5, 2]]) {
+    worker.onmessage({data: {id, phase: 'importing', progress: {sourcePage, sourcePageCount: 5, completedPages, totalPages: 2}}});
+  }
+  assert.deepEqual(updates.map(([, p]) => p.completedPages), [0, 1, 1, 2]);
+  assert.equal(f.session._active, null);
+  worker.reply({pageCount: 2}); await pending;
+  f.session.dispose();
+});
+
+test('invalid or regressing page progress retires the worker', async () => {
+  for (const change of [{completedPages: 3}, {totalPages: 0}, {sourcePage: 6}, {completedPages: NaN}, {completedPages: 0}]) {
+    const f = fixture(); const pending = f.session.importPdf(bytes);
+    const rejectedResult = assert.rejects(pending, rejected('PDF_WORKER_PROTOCOL'));
+    await ready(); const worker = f.workers[0], id = worker.messages.at(-1).id;
+    const progress = {sourcePage: 2, sourcePageCount: 5, completedPages: 1, totalPages: 2};
+    worker.onmessage({data: {id, phase: 'importing', progress}});
+    worker.onmessage({data: {id, phase: 'importing', progress: {...progress, ...change}}});
+    await rejectedResult; assert.equal(worker.terminated, true); f.session.dispose();
+  }
+});
+
+test('remaining work above 4 GiB reaches editor reopen without 32-bit truncation', async () => {
+  const f = fixture({ ...policy, backend: { ...policy.backend, decodedBytes: 8 * 2 ** 30 } });
+  const pending = f.session.importPdf(bytes); await ready();
+  const worker = f.workers[0];
+  worker.onmessage({ data: {
+    id: worker.messages.at(-1).id, encoding: 'json',
+    result: JSON.stringify({ pageCount: 1, diagnostics: {} }),
+    remainingDecodedBytes: 5 * 2 ** 30 + 17,
+  } });
+  await pending;
+  assert.equal(f.session.getEditorReopenLimits().decodedBytes, 5 * 2 ** 30 + 17);
+  const inspect = f.session.inspect();
+  worker.onmessage({ data: {
+    id: worker.messages.at(-1).id, encoding: 'json',
+    result: JSON.stringify({ pageCount: 1, diagnostics: {} }),
+    remainingDecodedBytes: 8 * 2 ** 30 + 1,
+  } });
+  await assert.rejects(inspect, rejected('PDF_WORKER_PROTOCOL'));
+  f.session.dispose();
+});

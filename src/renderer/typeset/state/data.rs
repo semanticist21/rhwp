@@ -146,6 +146,10 @@ pub(in crate::renderer::typeset) struct StateView {
     /// 현재 쪽에 실제 배치된 그림의 점유 영역(용지 좌표). 다음 단에도 간섭할 수 있다.
     pub(in crate::renderer::typeset) side_wrap_exclusions:
         std::collections::BTreeMap<(usize, usize), crate::renderer::layout_frame::FrameExclusion>,
+    /// [#8282] 저장 줄 없는 host 의 배제 영역. 한/글이 그 개체 둘레로 뒤 문단을 조판한 적이
+    /// 없으므로 뒤 문단의 저장 줄은 이 개체를 증언하지 않는다.
+    pub(in crate::renderer::typeset) unwitnessed_side_wraps:
+        std::collections::BTreeSet<(usize, usize)>,
     pub(in crate::renderer::typeset) inline_placements: std::collections::HashMap<
         (usize, usize),
         crate::renderer::float_placement::InlineBoxPlacement,
@@ -264,6 +268,8 @@ pub(in crate::renderer::typeset) struct StateView {
     pub(in crate::renderer::typeset) hide_empty_line: bool,
     /// [Task #362] 현재 페이지에서 감춘 빈 줄 수 (페이지마다 reset, 최대 2).
     pub(in crate::renderer::typeset) hidden_empty_lines: u32,
+    /// 숨긴 첫 줄로 달라진 물리 쪽 경계가 저장 경계와 다시 맞을 때까지 유지한다.
+    pub(in crate::renderer::typeset) hidden_line_reflow_active: bool,
     /// [Task #362] 감춘 빈 줄이 적용된 페이지 인덱스 (페이지 변경 감지용).
     pub(in crate::renderer::typeset) hidden_empty_page_idx: usize,
     /// [Task #362] hide_empty_line 으로 감춘 paragraph 인덱스 (PaginationResult 에 포함).

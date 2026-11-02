@@ -15,8 +15,9 @@ pub struct LayerTreeSchema {
 
 pub const LAYER_TREE_SCHEMA: LayerTreeSchema = LayerTreeSchema {
     schema_version: 1,
-    // 35: 분할 셀의 원본 문단 범위를 선택 항목으로 더한다.
-    schema_minor_version: 35,
+    // 35: 페이지의 Print 글자 기하와 clip 래스터 정책을 명시한다.
+    // 36: 분할 셀의 원본 문단 범위를 선택 항목으로 더한다.
+    schema_minor_version: 36,
     resource_table_version: 1,
     resource_table_minor_version: 6,
     unit: "px",

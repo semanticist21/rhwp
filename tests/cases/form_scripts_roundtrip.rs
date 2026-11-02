@@ -35,11 +35,13 @@ fn script(doc: &Document) -> &[u8] {
 }
 
 fn raw_script(doc: &Document) -> Vec<u8> {
+    // HWP 저장은 스크립트를 대상 파일의 압축 비트에 맞춰 풀거나 압축한다(#8374).
+    // 비교는 저장 형태가 아니라 풀어 낸 길이·원문·꼬리로 한다.
     let mut out = Vec::new();
-    DeflateDecoder::new(script(doc))
-        .read_to_end(&mut out)
-        .unwrap();
-    out
+    match DeflateDecoder::new(script(doc)).read_to_end(&mut out) {
+        Ok(_) => out,
+        Err(_) => script(doc).to_vec(),
+    }
 }
 
 fn replace_script(doc: &mut Document, bytes: Vec<u8>) {

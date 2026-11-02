@@ -56,6 +56,11 @@ fn normalized_common(common: &CommonObjAttr) -> Value {
     let mut value = common_placement(common);
     // 알려진 배치 비트는 아래의 모든 의미 필드로 비교한다. 형식별 저장 고비트는 제외한다.
     value["attr"] = json!(common.attr & 0xe000_0002);
+    // bit 28은 HWPX→HWP 저장이 문서 규칙으로 정한다(#8339). 저장한 원문 형식마다 달라진다.
+    value
+        .as_object_mut()
+        .unwrap()
+        .remove("hwp5_gen_shape_attr_bit28");
     value
 }
 
@@ -75,7 +80,6 @@ fn placement(common: &mut CommonObjAttr, variant: bool, picture: bool) {
     common.flow_with_text = !variant;
     common.allow_overlap = variant;
     common.affect_line_spacing = true;
-    common.hwp5_gen_shape_attr_bit26 = variant;
     common.hwp5_gen_shape_attr_bit28 = !variant;
     common.size_protect = true;
     common.vert_rel_to = if variant {

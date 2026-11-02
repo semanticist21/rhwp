@@ -98,14 +98,21 @@ pub fn decode_pua_overlap_number(chars: &[char]) -> Option<String> {
     Some(s)
 }
 
-/// CharOverlap controls occupy one text-flow position even when their payload
-/// contains multiple glyph components.
-///
-/// Hancom uses this for overlapped two-digit markers such as the boxed 10/11/12
-/// in `table-vpos-01.hwp`: the control stores two PUA glyph components, but
-/// caret movement and line measurement advance by one character box.
-pub fn char_overlap_advance_units(chars: &[char]) -> usize {
-    usize::from(!chars.is_empty())
+/// 구성 글자의 수와 별개로 글자 겹침 컨트롤은 한 글줄·편집 프레임을 점유한다.
+/// 여러 PUA 구성의 두 자리 번호뿐 아니라 빈 HWPX compose도 같은 계약이다.
+/// 독립 한컴 저장본은 빈 compose를 전각 공백 프레임으로 보존한다.
+pub fn char_overlap_advance_units(_chars: &[char]) -> usize {
+    1
+}
+
+/// 빈 구성의 물리 프레임을 파생 run에 남긴다. 문서의 원문 배열은 바꾸지 않는다.
+/// 한컴 저장본의 전각 공백과 같은 캐리어를 기존 겹침 배치·paint 경로가 소비한다.
+pub(crate) fn char_overlap_flow_text<S: crate::storage::Storage>(chars: &[char], storage: &S) -> Result<String, S::Error> {
+    if chars.is_empty() {
+        storage.string("\u{3000}")
+    } else {
+        storage.chars(chars.iter().copied())
+    }
 }
 
 /// 글자겹침(CharOverlap) 내부 글자의 크기 비율.
@@ -234,6 +241,10 @@ pub(crate) fn hancom_symbol_display_key(ch: char) -> char {
 /// 다문자 확장과 글자겹침 숫자는 각 구성 owner의 계약을 유지한다.
 pub(crate) fn single_scalar_display_char(ch: char) -> char {
     let key = hancom_symbol_display_key(ch);
+    // 합성 기호는 정규화한 원 키 자체가 표시 기호다. paint가 테두리와 안쪽 글자를 그린다.
+    if super::enclosed_pua(key).is_some() {
+        return key;
+    }
     if let Some(display) = pua_plain_text_display(key) {
         let mut chars = display.chars();
         if let Some(first) = chars.next() {
@@ -311,7 +322,10 @@ fn try_expand_pua_surface<S: crate::storage::Storage>(
     for ch in text.chars() {
         // [#5800] HWP5 원시 기호값을 먼저 평면-15 키로 정규화한다.
         let ch = hancom_symbol_display_key(ch);
-        if program.is_some_and(|program| program.advance_em(ch).is_some()) {
+        // 실제 공급 원 glyph와 렌더러 합성 기호(#8201)는 Unicode 표시 대체보다 우선한다.
+        if program.is_some_and(|program| program.advance_em(ch).is_some())
+            || super::enclosed_pua(ch).is_some()
+        {
             storage.push_char(&mut out, ch)?;
         } else if let Some(dot) = tone_mark_display(ch) {
             storage.push_char(&mut out, dot)?;
@@ -501,6 +515,7 @@ fn try_convert_pua_enclosed_numbers<S: crate::storage::Storage>(
                                 border_type,
                                 inner_char_size: 0,
                                 composition: None,
+                                empty_ink: false,
                             }),
                             footnote_marker: None,
                             display_text: None,

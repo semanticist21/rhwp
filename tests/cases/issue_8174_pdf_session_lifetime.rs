@@ -1,3 +1,7 @@
+//! 관계형·고정형: PDF 세션의 자원 제한·저장·복구와 쪽수 계약을 검사한다.
+//! 주석 갱신: 2026-10-31T23:52:21+09:00; 직전 파일 커밋: 2026-10-31T23:21:30+09:00 (0e4bd3678e298f51da104a9d7292721a808538e1).
+//! pdf/issue8174/fonts/cff-cid.pdf 등 입력으로 API 상태와 저장 결과를 비교하며 시각 일치율을 판정하지 않는다.
+//! 근거: mydocs/pr/assets/issue8174/v2-s07/README.md 및 각 검사의 입력과 assertion.
 //! Public request lifetime, first-save and recovery contracts.
 #![cfg(feature = "pdf-import")]
 use rhwp::{
@@ -62,7 +66,7 @@ fn hwp_save_and_exact_diagnostics_share_budget_preserve_live_document_and_recove
     let metadata = request.diagnostics_json(&core, 1024 * 1024).unwrap();
     assert_eq!(
         request.resource_usage().decoded_bytes,
-        before + metadata.len()
+        before + metadata.len() as u64
     );
     let metadata: serde_json::Value = serde_json::from_slice(&metadata).unwrap();
     assert_eq!(metadata["pageCount"], 1);
@@ -599,7 +603,7 @@ fn exercise_measurement_request_limit(source: &[u8], decoded_limit: usize) {
     let expected_pages = normal.page_count();
     let expected = normal.export_hwpx_native().unwrap();
     let mut policy = PdfImportPolicy::default();
-    policy.backend.decoded_bytes = decoded_limit;
+    policy.backend.decoded_bytes = decoded_limit as u64;
     let mut limited = PdfImportSession::new(policy).unwrap();
     let error = match limited.open(source, &Default::default()) {
         Err(error) => error,
@@ -723,7 +727,16 @@ fn attach_text_clip(core: &mut rhwp::DocumentCore) {
 }
 
 #[cfg(all(not(target_arch = "wasm32"), target_pointer_width = "64"))]
-fn exercise_metadata_save_limit(hwp: bool, decoded_limit: usize) {
+fn exercise_metadata_save_limit(hwp: bool) {
+    let mut baseline = PdfImportSession::new(PdfImportPolicy::default()).unwrap();
+    let mut plain = baseline.open(PDF, &Default::default()).unwrap();
+    let opened_bytes = baseline.resource_usage().decoded_bytes;
+    if hwp {
+        baseline.export_hwp(&mut plain, 1024 * 1024).unwrap();
+    } else {
+        baseline.export_hwpx(&mut plain, 1024 * 1024).unwrap();
+    }
+    let plain_save_bytes = baseline.resource_usage().decoded_bytes;
     let mut healthy = PdfImportSession::new(PdfImportPolicy::default()).unwrap();
     let mut original = healthy.open(PDF, &Default::default()).unwrap();
     // Trusted host edits are legal between open and the first bounded save.
@@ -753,10 +766,15 @@ fn exercise_metadata_save_limit(hwp: bool, decoded_limit: usize) {
     }
     .unwrap();
     assert_eq!(healthy_bytes, expected.bytes());
+    let metadata_save_bytes = healthy.resource_usage().decoded_bytes;
+    assert!(plain_save_bytes >= opened_bytes);
+    assert!(
+        metadata_save_bytes > plain_save_bytes,
+        "메타데이터 저장은 추가 예산을 소비해야 한다"
+    );
     let mut policy = PdfImportPolicy::default();
-    // S54's measured Native64 complete-save work plus 64 bytes. This remains
-    // an input-policy boundary; it does not pin today's exact counter value.
-    policy.backend.decoded_bytes = decoded_limit;
+    // 일반 저장은 허용하되 메타데이터가 든 저장은 거부하는 실제 경계를 고른다.
+    policy.backend.decoded_bytes = plain_save_bytes;
     let mut limited = PdfImportSession::new(policy).unwrap();
     let mut core = limited.open(PDF, &Default::default()).unwrap();
     attach_text_clip(&mut core);
@@ -797,13 +815,13 @@ fn exercise_metadata_save_limit(hwp: bool, decoded_limit: usize) {
 #[test]
 #[cfg(all(not(target_arch = "wasm32"), target_pointer_width = "64"))]
 fn first_hwp_metadata_save_shares_the_request_and_recovers() {
-    exercise_metadata_save_limit(true, 1_690_710 + 64);
+    exercise_metadata_save_limit(true);
 }
 
 #[test]
 #[cfg(all(not(target_arch = "wasm32"), target_pointer_width = "64"))]
 fn first_hwpx_metadata_save_shares_the_request_and_recovers() {
-    exercise_metadata_save_limit(false, 2_049_973 + 64);
+    exercise_metadata_save_limit(false);
 }
 
 #[cfg(all(not(target_arch = "wasm32"), target_pointer_width = "64"))]
@@ -1053,7 +1071,7 @@ fn editor_reopen_reserves_archive_reads_core_and_detaches_editing_lifetime() {
     request.reserve_transfer(handoff.len()).unwrap();
     let mut editor = request.reopen_hwpx_export(&handoff, 1024 * 1024).unwrap();
     let used = request.resource_usage().decoded_bytes;
-    assert!(used > handoff.len() * 2);
+    assert!(used > (handoff.len() * 2) as u64);
     assert_eq!(editor.page_count(), original.page_count());
     live.store(false, Ordering::Relaxed);
     let image = original
@@ -1073,7 +1091,7 @@ fn editor_reopen_refuses_remaining_budget_owner_expiry_and_recovers() {
     let mut original = import.open(PDF, &Default::default()).unwrap();
     let handoff = import.export_hwpx(&mut original, 1024 * 1024).unwrap();
     let mut policy = PdfImportPolicy::default();
-    policy.backend.decoded_bytes = handoff.len();
+    policy.backend.decoded_bytes = handoff.len() as u64;
     let mut low = PdfImportSession::new(policy).unwrap();
     assert!(low.reopen_hwpx_export(&handoff, 1024 * 1024).is_err());
     assert!(low.resource_usage().failure.is_some());

@@ -17,8 +17,8 @@ use crate::model::document::Document;
 use crate::model::paragraph::{LineSeg, Paragraph};
 use crate::model::shape::{Caption, DrawingObjAttr, ShapeObject};
 use crate::renderer::composer::{
-    compose_section, layout_picture_band, reflow_line_segs, reflow_line_segs_in_stored_section,
-    ParagraphBox,
+    compose_section, control_owns_body_band, layout_picture_band, reflow_line_segs,
+    reflow_line_segs_in_stored_section, ParagraphBox,
 };
 use crate::renderer::layout::LayoutEngine;
 use crate::renderer::page_layout::PageLayoutInfo;
@@ -208,8 +208,10 @@ impl DocumentCore {
     fn from_bytes_inner(data: &[u8], password: Option<&[u8]>) -> Result<DocumentCore, HwpError> {
         let source_format = crate::parser::detect_format(data);
         #[cfg(feature = "pdf-import")]
-        if source_format == crate::parser::FileFormat::Pdf && password.is_none() {
-            return Self::from_pdf_bytes(data, &crate::parser::pdf::PdfImportOptions::default());
+        if source_format == crate::parser::FileFormat::Pdf {
+            let options = crate::parser::pdf::PdfImportOptions::with_password(password)
+                .map_err(|e| HwpError::InvalidFile(format!("PDF 오류: {e}")))?;
+            return Self::from_pdf_bytes(data, &options);
         }
         let parsed = crate::parser::parse_document_for_core(data, password)
             .map_err(|e| HwpError::InvalidFile(e.to_string()))?;
@@ -328,11 +330,17 @@ impl DocumentCore {
             && document
                 .hwpx_aux_entry(crate::model::document::HWP5_ORIGIN_HWPX_MARKER_PATH)
                 .is_some();
-        let use_xml_import_semantics = matches!(
-            source_format,
-            crate::parser::FileFormat::Hwpx | crate::parser::FileFormat::Hml
-        ) && !hwp5_origin_hwpx
-            && !document.layout_profile().hwp3_native_layout();
+        // [#8310] 한컴 HWPX 에서 만든 HWP(`/RhwpHwpxOrigin` = 2)는 원본 HWPX 의 저장 줄
+        // 계약을 지닌다 — 원본 좌표와 "저장 줄 없음". 같은 문서가 같은 조판 입력이 되도록
+        // HWPX 와 같은 XML import 규칙으로 연다.
+        let use_xml_import_semantics =
+            (matches!(
+                source_format,
+                crate::parser::FileFormat::Hwpx | crate::parser::FileFormat::Hml
+            ) || (matches!(source_format, crate::parser::FileFormat::Hwp)
+                && document.hwpx_origin_keeps_source_lines()))
+                && !hwp5_origin_hwpx
+                && !document.layout_profile().hwp3_native_layout();
 
         // 비표준 lineseg 감지 — reflow 이전 시점에 IR을 그대로 검증.
         // 경고는 사용자에게 고지되며, 자동 reflow 는 `needs_line_seg_reflow` 조건에만 한정.
@@ -379,6 +387,9 @@ impl DocumentCore {
             );
         }
         Self::clear_missing_lineseg_placeholders(&mut document);
+        if !document.layout_profile().hwp3_native_layout() {
+            Self::project_unstored_float_bands(&mut document, &styles, DEFAULT_DPI);
+        }
         section_activation::rebase_body_frames(
             &mut document,
             &activated_sections,
@@ -408,6 +419,7 @@ impl DocumentCore {
             hft_outline_fonts: Default::default(),
             metafile_fonts: Default::default(),
             font_environment: None,
+            host_font_environment: None,
             composed: Vec::new(),
             body_page_field_error: None,
             render_normalization: super::super::RenderNormalizationState::default(),
@@ -1646,6 +1658,125 @@ impl DocumentCore {
             })
     }
 
+    /// [#8399] rhwp 가 계산한 줄뿐인(또는 줄이 없는) 문단에 어울림 개체 밴드가 걸리면 그 밴드를
+    /// 줄로 발행한다.
+    ///
+    /// 렌더 프레임은 그런 문단을 밴드 없이 전폭으로 채운다. HWPX 저장은 rhwp 가 계산한 줄(구현
+    /// 태그)을 싣지 않고, HWP 저장본에는 밴드 줄의 출처 표지가 실리지 않는다. 그래서 편집 직후
+    /// 밴드로 깎인 줄이 다시 열면 전폭이 되어 글이 개체 밑에 깔렸다. 한/글은 같은 파일을 열어
+    /// 밴드로 줄을 깎는다. 편집 경로와 같은 소유자([`layout_picture_band`])가 밴드 범위의 **모든
+    /// 문단이 원본 저장 줄을 갖지 않을 때만** 줄을 만든다 — 원본 저장 줄이 있는 문단은 그 줄이
+    /// 권위다. 만든 줄은 구현 태그라 HWPX 로 다시 저장해도 실리지 않는다.
+    fn project_unstored_float_bands(document: &mut Document, styles: &ResolvedStyleSet, dpi: f64) {
+        let hwp3_layout = document.layout_profile().hwp3_layout();
+        for section in &mut document.sections {
+            let page_def = section.section_def.page_def.clone();
+            let mut min_projected = None;
+            let mut host_index = 0usize;
+            while host_index < section.paragraphs.len() {
+                let host = &section.paragraphs[host_index];
+                if !crate::renderer::para_has_no_stored_line_segs(host)
+                    || !host.controls.iter().any(control_owns_body_band)
+                {
+                    host_index += 1;
+                    continue;
+                }
+                let column_def =
+                    Self::find_column_def_for_paragraph(&section.paragraphs, host_index);
+                let layout = PageLayoutInfo::from_page_def(&page_def, &column_def, dpi);
+                let column_width = layout
+                    .column_areas
+                    .first()
+                    .map(|area| area.width)
+                    .unwrap_or(layout.body_area.width);
+                let Some(band) = layout_picture_band(
+                    &section.paragraphs,
+                    host_index,
+                    column_width,
+                    styles,
+                    dpi,
+                    (layout.body_area.x, layout.body_area.y),
+                ) else {
+                    host_index += 1;
+                    continue;
+                };
+                let range = band.paragraph_range.clone();
+                if range.start != host_index {
+                    host_index += 1;
+                    continue;
+                }
+                let band_paragraphs = &section.paragraphs[range.clone()];
+                // 저장 줄 없는 어울림 **그림** 밴드는 렌더 경로가 이미 따로 소유한다 — 줄을 새로
+                // 발행하는 것은 밴드 소유자가 새로 맡은 어울림 도형이 낀 밴드뿐이다.
+                let host_has_band_shape =
+                    section.paragraphs[host_index]
+                        .controls
+                        .iter()
+                        .any(|control| {
+                            matches!(control, Control::Shape(_)) && control_owns_body_band(control)
+                        });
+                if host_has_band_shape
+                    && band_paragraphs
+                        .iter()
+                        .all(|paragraph| paragraph.line_segs.is_empty())
+                {
+                    // 줄이 하나도 없다(HWPX) — 렌더 프레임 대신 밴드 소유자가 줄을 낸다.
+                    for (paragraph, (line_segs, space_metrics)) in section.paragraphs[range.clone()]
+                        .iter_mut()
+                        .zip(band.line_segs.into_iter().zip(band.space_metrics))
+                    {
+                        paragraph.publish_float_band_rows(line_segs, space_metrics);
+                    }
+                    min_projected.get_or_insert(range.start);
+                } else if band_paragraphs
+                    .iter()
+                    .all(crate::renderer::para_has_no_stored_line_segs)
+                    && band_paragraphs
+                        .iter()
+                        .zip(&band.line_segs)
+                        .all(|(paragraph, rows)| {
+                            Self::same_row_partition(&paragraph.line_segs, rows)
+                        })
+                {
+                    // rhwp 가 계산해 저장한 줄(HWP)을 밴드가 그대로 재현한다 — 그 줄이 밴드 줄이다.
+                    // 줄은 바꾸지 않고 출처 표지만 되살린다. 재현하지 못하면 다른 소유자의 줄이다.
+                    for paragraph in &mut section.paragraphs[range.clone()] {
+                        paragraph.layout_float_band = true;
+                    }
+                } else {
+                    host_index += 1;
+                    continue;
+                }
+                host_index = range.end.max(host_index + 1);
+            }
+            if let Some(start) = min_projected {
+                crate::renderer::composer::recalculate_section_vpos(
+                    &mut section.paragraphs,
+                    start,
+                    None,
+                    None,
+                    styles,
+                    dpi,
+                    hwp3_layout,
+                );
+            }
+        }
+    }
+
+    /// 두 줄 사다리가 같은 글자 분할·줄 조각을 갖는가 — 세로 위치는 구역 사다리가 정한다.
+    fn same_row_partition(
+        stored: &[crate::model::paragraph::LineSeg],
+        projected: &[crate::model::paragraph::LineSeg],
+    ) -> bool {
+        stored.len() == projected.len()
+            && stored.iter().zip(projected).all(|(a, b)| {
+                a.text_start == b.text_start
+                    && a.column_start == b.column_start
+                    && a.segment_width == b.segment_width
+                    && a.line_height == b.line_height
+            })
+    }
+
     /// HWP5 -> HWPX export가 넣은 LineSeg 부재 marker는 reflow gate에서만 사용한다.
     /// 레이아웃은 HWP5 원본과 같은 `line_segs.is_empty()` 경로를 타야 하므로 로드 직후 제거한다.
     fn clear_missing_lineseg_placeholders(document: &mut Document) {
@@ -2063,9 +2194,11 @@ impl DocumentCore {
             let mut latest_non_tac_picture_host = None;
             let mut pi = 0usize;
             while pi < section.paragraphs.len() {
-                if section.paragraphs[pi].controls.iter().any(|control| {
-                    matches!(control, Control::Picture(picture) if !picture.common.treat_as_char)
-                }) {
+                if section.paragraphs[pi]
+                    .controls
+                    .iter()
+                    .any(control_owns_body_band)
+                {
                     latest_non_tac_picture_host = Some(pi);
                 }
                 if Self::needs_reflow_broadly(&section.paragraphs[pi]) {
@@ -2118,8 +2251,7 @@ impl DocumentCore {
                         .iter_mut()
                         .zip(band.line_segs.into_iter().zip(band.space_metrics))
                         {
-                            paragraph
-                                .replace_line_segs_with_space_metrics(line_segs, space_metrics);
+                            paragraph.publish_float_band_rows(line_segs, space_metrics);
                         }
                         reflowed += band_len;
                         min_reflowed_idx =
@@ -2137,9 +2269,11 @@ impl DocumentCore {
                     // exclusion. If its complete band cannot be represented,
                     // do not publish a scalar host row and leave the source
                     // geometry intact for the caller's existing path.
-                    if section.paragraphs[pi].controls.iter().any(|control| {
-                        matches!(control, Control::Picture(picture) if !picture.common.treat_as_char)
-                    }) {
+                    if section.paragraphs[pi]
+                        .controls
+                        .iter()
+                        .any(control_owns_body_band)
+                    {
                         break;
                     }
 
@@ -2856,7 +2990,14 @@ impl DocumentCore {
         };
         let grown_tables = self.grown_table_heights();
         let grows_tables = grown_tables.iter().any(Option::is_some);
-        let serialized = if matches!(self.source_format, crate::parser::FileFormat::Hwp) {
+        // [#8302] rhwp 가 HWPX 에서 만든 HWP(`/RhwpHwpxOrigin`, `hwpx_lineage`)는 HWP5 계보가
+        // 아니다. 그 IR 은 HWPX 저장 계약(줄 축·저장 줄 유무)을 그대로 지니므로 HWP5-origin
+        // 마커를 붙이지 않고 HWPX 출처와 같은 경로로 내보낸다. 마커를 붙이면 다시 연 HWPX 가
+        // HWP5-origin 호환 계약으로 조판돼 원본 HWPX 와 쪽수가 갈린다(36376848: 1쪽 → 2쪽).
+        // HWP3 계보가 섞인 문서는 마커가 없으면 HWP3 native 조판으로 다시 열리므로 HWP5 축을 남긴다.
+        let serialized = if matches!(self.source_format, crate::parser::FileFormat::Hwp)
+            && (!self.document.provenance.hwpx_lineage || hwp3_origin)
+        {
             let mut doc = self.document.clone();
             grown_table_heights::apply_grown_table_heights(&mut doc, &grown_tables);
             if let Some((_, value)) = doc
@@ -3185,6 +3326,7 @@ impl DocumentCore {
     pub fn set_document(&mut self, doc: Document) {
         self.border_paint_store.clear();
         self.document = doc;
+        self.host_font_environment = None;
         self.canvas_metrics = None;
         self.render_normalization.text_reflowed_tables.clear();
         self.bump_bin_data_epoch();

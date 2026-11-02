@@ -2,9 +2,11 @@
 
 import csv
 import hashlib
+import io
 import json
 import tempfile
 import unittest
+from contextlib import redirect_stdout
 from pathlib import Path
 from unittest.mock import patch
 
@@ -13,6 +15,29 @@ from test_visual_sweep import SWEEP
 
 
 class RawGateTests(unittest.TestCase):
+    def test_summary_rounds_display_but_counts_exact_pixels(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            reference = Image.new("RGB", (600, 600), "white")
+            for x in range(400):
+                for y in range(300):
+                    reference.putpixel((x, y), (0, 0, 0))
+            reference.putpixel((500, 500), (0, 0, 0))
+            different = reference.copy()
+            different.putpixel((500, 500), (255, 255, 255))
+            a, b, c = root / "a.png", root / "b.png", root / "c.png"
+            reference.save(a)
+            reference.save(b)
+            different.save(c)
+            output = io.StringIO()
+            with redirect_stdout(output):
+                result = SWEEP.write_silhouette_tsv([(1, a, b), (2, c, b)], root, "sample")
+            summary = json.loads(output.getvalue().splitlines()[-1])
+            self.assertEqual(summary["minimum"], "100.00")
+            self.assertEqual(summary["exact100"], 1)
+            self.assertEqual(result["metrics"][1]["silhouette_raw_unmatched_pixels"], 1)
+            self.assertLess(result["metrics"][1]["silhouette_raw_match_percent"], 100.0)
+
     def test_explicit_linked_image_region_is_excluded_on_both_rasters(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -118,6 +143,15 @@ class RawGateTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             pairs = [(1, root / "a", root / "b"), (2, root / "c", root / "d")]
+            for _, rhwp, pdf in pairs:
+                rhwp.write_bytes(b"rhwp")
+                pdf.write_bytes(b"pdf")
+            for (page, details, _), (_, rhwp, pdf) in zip(cases, pairs):
+                cases[page - 1] = (page, details, {
+                    "page": page,
+                    "rhwp_sha256": SWEEP.sha256_file(rhwp),
+                    "pdf_sha256": SWEEP.sha256_file(pdf),
+                })
             with patch.object(SWEEP, "ordered_page_map", return_value=iter(cases)):
                 manifest = SWEEP.write_silhouette_tsv(pairs, root, "rounding")
             with (root / "silhouette.tsv").open(encoding="utf-8") as stream:

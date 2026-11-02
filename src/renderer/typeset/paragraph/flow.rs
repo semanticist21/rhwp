@@ -52,6 +52,20 @@ pub(in crate::renderer::typeset) fn place_with_storage<S: crate::storage::Storag
             fmt.spacing_before,
             st.current_height,
         );
+    let stored_frame_shared_spacing = if stored_frame_shared_spacing > 0.0 {
+        stored_frame_shared_spacing
+    } else {
+        crate::renderer::float_placement::stored_visible_host_successor_spacing(
+            &st.current_items,
+            paragraphs,
+            para_idx,
+            fmt.spacing_before,
+            (st.profile.hwpx_stored_layout() || st.profile.hwp5_stored_pagination_layout())
+                && !st.profile.session_edited(),
+            st.current_height,
+            dpi,
+        )
+    };
     // [#8149] 인증 배치가 없는 빈 host 자리차지 표 상자 뒤도 같은 앞 간격 소비를 따른다.
     let stored_frame_shared_spacing = if stored_frame_shared_spacing > 0.0 {
         stored_frame_shared_spacing

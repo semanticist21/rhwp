@@ -96,6 +96,35 @@ pub(super) fn extract(
             )
         })?);
     }
+    let mut paints = std::collections::BTreeMap::new();
+    for (order, paint) in &clips.text_paints {
+        allocation.tree_entry::<&Vec<usize>, &pdf_oxide::elements::TextStrokePaint>()?;
+        paints.insert(order, paint);
+    }
+    let mut span_paints = allocation.vec(span_orders.len())?;
+    for order in &span_orders {
+        let paint = paints.get(order).map(|p| {
+            let color = p.color;
+            crate::model::text_paint::TextPaint {
+                fill: p.fill,
+                width_mpt: (f64::from(p.width) * 1000.).round() as u32,
+                stroke_color: super::lowering::rgb(pdf_oxide::layout::Color::new(
+                    color.0, color.1, color.2,
+                )),
+                fill_alpha: (p.fill_alpha.clamp(0., 1.) * 255.).round() as u8,
+                stroke_alpha: (p.stroke_alpha.clamp(0., 1.) * 255.).round() as u8,
+                line_join: p.line_join,
+                miter_limit_milli: (p.miter_limit * 1000.).round() as u32,
+            }
+        });
+        if paint.is_some_and(|p| !p.valid()) {
+            return Err(PdfImportError::new(
+                "PDF_TEXT_UNSUPPORTED",
+                "invalid text stroke paint",
+            ));
+        }
+        span_paints.push(paint);
+    }
     for path in &paths {
         let next = budget
             .path_operations
@@ -127,7 +156,11 @@ pub(super) fn extract(
         .spans
         .checked_add(spans.len())
         .ok_or_else(|| PdfImportError::budget("span count overflow"))?;
-    if spans.len() > 20_000 || paths.len() > 20_000 || budget.spans > budget.policy.backend.spans {
+    // Paths already consumed the request-wide operation budget above. The
+    // bounded extractor reserves their storage; lowering checks format ID
+    // capacity before materialization. A second fixed path-count cap would
+    // reject dense pages independently of their selected request policy.
+    if spans.len() > 20_000 || budget.spans > budget.policy.backend.spans {
         return Err(PdfImportError::budget("extracted element budget exceeded"));
     }
     for span in &spans {
@@ -253,11 +286,18 @@ pub(super) fn extract(
         if handle.opacity == 0.0 {
             continue;
         }
-        let Some(visible) = handle.clip.visible_bounds(handle.bbox).map_err(|_| {
-            PdfImportError::new(
-                "PDF_IMAGE_UNSUPPORTED",
-                "non-rectangular image clipping is not supported",
-            )
+        let Some(visible) = checked(
+            pdf,
+            handle.clip.visible_bounds(handle.bbox),
+            "image_clip",
+            page,
+        )
+        .map_err(|mut error| {
+            if error.diagnostics.as_ref().and_then(|d| d.backend_kind) == Some("unsupported") {
+                error.code = "PDF_IMAGE_UNSUPPORTED";
+                error.message = "image clipping path is not supported";
+            }
+            error
         })?
         else {
             // This paint operation has an empty intersection with the active clip.
@@ -384,6 +424,7 @@ pub(super) fn extract(
         span_orders,
         span_fonts,
         span_clips,
+        span_paints,
         images,
         image_orders,
         paths,

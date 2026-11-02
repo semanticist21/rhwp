@@ -46,6 +46,8 @@ mod hangul_jamo;
 pub(crate) fn uses_hangul_jamo_overlay(metric: &FontMetric, character: char) -> bool {
     hangul_jamo::width(metric, character).is_some()
 }
+#[path = "font_metric_symbol_slot_chars.rs"]
+mod symbol_slot_chars;
 
 #[path = "font_metric_nimbus_roman.rs"]
 mod nimbus_roman;
@@ -53,6 +55,14 @@ mod nimbus_roman;
 pub(crate) use legacy_hft::{
     is_metric_face as is_legacy_hft_metric_face, metric_face_name as legacy_hft_metric_face,
 };
+
+/// 독립 Print와 원본 HFT에서 확인한 전진 표인지 구분한다.
+/// 표시용 글꼴 프로그램의 hmtx는 이 표의 원본 정밀도를 대신하지 않는다.
+pub(crate) fn is_verified_original_hft_advance(metric: &FontMetric) -> bool {
+    hci_poppy::METRICS
+        .iter()
+        .any(|source| std::ptr::eq(source, metric))
+}
 
 #[derive(Debug)]
 pub struct HangulMetric {
@@ -138,6 +148,7 @@ impl FontMetric {
             .or_else(|| math_symbol_blocks::width(self, ch))
             .or_else(|| supplementary_pictographs::width(self, ch))
             .or_else(|| contextual_scripts::width(self, ch))
+            .or_else(|| symbol_slot_chars::width(self, ch))
     }
 }
 
@@ -156,6 +167,7 @@ pub(crate) fn verified_metric_has_glyph(metric: &FontMetric, ch: char) -> Option
         .or_else(|| math_symbol_blocks::entry(metric, ch).map(|(present, _)| present))
         .or_else(|| supplementary_pictographs::entry(metric, ch).map(|(present, _)| present))
         .or_else(|| contextual_scripts::entry(metric, ch).map(|(present, _)| present))
+        .or_else(|| symbol_slot_chars::entry(metric, ch).map(|(present, _)| present))
 }
 
 /// DB 항목이 없어도 확인한 원 face의 cmap은 독립적으로 조회한다.
@@ -447,6 +459,29 @@ pub(crate) fn find_metric_decision<'a>(
         match_kind: selected.match_kind,
         entry_index: selected.entry_index,
     })
+}
+
+/// [#8079] 굵은 글자의 **조판 전진폭**을 줄 같은 family 의 보통(Regular) 표.
+///
+/// 한/글은 별도 Bold 면이 있는 TrueType 의 굵은 글자를 Bold 면으로 그리지만, 글자 원점은
+/// 보통 면의 전진폭으로 잡는다. 한컴 PDF 는 임베드 Bold `/W` 를 그대로 둔 채 TJ 조정으로
+/// 다음 글자를 당긴다 — 맑은 고딕 Bold 숫자 `/W` 579/1000 뒤 `29.000` = 보통 1128/2048(0.55em).
+/// `pdf/` 한컴 정본 205개 전수(TJ 안 글자의 `/W − 조정`)에서 굵은 맑은 고딕은 보통 폭 쪽이
+/// 26,893자, Bold 폭 쪽이 357자다. Arial Bold·Times New Roman Bold 도 Bold 폭 쪽은 0자다.
+///
+/// 같은 이름·같은 기울임의 보통 항목이 **정확히** 있을 때만 돌려준다. em 이 다르면 같은
+/// 격자로 비교할 근거가 없어 None. 글리프 선택·결측 판정은 이 표가 아니라 Bold 항목이 맡는다.
+pub(crate) fn regular_advance_metric(bold_metric: &FontMetric) -> Option<&'static FontMetric> {
+    if !bold_metric.bold {
+        return None;
+    }
+    let slots = metric_index().get(bold_metric.name)?;
+    let regular = slots[metric_slot_index(false, bold_metric.italic)];
+    (regular.match_kind == MetricMatchKind::Exact
+        && !regular.metric.bold
+        && regular.metric.italic == bold_metric.italic
+        && regular.metric.em_size == bold_metric.em_size)
+        .then_some(regular.metric)
 }
 
 /// 원본 프로그램에서 확인한 문자 폭은 표시 대체 글꼴의 완전한 표보다 우선한다.

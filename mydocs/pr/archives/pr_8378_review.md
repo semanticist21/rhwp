@@ -1,0 +1,42 @@
+# PR #8378 리뷰 — fix(typeset): HWP5 출처 HWPX의 1행 표도 원본 HWP처럼 쪽 경계에서 나눈다 (#8373)
+
+## 최종 판정
+
+**머지 보류 — 재체리픽 후보의 검증 진행 중.** 최신 base의 기능 보존, 관련 검증과 기존 정밀 TSV 하락 해소를 완료한 뒤 다시 판정한다.
+
+## 접수와 적용
+
+- 원 PR: [#8378](https://github.com/edwardkim/rhwp/pull/8378), 작성자 `planet6897`, reviewer `jangster77`.
+- 원 PR head 조회값: `fcd58cb347583f3b4ba7e3ce24b20418e299c539`. 조회 시 원 PR head와 마지막 체리픽 원본이 일치한다.
+- 마지막 적용 원본: `fcd58cb347583f3b4ba7e3ce24b20418e299c539`. 검증 시작 당시 코드 후보: `abea5b028f8f135bdf000ca700e1993ebf0b1973`, 기준 `upstream/devel`: `bc9dfdd057258de59afebeb5121c4bee7398e07f`.
+- 관련 이슈: [#8373](https://github.com/edwardkim/rhwp/issues/8373).
+- 선행 PR: 별도 누적 선행 PR이 명시되지 않았다.
+
+후속 `e1f03ffbb3`은 Python 테스트 준비, `af175315e7`과 `e920cba6b0`은 회귀 검사 주석, `a63bb719de`는 검증 경과를 기록했다. `5d1294811b`은 전체 그림의 잘림 오판을 보정했다. `e1b8ab0f54`, `d6fe30c3ad`, `0897582f6c`, `8c4eca265e`에 Native 진단, #8410 집중 6건 통과와 글꼴 대조를 기록했으며 새 코드의 전쪽 출력 검증이 필요하다.
+
+## 변경 주장과 검토 관점
+
+HWP5 출처 HWPX의 1행 표가 HWP 원본처럼 쪽 경계에서 분할되도록 한다.
+분할 조각·뒤 본문·재저장 원본의 내용 누락과 중복을 확인한다.
+
+## 체리픽과 보정
+
+- 원본 `fcd58cb347583f3b4ba7e3ce24b20418e299c539` → 통합 `75fad7d97257995ba0307a4682c6ccdb62f2c7e7`.
+
+이 PR의 원본 커밋 적용 중 별도로 기록된 충돌은 없다.
+
+## 검증과 증거
+
+이전 통합 후보의 최소 글꼴 전체 회귀 로그에서 이 PR 관련 다음 모듈의 실행을 확인했다. 새 base 후보의 재실행 결과는 이 값으로 대신하지 않는다.
+- [`hwp5_origin_hwpx_single_row_table_split.rs`](../../../tests/cases/hwp5_origin_hwpx_single_row_table_split.rs): 이전 실행 1건 통과, 0건 실패, 0건 건너뜀.
+
+검토 후보에 포함된 입력 바이트를 Git blob과 대조했다. 아래 자료는 원 PR의 제출 증거이며 새 후보의 실행 결과를 뜻하지 않는다.
+- [`hwpx_sample2-rhwp-hwpx-2024.pdf`](../../../pdf/hwpx_sample2-rhwp-hwpx-2024.pdf) — SHA-256 `711219ae8b3090bedb7721c7b885546dba07a114f870b12b2894af20b79aa796`.
+- [`hwpx_sample2.hwp`](../../../samples/hwpx_sample2.hwp) — SHA-256 `ca66d521d070ac8442e09fd3f283e17611eb9efb45eb4bf6c3a8f65e604f6b5f`.
+- [`hwpx_sample2-2024.pdf`](../../../pdf/hwpx_sample2-2024.pdf) — SHA-256 `406d3d9da7967f50dd04e115ca5f53953e61c88d4641005165f251a65d8028af`.
+
+기존 생성 목록으로 최소 글꼴 회귀 12,320건 통과·45건 건너뜀을 확인했다. 생성 목록에서 누락된 #8410 두 모듈의 6건을 목록 재작성 후 같은 환경에서 별도로 실행해 모두 통과했다. 두 실행을 구분하며 한 번의 전체 실행으로 기록하지 않는다.
+
+2026-11-01 고정 후보의 #8389·#8397 전쪽 정밀 대조에서 2,153행 중 Native 12행, WASM 8행이 공개 기준보다 낮았다. 이 수치는 이후 GIF·Canvas 보정 전 결과이며 최종 후보의 재검증 결과가 아니다. #7905 3쪽은 GIF 오른쪽 경계 누락, sample16 35쪽 WASM은 메타파일 내부의 미대응 3픽셀이 확인됐다. #8040 두 원본은 Native·WASM 전쪽이 90% 이상이나 Native 정밀 기준 하락이 남는다. 진행과 근거는 [작업 기록](../../working/task_m100_planet6897_system_fonts_20261031.md)을 따른다. 하락 보정과 전쪽 대조, 각 PR의 독립 Print·Native/fresh WASM 및 직접 판독을 완료해야 한다. #8410·#8412의 새 base 기능도 별도로 보존 검증한다.
+
+원 PR의 최신 head·required check와 통합 후보의 새 검증 결과를 확인하기 전에는 승인이나 merge를 진행하지 않는다.

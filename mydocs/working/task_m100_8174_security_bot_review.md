@@ -26,6 +26,10 @@
 
 일부 기존 opt-in 진단은 `RHWP_DIAG_MIXFRAG`·`RHWP_ENDNOTE_LINE_DEBUG`로 본문 일부를 출력한다. 이를 일반적인 무본문 로그 보장으로 확대하지 않는다. 이 경계는 173건의 실제 source가 글꼴 메트릭 boolean이라는 판정과 별도로 기록하며, 비신뢰 문서 서비스의 호스트는 내용 진단을 명시적으로 관리해야 한다.
 
+2026-11-02 후속 보정에서는 `RHWP_DIAG_MIXFRAG`의 문단 글자 출력과 별도 셀 재조판 진단의
+글자 출력을 제거했다. 위 문장은 최초 검토 당시의 상태이며, 다른 진단 경로의 본문 출력 여부까지
+이 보정으로 해결했다고 주장하지 않는다.
+
 ## Secret scanning #1
 
 [경고](https://github.com/edwardkim/rhwp/security/secret-scanning/1)는 `rhwp-studio/e2e/ai-providers.test.mjs:24`에 있다. 원 provider 테스트 `b30bd0edf1`이 #8348 통합 `c76d87cfda742a4624e0a588aa09eb9d89b87d49`로 들어왔으며 현재 PR이 실제 credential을 새로 추가한 것이 아니다. 상수는 길이 39의 provider 형식이며 합성 표식 두 개를 포함한다. 58–80행에서 OpenAI·Gemini 요청을 가로채 미리 준비한 모델/SSE/error 응답을 반환한다. 키 값은 표시하지 않았고 실제 Google 호출·회전·권한 변경은 하지 않았다. 현재 GitHub validity는 unknown이며, 로컬 판정의 근거는 테스트 생성 의도와 mock 경계다.
