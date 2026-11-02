@@ -358,7 +358,8 @@ fn punctuation_combining_graphemes_and_nonbreaking_spaces_stay_whole() {
     assert!(body_starts(&combining)
         .iter()
         .all(|start| boundaries.contains(start)));
-    // NBSP 삼자 묶음은 36px이다. 첫 줄의 남은 24px보다 크므로 함께 다음 줄로 간다.
+    // NBSP는 영문 공백(12px)이 아닌 반각 10px다(devel #6646 계약, 한컴 2024 Print 대조).
+    // 삼자 묶음 34px는 첫 줄의 남은 24px보다 크므로 함께 다음 줄로 간다.
     let mut nbsp = fixture("Z A\u{00a0}B C", 48, 0);
     apply(&mut nbsp, 2);
     assert_eq!(body_starts(&nbsp), [0, 2, 6]);
@@ -367,7 +368,7 @@ fn punctuation_combining_graphemes_and_nonbreaking_spaces_stay_whole() {
     let selection = value(&nbsp.get_selection_rects(0, 0, 2, 0, 5).unwrap());
     assert_eq!(selection.as_array().unwrap().len(), 1);
     assert!(
-        (selection[0]["width"].as_f64().unwrap() - 36.0).abs() < 0.2,
+        (selection[0]["width"].as_f64().unwrap() - 34.0).abs() < 0.2,
         "NBSP 실제 선택={selection}"
     );
     for letter in ["漢", "가"] {

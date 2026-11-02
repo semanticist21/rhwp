@@ -295,6 +295,35 @@ fn assert_source(
     }
 }
 
+/// bit 28은 HWPX→HWP 저장이 원문 형식의 문서 규칙으로 정한다(#8339). 저장본끼리 비교할 때만 뺀다.
+fn without_save_bit28(mut value: Value) -> Value {
+    match &mut value {
+        Value::Object(map) => {
+            if map.remove("hwp5_gen_shape_attr_bit28").is_some() {
+                if let Some(attr) = map.get("attr").and_then(Value::as_u64) {
+                    map.insert("attr".into(), json!(attr & !(1 << 28)));
+                }
+            }
+            for item in map.values_mut() {
+                *item = without_save_bit28(item.take());
+            }
+        }
+        Value::Array(items) => {
+            for item in items {
+                *item = without_save_bit28(item.take());
+            }
+        }
+        _ => {}
+    }
+    value
+}
+
+macro_rules! assert_saved_eq {
+    ($left:expr, $right:expr $(,)?) => {
+        assert_eq!(without_save_bit28($left), without_save_bit28($right))
+    };
+}
+
 fn placement(c: &CommonObjAttr) -> Value {
     let mut value = serde_json::to_value(c).unwrap();
     for key in ["ctrl_id", "instance_id", "width", "height"] {
@@ -517,7 +546,7 @@ fn inline_table_v2_preserves_saved_common_cells_and_source() {
             for (source, target) in saved(&origin).into_iter().zip(saved(&target)) {
                 let (s, c) = first(&source, 0, false);
                 let (t, d) = first(&target, 0, false);
-                assert_eq!(
+                assert_saved_eq!(
                     control_model(&target, 0, &[], t, d),
                     control_model(&source, 0, &[], s, c)
                 );
@@ -543,7 +572,7 @@ fn inline_picture_v2_preserves_saved_common_and_png() {
             for (source, target) in saved(&origin).into_iter().zip(saved(&target)) {
                 let (s, c) = first(&source, 0, true);
                 let (t, d) = first(&target, 0, true);
-                assert_eq!(
+                assert_saved_eq!(
                     control_model(&target, 0, &[], t, d),
                     control_model(&source, 0, &[], s, c)
                 );
@@ -581,7 +610,7 @@ fn inline_v2_and_floating_v1_keep_one_styled_paragraph_and_scalar_anchors() {
                     )
                 );
                 for (source, target) in saved(&origin).into_iter().zip(saved(&target)) {
-                    assert_eq!(
+                    assert_saved_eq!(
                         paragraph_model(
                             &target,
                             0,
@@ -650,7 +679,7 @@ fn nested_whole_table_v2_keeps_children_and_reidentifies_against_existing_object
         for (source, target) in saved(&origin).into_iter().zip(saved(&target)) {
             let (s, c) = first(&source, 1, false);
             let (t, d) = first(&target, 1, false);
-            assert_eq!(
+            assert_saved_eq!(
                 control_model(&target, 1, &[], t, d),
                 control_model(&source, 1, &[], s, c)
             );
@@ -720,7 +749,7 @@ fn inline_table_v2_preserves_placement_but_keeps_existing_60003_to_41954_budget(
             expected["cells"][0]["width"] = json!(17480);
             expected["cells"][1]["width"] = json!(24474);
             let (t, d) = first(&target, 0, false);
-            assert_eq!(control_model(&target, 0, &[], t, d), expected);
+            assert_saved_eq!(control_model(&target, 0, &[], t, d), expected);
         }
     }
 }
@@ -762,7 +791,7 @@ fn inline_table_v2_reserves_larger_source_outer_margins_without_overflow() {
             expected["cells"][0]["width"] = json!(17091);
             expected["cells"][1]["width"] = json!(23929);
             let (t, d) = first(&target, 0, false);
-            assert_eq!(control_model(&target, 0, &[], t, d), expected);
+            assert_saved_eq!(control_model(&target, 0, &[], t, d), expected);
         }
     }
 }

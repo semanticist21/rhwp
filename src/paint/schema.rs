@@ -38,7 +38,7 @@ mod tests {
 
     #[test]
     fn layer_tree_schema_constants_match_schema() {
-        assert_eq!(LAYER_TREE_SCHEMA.schema_minor_version, 35);
+        assert_eq!(LAYER_TREE_SCHEMA.schema_minor_version, 36);
         assert_eq!(LAYER_TREE_SCHEMA.resource_table_minor_version, 6);
         assert_eq!(
             LAYER_TREE_SCHEMA,

@@ -113,17 +113,19 @@ pub(crate) fn script_parts_from_streams(
         let end = second_at.checked_add(4)?.checked_add(second)?;
         (data.get(end..)? == [0, 0, 0, 0, 0, 0, 0, 0, 255, 255, 255, 255]).then_some(())
     };
-    // 배포용 봉투는 문서의 FileHeader 압축 비트대로 푼다(#8374). 그 밖에는 길이 필드로
-    // 닫힌 원문이면 그대로, 아니면 deflate로 읽어 비트와 다르게 저장된 스트림도 받는다.
+    // 형태는 문서의 FileHeader 압축 비트가 정한다(#8374). 꼬리까지 닫힌 원문은 비트와
+    // 무관하게 그대로 받고, 비압축 문서의 deflate 스트림도 풀어 읽는다.
     let raw = if is_distribution_envelope(bytes) {
         crate::parser::crypto::decrypt_viewtext_section_limited(bytes, compressed, MAX_SCRIPT_BYTES)
             .map_err(|_| invalid())?
     } else if counted_payload(bytes).is_some() {
         bytes.clone()
-    } else {
+    } else if compressed {
         inflate_script_stream(bytes)?
+    } else {
+        inflate_script_stream(bytes).unwrap_or_else(|_| bytes.clone())
     };
-    if raw.len() > MAX_SCRIPT_BYTES || counted_payload(&raw).is_none() {
+    if raw.len() > MAX_SCRIPT_BYTES {
         return Err(invalid());
     }
     let mut offset = 0usize;

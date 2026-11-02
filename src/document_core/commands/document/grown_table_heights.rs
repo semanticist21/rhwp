@@ -90,12 +90,20 @@ impl DocumentCore {
                     let Control::Table(table) = control else {
                         continue;
                     };
-                    let measured =
-                        HeightMeasurer::new(self.dpi).measure_table(table, 0, 0, &self.styles);
-                    out.push(grown(
-                        table.common.height,
-                        content_height(&measured, self.dpi),
-                    ));
+                    // 한컴이 저장한 줄을 그대로 가진 중첩 표도 그 높이가 한컴 조판값이다.
+                    out.push(
+                        has_reflowed_cell_text(table)
+                            .then(|| {
+                                let measured = HeightMeasurer::new(self.dpi).measure_table(
+                                    table,
+                                    0,
+                                    0,
+                                    &self.styles,
+                                );
+                                grown(table.common.height, content_height(&measured, self.dpi))
+                            })
+                            .flatten(),
+                    );
                     self.push_nested_grown_heights(&table.cells, out);
                 }
             }
