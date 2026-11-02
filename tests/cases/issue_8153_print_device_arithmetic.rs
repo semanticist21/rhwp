@@ -13,7 +13,8 @@
 mod print_paper;
 #[path = "../../src/renderer/print_picture_pen.rs"]
 mod print_picture_pen;
-#[allow(dead_code)]
+// 자동 suite가 같은 core를 담은 `print_image_sampling.rs` 검사와 묶여도 lint로 깨지지 않게 한다.
+#[allow(dead_code, clippy::duplicate_mod)]
 #[path = "../../src/renderer/print_image_sampling_core.rs"]
 mod print_sampling;
 
