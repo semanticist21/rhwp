@@ -1,6 +1,5 @@
 //! 문단 번호 정의의 수준별 번호 글자 모양(한/글 '문단 번호 사용자 정의 모양'의 글자 모양 지정).
 
-use crate::document_core::helpers::{json_i32, parse_char_shape_mods};
 use crate::document_core::DocumentCore;
 use crate::error::HwpError;
 
@@ -27,33 +26,7 @@ impl DocumentCore {
                 "번호 수준 {level} 범위 초과"
             )));
         }
-        let id = match json {
-            None => u32::MAX,
-            Some(json) => {
-                let base = json_i32(json, "baseCharShapeId")
-                    .and_then(|id| u32::try_from(id).ok())
-                    .filter(|id| (*id as usize) < info.char_shapes.len())
-                    .unwrap_or(0);
-                let id = self
-                    .document
-                    .find_or_create_char_shape(base, &parse_char_shape_mods(json));
-                if id == 0 {
-                    // 머리 모양의 0은 '참조 없음'으로 읽히므로 같은 모양을 0이 아닌 번호로 둔다.
-                    let shapes = &mut self.document.doc_info.char_shapes;
-                    match shapes[1..].iter().position(|shape| *shape == shapes[0]) {
-                        Some(index) => index as u32 + 1,
-                        None => {
-                            let mut shape = shapes[0].clone();
-                            shape.raw_data = None;
-                            shapes.push(shape);
-                            (shapes.len() - 1) as u32
-                        }
-                    }
-                } else {
-                    id
-                }
-            }
-        };
+        let id = json.map_or(u32::MAX, |json| self.head_char_shape_id(json));
         let numbering = &mut self.document.doc_info.numberings[index];
         numbering.heads[level].char_shape_id = id;
         // HWPX 원본 수준 구간은 그대로 다시 쓰므로 그 수준의 글자 모양 참조도 고친다.
