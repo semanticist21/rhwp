@@ -1325,6 +1325,9 @@ fn parse_para_shape_margin_children(
     Ok(())
 }
 
+/// 한/글이 8~10수준 문단 머리를 담는 `<hp:case>` 의 required-namespace.
+pub(crate) const HWPML_2016_PARAGRAPH_NS: &str = "http://www.hancom.co.kr/hwpml/2016/paragraph";
+
 /// `<switch>` 내부의 `<case>`/`<default>` 분기에서 margin, lineSpacing을 파싱.
 /// HwpUnitChar 네임스페이스 case를 우선 적용한다.
 fn parse_para_shape_switch(
@@ -1334,8 +1337,11 @@ fn parse_para_shape_switch(
 ) -> Result<(), HwpxError> {
     let mut buf = Vec::new();
     let mut in_hwpunitchar_case = false;
+    let mut in_paragraph_case = false;
     let mut in_default = false;
     let mut found_case = false;
+    // 한/글은 8~10수준 문단 머리를 2016 문단 네임스페이스 case 에만 두고 default 는 머리 없음이다.
+    let mut found_heading_case = false;
     // default 값을 임시 저장 (case가 없을 때 폴백)
     let mut def_margin_left: Option<i32> = None;
     let mut def_margin_right: Option<i32> = None;
@@ -1367,6 +1373,10 @@ fn parse_para_shape_switch(
                         if is_hwpunitchar {
                             in_hwpunitchar_case = true;
                         }
+                        in_paragraph_case = ce
+                            .attributes()
+                            .flatten()
+                            .any(|attr| attr_str(&attr) == HWPML_2016_PARAGRAPH_NS);
                     }
                     b"default" => {
                         in_default = true;
@@ -1377,6 +1387,11 @@ fn parse_para_shape_switch(
             Ok(Event::Empty(ref ce)) => {
                 let cname = ce.name();
                 let local = local_name(cname.as_ref());
+                if local == b"heading" && (in_paragraph_case || (in_default && !found_heading_case))
+                {
+                    parse_para_shape_child(ce, ps);
+                    found_heading_case |= in_paragraph_case;
+                }
                 if in_hwpunitchar_case || in_default {
                     match local {
                         b"margin" | b"intent" | b"left" | b"right" | b"prev" | b"next" => {
@@ -1493,6 +1508,7 @@ fn parse_para_shape_switch(
                 match local {
                     b"case" => {
                         in_hwpunitchar_case = false;
+                        in_paragraph_case = false;
                     }
                     b"default" => {
                         in_default = false;
@@ -2366,7 +2382,7 @@ fn apply_numbering_para_head(
     start: Option<u32>,
     format_str: String,
 ) {
-    if !(1..=7).contains(&level) {
+    if !(1..=crate::model::style::NUMBERING_LEVELS).contains(&level) {
         return;
     }
 
@@ -2835,6 +2851,34 @@ mod tests {
         // 분기 없는 HWPUNIT도 한컴 HWP 저장본과 같은 2배 IR 단위다.
         assert_eq!(ps.indent, -4520);
         assert_eq!(ps.spacing_after, 680);
+    }
+
+    /// 한/글 12.30은 8~10수준 문단 머리를 2016 문단 네임스페이스 case 에만 두고 default 는
+    /// 머리 없음으로 저장한다. case 를 읽어야 8~10수준 개요·번호가 남는다.
+    #[test]
+    fn heading_levels_eight_to_ten_come_from_the_2016_paragraph_case() {
+        let xml = r##"<?xml version="1.0" encoding="UTF-8"?>
+<hh:head xmlns:hh="http://www.hancom.co.kr/hwpml/2011/head"
+  xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph">
+  <hh:refList>
+    <hh:paraProperties itemCnt="2">
+      <hh:paraPr id="0"><hp:switch><hp:case hp:required-namespace="http://www.hancom.co.kr/hwpml/2016/paragraph"><hh:heading type="NUMBER" idRef="2" level="9"/></hp:case><hp:default><hh:heading type="NONE" idRef="0" level="0"/></hp:default></hp:switch></hh:paraPr>
+      <hh:paraPr id="1"><hp:switch><hp:case hp:required-namespace="http://example.com/unknown"><hh:heading type="OUTLINE" idRef="0" level="8"/></hp:case><hp:default><hh:heading type="BULLET" idRef="1" level="0"/></hp:default></hp:switch></hh:paraPr>
+    </hh:paraProperties>
+  </hh:refList>
+</hh:head>"##;
+
+        let (doc_info, _) = parse_hwpx_header(xml).unwrap();
+        let heads: Vec<_> = doc_info
+            .para_shapes
+            .iter()
+            .map(|ps| (ps.head_type, ps.numbering_id, ps.para_level))
+            .collect();
+        assert_eq!(
+            heads,
+            [(HeadType::Number, 2, 9), (HeadType::Bullet, 1, 0)],
+            "모르는 case 면 default 머리를 쓴다"
+        );
     }
 
     #[test]

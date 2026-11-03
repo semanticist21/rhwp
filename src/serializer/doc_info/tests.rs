@@ -714,6 +714,32 @@ fn test_serialize_doc_info_roundtrip() {
     assert_eq!(parsed_info.styles[0].local_name, "바탕글");
 }
 
+/// 한/글 12.30(HWP 5.1.1.0)이 저장한 개요 번호 레코드. 7수준과 수준별 시작 번호 뒤에 8~10수준의
+/// 머리 정보·형식 문자열 3개와 시작 번호 3개를 덧붙인다. 8수준은 `^8`(㉮), 9·10수준은 형식이 없다.
+const HANCOM_OUTLINE_NUMBERING_HEX: &str = concat!(
+    "0c00000000003200ffffffff03005e0031002e000c01000000003200ffffffff03005e0032002e000c00000000003200",
+    "ffffffff03005e00330029000c01000000003200ffffffff03005e00340029000c00000000003200ffffffff04002800",
+    "5e00350029000c01000000003200ffffffff040028005e00360029002c00000000003200ffffffff02005e0037000000",
+    "010000000100000001000000010000000100000001000000010000002c01000000003200ffffffff02005e0038004c01",
+    "000000003200ffffffff00006c00000000003200ffffffff0000010000000100000001000000",
+);
+
+#[test]
+fn numbering_keeps_hancom_levels_eight_to_ten_byte_for_byte() {
+    let bytes: Vec<u8> = (0..HANCOM_OUTLINE_NUMBERING_HEX.len())
+        .step_by(2)
+        .map(|i| u8::from_str_radix(&HANCOM_OUTLINE_NUMBERING_HEX[i..i + 2], 16).unwrap())
+        .collect();
+    let numbering = crate::parser::doc_info::parse_numbering(&bytes).unwrap();
+    let formats: Vec<&str> = numbering.level_formats.iter().map(String::as_str).collect();
+    assert_eq!(formats.get(7..), Some(&["^8", "", ""][..]));
+    // 원 가나다·가나다 자모·소문자 로마 숫자
+    let codes: Vec<u8> = numbering.heads.iter().map(|h| h.number_format).collect();
+    assert_eq!(codes.get(7..), Some(&[9, 10, 3][..]));
+    assert_eq!(numbering.level_start_numbers.get(7..), Some(&[1, 1, 1][..]));
+    assert_eq!(serialize_numbering(&numbering), bytes);
+}
+
 #[test]
 fn test_serialize_numbering_roundtrip() {
     let mut numbering = Numbering::default();
@@ -726,7 +752,7 @@ fn test_serialize_numbering_roundtrip() {
     };
     numbering.level_formats[0] = "^1.".to_string();
     numbering.start_number = 1;
-    numbering.level_start_numbers = [1; 7];
+    numbering.level_start_numbers = [1; crate::model::style::NUMBERING_LEVELS];
 
     let data = serialize_numbering(&numbering);
     let mut r = crate::parser::byte_reader::ByteReader::new(&data);
@@ -755,7 +781,7 @@ fn numbering_serializes_number_format_into_attr_bits() {
         number_format: 8, // 예: HANGUL_MIXED
     };
     numbering.level_formats[0] = "^1.".to_string();
-    numbering.level_start_numbers = [1; 7];
+    numbering.level_start_numbers = [1; crate::model::style::NUMBERING_LEVELS];
 
     let data = serialize_numbering(&numbering);
     let mut r = crate::parser::byte_reader::ByteReader::new(&data);

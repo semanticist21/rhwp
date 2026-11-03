@@ -118,7 +118,8 @@ fn advance_paragraph_number(
         para_shape.para_level,
         paragraph.numbering_restart,
     );
-    let level_index = (para_shape.para_level as usize).min(6);
+    let level_index =
+        (para_shape.para_level as usize).min(crate::model::style::NUMBERING_LEVELS - 1);
     let format = &numbering.level_formats[level_index];
     if format.is_empty() {
         return None;
@@ -352,7 +353,7 @@ mod tests {
         for format in &mut numbering.level_formats {
             *format = "^N".to_owned();
         }
-        numbering.level_start_numbers = [1; 7];
+        numbering.level_start_numbers = [1; crate::model::style::NUMBERING_LEVELS];
 
         let mut document = Document::default();
         document.doc_info.para_shapes = para_shapes;
@@ -371,13 +372,52 @@ mod tests {
         }
     }
 
+    /// 한/글은 개요·번호를 10수준까지 매긴다. 8~10수준은 7수준에 붙지 않고 제 계수기를 쓰며,
+    /// 10수준 번호 코드는 `^:`다(한/글 12.30 저장본의 `1. 1.1. 1.1.1.` 견본).
+    #[test]
+    fn outline_levels_eight_to_ten_count_on_their_own_level() {
+        let mut document = document_with_shapes(vec![
+            outline_shape(0),
+            outline_shape(7),
+            outline_shape(8),
+            outline_shape(9),
+        ]);
+        document.doc_info.numberings[0].level_formats[9] = "^1.^2.^3.^4.^5.^6.^7.^8.^9.^:.".into();
+        document.sections.push(section_with(vec![
+            paragraph("1수준", 0),
+            paragraph("8수준", 1),
+            paragraph("8수준 둘째", 1),
+            paragraph("9수준", 2),
+            paragraph("10수준", 3),
+        ]));
+        let paragraph_pages = (0..5).map(|index| ((0, index), 0)).collect();
+
+        let navigation = build_outline_navigation(&document, &paragraph_pages, &HashMap::new());
+
+        let rows: Vec<_> = navigation
+            .outline
+            .iter()
+            .map(|item| (item.level, item.number.as_str()))
+            .collect();
+        assert_eq!(
+            rows,
+            [
+                (1, "1."),
+                (8, "1.1.1.1.1.1.1.1."),
+                (8, "1.1.1.1.1.1.1.2."),
+                (9, "1.1.1.1.1.1.1.2.1."),
+                (10, "1.1.1.1.1.1.1.2.1.1."),
+            ]
+        );
+    }
+
     #[test]
     fn uses_outline_metadata_and_not_text_prefixes() {
         let mut numbering = Numbering::default();
         for format in &mut numbering.level_formats {
             *format = "^N".to_owned();
         }
-        numbering.level_start_numbers = [1; 7];
+        numbering.level_start_numbers = [1; crate::model::style::NUMBERING_LEVELS];
 
         let mut document = Document::default();
         document.doc_info.para_shapes =
