@@ -676,3 +676,165 @@ fn master_page_ruby_raw_style_word_preserves_tails_and_unrelated_or_incomplete_r
         serde_json::to_value(&before[extra_start..]).unwrap()
     );
 }
+
+/// 한컴 12.30처럼 고른 스타일 바로 뒤에 새 스타일을 끼우면, 그 자리부터 뒤 스타일을 가리키던
+/// 문단·덧말·바탕쪽·메모와 다른 스타일의 다음 스타일이 이름이 같은 스타일을 계속 가리킨다.
+#[test]
+fn inserted_style_keeps_every_owned_reference_and_next_link_on_the_same_style() {
+    for source in [None, Some(false), Some(true)] {
+        let mut fixture = Fixture::new();
+        // 메모 소유자는 모델에서만 본다(위 삭제 검사와 같다). 저장본 메모는 아래 표본 검사가 본다.
+        fixture.populate(source.is_none());
+        if let Some(hwpx) = source {
+            fixture.doc = reopen(&fixture.doc, hwpx);
+        }
+        let names = |doc: &HwpDocument| -> (BTreeMap<String, String>, BTreeMap<String, String>) {
+            let styles = &doc.document().doc_info.styles;
+            let mut owned = BTreeMap::new();
+            collect_references(&owned_state(doc), &mut owned);
+            let mut ruby = BTreeMap::new();
+            collect_ruby_references(&owned_state(doc), &mut ruby);
+            let name = |id: usize| styles[id].local_name.clone();
+            let refs = owned
+                .into_iter()
+                .map(|(text, id)| (text, name(usize::from(id))))
+                .chain(
+                    ruby.into_iter()
+                        .map(|(text, id)| (text, name(usize::from(id)))),
+                )
+                .collect();
+            let next = styles
+                .iter()
+                .map(|s| (s.local_name.clone(), name(usize::from(s.next_style_id))))
+                .collect();
+            (refs, next)
+        };
+        let (refs, mut next) = names(&fixture.doc);
+        assert!(refs.len() >= 30, "{}", refs.len());
+        let mut before = owned_state(&fixture.doc);
+        without_style_ids(&mut before);
+        let index = usize::from(fixture.ids[1]);
+        let created = fixture.doc.create_style(
+            &json!({"name":"끼운 스타일","type":0,"nextStyleId":index,"index":index}).to_string(),
+        );
+        assert_eq!(created, index as i32);
+        next.insert("끼운 스타일".into(), "끼운 스타일".into());
+        let check = |doc: &HwpDocument| {
+            assert_eq!(
+                doc.document().doc_info.styles[index].local_name,
+                "끼운 스타일"
+            );
+            assert_eq!(names(doc), (refs.clone(), next.clone()));
+        };
+        check(&fixture.doc);
+        let mut after = owned_state(&fixture.doc);
+        without_style_ids(&mut after);
+        assert_eq!(after, before, "스타일 번호 밖의 내용·서식은 그대로");
+        if source.is_none() {
+            continue;
+        }
+        for hwpx in [false, true] {
+            let saved = reopen(&fixture.doc, hwpx);
+            check(&saved);
+            check(&reopen(&saved, hwpx));
+        }
+    }
+}
+
+#[test]
+fn style_insert_rejects_positions_past_the_end_and_the_middle_of_a_full_one_byte_style_list() {
+    let (mut doc, _) = blank();
+    let count = doc.document().doc_info.styles.len();
+    let list = doc.get_style_list();
+    for index in [count as i64 + 1, -1] {
+        assert_eq!(
+            doc.create_style(&json!({"name":"밖","index":index}).to_string()),
+            -1
+        );
+        assert_eq!(doc.get_style_list(), list);
+    }
+    assert_eq!(
+        doc.create_style(&json!({"name":"끝","index":count}).to_string()),
+        count as i32
+    );
+    while doc.document().doc_info.styles.len() < 256 {
+        let n = doc.document().doc_info.styles.len();
+        assert_eq!(
+            doc.create_style(&json!({"name":format!("채움{n}")}).to_string()),
+            n as i32
+        );
+    }
+    // 문단은 스타일 번호를 1바이트로 저장하므로, 가득 찬 목록 가운데에 끼우면 마지막 스타일이
+    // 가리킬 수 없는 256번으로 밀린다. 끝에 붙이기는 예전처럼 받는다.
+    let list = doc.get_style_list();
+    assert_eq!(
+        doc.create_style(&json!({"name":"넘침","index":1}).to_string()),
+        -1
+    );
+    assert_eq!(doc.get_style_list(), list);
+    assert_eq!(
+        doc.create_style(&json!({"name":"끝 넘침"}).to_string()),
+        256
+    );
+}
+
+/// HWP5 메모는 구역 끝 원본 목록에 저장되고 그 문단은 모델에 없다. 끼울 때 그 원본의 문단 머리
+/// (HWP5 표 58의 스타일 BYTE, 오프셋 10)도 함께 고쳐야 저장할 수 있고, 다시 열어도 같은 스타일을 가리킨다.
+#[test]
+fn inserted_style_keeps_hwp_memo_list_paragraph_styles_across_save() {
+    fn tail_styles(doc: &HwpDocument) -> Vec<String> {
+        let styles = &doc.document().doc_info.styles;
+        doc.document()
+            .sections
+            .iter()
+            .filter_map(|section| section.trailing_lists.as_ref())
+            .flat_map(|tail| &tail.records)
+            .filter(|record| record.tag_id == rhwp::parser::tags::HWPTAG_PARA_HEADER)
+            .map(|record| styles[usize::from(record.data[10])].local_name.clone())
+            .collect()
+    }
+    let bytes = std::fs::read(concat!(
+        env!("CARGO_MANIFEST_DIR"),
+        "/samples/issue5866/memo_field_hwp5.hwp"
+    ))
+    .unwrap();
+    let mut doc = HwpDocument::from_bytes(&bytes).unwrap();
+    let before = tail_styles(&doc);
+    assert!(before.iter().any(|name| name != "바탕글"), "{before:?}");
+    assert_eq!(doc.create_style(r#"{"name":"끼운 스타일","index":1}"#), 1);
+    assert_eq!(tail_styles(&doc), before);
+    let saved = reopen(&doc, false);
+    assert_eq!(tail_styles(&saved), before);
+}
+
+/// 복사해 둔 문단도 스타일 표의 번호를 가리킨다. 끼운 뒤에 붙여도 복사한 스타일 그대로다.
+#[test]
+fn copied_paragraphs_keep_their_style_when_a_style_is_inserted_before_pasting() {
+    let mut doc = HwpDocument::create_empty();
+    doc.create_blank_document_native().unwrap();
+    doc.insert_text_native(0, 0, 0, "가").unwrap();
+    doc.split_paragraph_native(0, 0, 1, None).unwrap();
+    doc.insert_text_native(0, 1, 0, "나").unwrap();
+    doc.split_paragraph_native(0, 1, 1, None).unwrap();
+    let body = doc
+        .document()
+        .doc_info
+        .styles
+        .iter()
+        .position(|s| s.local_name == "본문")
+        .unwrap();
+    for para in 0..2 {
+        doc.apply_style_native(0, para, body).unwrap();
+    }
+    doc.copy_selection_native(0, 0, 0, 1, 1).unwrap();
+    assert_eq!(doc.create_style(r#"{"name":"끼운 스타일","index":1}"#), 1);
+    doc.paste_internal_native(0, 2, 0).unwrap();
+    let styles = &doc.document().doc_info.styles;
+    let names: Vec<_> = doc.document().sections[0]
+        .paragraphs
+        .iter()
+        .map(|p| styles[usize::from(p.style_id)].local_name.as_str())
+        .collect();
+    assert!(names.len() > 3, "{names:?}");
+    assert!(!names.contains(&"끼운 스타일"), "{names:?}");
+}
