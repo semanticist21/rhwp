@@ -1074,8 +1074,8 @@ where
         .ok()
         .filter(|id| *id > 0)
         .and_then(|id| ctx.resolve_bin_id(id));
-    // 그림을 찾지 못한 그림 글머리표는 문자 글머리표로 쓴다. `<hh:img>` 없이 useImage="1" 만
-    // 남기면 다시 읽을 때 1번 그림이 된다. 원본 HWPX 구간은 자기 `<hh:img>` 를 그대로 가진다.
+    // 그림을 찾지 못한 그림 글머리표는 문자 글머리표로 쓴다. `<hc:img>` 없이 useImage="1" 만
+    // 남기면 다시 읽을 때 1번 그림이 된다. 원본 HWPX 구간은 자기 `<hc:img>` 를 그대로 가진다.
     let use_image = if b.raw_para_head.is_some() {
         b.image_bullet > 0
     } else {
@@ -1109,7 +1109,27 @@ where
             .map_err(|e| SerializeError::XmlError(format!("bullet paraHead splice: {e}")))?;
     } else {
         if let Some(manifest_id) = image_ref {
-            empty_tag(w, "hh:img", &[("binaryItemIDRef", manifest_id)], storage)?;
+            // 한/글은 그림 글머리표의 그림을 core 이름공간 `<hc:img>`로 쓰고 읽는다. head 이름공간
+            // `<hh:img>`는 무시하고 글머리표 문자를 그린다(12.30 Mac에서 확인).
+            let contrast = xml_value(storage, b.image_data[0] as i8)?;
+            let bright = xml_value(storage, b.image_data[1] as i8)?;
+            let effect = match b.image_data[2] {
+                1 => "GRAY_SCALE",
+                2 => "BLACK_WHITE",
+                _ => "REAL_PIC",
+            };
+            empty_tag(
+                w,
+                "hc:img",
+                &[
+                    ("binaryItemIDRef", manifest_id),
+                    ("bright", &bright),
+                    ("contrast", &contrast),
+                    ("effect", effect),
+                    ("alpha", "0"),
+                ],
+                storage,
+            )?;
         }
         empty_tag(
             w,
