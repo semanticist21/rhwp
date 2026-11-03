@@ -796,4 +796,22 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
          호출하지 않아 관측된 유실이 없다. 구역 전체 재직렬화(FIX-4 계열) 위험이 있어 \
          추정으로 고치지 않고 지속성 계약 확정까지 보류한다.",
     ),
+    (
+        "commands/table_formula.rs",
+        "set_table_cell_formula",
+        Exempt::DelegatesTo("set_table_cell_formula_by_path"),
+        "본문 표 주소를 한 마디 셀 경로로 바꿔 셀 경로 함수에 위임한다. 그 함수가 대상 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_formula.rs",
+        "remove_table_cell_formulas",
+        Exempt::DelegatesTo("remove_table_cell_formulas_by_path"),
+        "본문 표 주소를 한 마디 셀 경로로 바꿔 셀 경로 함수에 위임한다. 그 함수가 대상 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_formula.rs",
+        "recalculate_table_formulas",
+        Exempt::DelegatesTo("recalculate_table_formulas_by_path"),
+        "본문 표 주소를 한 마디 셀 경로로 바꿔 셀 경로 함수에 위임한다. 그 함수가 대상 구역의 raw_stream을 비운다.",
+    ),
 ];

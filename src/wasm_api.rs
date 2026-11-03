@@ -8694,9 +8694,33 @@ impl HwpDocument {
     ///
     /// options JSON 키: `{ sectionIdx, parentParaIdx, controlIdx, targetRow, targetCol,
     /// formula: string, writeResult? }`. positional 과 동일 동작.
+    ///
+    /// `cellPath`(다른 by-path API 와 같은 경로, 마지막 마디가 표)를 주면 `controlIdx` 대신 그
+    /// 표에서 계산한다. 중첩 표와 머리말·꼬리말 표도 받으며 결과는 쓰지 않는다.
     #[wasm_bindgen(js_name = evaluateTableFormulaEx)]
     pub fn evaluate_table_formula_ex(&mut self, options_json: &str) -> Result<String, JsValue> {
         use crate::document_core::helpers::{json_bool, json_str, json_u32};
+        let options: serde_json::Value = serde_json::from_str(options_json)
+            .map_err(|e| JsValue::from_str(&format!("options JSON 파싱 실패: {}", e)))?;
+        if let Some(path) = options.get("cellPath") {
+            if json_bool(options_json, "writeResult").unwrap_or(false) {
+                return Err(JsValue::from_str(
+                    "cellPath 계산은 결과를 쓰지 않는다 (writeResult 는 받지 않는다)",
+                ));
+            }
+            let path = DocumentCore::parse_cell_path(&path.to_string())?;
+            return self
+                .core
+                .evaluate_table_formula_by_path(
+                    json_u32(options_json, "sectionIdx").unwrap_or(0) as usize,
+                    json_u32(options_json, "parentParaIdx").unwrap_or(0) as usize,
+                    &path,
+                    json_u32(options_json, "targetRow").unwrap_or(0) as usize,
+                    json_u32(options_json, "targetCol").unwrap_or(0) as usize,
+                    &json_str(options_json, "formula").unwrap_or_default(),
+                )
+                .map_err(|e| e.into());
+        }
         self.core
             .evaluate_table_formula(
                 json_u32(options_json, "sectionIdx").unwrap_or(0) as usize,
@@ -8772,6 +8796,70 @@ impl HwpDocument {
                 section_idx as usize,
                 parent_para_idx as usize,
                 control_idx as usize,
+                usize::try_from(edited_cell).ok(),
+                paginate,
+            )
+            .map_err(|e| e.into())
+    }
+
+    /// `setTableCellFormula`의 셀 경로 변형. `cell_path_json`의 마지막 마디가 결과 셀이고,
+    /// 중첩 표와 머리말·꼬리말 표(첫 마디가 머리말·꼬리말)도 받는다.
+    #[wasm_bindgen(js_name = setTableCellFormulaByPath)]
+    pub fn set_table_cell_formula_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        formula: &str,
+        result_format: &str,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(cell_path_json)?;
+        self.core
+            .set_table_cell_formula_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+                formula,
+                result_format,
+            )
+            .map_err(|e| e.into())
+    }
+
+    /// `removeTableCellFormulas`의 셀 경로 변형. `cell_path_json`의 마지막 마디가 그 셀이다.
+    #[wasm_bindgen(js_name = removeTableCellFormulasByPath)]
+    pub fn remove_table_cell_formulas_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(cell_path_json)?;
+        self.core
+            .remove_table_cell_formulas_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+            )
+            .map_err(|e| e.into())
+    }
+
+    /// `recalculateTableFormulas`의 셀 경로 변형. `cell_path_json`의 마지막 마디의 표를 다시
+    /// 계산한다(그 마디의 셀 번호는 쓰지 않는다). `edited_cell`이 음수면 모두 다시 계산한다.
+    #[wasm_bindgen(js_name = recalculateTableFormulasByPath)]
+    pub fn recalculate_table_formulas_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        edited_cell: i32,
+        paginate: bool,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(cell_path_json)?;
+        self.core
+            .recalculate_table_formulas_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
                 usize::try_from(edited_cell).ok(),
                 paginate,
             )

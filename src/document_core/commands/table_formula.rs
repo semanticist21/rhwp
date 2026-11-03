@@ -255,23 +255,126 @@ fn valid_result_format(result_format: &str) -> bool {
             .is_some_and(|n| n <= 20)
 }
 
+/// 표 경로의 마지막 마디를 그 표의 (셀, 셀 문단)으로 바꾼 셀 문단 경로.
+fn formula_cell_path(
+    path: &[(usize, usize, usize)],
+    cell: usize,
+    para: usize,
+) -> Vec<(usize, usize, usize)> {
+    let mut full = path.to_vec();
+    if let Some(last) = full.last_mut() {
+        last.1 = cell;
+        last.2 = para;
+    }
+    full
+}
+
 impl DocumentCore {
-    fn table_at(
+    /// 셀 경로의 마지막 마디가 가리키는 표. 본문 표는 마디 하나(`[(표, _, _)]`)다.
+    fn formula_table(
         &self,
         section_idx: usize,
         parent_para_idx: usize,
-        control_idx: usize,
+        path: &[(usize, usize, usize)],
     ) -> Result<&Table, HwpError> {
+        if path.len() > 1 {
+            return self.resolve_table_by_path(section_idx, parent_para_idx, path);
+        }
         match self
             .document
             .sections
             .get(section_idx)
             .and_then(|s| s.paragraphs.get(parent_para_idx))
-            .and_then(|p| p.controls.get(control_idx))
-        {
+            .and_then(|p| {
+                p.controls
+                    .get(path.first().map_or(usize::MAX, |entry| entry.0))
+            }) {
             Some(Control::Table(table)) => Ok(table),
             _ => Err(HwpError::RenderError("표 컨트롤이 아님".into())),
         }
+    }
+
+    fn formula_cell_para_mut(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        cell: usize,
+        para: usize,
+    ) -> Result<&mut crate::model::paragraph::Paragraph, HwpError> {
+        if path.len() == 1 {
+            return self.get_cell_paragraph_mut(
+                section_idx,
+                parent_para_idx,
+                path[0].0,
+                cell,
+                para,
+            );
+        }
+        self.get_cell_paragraph_mut_by_path(
+            section_idx,
+            parent_para_idx,
+            &formula_cell_path(path, cell, para),
+        )
+    }
+
+    /// 셀 글 교체. `field_control`을 주면 넣는 글을 그 필드가 품는다. 본문 표는 셀 글 교체
+    /// 경로를 그대로 쓰고, 중첩 표·머리말 표는 셀 경로 편집처럼 그 셀 문단을 다시 짠다.
+    /// 쪽 나눔은 미룬다.
+    #[allow(clippy::too_many_arguments)]
+    fn replace_formula_cell_text(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        cell: usize,
+        para: usize,
+        start: usize,
+        delete_count: usize,
+        text: &str,
+        field_control: Option<usize>,
+    ) -> Result<String, HwpError> {
+        if path.len() == 1 {
+            return self.replace_text_in_cell_field_impl(
+                section_idx,
+                parent_para_idx,
+                path[0].0,
+                cell,
+                para,
+                start,
+                delete_count,
+                text,
+                false,
+                field_control,
+            );
+        }
+        let full = formula_cell_path(path, cell, para);
+        if field_control.is_none() && delete_count == 0 {
+            // 계산식 지우기가 결과를 일반 글로 다시 넣는다 — 셀 경로 글 넣기와 같다.
+            return self.insert_text_in_cell_by_path(
+                section_idx,
+                parent_para_idx,
+                &full,
+                start,
+                text,
+            );
+        }
+        let cell_para = self.get_cell_paragraph_mut_by_path(section_idx, parent_para_idx, &full)?;
+        cell_para.replace_text_keeping_slots(start, delete_count, text, field_control, false);
+        self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, &full, para);
+        self.recalculate_cell_paragraph_vpos_by_path(
+            section_idx,
+            parent_para_idx,
+            &full,
+            para,
+            None,
+        );
+        self.mark_cell_control_dirty(section_idx, parent_para_idx, full[0].0);
+        if let Some(section) = self.document.sections.get_mut(section_idx) {
+            section.raw_stream = None;
+        }
+        self.mark_section_dirty(section_idx);
+        Ok(r#"{"ok":true,"cellFlowChanged":true}"#.to_string())
     }
 
     /// 계산식을 표의 셀 값과 계산식 셀로 평가한다(`evaluate_table_formula`와 같은 규칙).
@@ -279,13 +382,13 @@ impl DocumentCore {
         &self,
         section_idx: usize,
         parent_para_idx: usize,
-        control_idx: usize,
+        path: &[(usize, usize, usize)],
         row: usize,
         col: usize,
         formula: &str,
     ) -> Result<(f64, Vec<(usize, usize)>), String> {
         let table = self
-            .table_at(section_idx, parent_para_idx, control_idx)
+            .formula_table(section_idx, parent_para_idx, path)
             .map_err(|e| e.to_string())?;
         let formulas = table_formulas(table);
         let cells = TableCells::new(table, &formulas);
@@ -312,13 +415,36 @@ impl DocumentCore {
         formula: &str,
         result_format: &str,
     ) -> Result<String, HwpError> {
+        self.set_table_cell_formula_by_path(
+            section_idx,
+            parent_para_idx,
+            &[(control_idx, cell_idx, 0)],
+            formula,
+            result_format,
+        )
+    }
+
+    /// [`DocumentCore::set_table_cell_formula`]의 셀 경로 변형. 경로의 마지막 마디가 결과 셀
+    /// (`(표, 셀, _)`)이고, 중첩 표와 머리말·꼬리말 표(첫 마디가 머리말·꼬리말)도 받는다.
+    pub fn set_table_cell_formula_by_path(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        formula: &str,
+        result_format: &str,
+    ) -> Result<String, HwpError> {
         let formula = formula.trim();
         if !valid_result_format(result_format) {
             return Err(HwpError::RenderError(format!(
                 "계산식 결과 형식 오류: {result_format}"
             )));
         }
-        let table = self.table_at(section_idx, parent_para_idx, control_idx)?;
+        let cell_idx = path
+            .last()
+            .ok_or_else(|| HwpError::RenderError("경로가 비어있습니다".into()))?
+            .1;
+        let table = self.formula_table(section_idx, parent_para_idx, path)?;
         let cell = table
             .cells
             .get(cell_idx)
@@ -384,20 +510,15 @@ impl DocumentCore {
         }
 
         let (value, text) = result_text(
-            self.evaluate_formula_at(section_idx, parent_para_idx, control_idx, row, col, formula),
+            self.evaluate_formula_at(section_idx, parent_para_idx, path, row, col, formula),
             result_format,
         )
         .map_err(|e| HwpError::RenderError(format!("계산식 오류: {e}")))?;
 
         let (control, start, old_len) = match existing {
             Some(range_idx) => {
-                let para = self.get_cell_paragraph_mut(
-                    section_idx,
-                    parent_para_idx,
-                    control_idx,
-                    cell_idx,
-                    0,
-                )?;
+                let para =
+                    self.formula_cell_para_mut(section_idx, parent_para_idx, path, cell_idx, 0)?;
                 let range = para.field_ranges[range_idx].clone();
                 (
                     range.control_idx,
@@ -407,13 +528,8 @@ impl DocumentCore {
             }
             None => {
                 let field_id = self.next_click_here_field_id();
-                let para = self.get_cell_paragraph_mut(
-                    section_idx,
-                    parent_para_idx,
-                    control_idx,
-                    cell_idx,
-                    0,
-                )?;
+                let para =
+                    self.formula_cell_para_mut(section_idx, parent_para_idx, path, cell_idx, 0)?;
                 if text_len > 0 {
                     para.replace_text_keeping_slots(0, text_len, "", None, false);
                 }
@@ -438,13 +554,8 @@ impl DocumentCore {
             }
         };
         {
-            let para = self.get_cell_paragraph_mut(
-                section_idx,
-                parent_para_idx,
-                control_idx,
-                cell_idx,
-                0,
-            )?;
+            let para =
+                self.formula_cell_para_mut(section_idx, parent_para_idx, path, cell_idx, 0)?;
             if let Some(Control::Field(field)) = para.controls.get_mut(control) {
                 set_formula_command(field, formula, result_format, &text);
             }
@@ -452,23 +563,22 @@ impl DocumentCore {
         if let Some(section) = self.document.sections.get_mut(section_idx) {
             section.raw_stream = None;
         }
-        self.replace_text_in_cell_field_impl(
+        self.replace_formula_cell_text(
             section_idx,
             parent_para_idx,
-            control_idx,
+            path,
             cell_idx,
             0,
             start,
             old_len,
             &text,
-            false,
             Some(control),
         )?;
         // 이 셀을 쓰는 계산식은 손으로 고친 결과까지 다시 계산한다. 쪽은 끝에 한 번 나눈다.
-        self.recalculate_table_formulas(
+        self.recalculate_table_formulas_by_path(
             section_idx,
             parent_para_idx,
-            control_idx,
+            path,
             Some(cell_idx),
             false,
         )?;
@@ -497,8 +607,26 @@ impl DocumentCore {
         control_idx: usize,
         cell_idx: usize,
     ) -> Result<String, HwpError> {
+        self.remove_table_cell_formulas_by_path(
+            section_idx,
+            parent_para_idx,
+            &[(control_idx, cell_idx, 0)],
+        )
+    }
+
+    /// [`DocumentCore::remove_table_cell_formulas`]의 셀 경로 변형. 경로의 마지막 마디가 그 셀이다.
+    pub fn remove_table_cell_formulas_by_path(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+    ) -> Result<String, HwpError> {
+        let cell_idx = path
+            .last()
+            .ok_or_else(|| HwpError::RenderError("경로가 비어있습니다".into()))?
+            .1;
         let para_count = self
-            .table_at(section_idx, parent_para_idx, control_idx)?
+            .formula_table(section_idx, parent_para_idx, path)?
             .cells
             .get(cell_idx)
             .ok_or_else(|| HwpError::RenderError(format!("셀 인덱스 {cell_idx} 범위 초과")))?
@@ -507,10 +635,10 @@ impl DocumentCore {
         let mut removed = 0;
         for para_idx in 0..para_count {
             loop {
-                let para = self.get_cell_paragraph_mut(
+                let para = self.formula_cell_para_mut(
                     section_idx,
                     parent_para_idx,
-                    control_idx,
+                    path,
                     cell_idx,
                     para_idx,
                 )?;
@@ -538,16 +666,16 @@ impl DocumentCore {
                     section.raw_stream = None;
                 }
                 // 지운 결과 글을 같은 자리에 일반 글로 다시 넣는다. 셀 글 교체 경로가 줄을 다시 짠다.
-                self.replace_text_in_cell_native_impl(
+                self.replace_formula_cell_text(
                     section_idx,
                     parent_para_idx,
-                    control_idx,
+                    path,
                     cell_idx,
                     para_idx,
                     range.start_char_idx,
                     0,
                     &text,
-                    false,
+                    None,
                 )?;
                 removed += 1;
             }
@@ -572,7 +700,26 @@ impl DocumentCore {
         edited_cell: Option<usize>,
         paginate: bool,
     ) -> Result<String, HwpError> {
-        let table = self.table_at(section_idx, parent_para_idx, control_idx)?;
+        self.recalculate_table_formulas_by_path(
+            section_idx,
+            parent_para_idx,
+            &[(control_idx, 0, 0)],
+            edited_cell,
+            paginate,
+        )
+    }
+
+    /// [`DocumentCore::recalculate_table_formulas`]의 셀 경로 변형. 경로의 마지막 마디의 표를
+    /// 다시 계산한다(그 마디의 셀·셀 문단 번호는 쓰지 않는다).
+    pub fn recalculate_table_formulas_by_path(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        edited_cell: Option<usize>,
+        paginate: bool,
+    ) -> Result<String, HwpError> {
+        let table = self.formula_table(section_idx, parent_para_idx, path)?;
         let formulas = table_formulas(table);
         if formulas.is_empty() {
             return Ok(r#"{"ok":true,"changed":[],"cellFlowChanged":false}"#.to_string());
@@ -649,10 +796,10 @@ impl DocumentCore {
             if *text == formula.text && *text == formula.last_result {
                 continue;
             }
-            let para = self.get_cell_paragraph_mut(
+            let para = self.formula_cell_para_mut(
                 section_idx,
                 parent_para_idx,
-                control_idx,
+                path,
                 formula.cell,
                 formula.para,
             )?;
@@ -666,16 +813,15 @@ impl DocumentCore {
             if *text == formula.text {
                 continue;
             }
-            let edited = self.replace_text_in_cell_field_impl(
+            let edited = self.replace_formula_cell_text(
                 section_idx,
                 parent_para_idx,
-                control_idx,
+                path,
                 formula.cell,
                 formula.para,
                 range.start_char_idx,
                 range.end_char_idx - range.start_char_idx,
                 text,
-                false,
                 Some(formula.control),
             )?;
             flow_changed |= serde_json::from_str::<serde_json::Value>(&edited)

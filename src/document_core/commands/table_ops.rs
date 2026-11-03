@@ -3813,6 +3813,30 @@ impl DocumentCore {
         Ok("{\"ok\":true}".to_string())
     }
 
+    /// [`DocumentCore::evaluate_table_formula`]의 셀 경로 변형(결과는 쓰지 않는다). 경로의 마지막
+    /// 마디가 표이고, 중첩 표와 머리말·꼬리말 표(첫 마디가 머리말·꼬리말)도 받는다.
+    pub fn evaluate_table_formula_by_path(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        target_row: usize,
+        target_col: usize,
+        formula: &str,
+    ) -> Result<String, HwpError> {
+        let table = self.resolve_table_by_path(section_idx, parent_para_idx, path)?;
+        let (result, references, _) =
+            evaluate_formula_on_table(table, target_row, target_col, formula)?;
+        let cells: Vec<_> = references
+            .into_iter()
+            .map(|(col, row)| serde_json::json!({"row": row, "col": col}))
+            .collect();
+        Ok(
+            serde_json::json!({"ok":true,"result":result,"formula":formula,"cells":cells})
+                .to_string(),
+        )
+    }
+
     /// 표 셀에서 계산식을 실행하고 결과를 반환한다.
     ///
     /// # Arguments
@@ -3847,36 +3871,8 @@ impl DocumentCore {
             Some(Control::Table(t)) => t,
             _ => return Err(HwpError::RenderError("표 컨트롤이 아님".into())),
         };
-
-        let row_count = table.row_count as usize;
-        let col_count = table.col_count as usize;
-
-        // 셀 값 조회 함수: 셀의 첫 문단 텍스트를 숫자로 파싱한다. 병합 뒤에는 비주 셀이
-        // 제거되어 cells 배열 인덱스와 row * col_count + col이 일치하지 않으므로, 저장된
-        // 논리 좌표로 찾아야 한다. 병합 셀이 덮는 비-anchor 좌표는 별도 셀이 아니어서
-        // 값 없음으로 처리한다.
-        let cells = &table.cells;
-        let get_cell = |col: usize, row: usize| -> Option<f64> {
-            cells
-                .iter()
-                .find(|cell| cell.row as usize == row && cell.col as usize == col)
-                .and_then(|cell| cell.paragraphs.first())
-                .and_then(|p| parse_cell_number(&p.text))
-        };
-        let target_cell_idx = cells
-            .iter()
-            .position(|cell| cell.row as usize == target_row && cell.col as usize == target_col);
-
-        let ctx = crate::document_core::table_calc::TableContext {
-            row_count,
-            col_count,
-            current_row: target_row,
-            current_col: target_col,
-        };
-
-        let (result, references) =
-            crate::document_core::table_calc::evaluate_formula_with_cells(formula, &ctx, &get_cell)
-                .map_err(|e| HwpError::RenderError(format!("계산식 오류: {}", e)))?;
+        let (result, references, target_cell_idx) =
+            evaluate_formula_on_table(table, target_row, target_col, formula)?;
 
         // 결과를 셀에 기록
         if write_result {
@@ -4159,6 +4155,45 @@ impl DocumentCore {
         self.paginate_if_needed();
         Ok(r#"{"ok":true,"moved":true}"#.to_string())
     }
+}
+
+/// 표에서 계산식을 셀 글 값으로 평가한다. (결과, 참조한 (열, 행), 결과 셀 번호)
+fn evaluate_formula_on_table(
+    table: &crate::model::table::Table,
+    target_row: usize,
+    target_col: usize,
+    formula: &str,
+) -> Result<(f64, Vec<(usize, usize)>, Option<usize>), HwpError> {
+    let row_count = table.row_count as usize;
+    let col_count = table.col_count as usize;
+
+    // 셀 값 조회 함수: 셀의 첫 문단 텍스트를 숫자로 파싱한다. 병합 뒤에는 비주 셀이
+    // 제거되어 cells 배열 인덱스와 row * col_count + col이 일치하지 않으므로, 저장된
+    // 논리 좌표로 찾아야 한다. 병합 셀이 덮는 비-anchor 좌표는 별도 셀이 아니어서
+    // 값 없음으로 처리한다.
+    let cells = &table.cells;
+    let get_cell = |col: usize, row: usize| -> Option<f64> {
+        cells
+            .iter()
+            .find(|cell| cell.row as usize == row && cell.col as usize == col)
+            .and_then(|cell| cell.paragraphs.first())
+            .and_then(|p| parse_cell_number(&p.text))
+    };
+    let target_cell_idx = cells
+        .iter()
+        .position(|cell| cell.row as usize == target_row && cell.col as usize == target_col);
+
+    let ctx = crate::document_core::table_calc::TableContext {
+        row_count,
+        col_count,
+        current_row: target_row,
+        current_col: target_col,
+    };
+
+    let (result, references) =
+        crate::document_core::table_calc::evaluate_formula_with_cells(formula, &ctx, &get_cell)
+            .map_err(|e| HwpError::RenderError(format!("계산식 오류: {}", e)))?;
+    Ok((result, references, target_cell_idx))
 }
 
 /// 셀 텍스트에서 숫자를 추출한다 (콤마 제거, 공백 무시).
