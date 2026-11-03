@@ -1551,30 +1551,15 @@ pub(crate) fn refresh_header_footer_file_name_fields(
                                     .unwrap_or(0)
                             })
                             .collect();
-                        let ranges = para.field_ranges.clone();
-                        // 필드 밖 자동 번호의 8유닛 자리표와 원래 컨트롤 갭을 유지한다.
-                        // 새 글자를 먼저 넣으면 빈 필드가 되어도 끝 슬롯 앞에 붙는다.
-                        para.insert_text_at(range.start_char_idx, file_name);
-                        para.delete_text_at(range.start_char_idx + new_len, old_len);
-                        let remap = |position: usize| {
-                            if position <= range.start_char_idx {
-                                position
-                            } else if position >= range.end_char_idx {
-                                position - old_len + new_len
-                            } else {
-                                range.start_char_idx
-                                    + (position - range.start_char_idx) * new_len / old_len
-                            }
-                        };
-                        para.field_ranges = ranges
-                            .into_iter()
-                            .map(|mut original| {
-                                original.start_char_idx = remap(original.start_char_idx);
-                                original.end_char_idx = remap(original.end_char_idx);
-                                original
-                            })
-                            .collect();
-                        para.field_ranges[index].end_char_idx = range.start_char_idx + new_len;
+                        // 필드 밖 자동 번호의 8유닛 자리표와 원래 컨트롤 갭을 유지하며 필드 글만 바꾼다.
+                        // 필드 시작 경계에 넣은 글자는 필드 밖에 남으므로(날짜·경로 코드) 이 필드가 품게 한다.
+                        para.replace_text_keeping_slots(
+                            range.start_char_idx,
+                            old_len,
+                            file_name,
+                            Some(control),
+                            false,
+                        );
                         para.replace_line_segs(Vec::new());
                         let mut start = 0;
                         while start < styles.len() {
