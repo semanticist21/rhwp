@@ -34,6 +34,25 @@ use crate::renderer::page_layout::LayoutRect;
 use crate::renderer::pagination::PageItem;
 
 impl TypesetState {
+    /// 같은 호스트의 다른 표가 이미 이전 쪽에 통째로 배치됐는지 확인한다.
+    pub(in crate::renderer::typeset) fn sibling_tables_emitted_on_previous_pages(
+        &self,
+        paragraph_index: usize,
+        current_control: usize,
+        host: &Paragraph,
+    ) -> bool {
+        host.controls.len() > 1
+            && host.controls.iter().enumerate().all(|(index, control)| {
+                index == current_control
+                    || matches!(control, Control::Table(table) if table.common.treat_as_char
+                        && self.data.pages.iter().filter(|page| page.section_index == self.data.section_index)
+                            .flat_map(|page| &page.column_contents)
+                            .flat_map(|column| &column.items)
+                            .any(|item| matches!(item, PageItem::Table { para_index, control_index }
+                                if *para_index == paragraph_index && *control_index == index)))
+            })
+    }
+
     pub(in crate::renderer::typeset) fn table_flow_successor<'a>(
         &self,
         host_index: usize,
@@ -884,6 +903,8 @@ impl TypesetState {
             col_count: self.data.col_count,
             current_height: self.data.current_height,
             current_items: &self.data.current_items,
+            zone_y_offset: self.data.current_zone_y_offset,
+            plain_text_zone: self.data.current_zone_plain_text,
             body_height: self.base_available_height(),
             stored_ladder_spacing_omitted: self.data.stored_ladder_spacing_omitted,
             hangul2024_reclaimed: self.data.hangul2024_reclaimed,

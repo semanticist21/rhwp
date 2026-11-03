@@ -1192,19 +1192,6 @@ fn replace_paragraph_text(
 }
 
 /// 서식 글 붙이기도 본문 입력과 같은 누름틀·개체 앞뒤 소속을 지킨다.
-pub(super) fn insert_body_text_with_field_affinity(
-    para: &mut Paragraph,
-    active_field: Option<&ActiveFieldInfo>,
-    section_idx: usize,
-    para_idx: usize,
-    char_offset: usize,
-    after_inline_control: bool,
-    text: &str,
-) {
-    let active = active_field_control(active_field, section_idx, para_idx, None);
-    replace_paragraph_text(para, char_offset, 0, text, active, after_inline_control);
-}
-
 fn para_has_visible_text_for_enter(para: &Paragraph) -> bool {
     para.text.chars().any(|c| c > '\u{001F}' && c != '\u{FFFC}')
 }
@@ -1364,6 +1351,29 @@ fn has_clickhere_field_range(para: &Paragraph) -> bool {
                 if matches!(field.field_type, FieldType::ClickHere | FieldType::Formula)
         )
     })
+}
+
+/// 서식 글도 일반 입력과 같은 활성 누름틀·개체 앞뒤 소속으로 넣는다.
+pub(super) fn insert_body_text_with_field_affinity(
+    para: &mut Paragraph,
+    active_field: Option<&ActiveFieldInfo>,
+    section_idx: usize,
+    para_idx: usize,
+    char_offset: usize,
+    after_inline_control: bool,
+    source: &Paragraph,
+) {
+    let active = active_field_control(active_field, section_idx, para_idx, None);
+    let inserted_at = char_offset.min(para.text.chars().count());
+    replace_paragraph_text(
+        para,
+        char_offset,
+        0,
+        &source.text,
+        active,
+        after_inline_control,
+    );
+    para.inherit_inserted_text_controls(source, inserted_at);
 }
 
 impl DocumentCore {
@@ -3669,13 +3679,16 @@ impl DocumentCore {
                 .get(section_idx)
                 .and_then(|section| section.paragraphs.get(index))
         };
-        for (index, offset) in [(start_para, start_logical), (end_para, end_logical)] {
-            if para(index).is_none_or(|p| offset > logical_paragraph_length(p)) {
+        for (index, logical) in [(start_para, start_logical), (end_para, end_logical)] {
+            let p = para(index)
+                .ok_or_else(|| HwpError::RenderError("지울 본문 위치를 확인해 주세요".into()))?;
+            if logical > logical_paragraph_length(p) {
                 return Err(HwpError::RenderError(
-                    "지울 논리 범위가 올바르지 않습니다".into(),
+                    "지울 캐럿 위치를 확인해 주세요".into(),
                 ));
             }
         }
+        // 문단 끝의 빈 선택을 개체 뒤 경계로 승격하면 떠 있는 개체가 지워진다.
         if start_para == end_para && start_logical == end_logical {
             return Ok(super::super::helpers::json_ok_with(&format!(
                 "\"paraIdx\":{},\"charOffset\":{}",
@@ -3723,6 +3736,7 @@ impl DocumentCore {
                     && p.controls.iter().enumerate().any(|(ci, control)| {
                         Paragraph::is_split_movable_control(control)
                             && logical > text_to_split_logical_offset(p, positions[ci], false)
+                            && logical < text_to_split_logical_offset(p, positions[ci], true)
                             && p.controls.iter().enumerate().any(|(other, control)| {
                                 other != ci
                                     && Paragraph::is_split_movable_control(control)

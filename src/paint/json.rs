@@ -1814,7 +1814,7 @@ fn write_group_kind(buf: &mut String, group_kind: &GroupKind) {
                 let _ = write!(buf, ",\"modelCellIndex\":{}", index);
             }
             if let Some((start, end)) = cell.model_para_range {
-                let _ = write!(buf, ",\"modelParaRange\":[{},{}]", start, end);
+                let _ = write!(buf, ",\"modelParaRange\":[{start},{end}]");
             }
             buf.push('}');
         }

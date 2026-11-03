@@ -1,4 +1,5 @@
-//! 첫 미주 문단의 숨긴 선행 공백은 원문 주소를 유지하며 보이는 글자 경계로 변환한다.
+//! 첫 미주 문단의 저장 번호 자리표는 번호로 바꿔 그리고 그 뒤의 실제 공백은 그대로 그린다(devel `note_marker`).
+//! 캐럿은 원문 주소를 유지하며 보이는 글자 경계로 변환한다.
 //! 여러 쪽 주석·미주 hit-test·선택 구현은 이 검사의 범위가 아니다.
 #![cfg(not(target_arch = "wasm32"))]
 
@@ -161,7 +162,7 @@ fn assert_visible_boundaries(
 
 #[test]
 fn endnote_first_paragraph_carets_match_rendered_scalar_boundaries() {
-    for (extra, decorated, prefix) in [("", false, "1) "), ("\u{00a0}\u{2007} ", true, "[12] ")] {
+    for (extra, decorated, prefix) in [("", false, "1)"), ("\u{00a0}\u{2007} ", true, "[12]")] {
         let (doc, control) = fixture(extra, decorated, false);
         let expected = format!("  {extra}{FIRST}");
         assert_eq!(
@@ -174,7 +175,7 @@ fn endnote_first_paragraph_carets_match_rendered_scalar_boundaries() {
         );
         let model = format!("{:?}", doc.document());
         let layout = geometry(&doc.build_page_render_tree(0).unwrap().root);
-        assert_visible_boundaries(&doc, control, 0, 2 + extra.chars().count(), prefix, FIRST);
+        assert_visible_boundaries(&doc, control, 0, 1, prefix, &format!(" {extra}{FIRST}"));
         assert_eq!(
             format!("{:?}", doc.document()),
             model,
@@ -194,7 +195,7 @@ fn endnote_second_paragraph_keeps_its_visible_leading_spaces() {
         note_texts(&doc, control),
         [format!("  {FIRST}"), SECOND.to_string()]
     );
-    assert_visible_boundaries(&doc, control, 0, 2, "[12] ", FIRST);
+    assert_visible_boundaries(&doc, control, 0, 1, "[12]", &format!(" {FIRST}"));
     assert_visible_boundaries(&doc, control, 1, 0, "", SECOND);
 }
 
@@ -204,24 +205,52 @@ fn endnote_caret_queries_and_snapshot_restore_preserve_model_and_layout() {
     let before = doc.save_snapshot_native();
     let original = note_texts(&doc, control);
     let layout = geometry(&doc.build_page_render_tree(0).unwrap().root);
-    assert_visible_boundaries(&doc, control, 0, 4, "[12] ", FIRST);
+    assert_visible_boundaries(
+        &doc,
+        control,
+        0,
+        1,
+        "[12]",
+        &format!(" \u{00a0}\u{2007}{FIRST}"),
+    );
     doc.insert_text_in_footnote_native(0, 0, control, 0, 4, "추가")
         .unwrap();
     let after = doc.save_snapshot_native();
-    assert_visible_boundaries(&doc, control, 0, 4, "[12] ", &format!("추가{FIRST}"));
+    assert_visible_boundaries(
+        &doc,
+        control,
+        0,
+        1,
+        "[12]",
+        &format!(" \u{00a0}\u{2007}추가{FIRST}"),
+    );
     doc.restore_snapshot_native(before).unwrap();
     assert_eq!(note_texts(&doc, control), original);
     assert_eq!(
         geometry(&doc.build_page_render_tree(0).unwrap().root),
         layout
     );
-    assert_visible_boundaries(&doc, control, 0, 4, "[12] ", FIRST);
+    assert_visible_boundaries(
+        &doc,
+        control,
+        0,
+        1,
+        "[12]",
+        &format!(" \u{00a0}\u{2007}{FIRST}"),
+    );
     doc.restore_snapshot_native(after).unwrap();
     assert_eq!(
         note_texts(&doc, control)[0],
         format!("  \u{00a0}\u{2007}추가{FIRST}")
     );
-    assert_visible_boundaries(&doc, control, 0, 4, "[12] ", &format!("추가{FIRST}"));
+    assert_visible_boundaries(
+        &doc,
+        control,
+        0,
+        1,
+        "[12]",
+        &format!(" \u{00a0}\u{2007}추가{FIRST}"),
+    );
     assert_visible_boundaries(&doc, control, 1, 0, "", SECOND);
 }
 
@@ -240,7 +269,14 @@ fn endnote_caret_offsets_roundtrip_hwp_and_hwpx_without_live_mutation() {
             original,
             "{name}: 원문 그대로"
         );
-        assert_visible_boundaries(&reopened, control, 0, 4, "[12] ", FIRST);
+        assert_visible_boundaries(
+            &reopened,
+            control,
+            0,
+            1,
+            "[12]",
+            &format!(" \u{00a0}\u{2007}{FIRST}"),
+        );
         assert_visible_boundaries(&reopened, control, 1, 0, "", SECOND);
         let Control::Endnote(note) =
             &reopened.document().sections[0].paragraphs[0].controls[control]

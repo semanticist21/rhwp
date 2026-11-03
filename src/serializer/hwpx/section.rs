@@ -713,6 +713,9 @@ pub(super) fn write_section_with_storage<S: crate::storage::Storage>(
 where
     S::Error: std::fmt::Display,
 {
+    let section =
+        super::super::column_sizes::for_export_with_storage(section, storage).map_err(xml_error)?;
+    let section = section.as_ref();
     let mut vert_cursor: u32 = 0;
 
     let first_para = section.paragraphs.first();
@@ -1175,15 +1178,16 @@ where
             .max(serialized_axis_end)
             .saturating_add(injected_prefix_units)
             .saturating_sub(hwp5_only_units);
-        let axis_line_segs = if !crate::serializer::line_cache::can_serialize_line_partition(para) {
-            // The retained rows are an edit-reflow template, not a partition of
-            // the current text. Omit the cache and let the consumer recompute it.
-            &source_line_segs[..0]
-        } else if line_seg_axis_end > 0 {
-            line_segs_within_text_axis(source_line_segs, line_seg_axis_end)
-        } else {
-            source_line_segs
-        };
+        let axis_line_segs =
+            if !crate::serializer::line_cache::can_serialize_hwpx_line_partition(para) {
+                // The retained rows are an edit-reflow template, not a partition of
+                // the current text. Omit the cache and let the consumer recompute it.
+                &source_line_segs[..0]
+            } else if line_seg_axis_end > 0 {
+                line_segs_within_text_axis(source_line_segs, line_seg_axis_end)
+            } else {
+                source_line_segs
+            };
 
         // [#5847] 줄 전체가 reflow 합성(bit31)인 문단 — 원본에 linesegarray 가 없어
         // rhwp 가 조판용으로 만든 줄이다. 파일로 내면 구역 누적 vertpos 와 bit31

@@ -74,7 +74,7 @@ fn image_refs(doc: &Document) -> Vec<String> {
         }
     }
     for (index, bullet) in doc.doc_info.bullets.iter().enumerate() {
-        if let Ok(id @ 1..) = u16::try_from(bullet.image_bullet) {
+        if let Some(id) = bullet.image_reference() {
             out.push(format!(
                 "글머리표 {} {:?}",
                 index + 1,
@@ -124,8 +124,11 @@ fn hwpx_export_keeps_hwp_image_bullet() {
 
 /// 첫 그림 글머리표가 가리키는 그림의 바이트 길이.
 fn bullet_image_len(doc: &Document) -> Option<usize> {
-    let bullet = doc.doc_info.bullets.iter().find(|b| b.image_bullet != 0)?;
-    let id = u16::try_from(bullet.image_bullet).ok()?;
+    let id = doc
+        .doc_info
+        .bullets
+        .iter()
+        .find_map(|b| b.image_reference())?;
     Some(image_bytes(&doc.bin_data_content, id)?.len())
 }
 

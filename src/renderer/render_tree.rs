@@ -1175,7 +1175,11 @@ impl TextRunNode {
 
     /// 표시 모양은 display_or_text로, 일대일 투영의 물리 폭은 원문으로 전달한다.
     pub(crate) fn metric_or_display_text(&self) -> &str {
-        super::composer::display_projection_metric_text(&self.text, self.display_or_text())
+        super::composer::display_projection_metric_text(
+            &self.text,
+            self.display_or_text(),
+            self.style.literal_soft_hyphen,
+        )
     }
 
     /// Replay 대상 문자열에 대해 layout positions가 안전한 경우에만 빌려준다.
@@ -1192,7 +1196,12 @@ impl TextRunNode {
         &'a self,
         replay_text: &str,
     ) -> std::borrow::Cow<'a, [f64]> {
-        let replay_text = super::composer::one_to_one_pua_replay_text(replay_text);
+        let metric_text = super::composer::display_projection_metric_text(
+            &self.text,
+            replay_text,
+            self.style.literal_soft_hyphen,
+        );
+        let replay_text = super::composer::one_to_one_pua_replay_text(metric_text);
         super::replay_positions_or_compute(
             &replay_text,
             &self.style,
@@ -1299,7 +1308,7 @@ pub struct TableCellNode {
     pub page_fragment: bool,
     /// 모델 cells 배열 내 인덱스 (getTableCellBboxes에서 resize용)
     pub model_cell_index: Option<u32>,
-    /// 저장 조각으로 잘라 그린 셀의 원본 문단 범위 [start, end).
+    /// 저장된 쪽 조각이 사용하는 원본 셀 문단 범위 [start, end). 전체 셀은 None.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_para_range: Option<(usize, usize)>,
 }

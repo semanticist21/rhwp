@@ -66,6 +66,7 @@ pub(crate) mod legacy_font_advances;
 pub(crate) mod line_style;
 mod measured_glyph_supplier;
 pub(crate) mod metafile_geometry;
+pub(crate) mod note_marker;
 pub(crate) mod note_separator;
 pub(crate) mod object_alignment;
 pub mod page_layout;
@@ -324,6 +325,9 @@ fn has_no_unjustified_leading_spaces(count: &usize) -> bool {
 /// 텍스트 렌더링 스타일
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct TextStyle {
+    /// 리터럴 U+00AD는 표시 글리프와 원문 전진을 분리한다.
+    #[serde(skip)]
+    pub literal_soft_hyphen: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub text_paint: Option<crate::model::text_paint::TextPaintStyle>,
     /// 리터럴 숫자 폭 공백. HWP 고정폭 빈칸 제어 문자와 구분한다.
@@ -584,7 +588,7 @@ pub struct TextStyle {
     #[serde(skip_serializing)]
     pub ascii_punct_latin: Option<Box<LatinSlotMetrics>>,
 }
-crate::storage::clone_fields!(TextStyle, {text_paint, continuous_shadow, inherited_half_space_em, script_metrics, shadow_offset_percent, space_compression, literal_figure_space, literal_figure_space_em, native_pua_metrics, native_otf_metrics, bidi_layout, emphasis_skip_first_cluster, top_underline_font_size, top_underline_phase, supplemental_metrics, isolated_jamo_font, font_family, font_size, char_offset, fixed_glyph_advances, source_font_is_hft, source_font_is_ttf, source_verified_hft_bold_tracking, source_hwp3_hft_bold, resolved_font_size, font_position, hft_print_frame, preserve_glyph_ink, color, bold, italic, underline, strikethrough, kerning, letter_spacing, ratio, default_tab_width, tab_stops, auto_tab_right, auto_left_tab_position, available_width, line_x_offset, text_start_offset, right_tab_block_width_override, tab_leaders, inline_tabs, extra_word_spacing, unjustified_leading_spaces, extra_char_spacing, extra_dash_advance, outline_type, shadow_type, shadow_color, shadow_offset_x, shadow_offset_y, emboss, engrave, superscript, subscript, emphasis_dot, underline_shape, strike_shape, underline_color, strike_color, shade_color, font_metric_trusted, glyph_fallback_advance_explicit, metric_font_family, original_glyph_metric_family, font_space_em, layout_half_space, regenerated_font_metrics, hft_hangul_face, hft_font_face, hft_fullwidth_dot, ascii_punct_latin});
+crate::storage::clone_fields!(TextStyle, {literal_soft_hyphen, text_paint, continuous_shadow, inherited_half_space_em, script_metrics, shadow_offset_percent, space_compression, literal_figure_space, literal_figure_space_em, native_pua_metrics, native_otf_metrics, bidi_layout, emphasis_skip_first_cluster, top_underline_font_size, top_underline_phase, supplemental_metrics, isolated_jamo_font, font_family, font_size, char_offset, fixed_glyph_advances, source_font_is_hft, source_font_is_ttf, source_verified_hft_bold_tracking, source_hwp3_hft_bold, resolved_font_size, font_position, hft_print_frame, preserve_glyph_ink, color, bold, italic, underline, strikethrough, kerning, letter_spacing, ratio, default_tab_width, tab_stops, auto_tab_right, auto_left_tab_position, available_width, line_x_offset, text_start_offset, right_tab_block_width_override, tab_leaders, inline_tabs, extra_word_spacing, unjustified_leading_spaces, extra_char_spacing, extra_dash_advance, outline_type, shadow_type, shadow_color, shadow_offset_x, shadow_offset_y, emboss, engrave, superscript, subscript, emphasis_dot, underline_shape, strike_shape, underline_color, strike_color, shade_color, font_metric_trusted, glyph_fallback_advance_explicit, metric_font_family, original_glyph_metric_family, font_space_em, layout_half_space, regenerated_font_metrics, hft_hangul_face, hft_font_face, hft_fullwidth_dot, ascii_punct_latin});
 
 /// [#7418] 영문 슬롯의 기본 메트릭 — [`TextStyle::ascii_punct_latin`] 참조.
 #[derive(Debug, Clone, PartialEq)]
@@ -847,6 +851,7 @@ pub fn halfwidth_punct_paint_scale(advance: f64, glyph_width: f64) -> f64 {
 impl Default for TextStyle {
     fn default() -> Self {
         Self {
+            literal_soft_hyphen: false,
             bidi_layout: None,
             emphasis_skip_first_cluster: false,
             top_underline_font_size: None,
@@ -2818,8 +2823,62 @@ pub fn hwpunit_to_px(hwpunit: i32, dpi: f64) -> f64 {
     hwpunit as f64 * dpi / HWPUNIT_PER_INCH
 }
 
-/// 같은 쪽의 단일 단 밴드 사이에는 구역에 저장된 단 사이 간격을 쓴다.
-/// 구역 정보 없는 직접 호출과 다단 전환은 기존 별도 간격 계약을 유지한다.
+/// 해당 문단까지 명시한 마지막 단 종류를 읽는다. 정의가 없거나 주소가 잘못되면 추정하지 않는다.
+pub(crate) fn declared_column_type_at(
+    paragraphs: &[crate::model::paragraph::Paragraph],
+    index: usize,
+) -> Option<crate::model::page::ColumnType> {
+    paragraphs.get(..=index)?.iter().rev().find_map(|para| {
+        para.controls.iter().find_map(|control| match control {
+            crate::model::control::Control::ColumnDef(definition) => Some(definition.column_type),
+            _ => None,
+        })
+    })
+}
+
+/// 개체와 문단 묶음 제약이 없는 일반 단 사이에서만 실제 첫 줄 높이로 수용한다.
+pub(crate) fn plain_text_column_zone(
+    paragraphs: &[crate::model::paragraph::Paragraph],
+    start: usize,
+    closing_column_type: Option<crate::model::page::ColumnType>,
+    styles: &style_resolver::ResolvedStyleSet,
+) -> bool {
+    // 닫히는 배분·평행 밴드도 기존 여유를 예약해야 다음 소제목이 실제 배치에서 넘치지 않는다.
+    if closing_column_type != Some(crate::model::page::ColumnType::Normal)
+        || declared_column_type_at(paragraphs, start)
+            != Some(crate::model::page::ColumnType::Normal)
+    {
+        return false;
+    }
+    paragraphs[start..]
+        .iter()
+        .enumerate()
+        .take_while(|(offset, para)| {
+            *offset == 0
+                || (para.column_type != crate::model::paragraph::ColumnBreakType::MultiColumn
+                    && !para
+                        .controls
+                        .iter()
+                        .any(|ctrl| matches!(ctrl, crate::model::control::Control::ColumnDef(_))))
+        })
+        .all(|(_, para)| {
+            para.controls.iter().all(|ctrl| {
+                matches!(
+                    ctrl,
+                    crate::model::control::Control::ColumnDef(_)
+                        | crate::model::control::Control::SectionDef(_)
+                )
+            }) && styles
+                .para_styles
+                .get(para.para_shape_id as usize)
+                .is_some_and(|style| {
+                    !style.keep_with_next && !style.keep_lines && !style.widow_orphan
+                })
+        })
+}
+
+/// 같은 쪽의 단일 단 뒤에는 구역에 저장된 단 사이 간격을 쓴다.
+/// 구역 정보 없는 직접 호출과 다단 뒤의 전환은 기존 간격 계약을 유지한다.
 pub(crate) fn solo_zone_pad_px(
     entering_solo: bool,
     prior_multicol: bool,
@@ -2827,7 +2886,7 @@ pub(crate) fn solo_zone_pad_px(
     dpi: f64,
 ) -> f64 {
     let spacing = section_spacing_hu
-        .filter(|spacing| entering_solo && !prior_multicol && *spacing >= 0)
+        .filter(|spacing| !prior_multicol && *spacing >= 0)
         .unwrap_or(if entering_solo && prior_multicol {
             1500
         } else {

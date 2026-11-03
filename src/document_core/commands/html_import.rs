@@ -238,7 +238,8 @@ impl DocumentCore {
         self.paste_html_at_caret_native(section_idx, para_idx, char_offset, html, false)
     }
 
-    /// 한 문단의 순수 HTML 글은 논리 캐럿과 일반 입력의 필드 소속을 따른다.
+    /// 순수 한 문단 HTML을 일반 입력과 같은 누름틀·논리 캐럿 경계로 붙인다.
+    /// 반환 charOffset은 paste_internal_text_logical_native와 같은 글자 자리다.
     pub fn paste_html_text_logical_native(
         &mut self,
         section_idx: usize,
@@ -260,7 +261,6 @@ impl DocumentCore {
         if !is_text_only_html(html) {
             return Ok("{\"ok\":false,\"error\":\"not a text HTML fragment\"}".into());
         }
-        // 붙이기 경로가 논리 캐럿을 글자 위치와 개체 앞뒤로 바꾼다.
         self.paste_html_at_caret_native(section_idx, para_idx, logical_offset, html, true)
     }
 
@@ -344,7 +344,7 @@ impl DocumentCore {
                 para_idx,
                 text_offset,
                 after_control,
-                &clip_text,
+                &parsed_paras[0],
             );
 
             self.apply_clipboard_char_shapes(

@@ -137,8 +137,7 @@ fn picture_bullet_embeds_its_image_draws_it_and_survives_save() {
         )
         .unwrap();
     let bullet = &doc.document().doc_info.bullets[usize::from(id) - 1];
-    assert_eq!(bullet.image_bullet as usize, images + 1);
-    assert_eq!(bullet.image_data[3] as usize, images + 1);
+    assert_eq!(bullet.image_reference(), Some(images as u16 + 1));
     apply(&mut doc, id);
     let svg = doc.render_page_svg_native(0).unwrap();
     assert!(svg.contains("<image"), "그림 글머리표를 그림으로 그린다");
@@ -155,7 +154,7 @@ fn picture_bullet_embeds_its_image_draws_it_and_survives_save() {
             (2, 800, 30),
             "hwpx={hwpx}"
         );
-        let image = u16::try_from(bullet.image_bullet).unwrap();
+        let image = bullet.image_reference().unwrap();
         let content = &saved.document().bin_data_content[usize::from(image) - 1];
         assert_eq!(&*content.data.load(), PNG, "hwpx={hwpx}");
         assert_eq!(content.extension, "png", "hwpx={hwpx}");

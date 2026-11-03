@@ -928,18 +928,15 @@ impl DocumentCore {
             let new_chars = clip_text.chars().count();
 
             // 텍스트 삽입
-            let para = &mut self.document.sections[section_idx].paragraphs[para_idx];
-            let inserted_at = char_offset.min(para.text.chars().count());
             super::text_editing::insert_body_text_with_field_affinity(
-                para,
+                &mut self.document.sections[section_idx].paragraphs[para_idx],
                 self.active_field.as_ref(),
                 section_idx,
                 para_idx,
                 char_offset,
                 after_control,
-                &clip_text,
+                &clip_paras[0],
             );
-            para.adopt_nb_space_origins(inserted_at, &clip_paras[0]);
 
             // 클립보드의 글자 모양 적용
             self.apply_clipboard_char_shapes(

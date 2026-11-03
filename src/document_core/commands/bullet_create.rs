@@ -111,8 +111,9 @@ impl DocumentCore {
             text_distance,
             char_shape_id,
             bullet_char,
-            image_bullet: i32::from(image_bullet),
-            // 대비·밝기 0, 효과 실제 그림, 그림 번호(HWP 저장 자리).
+            // 한/글 HWP처럼 그림 사용 여부 1과 그림 데이터 넷째 바이트의 그림 번호로 둔다.
+            image_bullet: i32::from(image_bullet > 0),
+            // 대비·밝기 0, 효과 실제 그림, 그림 번호.
             image_data: [0, 0, 0, image_bullet as u8],
             ..Default::default()
         });

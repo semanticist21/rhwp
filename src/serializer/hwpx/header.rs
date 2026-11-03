@@ -1070,19 +1070,11 @@ where
 {
     let id_s = xml_value(storage, id + 1)?; // 관찰: 1-based, ParaShape.numbering_id 참조와 정합
     let char_s = xml_value(storage, b.bullet_char)?;
-    let image_ref = u16::try_from(b.image_bullet)
-        .ok()
-        .filter(|id| *id > 0)
-        .and_then(|id| ctx.resolve_bin_id(id));
-    // 그림을 찾지 못한 그림 글머리표는 문자 글머리표로 쓴다. `<hc:img>` 없이 useImage="1" 만
-    // 남기면 다시 읽을 때 1번 그림이 된다. 원본 HWPX 구간은 자기 `<hc:img>` 를 그대로 가진다.
-    let use_image = if b.raw_para_head.is_some() {
-        b.image_bullet > 0
+    let use_image = if b.image_bullet > 0 || b.hwpx_image_without_ref {
+        "1"
     } else {
-        image_ref.is_some()
+        "0"
     };
-    let use_image = if use_image { "1" } else { "0" };
-
     // [#3028] checkedChar(체크 글머리표 문자) — 값이 있을 때만 방출한다.
     let has_checked_char = b.check_bullet_char != '\0';
     let checked_char_s = xml_value(storage, b.check_bullet_char)?;
@@ -1108,16 +1100,27 @@ where
             .write_all(raw.as_bytes())
             .map_err(|e| SerializeError::XmlError(format!("bullet paraHead splice: {e}")))?;
     } else {
-        if let Some(manifest_id) = image_ref {
-            // 한/글은 그림 글머리표의 그림을 core 이름공간 `<hc:img>`로 쓰고 읽는다. head 이름공간
-            // `<hh:img>`는 무시하고 글머리표 문자를 그린다(12.30 Mac에서 확인).
+        if let Some(id) = b.image_reference() {
+            let manifest_id = ctx.resolve_bin_id(id).ok_or_else(|| {
+                SerializeError::XmlError(format!(
+                    "그림 글머리표 BinData 참조 {id}를 찾을 수 없습니다"
+                ))
+            })?;
             let contrast = xml_value(storage, b.image_data[0] as i8)?;
             let bright = xml_value(storage, b.image_data[1] as i8)?;
             let effect = match b.image_data[2] {
                 1 => "GRAY_SCALE",
                 2 => "BLACK_WHITE",
+                3 => {
+                    return Err(SerializeError::XmlError(
+                        "그림 글머리표의 8×8 패턴 효과는 HWPX 이미지 사양에서 지원하지 않습니다"
+                            .into(),
+                    ));
+                }
                 _ => "REAL_PIC",
             };
+            // 한/글은 그림 글머리표의 그림을 core 이름공간 `<hc:img>`로 쓰고 읽는다. head 이름공간
+            // `<hh:img>`는 무시하고 글머리표 문자를 그린다(12.30 Mac에서 확인).
             empty_tag(
                 w,
                 "hc:img",

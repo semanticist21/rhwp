@@ -922,16 +922,29 @@ fn write_serialize_bullet<W: std::io::Write>(
     // 글머리표 문자 (WCHAR)
     w.write_u16(char_to_wchar(bullet.bullet_char))?;
 
-    // 이미지 글머리표 여부 (INT32). 모델의 image_bullet 은 그림 ID 이므로 여부와 ID 로 나눈다.
-    w.write_i32(i32::from(bullet.image_bullet != 0))?;
+    // 이미지 글머리표 여부 (INT32)
+    let hwpx_image = bullet
+        .raw_para_head
+        .is_some()
+        .then(|| bullet.image_reference())
+        .flatten();
+    w.write_i32(if hwpx_image.is_some() {
+        1
+    } else {
+        bullet.image_bullet
+    })?;
 
-    // 이미지 글머리 데이터 (4바이트: 대비, 밝기, 효과, 그림 ID)
+    // 이미지 글머리 데이터 (4바이트)
     let mut image_data = bullet.image_data;
-    if bullet.image_bullet != 0 {
-        // HWP 는 그림 ID 를 1바이트에 담는다. 255 를 넘는 ID 는 담을 수 없어 0 으로 쓴다.
-        image_data[3] = u8::try_from(bullet.image_bullet).unwrap_or(0);
+    if let Some(id) = hwpx_image {
+        image_data[3] = u8::try_from(id).map_err(|_| {
+            std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "그림 글머리표 BinData 순번이 HWP 범위를 초과합니다",
+            )
+        })?;
     }
-    for byte in image_data {
+    for &byte in &image_data {
         w.write_u8(byte)?;
     }
 

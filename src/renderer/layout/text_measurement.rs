@@ -1027,6 +1027,7 @@ fn try_char_style_to_text_style<S: crate::renderer::style_resolver::storage::Sto
             layout_half_space: false,
             regenerated_font_metrics: false,
             literal_figure_space: false,
+            literal_soft_hyphen: false,
             literal_figure_space_em: None,
             hft_hangul_face: styles.hft_ascii_halfwidth && cs.hft_hangul_face_for_lang(lang_index),
             hft_font_face: cs.hft_hangul_face_for_lang(lang_index),
