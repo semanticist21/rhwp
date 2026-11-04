@@ -2814,8 +2814,9 @@ impl DocumentCore {
     ) -> Result<HwpExportSnapshot, S::Error> {
         use crate::document_core::converters::hwpx_to_hwp::try_convert_if_hwpx_source;
 
+        let grown_tables = self.grown_table_heights_with_storage(storage)?;
         let mut snapshot = storage.clone_document(&self.document)?;
-        grown_table_heights::apply_grown_table_heights(&mut snapshot, &self.grown_table_heights());
+        grown_table_heights::apply_grown_table_heights(&mut snapshot, &grown_tables);
         self.write_page_starts(&mut snapshot, &self.shifted_page_starts());
         self.writeback_reflowed_table_frames_with_storage(&mut snapshot, storage)?;
         let _report = try_convert_if_hwpx_source(&mut snapshot, self.source_format, storage)?;

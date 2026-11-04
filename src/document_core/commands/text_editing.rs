@@ -3987,7 +3987,10 @@ impl DocumentCore {
             if start_para == end_para {
                 // 같은 문단 내 삭제
                 let count = end_offset - start_offset;
-                if count > 0 || !first_controls.is_empty() {
+                if count > 0
+                    || !first_controls.is_empty()
+                    || first_form_range.is_some_and(|(from, to)| from < to)
+                {
                     self.delete_body_paragraph_range(
                         section_idx,
                         start_para,

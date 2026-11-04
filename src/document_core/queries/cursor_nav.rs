@@ -2136,21 +2136,11 @@ impl DocumentCore {
                             } else {
                                 0.0
                             };
-                            // 양식 문단에서 감긴 줄 끝의 빈 앵커는 앞 양식 뒤 칸과 같다.
-                            // 앞쪽 캐럿은 다음 줄 첫 양식 앞 칸이 이기게 한다.
-                            let wrapped_form_line_end = tr.text.is_empty()
-                                && !tr.is_para_end
-                                && render_para
-                                    .controls
-                                    .iter()
-                                    .any(|control| matches!(control, Control::Form(_)));
                             update_best_cursor(
                                 best,
-                                if wrapped_form_line_end && matches!(bias, CursorBias::Leading) {
-                                    2
-                                } else {
-                                    cursor_score(offset, cs, cc, bias)
-                                },
+                                cursor_score(offset, cs, cc, bias)
+                                    + if tr.text.is_empty() && render_para.controls.iter().any(|control|
+                                        matches!(control, Control::Form(form) if form.common.treat_as_char)) { 3 } else { 0 },
                                 CursorHit {
                                     page,
                                     x: node.bbox.x + xr,
@@ -2611,7 +2601,11 @@ impl DocumentCore {
             // 편집한 HWPX는 저장 줄을 생략할 수 있다. 캐럿과 같은 렌더 트리의
             // 실제 TextLine 소유·글자 경계만 사용하며 좌표로 줄을 추정하지 않는다.
             let mut rendered_starts = Vec::new();
-            if para.line_segs.is_empty() {
+            if para.line_segs.is_empty()
+                || para.controls.iter().any(
+                    |control| matches!(control, Control::Form(form) if form.common.treat_as_char),
+                )
+            {
                 for (_, tree) in &tree_cache {
                     collect_rendered_line_starts(
                         &tree.root,

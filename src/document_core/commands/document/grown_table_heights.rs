@@ -31,7 +31,14 @@ fn has_reflowed_cell_text(table: &Table) -> bool {
         .iter()
         .flat_map(|cell| &cell.paragraphs)
         .any(|paragraph| {
-            paragraph.line_segs.is_empty()
+            // 재조판은 저장 태그를 보존하면서 새 줄·공백 규칙을 함께 발행할 수도 있다.
+            // 그 발행 출처를 소비해야 중첩 셀의 정상 저장 태그를 미편집으로 오인하지 않는다.
+            paragraph
+                .layout_space_metrics
+                .iter()
+                .zip(&paragraph.line_segs)
+                .any(|((start, _), line)| *start == line.text_start)
+                || paragraph.line_segs.is_empty()
                 || paragraph
                     .line_segs
                     .iter()
@@ -40,72 +47,107 @@ fn has_reflowed_cell_text(table: &Table) -> bool {
 }
 
 impl DocumentCore {
-    /// 모든 표를 깊이 우선 순서로 돌며, 키울 표의 새 높이를 같은 순서로 돌려준다.
     pub(super) fn grown_table_heights(&self) -> Vec<Option<u32>> {
-        let mut out = Vec::new();
+        match self.grown_table_heights_with_storage(&crate::storage::Unbounded) {
+            Ok(value) => value,
+            Err(never) => match never {},
+        }
+    }
+
+    /// 본문은 현재 측정 결과를 재사용한다. 자식 표도 같은 정책으로 재며, 편집한
+    /// 내용이 없는 표의 원본 높이를 다시 쓰지 않는다. 셀의 선언 높이는 보존한다.
+    pub(super) fn grown_table_heights_with_storage<S: crate::storage::Storage>(
+        &self,
+        storage: &S,
+    ) -> Result<Vec<Option<u32>>, S::Error> {
+        let mut out = storage.vec(0)?;
+        let profile = self.effective_layout_profile();
+        let measurer = HeightMeasurer::new(self.dpi)
+            .with_hwp3_variant(profile.hwp3_layout())
+            .with_stored_geometry_policy(profile.stored_geometry_policy())
+            .with_native_hwp5(profile.hwp5_stored_pagination_layout())
+            .with_hwpx_stored_layout(profile.hwpx_stored_layout())
+            .with_hwp5_origin_hwpx(profile.hwp5_origin_hwpx())
+            .with_session_edited(profile.session_edited())
+            .with_render_normalization(std::sync::Arc::clone(&self.render_normalization.overlay));
         for (section_idx, section) in self.document.sections.iter().enumerate() {
-            let measured = self.measured_tables.get(section_idx);
             for (para_idx, paragraph) in section.paragraphs.iter().enumerate() {
                 for (control_idx, control) in paragraph.controls.iter().enumerate() {
                     let Control::Table(table) = control else {
                         continue;
                     };
-                    // 본문 표는 조판이 이미 잰 결과를 쓴다.
-                    let content = measured
+                    let reflowed = has_reflowed_cell_text(table)
+                        || self.table_text_reflowed_path_exists(section_idx, para_idx, control_idx);
+                    let content = self
+                        .measured_tables
+                        .get(section_idx)
                         .and_then(|tables| {
                             tables.iter().find(|m| {
                                 m.para_index == para_idx && m.control_index == control_idx
                             })
                         })
+                        .filter(|_| reflowed)
                         .map(|m| content_height(m, self.dpi));
-                    let reflowed = has_reflowed_cell_text(table)
-                        || self.table_text_reflowed_path_exists(section_idx, para_idx, control_idx);
-                    out.push(
-                        content
-                            .filter(|_| reflowed)
-                            .and_then(|content| grown(table.common.height, content)),
-                    );
-                    self.push_nested_grown_heights(&table.cells, reflowed, &mut out);
+                    storage.push(
+                        &mut out,
+                        content.and_then(|value| grown(table.common.height, value)),
+                    )?;
+                    self.push_nested_grown_heights_with_storage(
+                        &table.cells,
+                        reflowed,
+                        &measurer,
+                        &mut out,
+                        storage,
+                    )?;
                 }
             }
         }
-        out
+        Ok(out)
     }
 
-    // ponytail: 저장마다 중첩 표를 다시 잰다. 중첩 표가 아주 많은 문서에서 저장이 느려지면
-    // 조판의 중첩 측정을 캐시로 공유한다.
-    fn push_nested_grown_heights(
+    fn push_nested_grown_heights_with_storage<S: crate::storage::Storage>(
         &self,
         cells: &[crate::model::table::Cell],
         parent_reflowed: bool,
+        measurer: &HeightMeasurer,
         out: &mut Vec<Option<u32>>,
-    ) {
+        storage: &S,
+    ) -> Result<(), S::Error> {
+        // 형제 표의 원본 순서와 apply 순서를 보존하는 깊이 우선 순회다.
         for cell in cells {
             for paragraph in &cell.paragraphs {
                 for control in &paragraph.controls {
                     let Control::Table(table) = control else {
                         continue;
                     };
+                    storage.bytes(0)?;
                     // 한컴이 저장한 줄을 그대로 가진 중첩 표도 그 높이가 한컴 조판값이다.
                     // 바깥 표를 이번에 다시 짰거나 rhwp가 줄을 만든 표만 키운다.
                     let reflowed = parent_reflowed || has_reflowed_cell_text(table);
-                    out.push(
-                        reflowed
-                            .then(|| {
-                                let measured = HeightMeasurer::new(self.dpi).measure_table(
-                                    table,
-                                    0,
-                                    0,
-                                    &self.styles,
-                                );
-                                grown(table.common.height, content_height(&measured, self.dpi))
-                            })
-                            .flatten(),
-                    );
-                    self.push_nested_grown_heights(&table.cells, reflowed, out);
+                    let height = if reflowed {
+                        let measured = measurer.measure_table_with_storage(
+                            table,
+                            0,
+                            0,
+                            &self.styles,
+                            storage,
+                        )?;
+                        grown(table.common.height, content_height(&measured, self.dpi))
+                    } else {
+                        None
+                    };
+                    storage.push(out, height)?;
+                    self.push_nested_grown_heights_with_storage(
+                        &table.cells,
+                        reflowed,
+                        measurer,
+                        out,
+                        storage,
+                    )?;
                 }
             }
         }
+        Ok(())
     }
 }
 

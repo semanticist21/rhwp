@@ -27,20 +27,9 @@ pub(super) fn refresh_top_level_frame(shape: &mut ShapeObject) {
     }
     common.width = bw;
     common.height = bh;
-    // 합성 행렬을 쓰는 다각형은 꼭짓점(original 좌표)을 틀 좌표로 옮긴다.
-    // 합성은 편집 기준 틀에서 다시 하므로, 회전 전 상자 가운데를 새 틀 가운데에 맞춘다.
-    let affine_polygon =
-        matches!(shape, ShapeObject::Polygon(poly) if poly.affine_edit_reference.is_some());
     let sa = shape.shape_attr_mut();
     sa.rotation_center.x = (bw / 2) as i32;
     sa.rotation_center.y = (bh / 2) as i32;
-    if affine_polygon && sa.original_width > 0 && sa.original_height > 0 {
-        let cx = f64::from(sa.original_width) / 2.0;
-        let cy = f64::from(sa.original_height) / 2.0;
-        sa.render_tx = f64::from(bw) / 2.0 - (sa.render_sx * cx + sa.render_b * cy);
-        sa.render_ty = f64::from(bh) / 2.0 - (sa.render_c * cx + sa.render_sy * cy);
-        sa.raw_rendering = crate::serializer::control::serialize_affine_rendering(sa);
-    }
 }
 
 /// 실제 변환 변경에서만 저장 캐시를 비우며, 무변경 속성 되먹임과 위치 이동은 원본 행렬을 보존한다.
@@ -54,10 +43,13 @@ pub(super) fn finish_top_level_edit(
     if shape.shape_attr().rotation_angle != before.6 {
         refresh_top_level_frame(shape);
     }
-    // 합성 행렬을 이미 적은 다각형은 그 행렬이 저장 캐시다.
-    let affine_polygon =
-        matches!(shape, ShapeObject::Polygon(poly) if poly.affine_edit_reference.is_some());
-    if !affine_polygon && super::super::common::shape_geometry_changed(before, shape) {
+    // 다각형은 공통 affine 편집기가 원본 행렬의 잔여 변환을 보존한다.
+    // 먼저 행렬을 초기화하면 원본의 skew·이동을 복구할 수 없다.
+    if matches!(shape, ShapeObject::Polygon(_)) {
+        return;
+    }
+    // 위치 이동은 개체 틀 기준인 저장 행렬을 바꾸지 않는다.
+    if super::super::common::shape_geometry_changed(before, shape) {
         let sa = shape.shape_attr_mut();
         sa.raw_rendering.clear();
         sa.render_tx = 0.0;
@@ -105,8 +97,15 @@ impl Placement {
 
 /// 최상위 프레임 중심을 유지하며 원본 좌표에 크기·대칭·회전을 차례로 적용한다.
 pub(super) fn placement(child: &ShapeObject, x: f64, y: f64) -> Placement {
-    let common = child.common();
-    let sa = child.shape_attr();
+    placement_from_attributes(child.common(), child.shape_attr(), x, y)
+}
+
+fn placement_from_attributes(
+    common: &crate::model::shape::CommonObjAttr,
+    sa: &crate::model::shape::ShapeComponentAttr,
+    x: f64,
+    y: f64,
+) -> Placement {
     let (frame_w, frame_h) = (common.width as f64, common.height as f64);
     let positive = |value: u32, fallback: f64| if value > 0 { value as f64 } else { fallback };
     let cur_w = positive(sa.current_width, frame_w);
@@ -137,4 +136,22 @@ pub(super) fn placement(child: &ShapeObject, x: f64, y: f64) -> Placement {
         rotation: [cos, -sin, 0.0, sin, cos, 0.0],
         original_size: (original_w, original_h),
     }
+}
+
+/// 배치 프레임과 저장 행렬이 같은 변환을 소비한다.
+pub(in crate::document_core::commands::object_ops) fn frame_matrix(
+    common: &crate::model::shape::CommonObjAttr,
+    attr: &crate::model::shape::ShapeComponentAttr,
+) -> [f64; 6] {
+    let placement = placement_from_attributes(common, attr, 0.0, 0.0);
+    let [sx, _, _, _, sy, _] = placement.scale;
+    let [a, b, _, c, d, _] = placement.rotation;
+    [
+        a * sx,
+        b * sy,
+        placement.translation.0,
+        c * sx,
+        d * sy,
+        placement.translation.1,
+    ]
 }

@@ -442,18 +442,15 @@ pub(crate) fn plan_with_storage<S: crate::storage::Storage>(
         // 범위 밖 anchor를 누락시킨 부분 결과를 확정하지 않는다.
         return Ok(None);
     }
+    if picture_rows {
+        if let Some(anchor) = picture_rows::empty_host_text_box(para, styles, style, frame.dpi) {
+            atoms.push(Atom::Box(anchor));
+        }
+    }
     // 글자처럼 그림으로 끝나는 문단은 문단 끝 표시의 글자 모양이 마지막 줄 높이와
     // 끝 캐럿을 정한다. 저장 줄 경로와 같도록 폭 0인 끝 상자를 둔다. 표로 끝나는 문단은
     // 한컴 인쇄처럼 표 줄 높이만 쓴다(issue_6776).
-    // 빈 그림 줄은 공식 빈 호스트 상자가 끝 줄 메트릭을 소유한다.
-    let empty_picture_host = if picture_rows {
-        picture_rows::empty_host_text_box(para, styles, style, frame.dpi)
-    } else {
-        None
-    };
-    if let Some(anchor) = empty_picture_host {
-        atoms.push(Atom::Box(anchor));
-    } else if matches!(
+    if matches!(
         atoms.last(),
         Some(Atom::Box(InlineFlowBox {
             content: InlineFlowContent::Picture { .. },
@@ -480,19 +477,22 @@ pub(crate) fn plan_with_storage<S: crate::storage::Storage>(
         let alignment_baseline = (picture_rows && style.vertical_alignment != 0).then(|| {
             height * super::composer::inline_picture_ascent_ratio(style.vertical_alignment)
         });
-        atoms.push(Atom::Box(InlineFlowBox {
-            content: InlineFlowContent::Text {
-                range: end..end,
-                style: cs,
-                lang: 0,
-                alignment_baseline,
-            },
-            x: 0.0,
-            y: 0.0,
-            width: 0.0,
-            height,
-            baseline: hwpunit_to_px(metrics.baseline_distance, frame.dpi),
-        }));
+        storage.push(
+            &mut atoms,
+            Atom::Box(InlineFlowBox {
+                content: InlineFlowContent::Text {
+                    range: end..end,
+                    style: cs,
+                    lang: 0,
+                    alignment_baseline,
+                },
+                x: 0.0,
+                y: 0.0,
+                width: 0.0,
+                height,
+                baseline: hwpunit_to_px(metrics.baseline_distance, frame.dpi),
+            }),
+        )?;
     }
     // Reuse the composer's language/style word boundaries. A word that fits
     // a whole line moves together; an overlong word retains character fallback.

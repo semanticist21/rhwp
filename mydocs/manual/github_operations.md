@@ -2,7 +2,7 @@
 kind: canonical
 status: active
 canonical: mydocs/manual/github_operations.md
-last_verified: 2026-09-14
+last_verified: 2026-11-04
 ---
 
 # GitHub 저장소 운영 매뉴얼
@@ -49,7 +49,10 @@ main에 정상 release된 뒤 활성화된다. policy 모듈은 live base에서 
 기본 Rust CI는 A(lib)와 B/C/D/E(integration)의 다섯 archive를 각각 한 worker에서 실행한다.
 Integration target은 같은 고정 duration policy와 현재 source manifest로 배정하며, 다섯 archive의
 예상 runnable 수를 해당 worker의 실제 실행 수와 각각 대조한다. Worker timeout은 60분이고,
-archive builder는 기존 `release-test:30`·`release:60`분 정책을 유지한다.
+archive builder는 checkout·setup 시간을 포함해 `release-test:60`·`release:60`분을 사용한다.
+Lint·Proptest는 45분, Frontend package는 60분이다. PR #8548에서 관측한 checkout 8–24분과
+후속 검사가 기존 20·30분 job 상한에 함께 계상되는 문제를 반영한 유한 상한이며,
+Cargo profile·검사 명령·assertion·required check는 그대로 유지한다. 정상 소요시간 목표는 아니다.
 
 로컬 전체 검증은 기존 `cargo nextest run --cargo-profile release-test --target-dir target/pr-review
 --tests --test-threads 12 --no-fail-fast`를 그대로 사용한다. 분할 자체를 재현할 때만
@@ -370,6 +373,10 @@ CI 영향 분류와 trigger mirror는 다음 파일에 있다.
 필터 변경에는 적어도 classifier·policy의 Node test와 해당 CI·CodeQL workflow Python test를 포함한다.
 
 ### 7.5 workflow PR의 후행 review 기록
+
+후속 기록은 [옵션 2: 원 PR 병합 후 별도 기록 PR](pr_review/post_merge.md#711-ci-변경-pr은-옵션-2로-후속-기록)로
+처리한다. workflow·action·CI 판정 정책을 수정한 원 PR에 문서-only trailing commit을 추가해
+전체 CI를 반복하지 않는다. 아래 trusted 재사용 기능의 존재는 이 운영 경로를 바꾸지 않는다.
 
 CI Impact Policy Controller의 감사 대상은 **base가 devel인 PR**이며 advisory로 유지한다.
 devel → main을 포함한 main 대상 PR, branch push, tag와 manual 실행은 감사·policy 게시 대상이
