@@ -2420,7 +2420,9 @@ impl DocumentCore {
         // 재래핑된 표가 없으면 복제 없이 live IR 을 그대로 쓴다.
         let grown_tables = self.grown_table_heights();
         let grows_tables = grown_tables.iter().any(Option::is_some);
+        let page_starts = self.shifted_page_starts();
         if !grows_tables
+            && page_starts.is_empty()
             && self.render_normalization.text_reflowed_tables.is_empty()
             && (self.file_name.is_empty()
                 || !super::header_footer_ops::has_header_footer_file_name_fields(&self.document))
@@ -2430,6 +2432,7 @@ impl DocumentCore {
         }
         let mut snapshot = self.document.clone();
         grown_table_heights::apply_grown_table_heights(&mut snapshot, &grown_tables);
+        self.write_page_starts(&mut snapshot, &page_starts);
         self.writeback_reflowed_table_frames(&mut snapshot);
         super::header_footer_ops::refresh_header_footer_file_name_fields(
             &mut snapshot,
@@ -2813,6 +2816,7 @@ impl DocumentCore {
 
         let mut snapshot = storage.clone_document(&self.document)?;
         grown_table_heights::apply_grown_table_heights(&mut snapshot, &self.grown_table_heights());
+        self.write_page_starts(&mut snapshot, &self.shifted_page_starts());
         self.writeback_reflowed_table_frames_with_storage(&mut snapshot, storage)?;
         let _report = try_convert_if_hwpx_source(&mut snapshot, self.source_format, storage)?;
         super::header_footer_ops::refresh_header_footer_file_name_fields(
@@ -2990,6 +2994,7 @@ impl DocumentCore {
         };
         let grown_tables = self.grown_table_heights();
         let grows_tables = grown_tables.iter().any(Option::is_some);
+        let page_starts = self.shifted_page_starts();
         // [#8302] rhwp 가 HWPX 에서 만든 HWP(`/RhwpHwpxOrigin`, `hwpx_lineage`)는 HWP5 계보가
         // 아니다. 그 IR 은 HWPX 저장 계약(줄 축·저장 줄 유무)을 그대로 지니므로 HWP5-origin
         // 마커를 붙이지 않고 HWPX 출처와 같은 경로로 내보낸다. 마커를 붙이면 다시 연 HWPX 가
@@ -3000,6 +3005,7 @@ impl DocumentCore {
         {
             let mut doc = self.document.clone();
             grown_table_heights::apply_grown_table_heights(&mut doc, &grown_tables);
+            self.write_page_starts(&mut doc, &page_starts);
             if let Some((_, value)) = doc
                 .hwpx_aux_entries
                 .iter_mut()
@@ -3030,6 +3036,7 @@ impl DocumentCore {
         {
             let mut doc = self.document.clone();
             grown_table_heights::apply_grown_table_heights(&mut doc, &grown_tables);
+            self.write_page_starts(&mut doc, &page_starts);
             if let Some((_, value)) = doc
                 .hwpx_aux_entries
                 .iter_mut()
@@ -3042,9 +3049,10 @@ impl DocumentCore {
             }
             lower_markers(&mut doc);
             serialize(&doc)
-        } else if grows_tables {
+        } else if grows_tables || !page_starts.is_empty() {
             let mut doc = self.document.clone();
             grown_table_heights::apply_grown_table_heights(&mut doc, &grown_tables);
+            self.write_page_starts(&mut doc, &page_starts);
             serialize(&doc)
         } else {
             serialize(&self.document)
