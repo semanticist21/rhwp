@@ -5831,7 +5831,10 @@ impl LayoutEngine {
                 mp_node.layer = Some(RenderLayerInfo::new(None, 0, 0).for_master_page());
                 // 바탕쪽 문단 렌더링: 컨트롤(표/도형/그림)은 compute_object_position으로 배치,
                 // 텍스트 문단은 layout_paragraph로 배치
-                let mut mp_y_offset = paper_area.y;
+                // 바탕쪽 글 영역은 한컴처럼 구역 본문 영역이다(HWPX subList textWidth·textHeight와
+                // 같다). 한컴 12.30은 바탕쪽에 친 글을 본문 첫 글자 자리에 그린다.
+                let text_area = *body_area;
+                let mut mp_y_offset = text_area.y;
                 for (pi, para) in mp.paragraphs.iter().enumerate() {
                     let has_controls = !para.controls.is_empty();
                     if has_controls {
@@ -6004,8 +6007,16 @@ impl LayoutEngine {
                                 );
                             }
                         }
-                    } else if !para.text.is_empty() {
-                        // 컨트롤 없는 텍스트 문단: vpos 기반 y 위치 사용
+                    }
+                    // 글이 있는 문단과 빈 문단은 글 영역에 vpos 기준으로 놓는다. 개체만 든 문단은
+                    // 글을 그리지 않고, 글자처럼 취급한 개체가 든 문단은 위 개체 배치가 맡는다.
+                    let lays_text = if has_controls {
+                        !para.text.is_empty()
+                            && !para.controls.iter().any(Control::is_treat_as_char_object)
+                    } else {
+                        true
+                    };
+                    if lays_text {
                         let mut comp =
                             crate::renderer::composer::compose_paragraph_in_context(para, styles);
                         self.substitute_hf_field_markers(&mut comp, page_number);
@@ -6014,7 +6025,7 @@ impl LayoutEngine {
                         // LINE_SEG vpos로 문단 시작 y 결정 (빈 문단 건너뜀 보상)
                         if let Some(first_ls) = para.line_segs.first() {
                             let vpos_y =
-                                paper_area.y + hwpunit_to_px(first_ls.vertical_pos, self.dpi);
+                                text_area.y + hwpunit_to_px(first_ls.vertical_pos, self.dpi);
                             if vpos_y > mp_y_offset {
                                 mp_y_offset = vpos_y;
                             }
@@ -6025,7 +6036,7 @@ impl LayoutEngine {
                             para,
                             Some(&comp),
                             styles,
-                            &paper_area,
+                            &text_area,
                             mp_y_offset,
                             0,
                             usize::MAX - pi,
@@ -6033,15 +6044,6 @@ impl LayoutEngine {
                             None,
                             None, // 바탕쪽 컨텍스트 — wrap zone 무관
                         );
-                    } else {
-                        // 빈 문단: LINE_SEG vpos로 y 위치 갱신
-                        if let Some(first_ls) = para.line_segs.first() {
-                            let vpos_y =
-                                paper_area.y + hwpunit_to_px(first_ls.vertical_pos, self.dpi);
-                            let lh = hwpunit_to_px(first_ls.line_height, self.dpi);
-                            let ls = hwpunit_to_px(first_ls.line_spacing, self.dpi);
-                            mp_y_offset = (vpos_y + lh + ls).max(mp_y_offset);
-                        }
                     }
                 }
                 // Hancom prepares master-page furniture through object order, not raw XML

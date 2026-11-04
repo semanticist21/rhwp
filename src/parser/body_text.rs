@@ -1128,13 +1128,22 @@ fn master_page_apply_to(
     list_header_count: usize,
     master_page_index: usize,
 ) -> Option<HeaderFooterApply> {
-    const MASTER_PAGE_FLAGS_MASK: u32 = 0xe000_0000;
-    const HANCOM_SINGLE_ODD_MASTER_PAGE_FLAGS: u32 = 0x8000_0000;
-
-    (list_header_count == 1
-        && master_page_index == 0
-        && section_flags & MASTER_PAGE_FLAGS_MASK == HANCOM_SINGLE_ODD_MASTER_PAGE_FLAGS)
-        .then_some(HeaderFooterApply::Odd)
+    // 한컴은 구역 정의 속성 bit 29·30·31에 양 쪽·짝수 쪽·홀수 쪽 바탕쪽이 있는지 적고, 기본 바탕쪽
+    // 목록을 그 차례로 저장한다(한컴 12.30 저장본: 양 쪽 0x20000000, 양 쪽+홀수 쪽 0xa0000000,
+    // 짝수 쪽+홀수 쪽 0xc0000000, 셋 0xe0000000, 짝수 쪽 0x40000000). 한컴 2020이 HWPX의 희소 홀수 쪽
+    // 바탕쪽을 HWP5로 저장한 0x80000000 목록 하나도 같은 규칙이다. 비트 수와 목록 수가 다르면 차례로 정한다.
+    let kinds: Vec<HeaderFooterApply> = [
+        (29, HeaderFooterApply::Both),
+        (30, HeaderFooterApply::Even),
+        (31, HeaderFooterApply::Odd),
+    ]
+    .into_iter()
+    .filter(|(bit, _)| section_flags & (1 << bit) != 0)
+    .map(|(_, kind)| kind)
+    .collect();
+    (kinds.len() == list_header_count)
+        .then(|| kinds.get(master_page_index).copied())
+        .flatten()
 }
 
 /// 단 정의 파싱 ('cold' 컨트롤)

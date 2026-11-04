@@ -28,10 +28,24 @@ fn caption<'a>(stack: &mut Vec<Node<'a>>, caption: Option<&'a Caption>) {
 /// 본문 글자/캐럿 위치는 제외하고, 원본 목록의 의미·참조를 바꾸는 모델만 봉인한다.
 /// 메모는 마지막 구역에 저장돼 다른 구역의 anchor를 참조할 수 있으므로 문서 단위다.
 pub(crate) fn projection_digest(doc: &Document) -> [u8; 32] {
-    let masters: Vec<_> = doc
+    // 확장 바탕쪽(마지막 쪽·임의 쪽)은 구역 끝 목록이 저장한다. 기본 바탕쪽은 구역 정의 자식의 원본
+    // 레코드가 남아 있는 동안만 원본으로 저장되므로 그때만 봉인한다. 바탕쪽 편집 API가 원본 레코드를
+    // 버리면 모델이 저장을 맡는다.
+    let masters: Vec<Vec<_>> = doc
         .sections
         .iter()
-        .map(|s| &s.section_def.master_pages)
+        .map(|s| {
+            let raw_base = s
+                .section_def
+                .extra_child_records
+                .iter()
+                .any(|raw| raw.tag_id == crate::parser::tags::HWPTAG_LIST_HEADER);
+            s.section_def
+                .master_pages
+                .iter()
+                .filter(|master| master.is_extension || raw_base)
+                .collect()
+        })
         .collect();
     let mut memos: Vec<&Field> = Vec::new();
     let mut stack: Vec<_> = doc
