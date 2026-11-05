@@ -331,6 +331,8 @@ hwp5rb	task2137/156618554_petfood_press.hwp	sections[].paragraphs[].controls[].c
 hwp5rb	task2146/21761835_jeonjik_exemption_table.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	286
 hwp5rb	task2287/1342000_edu_curriculum_map.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	16626
 hwp5rb	task2287/1342000_edu_curriculum_map.hwp	sections[].paragraphs[].controls[].cells[].paragraphs[].controls[].cells[].list_header_width_ref	216
+hwp5rb	task2287/1342000_edu_curriculum_map.hwp	sections[].paragraphs[].controls[].cells[].paragraphs[].controls[].memo_paragraphs[].line_segs.len	1
+hwp5rb	task2287/1342000_edu_curriculum_map.hwp	sections[].paragraphs[].controls[].cells[].paragraphs[].controls[].memo_paragraphs[].raw_header_extra[]	1
 hwp5rb	task2319/20544835_jinan_apt_form.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	92
 hwp5rb	task2322/20862337_cheongyang_voucher_form.hwp	sections[].paragraphs[].controls[].cells[].list_header_width_ref	22
 hwp5rb	task2322/20862337_cheongyang_voucher_form.hwp	sections[].paragraphs[].controls[].cells[].paragraphs[].controls[].cells[].list_header_width_ref	109
