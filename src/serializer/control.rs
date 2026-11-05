@@ -322,6 +322,8 @@ struct ListHeaderFields {
     text_ref: u8,
     num_ref: u8,
     ext_flags: u16,
+    /// 바탕쪽 속성(byte 22-25): bit 0 겹치게 하기, bit 1 인쇄할 때 맨 위로 보내기.
+    master_attr: u32,
 }
 enum ControlPayload<'a> {
     Section(&'a SectionDef),
@@ -672,12 +674,7 @@ pub(crate) fn try_serialize_master_page<S: crate::storage::Storage>(
         }
         data
     } else {
-        let ext_flags = master_page
-            .optional_page_number
-            .and_then(|number| number.checked_add(3))
-            .unwrap_or_else(|| {
-                u16::from(master_page.overlap) | if master_page.is_extension { 0x02 } else { 0 }
-            });
+        let (ext_flags, master_attr) = master_page_list_kind(master_page);
         storage.binary(&ControlPayload::HeaderFooterList(ListHeaderFields {
             para_count: master_page.paragraphs.len() as u16,
             list_attr: 0,
@@ -686,6 +683,7 @@ pub(crate) fn try_serialize_master_page<S: crate::storage::Storage>(
             text_ref: master_page.text_ref,
             num_ref: master_page.num_ref,
             ext_flags,
+            master_attr,
         }))?
     };
 
@@ -699,6 +697,24 @@ pub(crate) fn try_serialize_master_page<S: crate::storage::Storage>(
         },
     )?;
     super::body_text::try_serialize_paragraph_list(&master_page.paragraphs, level, records, storage)
+}
+
+/// 바탕쪽 LIST_HEADER의 종류 값(byte 18-19)과 속성(byte 22-25). 한컴 12.30 저장본처럼 종류는 기본
+/// 바탕쪽 0, 구역 마지막 쪽 3, 구역 안 n째 쪽 n + 3이고, 속성은 bit 0 겹치게 하기·bit 1 맨 위로 보내기다.
+pub(crate) fn master_page_list_kind(master_page: &MasterPage) -> (u16, u32) {
+    let kind = if master_page.is_extension {
+        master_page
+            .optional_page_number
+            .and_then(|number| number.checked_add(3))
+            .unwrap_or(3)
+    } else {
+        0
+    };
+    let overlap = master_page.is_extension && !master_page.replace_base;
+    (
+        kind,
+        u32::from(overlap) | (u32::from(master_page.page_front) << 1),
+    )
 }
 
 fn serialize_page_def(pd: &PageDef) -> Vec<u8> {
@@ -3197,6 +3213,7 @@ fn build_header_footer_list_header(
         text_ref,
         num_ref,
         ext_flags,
+        master_attr: 0,
     }))
 }
 
@@ -3212,7 +3229,9 @@ fn write_header_footer_list_header<W: std::io::Write>(
     w.write_u8(input.text_ref)?;
     w.write_u8(input.num_ref)?;
     w.write_u16(input.ext_flags)?;
-    w.write_bytes(&[0u8; 14])?;
+    w.write_u16(0)?;
+    w.write_u32(input.master_attr)?;
+    w.write_bytes(&[0u8; 8])?;
     Ok(())
 }
 

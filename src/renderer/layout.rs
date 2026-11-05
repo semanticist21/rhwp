@@ -6049,6 +6049,16 @@ impl LayoutEngine {
                 // Hancom prepares master-page furniture through object order, not raw XML
                 // order: text-wrap plane, zOrder, then stable source index.
                 Self::sort_paper_render_nodes(&mut mp_node.children);
+                if mp.page_front {
+                    // 맨 위로 보내기 바탕쪽의 모든 노드를 본문 위 plane으로 보낸다.
+                    fn mark_front(node: &mut RenderNode) {
+                        if let Some(layer) = node.layer.as_mut().filter(|layer| layer.master_page) {
+                            layer.master_front = true;
+                        }
+                        node.children.iter_mut().for_each(mark_front);
+                    }
+                    mark_front(&mut mp_node);
+                }
                 tree.root.children.push(mp_node);
                 self.current_page_number.set(previous_page_number);
             }
