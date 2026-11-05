@@ -239,6 +239,11 @@ fn try_serialize_section_inner<S: crate::storage::Storage>(
                 },
             )?;
         }
+        // 원본 끝 목록이 바탕쪽 목록을 갖지 않으면(메모 목록만 남았거나 바탕쪽 편집이 원본 바탕쪽
+        // 목록을 버렸으면) 확장 바탕쪽은 모델이 저장한다.
+        if !crate::model::section_tail::holds_master_lists(tail) {
+            try_serialize_master_page_tail(section, &mut records, storage)?;
+        }
     } else {
         if has_memo_tail {
             serialize_memo_tail(&memo_lists, &mut records);

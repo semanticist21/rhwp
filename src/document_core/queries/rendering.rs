@@ -1168,66 +1168,28 @@ fn assign_master_pages_for_section(
         };
         page.active_master_page = selected;
 
-        // 임의 쪽과 마지막 쪽은 별도 범위다. 표시 쪽 번호의 재시작과 구분하여
-        // 구역 안 물리 위치로 지정 대상을 고르고 같은 대체/겹침 계약을 소비한다.
-        let applicable_ext_mp_indices: Vec<usize> = ext_mp_indices
-            .iter()
-            .copied()
-            .filter(|&index| {
-                mps[index].optional_page_number.map_or(is_last, |number| {
-                    usize::from(number) == page_idx_in_section + 1
-                })
-            })
-            .collect();
-        if !applicable_ext_mp_indices.is_empty() {
-            let replace_exts: Vec<usize> = applicable_ext_mp_indices
-                .iter()
-                .filter(|&&i| !mps[i].overlap || mps[i].replace_base)
-                .copied()
-                .collect();
-            let overlap_exts: Vec<usize> = applicable_ext_mp_indices
-                .iter()
-                .filter(|&&i| mps[i].overlap && !mps[i].replace_base)
-                .copied()
-                .collect();
-
-            if let Some(&replace_idx) = replace_exts.last() {
-                page.active_master_page = Some(MasterPageRef {
-                    section_index,
-                    master_page_index: replace_idx,
-                });
-            }
-
-            let active_apply = page
-                .active_master_page
-                .as_ref()
-                .and_then(|mp_ref| {
-                    if mp_ref.section_index == section_index {
-                        mps.get(mp_ref.master_page_index)
-                    } else {
-                        None
-                    }
-                })
-                .map(|m| m.apply_to);
-            let mut remaining_overlap_exts: Vec<usize> = Vec::new();
-            for &i in &overlap_exts {
-                if Some(mps[i].apply_to) == active_apply {
-                    page.active_master_page = Some(MasterPageRef {
-                        section_index,
-                        master_page_index: i,
-                    });
-                } else {
-                    remaining_overlap_exts.push(i);
+        // 임의 쪽과 마지막 쪽은 별도 범위다. 표시 쪽 번호의 재시작과 구분하여 구역 안 물리 위치로
+        // 지정 대상을 고른다. 한컴 12.30은 구역 마지막 쪽 바탕쪽이 있으면 그 쪽에 그것만 쓰고 같은 쪽을
+        // 지정한 임의 쪽 바탕쪽은 그리지 않는다. 겹치게 하기면 기본 바탕쪽 위에 더 그리고, 아니면
+        // 기본 바탕쪽 대신 그린다(한컴 12.30 인쇄로 확인).
+        let extension = |last: bool| {
+            ext_mp_indices.iter().rev().copied().find(|&index| {
+                match mps[index].optional_page_number {
+                    None => last,
+                    Some(number) => !last && usize::from(number) == page_idx_in_section + 1,
                 }
-            }
-            if !remaining_overlap_exts.is_empty() {
-                page.extra_master_pages = remaining_overlap_exts
-                    .iter()
-                    .map(|&mi| MasterPageRef {
-                        section_index,
-                        master_page_index: mi,
-                    })
-                    .collect();
+            })
+        };
+        let chosen = if is_last { extension(true) } else { None }.or_else(|| extension(false));
+        if let Some(index) = chosen {
+            let master_ref = MasterPageRef {
+                section_index,
+                master_page_index: index,
+            };
+            if !mps[index].overlap || mps[index].replace_base {
+                page.active_master_page = Some(master_ref);
+            } else {
+                page.extra_master_pages = vec![master_ref];
             }
         }
     }

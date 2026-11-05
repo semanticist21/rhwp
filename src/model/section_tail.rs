@@ -25,10 +25,37 @@ fn caption<'a>(stack: &mut Vec<Node<'a>>, caption: Option<&'a Caption>) {
     }
 }
 
+/// 구역 끝 원본 목록에서 바탕쪽 목록(메모 목록 바로 뒤가 아닌 수준 1 LIST_HEADER와 그 문단)의
+/// 레코드인지를 차례로 표시한다. 메모 목록은 MEMO_LIST 다음 LIST_HEADER로 시작한다.
+pub(crate) fn master_list_mask(records: &[RawRecord]) -> Vec<bool> {
+    use crate::parser::tags::{HWPTAG_LIST_HEADER, HWPTAG_MEMO_LIST};
+    let mut master = false;
+    let mut after_memo = false;
+    records
+        .iter()
+        .map(|raw| {
+            if raw.level == 1 {
+                if raw.tag_id == HWPTAG_LIST_HEADER {
+                    master = !after_memo;
+                } else if raw.tag_id == HWPTAG_MEMO_LIST {
+                    master = false;
+                }
+                after_memo = raw.tag_id == HWPTAG_MEMO_LIST;
+            }
+            master
+        })
+        .collect()
+}
+
+/// 구역 끝 원본 목록이 바탕쪽 목록을 가졌는지. 가졌으면 그 구역의 확장 바탕쪽은 원본이 저장한다.
+pub(crate) fn holds_master_lists(tail: &SectionTail) -> bool {
+    master_list_mask(&tail.records).contains(&true)
+}
+
 /// 본문 글자/캐럿 위치는 제외하고, 원본 목록의 의미·참조를 바꾸는 모델만 봉인한다.
 /// 메모는 마지막 구역에 저장돼 다른 구역의 anchor를 참조할 수 있으므로 문서 단위다.
 pub(crate) fn projection_digest(doc: &Document) -> [u8; 32] {
-    // 확장 바탕쪽(마지막 쪽·임의 쪽)은 구역 끝 목록이 저장한다. 기본 바탕쪽은 구역 정의 자식의 원본
+    // 확장 바탕쪽(마지막 쪽·임의 쪽)은 구역 끝 원본 목록이, 기본 바탕쪽은 구역 정의 자식의 원본
     // 레코드가 남아 있는 동안만 원본으로 저장되므로 그때만 봉인한다. 바탕쪽 편집 API가 원본 레코드를
     // 버리면 모델이 저장을 맡는다.
     let masters: Vec<Vec<_>> = doc
@@ -40,10 +67,11 @@ pub(crate) fn projection_digest(doc: &Document) -> [u8; 32] {
                 .extra_child_records
                 .iter()
                 .any(|raw| raw.tag_id == crate::parser::tags::HWPTAG_LIST_HEADER);
+            let raw_tail = s.trailing_lists.as_ref().is_some_and(holds_master_lists);
             s.section_def
                 .master_pages
                 .iter()
-                .filter(|master| master.is_extension || raw_base)
+                .filter(|master| raw_base || (master.is_extension && raw_tail))
                 .collect()
         })
         .collect();
