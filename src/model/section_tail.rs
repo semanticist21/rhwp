@@ -113,6 +113,18 @@ pub(crate) fn projection_digest(doc: &Document) -> [u8; 32] {
             }
         }
     }
+    // 메모 목록을 원본 꼬리가 아니라 메모 필드가 가지면(파서가 붙인 HWP 메모·새 메모) 메모를 고쳐도
+    // 원본 꼬리와 어긋나지 않는다. 원본 꼬리에 메모 목록이 남은 때만 메모를 함께 봉인한다.
+    let raw_memos = doc.sections.iter().any(|section| {
+        section.trailing_lists.as_ref().is_some_and(|tail| {
+            tail.records
+                .iter()
+                .any(|raw| raw.level == 1 && raw.tag_id == crate::parser::tags::HWPTAG_MEMO_LIST)
+        })
+    });
+    if !raw_memos {
+        memos.clear();
+    }
     crate::model::raw_provenance::value_digest(
         &(masters, memos),
         "구역 끝 모델 투영은 메모리에서 직렬화한다",

@@ -174,7 +174,16 @@ where
     let mut section_bytes_list = Vec::new();
     let mut viewtext_history = Vec::new();
     let mut form_id_allocator = None;
-    for section in &doc.sections {
+    let last_section = doc.sections.len().saturating_sub(1);
+    for (section_index, section) in doc.sections.iter().enumerate() {
+        // 한컴처럼 모든 구역의 메모 목록은 마지막 구역(나눠 쓰면 그 마지막 스트림) 끝에 쓴다.
+        let memo_tail = |last_stream: bool| {
+            if section_index == last_section && last_stream {
+                super::body_text::MemoTail::Document(&doc.sections)
+            } else {
+                super::body_text::MemoTail::Elsewhere
+            }
+        };
         let split_starts: Vec<usize> =
             if !split_multi_sec_pr || section.raw_provenance_permits_reuse() {
                 Vec::new()
@@ -199,6 +208,7 @@ where
             let bytes = super::body_text::try_serialize_section_for_version(
                 &prepared,
                 output_version,
+                memo_tail(true),
                 storage,
             )
             .map_err(storage_error)?;
@@ -254,6 +264,7 @@ where
                 super::body_text::try_serialize_section_for_version(
                     &prepared,
                     output_version,
+                    memo_tail(k + 1 == starts.len()),
                     storage,
                 )
                 .map_err(storage_error)?,

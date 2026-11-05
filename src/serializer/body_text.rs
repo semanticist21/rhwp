@@ -66,23 +66,37 @@ pub(crate) fn serialize_section_for_version(section: &Section, version: u32) -> 
 }
 
 fn serialize_section_inner(section: &Section, version: Option<u32>) -> Vec<u8> {
-    match try_serialize_section_inner(section, version, &crate::storage::Unbounded) {
+    match try_serialize_section_inner(section, version, MemoTail::Own, &crate::storage::Unbounded) {
         Ok(bytes) => bytes,
         Err(never) => match never {},
     }
 }
 
+/// 구역 끝에 쓸 메모 목록. 한컴 12.30은 모든 구역의 메모 목록을 마지막 구역 끝에 쓴다
+/// (두 구역 문서를 HWP로 저장해 확인).
+#[derive(Clone, Copy)]
+pub(crate) enum MemoTail<'a> {
+    /// 이 구역의 메모만 이 구역 끝에 쓴다(구역 하나만 다루는 호출).
+    Own,
+    /// 문서의 마지막 구역: 모든 구역의 메모를 문서 차례로 쓴다.
+    Document(&'a [Section]),
+    /// 마지막이 아닌 구역: 메모 목록을 쓰지 않는다.
+    Elsewhere,
+}
+
 pub(crate) fn try_serialize_section_for_version<S: crate::storage::Storage>(
     section: &Section,
     version: u32,
+    memo_tail: MemoTail<'_>,
     storage: &S,
 ) -> Result<Vec<u8>, S::Error> {
-    try_serialize_section_inner(section, Some(version), storage)
+    try_serialize_section_inner(section, Some(version), memo_tail, storage)
 }
 
 fn try_serialize_section_inner<S: crate::storage::Storage>(
     section: &Section,
     version: Option<u32>,
+    memo_tail: MemoTail<'_>,
     storage: &S,
 ) -> Result<Vec<u8>, S::Error> {
     // 원본 스트림이 있으면 그대로 반환 (완벽한 라운드트립).
@@ -91,7 +105,20 @@ fn try_serialize_section_inner<S: crate::storage::Storage>(
     // 파싱(+로드 픽스업) 시점에 봉인한 (모델, raw) 다이제스트 쌍과 현재 상태가
     // 둘 다 일치할 때만 통과한다 — 불일치·raw 교체는 아래 모델 writer 로
     // 재생성한다. 봉인 계약은 model::raw_provenance 참조.
-    if section.raw_provenance_permits_reuse() {
+    //
+    // 메모 목록은 다른 구역의 메모도 담으므로, 메모가 든 구역과 메모가 있는 문서의 마지막 구역은
+    // 원본을 쓰지 않고 모델에서 다시 쓴다. 다른 구역의 메모를 고쳐도 옛 목록이 남지 않는다.
+    let stale_memo_tail = match (memo_tail, &section.raw_stream) {
+        (MemoTail::Document(sections), Some(raw)) => {
+            let mut lists = Vec::new();
+            for other in sections {
+                lists.extend(try_collect_memo_lists(other, storage)?);
+            }
+            !raw_memo_tail_matches(raw, &lists)
+        }
+        _ => false,
+    };
+    if section.raw_provenance_permits_reuse() && !stale_memo_tail {
         if let Some(ref raw) = section.raw_stream {
             return storage.copy_slice(raw);
         }
@@ -105,7 +132,17 @@ fn try_serialize_section_inner<S: crate::storage::Storage>(
     super::control::reset_form_order_counter();
 
     let mut records = Vec::new();
-    let memo_lists = try_collect_memo_lists(section, storage)?;
+    let memo_lists = match memo_tail {
+        MemoTail::Own => try_collect_memo_lists(section, storage)?,
+        MemoTail::Elsewhere => Vec::new(),
+        MemoTail::Document(sections) => {
+            let mut lists = Vec::new();
+            for other in sections {
+                lists.extend(try_collect_memo_lists(other, storage)?);
+            }
+            lists
+        }
+    };
     let has_memo_tail = !memo_lists.is_empty();
     let para_count = section.paragraphs.len();
     // [Issue #1915] IR 계약 폴백: 첫 문단에 Control::SectionDef 가 없는 IR(HWP3 파서
@@ -192,6 +229,15 @@ fn try_serialize_section_inner<S: crate::storage::Storage>(
     }
     if let Some(tail) = &section.trailing_lists {
         // 본문 재작성과 별개로 저장 소유를 유지한다. 모델 목록을 중복 생성하지 않는다.
+        // 메모 목록은 메모 필드가 가지므로(원본 꼬리에는 바탕쪽만 남는다) 본문 바로 뒤에 먼저 쓴다.
+        if has_memo_tail
+            && !tail
+                .records
+                .iter()
+                .any(|raw| raw.level == 1 && raw.tag_id == tags::HWPTAG_MEMO_LIST)
+        {
+            serialize_memo_tail(&memo_lists, &mut records);
+        }
         for raw in &tail.records {
             storage.push(
                 &mut records,
@@ -251,6 +297,28 @@ fn try_serialize_master_page_tail<S: crate::storage::Storage>(
         super::control::try_serialize_master_page(master_page, 1, records, storage)?;
     }
     Ok(())
+}
+
+/// 원본 구역 끝의 메모 목록이 모델의 메모(번호·글)와 같은지. 다른 구역의 메모를 고치거나 지우면
+/// 마지막 구역은 바뀌지 않아도 원본 목록이 낡으므로 모델에서 다시 쓴다.
+fn raw_memo_tail_matches(raw: &[u8], lists: &[(u32, &[Paragraph])]) -> bool {
+    let Ok(records) = crate::parser::record::Record::read_all(raw) else {
+        return false;
+    };
+    let raw_lists = crate::parser::body_text::memo_tail_lists(&records);
+    let texts = |paragraphs: &[Paragraph]| {
+        paragraphs
+            .iter()
+            .map(|para| para.text.clone())
+            .collect::<Vec<_>>()
+    };
+    raw_lists.len() == lists.len()
+        && raw_lists
+            .iter()
+            .zip(lists)
+            .all(|((raw_number, raw_body), (number, body))| {
+                raw_number == number && texts(raw_body) == texts(body)
+            })
 }
 
 /// 구역의 메모 본문을 메모 번호와 함께 모은다. 표 칸·글상자·머리말·주석 안의 메모도 같은 꼬리에 쓴다.

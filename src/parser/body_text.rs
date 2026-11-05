@@ -137,9 +137,21 @@ pub fn parse_body_text_section(data: &[u8]) -> Result<Section, BodyTextError> {
     if let Some(start) = tail_start {
         let tail = &records[start..];
         let (memo_lists, master_records) = split_tail_lists(tail);
-        for (number, paragraphs) in &memo_lists {
+        // 한컴은 모든 구역의 메모 목록을 마지막 구역 끝에 둔다(12.30, 두 구역 문서에서 확인).
+        // 이 구역에 주인이 없는 목록은 원본 레코드로 남겨 문서 단위로 다시 붙인다
+        // (`attach_memo_lists_across_sections`).
+        let mut pending = Vec::new();
+        for (number, paragraphs, raw) in &memo_lists {
             let mut body = Some(paragraphs.clone());
-            let _ = assign_memo_paragraphs(&mut section.paragraphs, *number, &mut body);
+            if !assign_memo_paragraphs(&mut section.paragraphs, *number, &mut body) {
+                pending.extend(raw.iter().cloned());
+            }
+        }
+        if !pending.is_empty() {
+            section.trailing_lists = Some(crate::model::section_tail::SectionTail {
+                records: pending,
+                projection_seal: None,
+            });
         }
         if !master_records.is_empty() {
             section.section_def.master_pages.extend(
@@ -175,7 +187,10 @@ pub fn parse_body_text_section(data: &[u8]) -> Result<Section, BodyTextError> {
 
 /// The level-1 lists after the last body paragraph: memo bodies keyed by their
 /// number, and the raw records of master-page lists.
-fn split_tail_lists(records: &[Record]) -> (Vec<(u32, Vec<Paragraph>)>, Vec<RawRecord>) {
+#[allow(clippy::type_complexity)]
+fn split_tail_lists(
+    records: &[Record],
+) -> (Vec<(u32, Vec<Paragraph>, Vec<RawRecord>)>, Vec<RawRecord>) {
     let mut memos = Vec::new();
     let mut masters = Vec::new();
     let mut index = 0;
@@ -192,6 +207,7 @@ fn split_tail_lists(records: &[Record]) -> (Vec<(u32, Vec<Paragraph>)>, Vec<RawR
                 index += 1;
                 continue;
             };
+            let head_index = index;
             index += 1;
             if index < records.len()
                 && records[index].level == 1
@@ -206,7 +222,15 @@ fn split_tail_lists(records: &[Record]) -> (Vec<(u32, Vec<Paragraph>)>, Vec<RawR
                 {
                     index += 1;
                 }
-                memos.push((number, parse_paragraph_list(&records[start..index])));
+                let raw = records[head_index..index]
+                    .iter()
+                    .map(|record| RawRecord {
+                        tag_id: record.tag_id,
+                        level: record.level,
+                        data: record.data.clone(),
+                    })
+                    .collect();
+                memos.push((number, parse_paragraph_list(&records[start..index]), raw));
             }
         } else if head.tag_id == tags::HWPTAG_LIST_HEADER {
             let start = index;
@@ -230,6 +254,72 @@ fn split_tail_lists(records: &[Record]) -> (Vec<(u32, Vec<Paragraph>)>, Vec<RawR
         }
     }
     (memos, masters)
+}
+
+/// 구역 레코드 끝(마지막 본문 문단 뒤)의 메모 목록: (메모 번호, 메모 본문 문단).
+pub(crate) fn memo_tail_lists(records: &[Record]) -> Vec<(u32, Vec<Paragraph>)> {
+    let tail_start = records
+        .iter()
+        .rposition(|r| r.tag_id == tags::HWPTAG_PARA_HEADER && r.level == 0)
+        .and_then(|last| {
+            records[last + 1..]
+                .iter()
+                .position(|r| {
+                    r.level == 1
+                        && matches!(r.tag_id, tags::HWPTAG_LIST_HEADER | tags::HWPTAG_MEMO_LIST)
+                })
+                .map(|offset| last + 1 + offset)
+        });
+    tail_start
+        .map(|start| {
+            split_tail_lists(&records[start..])
+                .0
+                .into_iter()
+                .map(|(number, paragraphs, _)| (number, paragraphs))
+                .collect()
+        })
+        .unwrap_or_default()
+}
+
+/// 구역마다 주인을 찾지 못한 메모 목록(원본 레코드로 남긴 것)을 문서의 모든 구역에서 찾아 붙인다.
+/// 한컴은 모든 구역의 메모 목록을 마지막 구역 끝에 쓴다. 어느 구역에도 주인이 없는 목록은
+/// 기준 글이 없는 것이라 버린다.
+pub fn attach_memo_lists_across_sections(sections: &mut [crate::model::document::Section]) {
+    for index in 0..sections.len() {
+        let Some(tail) = &sections[index].trailing_lists else {
+            continue;
+        };
+        if !tail
+            .records
+            .iter()
+            .any(|raw| raw.level == 1 && raw.tag_id == tags::HWPTAG_MEMO_LIST)
+        {
+            continue;
+        }
+        let records: Vec<Record> = tail
+            .records
+            .iter()
+            .map(|raw| Record {
+                tag_id: raw.tag_id,
+                level: raw.level,
+                size: raw.data.len() as u32,
+                data: raw.data.clone(),
+            })
+            .collect();
+        let (memo_lists, masters) = split_tail_lists(&records);
+        if !masters.is_empty() {
+            continue;
+        }
+        for (number, paragraphs, _) in memo_lists {
+            let mut body = Some(paragraphs);
+            for section in sections.iter_mut() {
+                if assign_memo_paragraphs(&mut section.paragraphs, number, &mut body) {
+                    break;
+                }
+            }
+        }
+        sections[index].trailing_lists = None;
+    }
 }
 
 /// Attach one memo body to the first matching memo field that has none.

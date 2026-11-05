@@ -344,13 +344,31 @@ fn hancom_sections_merge_into_one_page_and_split_back_to_page_top() {
 }
 
 #[test]
-fn section_with_raw_memo_list_is_refused_without_change() {
+fn section_with_memo_list_splits_and_keeps_its_memos() {
+    // 메모 목록은 메모 필드가 가지고 저장은 마지막 구역 끝에 모두 쓰므로(#8017) 나누고 합쳐도 메모가 남는다.
     let bytes = std::fs::read("samples/issue5866/memo_field_hwp5.hwp").unwrap();
     let mut doc = HwpDocument::from_bytes(&bytes).unwrap();
-    let before = texts(&doc);
-    assert!(doc.split_section_native(0, 0, 1).is_err());
-    assert_eq!(texts(&doc), before);
-    assert!(doc.merge_section_native(1).is_err());
+    let memos = |doc: &HwpDocument| -> Vec<(String, String)> {
+        let list: serde_json::Value = serde_json::from_str(&doc.get_memo_list()).unwrap();
+        list.as_array()
+            .unwrap()
+            .iter()
+            .map(|memo| {
+                (
+                    memo["author"].as_str().unwrap().to_string(),
+                    memo["text"].as_str().unwrap().to_string(),
+                )
+            })
+            .collect()
+    };
+    let before = memos(&doc);
+    assert!(!before.is_empty());
+    doc.split_section_native(0, 0, 1).unwrap();
+    let reopened = HwpDocument::from_bytes(&doc.export_hwp_native().unwrap()).unwrap();
+    assert_eq!(memos(&reopened), before);
+    doc.merge_section_native(1).unwrap();
+    let reopened = HwpDocument::from_bytes(&doc.export_hwp_native().unwrap()).unwrap();
+    assert_eq!(memos(&reopened), before);
 }
 
 /// HWPX 저장본 `section{n}.xml`의 본문 문단마다 첫 줄의 저장 세로 위치(`vertpos`). 표·글상자 안

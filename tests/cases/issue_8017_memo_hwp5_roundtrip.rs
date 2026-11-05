@@ -164,3 +164,49 @@ fn memo_tail_resave_keeps_the_paragraph_count() {
         );
     }
 }
+
+/// 한컴 12.30은 모든 구역의 메모 목록을 마지막 구역 끝에 쓴다(두 구역 문서를 HWP로 저장해 확인:
+/// 첫 구역 메모와 둘째 구역 메모의 MEMO_LIST가 모두 Section1 끝에 있었다). 다시 열면 앞 구역 메모도
+/// 그 목록에서 글을 찾는다.
+#[test]
+fn every_section_memo_list_is_written_after_the_last_section() {
+    use rhwp::document_core::DocumentCore;
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.insert_text_native(0, 0, 0, "첫 구역 글").unwrap();
+    core.split_section_native(0, 0, 5).unwrap();
+    assert_eq!(core.document().sections.len(), 2);
+    core.insert_text_native(1, 0, 0, "둘째 구역 글").unwrap();
+    core.insert_memo_at(0, 0, 0, 1, "t", "첫 메모").unwrap();
+    core.insert_memo_at(1, 0, 0, 2, "t", "둘째 메모").unwrap();
+
+    let bytes = serialize_document(core.document()).expect("write HWP");
+    let mut cfb = rhwp::parser::cfb_reader::CfbReader::open(&bytes).unwrap();
+    let compressed = cfb.read_file_header().unwrap()[36] & 1 != 0;
+    let tails: Vec<usize> = (0..2)
+        .map(|index| {
+            let stream = cfb
+                .read_body_text_section(index, compressed, false)
+                .unwrap();
+            rhwp::parser::record::Record::read_all(&stream)
+                .unwrap()
+                .iter()
+                .filter(|record| record.tag_id == rhwp::parser::tags::HWPTAG_MEMO_LIST)
+                .count()
+        })
+        .collect();
+    assert_eq!(tails, vec![0, 2]);
+
+    let reopened = parse_document(&bytes).expect("read the written HWP");
+    let texts: Vec<String> = memos(&reopened)
+        .iter()
+        .map(|field| {
+            field
+                .memo_paragraphs
+                .iter()
+                .map(|p| p.text.clone())
+                .collect()
+        })
+        .collect();
+    assert_eq!(texts, vec!["첫 메모".to_string(), "둘째 메모".to_string()]);
+}
