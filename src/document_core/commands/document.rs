@@ -250,6 +250,9 @@ impl DocumentCore {
         // line_seg 를 소비하기 전에 물리적으로 불가능한 과다 line_seg 배열을 제거한다.
         Self::drop_corrupt_oversized_linesegs(&mut document);
 
+        // 번호가 겹치는 메모는 새 번호로 연다. HWP 저장은 메모 본문을 번호로 잇는다.
+        crate::document_core::queries::memo_query::make_memo_numbers_unique(&mut document);
+
         // 저장 줄을 재조판하기 전에 물리 셀 프레임을 공통 모델에 복구한다.
         // 이미 닫힌 표와 입증되지 않은 후보는 원본 폭을 유지한다.
         let rounding_hu = px_to_hwpunit(0.5, DEFAULT_DPI) as u32;
