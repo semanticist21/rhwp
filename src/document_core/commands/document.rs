@@ -435,6 +435,7 @@ impl DocumentCore {
             annotate_metric_font: false,
             show_control_codes: false,
             show_transparent_borders: false,
+            dim_master_pages: false,
             clip_enabled: true,
             debug_overlay: false,
             respect_vpos_reset: false,
