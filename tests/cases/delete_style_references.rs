@@ -782,15 +782,20 @@ fn style_insert_rejects_positions_past_the_end_and_the_middle_of_a_full_one_byte
 /// (HWP5 표 58의 스타일 BYTE, 오프셋 10)도 함께 고쳐야 저장할 수 있고, 다시 열어도 같은 스타일을 가리킨다.
 #[test]
 fn inserted_style_keeps_hwp_memo_list_paragraph_styles_across_save() {
+    // 메모 목록은 메모 필드가 본문 문단(`memo_paragraphs`)으로 가진다(#8017).
     fn tail_styles(doc: &HwpDocument) -> Vec<String> {
         let styles = &doc.document().doc_info.styles;
         doc.document()
             .sections
             .iter()
-            .filter_map(|section| section.trailing_lists.as_ref())
-            .flat_map(|tail| &tail.records)
-            .filter(|record| record.tag_id == rhwp::parser::tags::HWPTAG_PARA_HEADER)
-            .map(|record| styles[usize::from(record.data[10])].local_name.clone())
+            .flat_map(|section| &section.paragraphs)
+            .flat_map(|para| &para.controls)
+            .filter_map(|control| match control {
+                rhwp::model::control::Control::Field(field) => Some(&field.memo_paragraphs),
+                _ => None,
+            })
+            .flatten()
+            .map(|para| styles[usize::from(para.style_id)].local_name.clone())
             .collect()
     }
     let bytes = std::fs::read(concat!(
