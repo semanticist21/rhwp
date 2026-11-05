@@ -640,3 +640,17 @@ fn a_memo_without_a_filetime_has_no_time() {
         .unwrap();
     assert_eq!(memo_list(&core)[0]["time"], Value::Null);
 }
+
+/// FILETIME 두 칸에 담을 수 없는 만든 때는 받지 않는다(넘침으로 엉뚱한 시각을 쓰지 않는다).
+#[test]
+fn an_unreadable_creation_time_is_refused() {
+    let mut core = core_with("anchor");
+    for time in ["1e16", "-5", "1e300"] {
+        let json = format!(r#"{{"author":"t","text":"x","time":{time}}}"#);
+        assert!(
+            core.insert_memo_json_native(0, 0, 0, 6, &json).is_err(),
+            "{time}"
+        );
+    }
+    assert!(memo_list(&core).is_empty());
+}

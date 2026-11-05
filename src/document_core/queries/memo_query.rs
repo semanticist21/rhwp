@@ -1717,10 +1717,15 @@ pub(crate) fn parse_memo_input(json: &str) -> Result<(String, String, MemoTime),
             .ok_or_else(invalid),
     };
     let created = match (number("time")?, number("offset")?) {
-        (Some(ms), offset) => MemoTime {
+        // FILETIME 두 칸에 담고 다시 읽을 수 있는 1980–2200년만 받는다.
+        (Some(ms), _) if !(315_532_800_000.0..7_258_118_400_000.0).contains(&ms) => {
+            return Err(invalid());
+        }
+        (Some(ms), Some(offset)) => MemoTime {
             unix_ms: ms as i64,
-            offset_minutes: offset.map_or(0, |minutes| minutes.clamp(-1440.0, 1440.0) as i32),
+            offset_minutes: offset.clamp(-1440.0, 1440.0) as i32,
         },
+        (Some(ms), None) => MemoTime::at(ms as i64),
         (None, _) => MemoTime::now(),
     };
     Ok((member("author")?, member("text")?, created))

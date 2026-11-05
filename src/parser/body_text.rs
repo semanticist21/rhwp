@@ -307,7 +307,8 @@ pub fn attach_memo_lists_across_sections(sections: &mut [crate::model::document:
             })
             .collect();
         let (memo_lists, masters) = split_tail_lists(&records);
-        if !masters.is_empty() {
+        // 읽지 못한 목록이나 바탕쪽이 섞인 꼬리는 원본 그대로 둔다.
+        if memo_lists.is_empty() || !masters.is_empty() {
             continue;
         }
         for (number, paragraphs, _) in memo_lists {
@@ -344,6 +345,18 @@ fn assign_memo_paragraphs(
                 Control::Table(table) => {
                     for cell in &mut table.cells {
                         if assign_memo_paragraphs(&mut cell.paragraphs, number, body) {
+                            return true;
+                        }
+                    }
+                    if let Some(caption) = &mut table.caption {
+                        if assign_memo_paragraphs(&mut caption.paragraphs, number, body) {
+                            return true;
+                        }
+                    }
+                }
+                Control::Picture(picture) => {
+                    if let Some(caption) = &mut picture.caption {
+                        if assign_memo_paragraphs(&mut caption.paragraphs, number, body) {
                             return true;
                         }
                     }
@@ -407,6 +420,21 @@ fn assign_memo_in_shape(
             if assign_memo_paragraphs(&mut text_box.paragraphs, number, body) {
                 return true;
             }
+        }
+        if let Some(caption) = &mut drawing.caption {
+            if assign_memo_paragraphs(&mut caption.paragraphs, number, body) {
+                return true;
+            }
+        }
+    }
+    let caption = match shape {
+        ShapeObject::Group(group) => group.caption.as_mut(),
+        ShapeObject::Picture(picture) => picture.caption.as_mut(),
+        _ => None,
+    };
+    if let Some(caption) = caption {
+        if assign_memo_paragraphs(&mut caption.paragraphs, number, body) {
+            return true;
         }
     }
     if let ShapeObject::Group(group) = shape {

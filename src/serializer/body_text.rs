@@ -108,17 +108,7 @@ fn try_serialize_section_inner<S: crate::storage::Storage>(
     //
     // 메모 목록은 다른 구역의 메모도 담으므로, 메모가 든 구역과 메모가 있는 문서의 마지막 구역은
     // 원본을 쓰지 않고 모델에서 다시 쓴다. 다른 구역의 메모를 고쳐도 옛 목록이 남지 않는다.
-    let stale_memo_tail = match (memo_tail, &section.raw_stream) {
-        (MemoTail::Document(sections), Some(raw)) => {
-            let mut lists = Vec::new();
-            for other in sections {
-                lists.extend(try_collect_memo_lists(other, storage)?);
-            }
-            !raw_memo_tail_matches(raw, &lists)
-        }
-        _ => false,
-    };
-    if section.raw_provenance_permits_reuse() && !stale_memo_tail {
+    if try_reuses_raw_stream(section, memo_tail, storage)? {
         if let Some(ref raw) = section.raw_stream {
             return storage.copy_slice(raw);
         }
@@ -299,6 +289,33 @@ fn try_serialize_master_page_tail<S: crate::storage::Storage>(
     Ok(())
 }
 
+/// 이 구역을 원본 스트림 그대로 쓰는지. 봉인이 맞아도 원본 끝의 메모 목록이 써야 할 목록(마지막 구역은
+/// 문서의 모든 메모, 다른 구역은 없음)과 다르면 모델에서 다시 쓴다. 다른 구역의 메모를 고쳐도 옛 목록이
+/// 남지 않고, 옛 저장본이 앞 구역에 둔 목록이 마지막 구역 목록과 겹치지 않는다.
+pub(crate) fn try_reuses_raw_stream<S: crate::storage::Storage>(
+    section: &Section,
+    memo_tail: MemoTail<'_>,
+    storage: &S,
+) -> Result<bool, S::Error> {
+    let Some(raw) = section.raw_stream.as_deref() else {
+        return Ok(false);
+    };
+    if !section.raw_provenance_permits_reuse() {
+        return Ok(false);
+    }
+    Ok(match memo_tail {
+        MemoTail::Own => true,
+        MemoTail::Elsewhere => raw_memo_tail_matches(raw, &[]),
+        MemoTail::Document(sections) => {
+            let mut lists = Vec::new();
+            for other in sections {
+                lists.extend(try_collect_memo_lists(other, storage)?);
+            }
+            raw_memo_tail_matches(raw, &lists)
+        }
+    })
+}
+
 /// 원본 구역 끝의 메모 목록이 모델의 메모(번호·글)와 같은지. 다른 구역의 메모를 고치거나 지우면
 /// 마지막 구역은 바뀌지 않아도 원본 목록이 낡으므로 모델에서 다시 쓴다.
 fn raw_memo_tail_matches(raw: &[u8], lists: &[(u32, &[Paragraph])]) -> bool {
@@ -357,6 +374,14 @@ fn try_collect_memo_lists<'a, S: crate::storage::Storage>(
                         for cell in &table.cells {
                             collect(&cell.paragraphs, lists, storage)?;
                         }
+                        if let Some(caption) = &table.caption {
+                            collect(&caption.paragraphs, lists, storage)?;
+                        }
+                    }
+                    Control::Picture(picture) => {
+                        if let Some(caption) = &picture.caption {
+                            collect(&caption.paragraphs, lists, storage)?;
+                        }
                     }
                     Control::Shape(shape) => collect_shape(shape, lists, storage)?,
                     Control::Header(header) => collect(&header.paragraphs, lists, storage)?,
@@ -379,11 +404,25 @@ fn try_collect_memo_lists<'a, S: crate::storage::Storage>(
             if let Some(text_box) = &drawing.text_box {
                 collect(&text_box.paragraphs, lists, storage)?;
             }
-        }
-        if let crate::model::shape::ShapeObject::Group(group) = shape {
-            for child in &group.children {
-                collect_shape(child, lists, storage)?;
+            if let Some(caption) = &drawing.caption {
+                collect(&caption.paragraphs, lists, storage)?;
             }
+        }
+        match shape {
+            crate::model::shape::ShapeObject::Group(group) => {
+                if let Some(caption) = &group.caption {
+                    collect(&caption.paragraphs, lists, storage)?;
+                }
+                for child in &group.children {
+                    collect_shape(child, lists, storage)?;
+                }
+            }
+            crate::model::shape::ShapeObject::Picture(picture) => {
+                if let Some(caption) = &picture.caption {
+                    collect(&caption.paragraphs, lists, storage)?;
+                }
+            }
+            _ => {}
         }
         Ok(())
     }

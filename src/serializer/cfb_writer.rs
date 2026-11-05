@@ -205,6 +205,9 @@ where
             let prepared =
                 super::form_identity::prepare_section(section, doc, &mut form_id_allocator)?;
             let prepared = super::hwpx_lineage_lines::prepare_section(prepared, doc);
+            let reused =
+                super::body_text::try_reuses_raw_stream(&prepared, memo_tail(true), storage)
+                    .map_err(storage_error)?;
             let bytes = super::body_text::try_serialize_section_for_version(
                 &prepared,
                 output_version,
@@ -212,7 +215,7 @@ where
                 storage,
             )
             .map_err(storage_error)?;
-            if prepared.raw_provenance_permits_reuse() {
+            if reused {
                 if let Some(visible) =
                     crate::parser::tracked_viewtext::project(&bytes, &doc.doc_info)
                         .map_err(|error| SerializeError::UnsupportedInput(error.to_string()))?
