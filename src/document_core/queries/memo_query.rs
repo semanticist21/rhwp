@@ -381,6 +381,57 @@ pub(crate) fn renumber_memos(paragraphs: &mut [Paragraph], mut next: u32) -> u32
     next
 }
 
+/// 문서 안에서 번호가 겹치는 메모에 새 번호를 준다(옛 한컴의 구역별 번호, 다른 도구가 만든 HWPX).
+/// HWP는 모든 구역의 메모 본문 목록을 마지막 구역 끝에 번호로 적으므로, 번호가 겹치면 다시 열 때
+/// 본문이 다른 메모로 간다. 문서 차례로 처음 나온 메모는 번호를 지킨다.
+pub(crate) fn make_memo_numbers_unique(doc: &mut Document) {
+    use crate::model::identity::walk::{walk, Node};
+    let mut next = max_memo_number(doc);
+    let mut seen = HashSet::new();
+    let mut renumbered: HashMap<u32, u32> = HashMap::new();
+    let mut touched = vec![false; doc.sections.len()];
+    for (index, section) in doc.sections.iter_mut().enumerate() {
+        let _ = walk(&mut section.paragraphs, |node| {
+            if let Node::Control(Control::Field(field)) = node {
+                let number = memo_number(field);
+                if is_memo_field(field) && number != 0 && !seen.insert(number) {
+                    next = next.saturating_add(1);
+                    field.memo_index = next;
+                    field.command = rewritten_memo_command(field, next);
+                    set_memo_parameters(field, next);
+                    renumbered.insert(field.field_id, next);
+                    seen.insert(next);
+                    touched[index] = true;
+                }
+            }
+            Ok(())
+        });
+    }
+    if renumbered.is_empty() {
+        return;
+    }
+    // 여러 문단에 걸친 메모의 끝 표시도 새 번호를 가리킨다.
+    for (index, section) in doc.sections.iter_mut().enumerate() {
+        let _ = walk(&mut section.paragraphs, |node| {
+            if let Node::Paragraph(para) = node {
+                for end in &mut para.orphan_field_ends {
+                    if let Some(number) = renumbered.get(&end.begin_id_ref) {
+                        end.memo_index = *number;
+                    }
+                }
+            }
+            Ok(())
+        });
+        if touched[index] {
+            section.raw_stream = None;
+        }
+    }
+    // 메모 목록은 마지막 구역 끝에 있다.
+    if let Some(last) = doc.sections.last_mut() {
+        last.raw_stream = None;
+    }
+}
+
 /// A clipboard can hold a memo's opening paragraph without the paragraph that
 /// closes it (or the closing paragraph alone). Such a fragment would paste a
 /// dangling field; drop the field and keep the visible text instead.
