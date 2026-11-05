@@ -632,13 +632,21 @@ fn write_section_def<W: std::io::Write>(
     //   UINT16 대표Language (5.0.1.5 이상)
     // 한컴 정답지는 26 byte payload + 8 byte zero (확장 영역) = 34 byte payload + 4 byte ctrl_id = 38 byte CTRL_HEADER.
     // 원본 추가 바이트 복원 (라운드트립용)
-    if !sd.raw_ctrl_extra.is_empty() {
-        w.write_bytes(&sd.raw_ctrl_extra)?;
-    } else {
+    // 추가 바이트의 7·8번째는 메모 모양 번호다. 모양을 가리키는 구역만 그 자리를 쓰고, 0이면 원본을 그대로 둔다.
+    let mut extra = std::borrow::Cow::Borrowed(sd.raw_ctrl_extra.as_slice());
+    if extra.is_empty() {
         // HWPX 출처: 한컴 default 10 byte (Language 0 + zero 8)
-        w.write_u16(0)?; // 대표Language = 0 (Application 지정)
-        w.write_bytes(&[0u8; 8])?; // 추가 zero padding (관찰된 한컴 정답지 패턴)
+        extra = std::borrow::Cow::Owned(vec![0u8; 10]);
     }
+    if sd.memo_shape_id != 0 {
+        let bytes = extra.to_mut();
+        let at = crate::parser::body_text::MEMO_SHAPE_ID_AT;
+        if bytes.len() < at + 2 {
+            bytes.resize(at + 2, 0);
+        }
+        bytes[at..at + 2].copy_from_slice(&sd.memo_shape_id.to_le_bytes());
+    }
+    w.write_bytes(&extra)?;
 
     Ok(())
 }
