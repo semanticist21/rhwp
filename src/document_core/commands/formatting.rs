@@ -208,6 +208,7 @@ impl DocumentCore {
                 &styles,
                 dpi,
             );
+            self.fit_cell_grid(sec_idx, para_idx, &styles);
         }
         self.refresh_section_native(sec_idx)
     }
@@ -1188,6 +1189,7 @@ impl DocumentCore {
                 &styles,
                 self.dpi,
             );
+            self.fit_cell_grid(sec_idx, para_idx, &styles);
             let hwp3 = self.document.layout_profile().hwp3_layout();
             recalculate_section_vpos(
                 &mut self.document.sections[sec_idx].paragraphs,
@@ -1264,6 +1266,7 @@ impl DocumentCore {
             para.apply_char_shape_range(start_offset, end_offset, char_shape_id);
             reflow_line_segs(para, available_box, &styles, self.dpi);
         }
+        self.fit_cell_grid(sec_idx, para_idx, &styles);
         let hwp3 = self.document.layout_profile().hwp3_layout();
         recalculate_section_vpos(
             &mut self.document.sections[sec_idx].paragraphs,
@@ -1726,6 +1729,7 @@ impl DocumentCore {
                 &styles,
                 self.dpi,
             );
+            self.fit_cell_grid(sec_idx, para_idx, &styles);
         }
 
         // 문단 간격은 줄 나눔을 바꾸지 않지만 이 문단과 뒤 문단의 저장 세로 위치를 옮긴다.
@@ -1810,6 +1814,7 @@ impl DocumentCore {
             restamp_indentation(&mut para.line_segs, old_indent, new_indent);
             reflow_line_segs(para, available_box, &styles, self.dpi);
         }
+        self.fit_cell_grid(sec_idx, para_idx, &styles);
 
         // 다시 짠 줄과 되돌린 문단 간격을 이 문단과 뒤 문단의 저장 세로 위치에 한 번 반영한다.
         // 바뀌기 전 끝점과 문단 모양을 함께 넘겨 미수정 개체 호스트 다리도 간격 변화를 따른다.
@@ -2203,6 +2208,7 @@ impl DocumentCore {
             para.line_segs.clear();
             reflow_line_segs(para, paragraph_box, &styles, self.dpi);
         }
+        self.fit_cell_grid(sec_idx, para_idx, &styles);
     }
 
     /// 구역의 본문 문단 전부를 현재 용지/단 기준으로 다시 접는다 — 쪽 설정이 바뀌어 본문
@@ -2239,6 +2245,9 @@ impl DocumentCore {
                 dpi,
             );
             reflow_body_paragraph_in_box(para, paragraph_box, &styles, dpi);
+        }
+        for para_idx in 0..self.document.sections[sec_idx].paragraphs.len() {
+            self.fit_cell_grid(sec_idx, para_idx, &styles);
         }
     }
 
@@ -2356,6 +2365,7 @@ impl DocumentCore {
         // 스타일 재조판도 저장 원점과 태그를 이어받아 HWPX 캐시의 출처를 보존한다.
         restamp_indentation(&mut para.line_segs, old_indent, new_indent);
         reflow_line_segs(para, paragraph_box, &styles, self.dpi);
+        self.fit_cell_grid(sec_idx, para_idx, &styles);
         let hwp3 = self.document.layout_profile().hwp3_layout();
         recalculate_section_vpos(
             &mut self.document.sections[sec_idx].paragraphs,

@@ -493,6 +493,7 @@ fn parse_grid(e: &quick_xml::events::BytesStart, sec_def: &mut SectionDef) {
         match attr.key.as_ref().as_bytes() {
             b"lineGrid" => sec_def.line_grid = parse_i32(&attr) as i16,
             b"charGrid" => sec_def.char_grid = parse_i32(&attr) as i16,
+            b"wonggojiFormat" => sec_def.set_wonggoji_format(parse_i32(&attr) != 0),
             _ => {}
         }
     }
@@ -8796,6 +8797,33 @@ mod tests {
 
         assert_eq!(section.section_def.line_grid, 1200);
         assert_eq!(section.section_def.char_grid, 900);
+    }
+
+    #[test]
+    fn test_parse_section_grid_reads_wonggoji_format() {
+        // 한/글 12.30 원고지 저장본: <hp:grid lineGrid="3968" charGrid="2863" wonggojiFormat="1"/>
+        let xml = r#"<?xml version="1.0" encoding="UTF-8"?>
+<hs:sec xmlns:hp="http://www.hancom.co.kr/hwpml/2011/paragraph"
+        xmlns:hs="http://www.hancom.co.kr/hwpml/2011/section">
+  <hp:p paraPrIDRef="0" styleIDRef="0">
+    <hp:run charPrIDRef="0">
+      <hp:secPr textDirection="HORIZONTAL">
+        <hp:grid lineGrid="3968" charGrid="2863" wonggojiFormat="1"/>
+      </hp:secPr>
+    </hp:run>
+  </hp:p>
+</hs:sec>"#;
+
+        let section = parse_hwpx_section(xml).unwrap();
+
+        assert!(section.section_def.wonggoji_format());
+        assert_eq!(
+            section.section_def.cell_grid(),
+            Some(crate::model::paragraph::CellGrid {
+                line: 3968,
+                cell: 2863
+            })
+        );
     }
 
     #[test]
