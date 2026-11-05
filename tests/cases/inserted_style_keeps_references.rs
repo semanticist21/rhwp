@@ -151,36 +151,46 @@ fn hwp_memo_list_paragraphs_keep_their_style_after_a_style_is_inserted() {
     assert_eq!(tail_styles(&reopen(&doc, false)), before);
 }
 
-/// 목록 끝을 넘는 자리는 받지 않는다. 문단은 스타일 번호를 1바이트로 저장하므로 256개를 채운 목록
-/// 가운데에 끼우면 마지막 스타일이 가리킬 수 없는 256번으로 밀린다. 끝에 붙이기는 예전처럼 받는다.
+/// `createStyle`은 언제나 새 스타일을 만든다. 목록 안이 아닌 자리는 끝에 붙인다. 문단은 스타일 번호를
+/// 1바이트로 저장하므로 256개를 채운 목록 가운데에 끼우면 마지막 스타일이 가리킬 수 없는 256번으로
+/// 밀린다. 이때도 끼우지 않고 끝에 붙인다. 끝에 붙이기는 예전처럼 받는다.
 #[test]
-fn style_insert_rejects_past_the_end_and_the_middle_of_a_full_style_list() {
+fn style_insert_appends_past_the_end_and_into_a_full_style_list() {
+    fn names(doc: &HwpDocument) -> Vec<String> {
+        let styles = &doc.document().doc_info.styles;
+        styles.iter().map(|s| s.local_name.clone()).collect()
+    }
+    // 앞 스타일은 그대로 두고 끝에 붙였는가.
+    fn appends(doc: &mut HwpDocument, json: &str, name: &str) {
+        let before = names(doc);
+        let count = before.len();
+        assert_eq!(doc.create_style(json), count as i32, "{json}");
+        let after = names(doc);
+        assert_eq!(after[..count], before[..], "{json}");
+        assert_eq!(after[count..], [name.to_string()], "{json}");
+    }
+
     let mut doc = HwpDocument::create_empty();
     doc.create_blank_document().unwrap();
+    let past_end = doc.document().doc_info.styles.len() + 1;
+    appends(
+        &mut doc,
+        &json!({"name":"밖","index":past_end}).to_string(),
+        "밖",
+    );
+    appends(&mut doc, r#"{"name":"음수","index":-1}"#, "음수");
     let count = doc.document().doc_info.styles.len();
-    let list = doc.get_style_list();
-    for index in [count as i64 + 1, -1] {
-        assert_eq!(
-            doc.create_style(&json!({"name":"밖","index":index}).to_string()),
-            -1
-        );
-        assert_eq!(doc.get_style_list(), list);
-    }
-    assert_eq!(
-        doc.create_style(&json!({"name":"끝","index":count}).to_string()),
-        count as i32
+    appends(
+        &mut doc,
+        &json!({"name":"끝","index":count}).to_string(),
+        "끝",
     );
     while doc.document().doc_info.styles.len() < 256 {
-        let n = doc.document().doc_info.styles.len();
-        assert_eq!(
-            doc.create_style(&json!({"name":format!("채움{n}")}).to_string()),
-            n as i32
-        );
+        let name = format!("채움{}", doc.document().doc_info.styles.len());
+        appends(&mut doc, &json!({ "name": &name }).to_string(), &name);
     }
-    let list = doc.get_style_list();
-    assert_eq!(doc.create_style(r#"{"name":"넘침","index":1}"#), -1);
-    assert_eq!(doc.get_style_list(), list);
-    assert_eq!(doc.create_style(r#"{"name":"끝 넘침"}"#), 256);
+    appends(&mut doc, r#"{"name":"넘침","index":1}"#, "넘침");
+    appends(&mut doc, r#"{"name":"끝 넘침"}"#, "끝 넘침");
 }
 
 /// 복사해 둔 문단도 스타일 표의 번호를 가리킨다. 끼운 뒤에 붙여도 복사한 스타일 그대로다.

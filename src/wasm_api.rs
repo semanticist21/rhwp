@@ -7977,27 +7977,20 @@ impl HwpDocument {
     /// json: {"name":"...", "englishName":"...", "type":0, "nextStyleId":0, "index":3}
     /// `index`를 주면 그 자리에 끼워 넣고, 그 자리부터 뒤 스타일을 가리키던 모든 참조(문단·덧말·
     /// 바탕쪽·메모·다른 스타일의 다음 스타일)를 한 칸씩 민다. 한컴은 고른 스타일 바로 뒤에 새 스타일을 둔다.
-    /// `nextStyleId`는 끼워 넣은 뒤의 번호다. 없으면 목록 끝에 붙인다.
-    /// 반환값: 새 스타일 ID (0-based). `index`가 목록 길이보다 크거나, 문단이 스타일 번호를 1바이트로
-    /// 저장하므로 256개를 채운 목록 가운데에 끼우면 -1이다.
+    /// `nextStyleId`는 끼워 넣은 뒤의 번호다. `index`가 없거나 목록 안이 아니면 목록 끝에 붙인다.
+    /// 반환값: 새 스타일 ID (0-based). 언제나 새 스타일을 만들므로 실패 값은 없다. 끼우려던 자리와
+    /// 다른 번호가 오면 끝에 붙은 것이다.
     #[wasm_bindgen(js_name = createStyle)]
     pub fn create_style(&mut self, json: &str) -> i32 {
         use crate::document_core::helpers::{json_i32, json_str};
         use crate::model::style::Style;
 
         let count = self.core.document.doc_info.styles.len();
-        let index = match json_i32(json, "index") {
-            None => count,
-            Some(index) => match usize::try_from(index) {
-                Ok(index) if index <= count => index,
-                _ => return -1,
-            },
-        };
         // 문단은 스타일 번호를 1바이트로 저장한다. 256개를 채운 목록 가운데에 끼우면 마지막 스타일이
-        // 가리킬 수 없는 256번으로 밀리므로 끼우지 않는다. 끝에 붙이기는 예전처럼 막지 않는다.
-        if index < count && count > usize::from(u8::MAX) {
-            return -1;
-        }
+        // 가리킬 수 없는 256번으로 밀리므로 끼우지 않고 끝에 붙인다. 끝에 붙이기는 예전처럼 막지 않는다.
+        let index = json_i32(json, "index")
+            .and_then(|index| usize::try_from(index).ok())
+            .filter(|index| *index < count && count <= usize::from(u8::MAX));
         let name = json_str(json, "name").unwrap_or_default();
         let english_name = json_str(json, "englishName").unwrap_or_default();
         let style_type = json_i32(json, "type").unwrap_or(0) as u8;
@@ -8032,14 +8025,21 @@ impl HwpDocument {
             char_shape_id,
             lock_form: false,
         };
-        if index < count {
-            self.remap_style_ids(|id| if id >= index as u16 { id + 1 } else { id });
-        }
-        self.core.document.doc_info.styles.insert(index, new_style);
+        let new_id = match index {
+            Some(index) => {
+                self.remap_style_ids(|id| if id >= index as u16 { id + 1 } else { id });
+                self.core.document.doc_info.styles.insert(index, new_style);
+                index as i32
+            }
+            None => {
+                self.core.document.doc_info.styles.push(new_style);
+                count as i32
+            }
+        };
         self.core.document.doc_info.raw_stream_dirty = true;
         // 스타일 캐시 갱신
         self.core.rebuild_resolved_styles();
-        index as i32
+        new_id
     }
 
     /// 스타일을 삭제한다.
