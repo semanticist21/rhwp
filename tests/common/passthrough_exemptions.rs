@@ -346,14 +346,26 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     (
         "queries/memo_query.rs",
         "insert_memo_json_native",
-        Exempt::DelegatesTo("insert_memo_at"),
-        "insertMemo의 {author,text} JSON을 읽은 뒤 insert_memo_at에 넘긴다. 구역 raw_stream 무효화는 insert_memo_at이 한다 (#8017).",
+        Exempt::DelegatesTo("insert_memo_at_time"),
+        "insertMemo의 {author,text,time,offset} JSON을 읽은 뒤 insert_memo_at_time에 넘긴다. 구역 raw_stream 무효화는 insert_memo_at_time이 한다 (#8017).",
+    ),
+    (
+        "queries/memo_query.rs",
+        "insert_memo_at",
+        Exempt::DelegatesTo("insert_memo_at_time"),
+        "지금 시각으로 insert_memo_at_time에 넘긴다. 구역 raw_stream 무효화는 insert_memo_at_time이 한다 (#8017).",
     ),
     (
         "queries/memo_query.rs",
         "insert_memo_by_path_json_native",
-        Exempt::DelegatesTo("insert_memo_by_path"),
-        "insertMemoByPath의 셀 경로와 JSON을 읽은 뒤 insert_memo_by_path에 넘긴다. 구역 raw_stream 무효화는 insert_memo_by_path가 한다 (#8017).",
+        Exempt::DelegatesTo("insert_memo_by_path_time"),
+        "insertMemoByPath의 셀 경로와 JSON을 읽은 뒤 insert_memo_by_path_time에 넘긴다. 구역 raw_stream 무효화는 insert_memo_by_path_time이 한다 (#8017).",
+    ),
+    (
+        "queries/memo_query.rs",
+        "insert_memo_by_path",
+        Exempt::DelegatesTo("insert_memo_by_path_time"),
+        "지금 시각으로 insert_memo_by_path_time에 넘긴다. 구역 raw_stream 무효화는 insert_memo_by_path_time이 한다 (#8017).",
     ),
     (
         "queries/changed_pages.rs",
