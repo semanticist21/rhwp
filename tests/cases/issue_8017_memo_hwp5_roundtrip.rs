@@ -210,3 +210,45 @@ fn every_section_memo_list_is_written_after_the_last_section() {
         .collect();
     assert_eq!(texts, vec!["첫 메모".to_string(), "둘째 메모".to_string()]);
 }
+
+#[test]
+fn removing_an_earlier_section_memo_drops_its_list_from_the_last_section() {
+    use rhwp::document_core::DocumentCore;
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.insert_text_native(0, 0, 0, "첫 구역 글").unwrap();
+    core.split_section_native(0, 0, 5).unwrap();
+    core.insert_text_native(1, 0, 0, "둘째 구역 글").unwrap();
+    core.insert_memo_at(0, 0, 0, 1, "t", "첫 메모").unwrap();
+    core.insert_memo_at(1, 0, 0, 2, "t", "둘째 메모").unwrap();
+    let saved = serialize_document(core.document()).expect("write HWP");
+
+    // 원본 스트림을 지닌 채 다시 연 문서에서 앞 구역 메모를 지운다.
+    let mut core = DocumentCore::from_bytes(&saved).unwrap();
+    let list: serde_json::Value = serde_json::from_str(&core.get_memo_list_json()).unwrap();
+    let first = list
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|memo| memo["text"] == "첫 메모")
+        .expect("첫 메모")["id"]
+        .as_u64()
+        .unwrap() as u32;
+    core.remove_memo(first).unwrap();
+
+    let bytes = serialize_document(core.document()).expect("write HWP");
+    let reopened = parse_document(&bytes).expect("read the written HWP");
+    let texts: Vec<String> = memos(&reopened)
+        .iter()
+        .map(|field| {
+            field
+                .memo_paragraphs
+                .iter()
+                .map(|p| p.text.clone())
+                .collect()
+        })
+        .collect();
+    assert_eq!(texts, vec!["둘째 메모".to_string()]);
+    let tail = reopened.sections[1].trailing_lists.is_none();
+    assert!(tail, "지운 메모의 목록이 남지 않는다");
+}

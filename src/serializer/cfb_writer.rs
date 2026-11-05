@@ -205,9 +205,6 @@ where
             let prepared =
                 super::form_identity::prepare_section(section, doc, &mut form_id_allocator)?;
             let prepared = super::hwpx_lineage_lines::prepare_section(prepared, doc);
-            let reused =
-                super::body_text::try_reuses_raw_stream(&prepared, memo_tail(true), storage)
-                    .map_err(storage_error)?;
             let bytes = super::body_text::try_serialize_section_for_version(
                 &prepared,
                 output_version,
@@ -215,7 +212,8 @@ where
                 storage,
             )
             .map_err(storage_error)?;
-            if reused {
+            // 원본 스트림을 그대로 썼을 때만(메모 목록이 낡아 다시 쓴 경우 제외) 검토 스트림으로 나눈다.
+            if prepared.raw_stream.as_deref() == Some(&bytes[..]) {
                 if let Some(visible) =
                     crate::parser::tracked_viewtext::project(&bytes, &doc.doc_info)
                         .map_err(|error| SerializeError::UnsupportedInput(error.to_string()))?

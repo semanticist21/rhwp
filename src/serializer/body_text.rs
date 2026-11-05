@@ -292,7 +292,7 @@ fn try_serialize_master_page_tail<S: crate::storage::Storage>(
 /// 이 구역을 원본 스트림 그대로 쓰는지. 봉인이 맞아도 원본 끝의 메모 목록이 써야 할 목록(마지막 구역은
 /// 문서의 모든 메모, 다른 구역은 없음)과 다르면 모델에서 다시 쓴다. 다른 구역의 메모를 고쳐도 옛 목록이
 /// 남지 않고, 옛 저장본이 앞 구역에 둔 목록이 마지막 구역 목록과 겹치지 않는다.
-pub(crate) fn try_reuses_raw_stream<S: crate::storage::Storage>(
+fn try_reuses_raw_stream<S: crate::storage::Storage>(
     section: &Section,
     memo_tail: MemoTail<'_>,
     storage: &S,
@@ -305,22 +305,24 @@ pub(crate) fn try_reuses_raw_stream<S: crate::storage::Storage>(
     }
     Ok(match memo_tail {
         MemoTail::Own => true,
-        MemoTail::Elsewhere => raw_memo_tail_matches(raw, &[]),
+        MemoTail::Elsewhere => raw_memo_tail_matches(raw, &[], true),
         MemoTail::Document(sections) => {
             let mut lists = Vec::new();
             for other in sections {
                 lists.extend(try_collect_memo_lists(other, storage)?);
             }
-            raw_memo_tail_matches(raw, &lists)
+            raw_memo_tail_matches(raw, &lists, false)
         }
     })
 }
 
-/// 원본 구역 끝의 메모 목록이 모델의 메모(번호·글)와 같은지. 다른 구역의 메모를 고치거나 지우면
-/// 마지막 구역은 바뀌지 않아도 원본 목록이 낡으므로 모델에서 다시 쓴다.
-fn raw_memo_tail_matches(raw: &[u8], lists: &[(u32, &[Paragraph])]) -> bool {
+/// 원본 구역 끝의 메모 목록이 모델의 메모(번호·글)와 맞는지. 모델의 메모마다 같은 번호·글의 목록이
+/// 원본에 있어야 한다. `strict`가 아니면 모델에 주인이 없는 원본 목록(변경 추적으로 감춘 글의 메모)은
+/// 원본이 그대로 간직하므로 따지지 않는다.
+fn raw_memo_tail_matches(raw: &[u8], lists: &[(u32, &[Paragraph])], strict: bool) -> bool {
+    // 읽지 못하는 원본은 메모 목록을 품었는지 알 수 없다. 쓸 목록이 없으면 원본을 그대로 쓴다.
     let Ok(records) = crate::parser::record::Record::read_all(raw) else {
-        return false;
+        return lists.is_empty();
     };
     let raw_lists = crate::parser::body_text::memo_tail_lists(&records);
     let texts = |paragraphs: &[Paragraph]| {
@@ -329,13 +331,17 @@ fn raw_memo_tail_matches(raw: &[u8], lists: &[(u32, &[Paragraph])]) -> bool {
             .map(|para| para.text.clone())
             .collect::<Vec<_>>()
     };
-    raw_lists.len() == lists.len()
-        && raw_lists
-            .iter()
-            .zip(lists)
-            .all(|((raw_number, raw_body), (number, body))| {
+    let owned = |number: u32| lists.iter().any(|(n, _)| *n == number);
+    let counted = raw_lists
+        .iter()
+        .filter(|(number, _)| strict || owned(*number))
+        .count();
+    counted == lists.len()
+        && lists.iter().all(|(number, body)| {
+            raw_lists.iter().any(|(raw_number, raw_body)| {
                 raw_number == number && texts(raw_body) == texts(body)
             })
+        })
 }
 
 /// 구역의 메모 본문을 메모 번호와 함께 모은다. 표 칸·글상자·머리말·주석 안의 메모도 같은 꼬리에 쓴다.
