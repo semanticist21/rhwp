@@ -515,6 +515,21 @@ pub(crate) fn fit_section_spacing(
 mod tests {
     use super::*;
 
+    /// SVG에서 그 글자를 그린 text 요소의 (x, y)
+    fn glyphs(svg: &str, ch: char) -> Vec<(f64, f64)> {
+        let needle = format!(">{}</text>", ch);
+        svg.match_indices(&needle)
+            .filter_map(|(end, _)| {
+                let tag = &svg[svg[..end].rfind("<text")?..end];
+                let attr = |name: &str| -> Option<f64> {
+                    let start = tag.find(&format!(" {}=\"", name))? + name.len() + 3;
+                    tag[start..].split('"').next()?.parse().ok()
+                };
+                Some((attr("x")?, attr("y")?))
+            })
+            .collect()
+    }
+
     const CELL: i32 = 2863;
 
     fn natural(text: &str) -> (Vec<char>, Vec<i32>) {
@@ -659,20 +674,6 @@ mod tests {
     fn manuscript_section_lays_text_on_cells_and_survives_both_formats() {
         use crate::document_core::DocumentCore;
 
-        fn glyphs(svg: &str, ch: char) -> Vec<(f64, f64)> {
-            let needle = format!(">{}</text>", ch);
-            svg.match_indices(&needle)
-                .filter_map(|(end, _)| {
-                    let tag = &svg[svg[..end].rfind("<text")?..end];
-                    let attr = |name: &str| -> Option<f64> {
-                        let start = tag.find(&format!(" {}=\"", name))? + name.len() + 3;
-                        tag[start..].split('"').next()?.parse().ok()
-                    };
-                    Some((attr("x")?, attr("y")?))
-                })
-                .collect()
-        }
-
         let mut core = DocumentCore::new_empty();
         core.create_blank_document_native().unwrap();
         core.set_section_def_native(
@@ -733,6 +734,50 @@ mod tests {
                 2
             );
         }
+    }
+
+    /// 분할로 만든 문단과 저장 줄 없이 연 문단(HWPX)도 칸 수로 나눈 줄 그대로 그린다.
+    /// 글자 본래 폭의 프레임에서 다시 짜면 한 줄로 합쳐져 칸 밖으로 넘친다.
+    #[test]
+    fn split_and_unlined_paragraphs_draw_their_cell_lines() {
+        use crate::document_core::DocumentCore;
+
+        let mut blank = DocumentCore::new_empty();
+        blank.create_blank_document_native().unwrap();
+        blank
+            .set_section_def_native(
+                0,
+                r#"{"lineGrid":3968,"charGrid":2863,"wonggojiFormat":true}"#,
+            )
+            .unwrap();
+        // 원고지 서식처럼 저장 줄(linesegarray) 없는 HWPX로 연 문서에서 쓴다.
+        blank.document.sections[0].paragraphs[0].line_segs.clear();
+        let mut core = DocumentCore::from_bytes(&blank.export_hwpx_native().unwrap()).unwrap();
+        // 14칸 줄: 한글 10자, 공백, Tauri 세 칸, 매단 공백 뒤 2026은 둘째 줄이다.
+        core.insert_text_native(0, 0, 0, "가").unwrap();
+        core.split_paragraph_native(0, 0, 1, None).unwrap();
+        core.insert_text_native(0, 1, 0, "나다라마바사아자차카 Tauri 2026 ok.")
+            .unwrap();
+        let pitch = 3968.0 / 75.0;
+        let check = |core: &DocumentCore| {
+            let svg = core.render_page_svg_native(0).unwrap();
+            let (ga, na, two) = (
+                glyphs(&svg, '가')[0],
+                glyphs(&svg, '나')[0],
+                glyphs(&svg, '2')[0],
+            );
+            assert!(
+                (na.1 - ga.1 - pitch).abs() < 0.05,
+                "둘째 문단: {ga:?} {na:?}"
+            );
+            assert!(
+                (two.1 - na.1 - pitch).abs() < 0.05 && (two.0 - na.0).abs() < 2863.0 / 75.0,
+                "둘째 문단 둘째 줄: {na:?} {two:?}"
+            );
+        };
+        check(&core);
+        check(&DocumentCore::from_bytes(&core.export_hwp_native().unwrap()).unwrap());
+        check(&DocumentCore::from_bytes(&core.export_hwpx_native().unwrap()).unwrap());
     }
 
     /// 글을 쓴 뒤 격자를 켜도, 서식을 바꾸거나 머리말을 넣어도 문단이 칸 수로 나뉘고 세로 위치가 겹치지 않는다.
