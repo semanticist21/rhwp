@@ -651,6 +651,14 @@ fn write_section_def<W: std::io::Write>(
         }
         extra[2..4].copy_from_slice(&extensions.to_le_bytes());
     }
+    // 추가 바이트의 7·8번째는 메모 모양 번호다. 모양을 가리키는 구역만 그 자리를 쓰고, 0이면 원본을 그대로 둔다.
+    if sd.memo_shape_id != 0 {
+        let at = crate::parser::body_text::MEMO_SHAPE_ID_AT;
+        if extra.len() < at + 2 {
+            extra.resize(at + 2, 0);
+        }
+        extra[at..at + 2].copy_from_slice(&sd.memo_shape_id.to_le_bytes());
+    }
     w.write_bytes(&extra)?;
 
     Ok(())

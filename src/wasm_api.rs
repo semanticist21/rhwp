@@ -6052,6 +6052,25 @@ impl HwpDocument {
             .map_err(|e| JsValue::from_str(&e.to_json()))
     }
 
+    /// 구역이 쓰는 메모 모양(한컴 입력 > 메모 > 메모 모양).
+    ///
+    /// 반환: `{width,lineType,lineWidth,lineColor,fillColor,activeColor}`. 너비는 HWPUNIT,
+    /// 선 종류는 0(선 없음)~11(삼중선), 선 굵기는 한컴 굵기 목록(0.1~5.0mm, 0.5mm 없음) 순번이다.
+    #[wasm_bindgen(js_name = getMemoShape)]
+    pub fn get_memo_shape(&self, section_idx: u32) -> Result<String, JsValue> {
+        self.core
+            .get_memo_shape_json(section_idx as usize)
+            .map_err(|e| JsValue::from_str(&e.to_json()))
+    }
+
+    /// 메모 모양을 한 구역(`section_idx`) 또는 모든 구역(`-1`)에 준다. `json`은 getMemoShape 형식이다.
+    #[wasm_bindgen(js_name = setMemoShape)]
+    pub fn set_memo_shape(&mut self, section_idx: i32, json: &str) -> Result<String, JsValue> {
+        self.core
+            .set_memo_shape_json(usize::try_from(section_idx).ok(), json)
+            .map_err(|e| JsValue::from_str(&e.to_json()))
+    }
+
     // ─────────────────────────────────────────────
     // 양식 개체(Form Object) API
     // ─────────────────────────────────────────────
