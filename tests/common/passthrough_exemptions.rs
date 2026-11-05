@@ -345,6 +345,24 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     ),
     (
         "queries/memo_query.rs",
+        "insert_memo_at_time",
+        Exempt::DelegatesTo("insert_memo_at_time_checked"),
+        "겹치는 메모를 막는 insertMemo 경로로 insert_memo_at_time_checked에 넘긴다. 구역 raw_stream 무효화는 그 함수가 한다.",
+    ),
+    (
+        "queries/memo_query.rs",
+        "insert_memo_by_path_time",
+        Exempt::DelegatesTo("insert_memo_by_path_time_checked"),
+        "겹치는 메모를 막는 insertMemoByPath 경로로 insert_memo_by_path_time_checked에 넘긴다. 구역 raw_stream 무효화는 그 함수가 한다.",
+    ),
+    (
+        "queries/memo_query.rs",
+        "insert_memo_reply_json_native",
+        Exempt::DelegatesTo("insert_memo_at_time_checked"),
+        "댓글을 부모와 같은 자리에 insert_memo_at_time_checked(표 칸이면 insert_memo_by_path_time_checked)로 단다. 두 함수 모두 구역 raw_stream을 무효화한다.",
+    ),
+    (
+        "queries/memo_query.rs",
         "insert_memo_json_native",
         Exempt::DelegatesTo("insert_memo_at_time"),
         "insertMemo의 {author,text,time,offset} JSON을 읽은 뒤 insert_memo_at_time에 넘긴다. 구역 raw_stream 무효화는 insert_memo_at_time이 한다 (#8017).",

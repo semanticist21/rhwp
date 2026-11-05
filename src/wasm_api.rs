@@ -5981,8 +5981,8 @@ impl HwpDocument {
 
     /// 문서의 메모를 문서 순서대로 반환한다.
     ///
-    /// 반환: `[{id,index,author,date,text,place,sectionIndex,paraIndex,
-    /// startCharIdx,endCharIdx,path,page,editable,readOnlyReason}]`
+    /// 반환: `[{id,index,parentId,author,date,text,place,sectionIndex,paraIndex,
+    /// startCharIdx,endCharIdx,path,page,editable,readOnlyReason}]`. parentId는 댓글의 부모 메모 번호다.
     #[wasm_bindgen(js_name = getMemoList)]
     pub fn get_memo_list(&self) -> String {
         self.get_memo_list_json()
@@ -6049,6 +6049,17 @@ impl HwpDocument {
     pub fn remove_memo(&mut self, id: u32) -> Result<String, JsValue> {
         self.core
             .remove_memo(id)
+            .map_err(|e| JsValue::from_str(&e.to_json()))
+    }
+
+    /// 메모에 댓글을 단다(한컴 12.30 메모 풍선의 댓글). 부모와 같은 기준 글에 메모를 달고 관계를 적는다.
+    /// 댓글의 댓글은 맨 위 메모의 댓글이 된다. `json` = insertMemo와 같다. 지운 부모의 댓글은 함께 지운다.
+    ///
+    /// 반환: `{"ok":true,"id":N,"index":N}`. getMemoList의 `parentId`가 부모 메모 번호다.
+    #[wasm_bindgen(js_name = insertMemoReply)]
+    pub fn insert_memo_reply(&mut self, parent_id: u32, json: &str) -> Result<String, JsValue> {
+        self.core
+            .insert_memo_reply_json_native(parent_id, json)
             .map_err(|e| JsValue::from_str(&e.to_json()))
     }
 
