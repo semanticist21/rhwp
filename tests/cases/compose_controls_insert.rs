@@ -410,3 +410,118 @@ fn compose_controls_work_in_cells_text_boxes_headers_and_notes() {
         assert!(text.contains(expected), "{expected}: {text}");
     }
 }
+
+/// 표 첫 열 셀들의 높이(쪽 배치).
+fn first_column_heights(doc: &HwpDocument, para: usize, control: usize) -> Vec<i64> {
+    let cells: serde_json::Value = serde_json::from_str(
+        &doc.get_table_cell_bboxes(0, para as u32, control as u32, None)
+            .unwrap(),
+    )
+    .unwrap();
+    cells
+        .as_array()
+        .unwrap()
+        .iter()
+        .filter(|cell| cell["col"] == 0)
+        .map(|cell| (cell["h"].as_f64().unwrap() * 10.0).round() as i64)
+        .collect()
+}
+
+#[test]
+fn ruby_only_paragraph_raises_its_line_in_the_body_cells_headers_and_notes() {
+    // 한컴 12.30: 셀 글 전체를 덧말로 바꿔도 줄이 덧말 높이만큼 커지고 행이 늘어난다.
+    let mut doc = HwpDocument::create_empty();
+    doc.create_blank_document_native().unwrap();
+    doc.split_paragraph_native(0, 0, 0, None).unwrap();
+    let table = doc.create_table_native(0, 1, 0, 2, 1).unwrap();
+    let (tp, tc) = (number(&table, "paraIdx"), number(&table, "controlIdx"));
+    let cell = [(tc, 0, 0)];
+    let before = first_column_heights(&doc, tp, tc);
+    doc.create_header_footer_native(0, true, 0).unwrap();
+    let footnote = doc.insert_footnote_native(0, 0, 0).unwrap();
+    let (fp, fc) = (
+        number(&footnote, "paraIdx"),
+        number(&footnote, "controlIdx"),
+    );
+    let (hp, hc) = doc.document().sections[0]
+        .paragraphs
+        .iter()
+        .enumerate()
+        .find_map(|(para, paragraph)| {
+            paragraph
+                .controls
+                .iter()
+                .position(|control| matches!(control, Control::Header(_)))
+                .map(|control| (para, control))
+        })
+        .unwrap();
+    let header = [(hc, 0, 0)];
+    let top = r#"{"mainText":"cell","rubyText":"top"}"#;
+    let below = r#"{"mainText":"cell","rubyText":"top","below":true}"#;
+    doc.insert_ruby_at(ComposeHost::Body { sec: 0, para: 2 }, 0, top)
+        .unwrap();
+    doc.insert_ruby_at(
+        ComposeHost::Cell {
+            sec: 0,
+            parent_para: tp,
+            path: &cell,
+        },
+        0,
+        top,
+    )
+    .unwrap();
+    doc.insert_ruby_at(
+        ComposeHost::Cell {
+            sec: 0,
+            parent_para: hp,
+            path: &header,
+        },
+        0,
+        below,
+    )
+    .unwrap();
+    // 각주 첫 문단은 번호 뒤에 넣는다.
+    let note = ComposeHost::Note {
+        sec: 0,
+        para: fp,
+        control: fc,
+        note_para: 0,
+    };
+    let note_text = doc.document().sections[0].paragraphs[fp].controls[fc].clone();
+    let Control::Footnote(note_model) = note_text else {
+        panic!("각주 없음");
+    };
+    let note_offset = note_model.paragraphs[0].text.chars().count();
+    doc.insert_ruby_at(note, note_offset, top).unwrap();
+    let rows = |core: &DocumentCore| {
+        let section = &core.document().sections[0];
+        let body = section.paragraphs[2].line_segs[0].clone();
+        let Control::Table(table) = &section.paragraphs[tp].controls[tc] else {
+            panic!("표 없음");
+        };
+        let cell = table.cells[0].paragraphs[0].line_segs[0].clone();
+        let Control::Header(header) = &section.paragraphs[hp].controls[hc] else {
+            panic!("머리말 없음");
+        };
+        let header = header.paragraphs[0].line_segs[0].clone();
+        [body, cell, header]
+            .map(|line| (line.line_height, line.baseline_distance, line.line_spacing))
+    };
+    let expected = [(1500, 1350, 900), (1500, 1350, 900), (1408, 850, 844)];
+    assert_eq!(rows(&doc), expected);
+    // 셀 행은 덧말 줄만큼 높아지고 아래 행은 그대로다.
+    let after = first_column_heights(&doc, tp, tc);
+    assert!(after[0] > before[0], "{before:?} → {after:?}");
+    assert_eq!(after[1], before[1]);
+    for (format, bytes) in [
+        ("HWP", doc.export_hwp_with_adapter_snapshot().unwrap()),
+        ("HWPX", doc.export_hwpx_native().unwrap()),
+    ] {
+        let reopened = HwpDocument::from_bytes(&bytes).unwrap();
+        // HWPX는 글자 없는 본문 문단의 줄을 쓰지 않아 열 때 다시 짠다. 셀 행 높이로 본다.
+        if format == "HWP" {
+            assert_eq!(rows(&reopened), expected, "{format}");
+        }
+        assert_eq!(first_column_heights(&reopened, tp, tc), after, "{format}");
+    }
+}
