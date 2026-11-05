@@ -236,7 +236,11 @@ fn memo_text(field: &Field) -> String {
 /// kept; the number and the two instance ids are new.
 fn rewritten_memo_command(field: &Field, number: u32) -> String {
     let shape = memo_shape_ref(field).parse().unwrap_or(65535);
-    memo_command(shape, number, field.field_id, &memo_author(field))
+    // The two id slots are the creation FILETIME; a copy keeps when it was written.
+    let created = memo_created_ms(&field.command)
+        .map(MemoTime::at)
+        .unwrap_or_else(MemoTime::now);
+    memo_command(shape, number, created, &memo_author(field))
 }
 
 /// Carry a new memo number into the HWPX parameters. The HWPX writer prefers
@@ -1203,14 +1207,15 @@ impl DocumentCore {
         end_char_idx: usize,
         json: &str,
     ) -> Result<String, MemoError> {
-        let (author, text) = parse_memo_input(json)?;
-        self.insert_memo_at(
+        let (author, text, created) = parse_memo_input(json)?;
+        self.insert_memo_at_time(
             section_idx,
             para_idx,
             start_char_idx,
             end_char_idx,
             &author,
             &text,
+            created,
         )
     }
 
@@ -1225,10 +1230,10 @@ impl DocumentCore {
         end_char_idx: usize,
         json: &str,
     ) -> Result<String, MemoError> {
-        let (author, text) = parse_memo_input(json)?;
+        let (author, text, created) = parse_memo_input(json)?;
         let path = Self::parse_cell_path(path_json)
             .map_err(|e| MemoError::new(MemoErrorCode::InvalidRange, e.to_string()))?;
-        self.insert_memo_by_path(
+        self.insert_memo_by_path_time(
             section_idx,
             para_idx,
             &path,
@@ -1236,11 +1241,12 @@ impl DocumentCore {
             end_char_idx,
             &author,
             &text,
+            created,
         )
     }
 
-    /// Insert a memo over a one-paragraph range. `start == end` makes a
-    /// zero-length anchor.
+    /// Insert a memo over a one-paragraph range, written now. `start == end`
+    /// makes a zero-length anchor.
     pub fn insert_memo_at(
         &mut self,
         section_idx: usize,
@@ -1249,6 +1255,28 @@ impl DocumentCore {
         end_char_idx: usize,
         author: &str,
         text: &str,
+    ) -> Result<String, MemoError> {
+        self.insert_memo_at_time(
+            section_idx,
+            para_idx,
+            start_char_idx,
+            end_char_idx,
+            author,
+            text,
+            MemoTime::now(),
+        )
+    }
+
+    /// [`Self::insert_memo_at`] with the creation time the file records.
+    pub fn insert_memo_at_time(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        start_char_idx: usize,
+        end_char_idx: usize,
+        author: &str,
+        text: &str,
+        created: MemoTime,
     ) -> Result<String, MemoError> {
         if self.document_protected() {
             return Err(MemoError::read_only("protected"));
@@ -1263,18 +1291,19 @@ impl DocumentCore {
             .sections
             .get(section_idx)
             .ok_or_else(|| MemoError::invalid_range("구역 위치를 찾을 수 없음"))?;
-        let shape_ref = if section.section_def.memo_shape_id != 0 {
-            section.section_def.memo_shape_id as u32
-        } else {
-            65535
-        };
-        let template = section
-            .paragraphs
-            .get(para_idx)
-            .ok_or_else(|| MemoError::invalid_range("문단 위치를 찾을 수 없음"))?
-            .clone();
+        // Hancom 12.30 writes 65535 (the section's memo shape) even when the
+        // section names one.
+        let shape_ref = 65535;
+        let template = self.memo_body_template(
+            section
+                .paragraphs
+                .get(para_idx)
+                .ok_or_else(|| MemoError::invalid_range("문단 위치를 찾을 수 없음"))?,
+        );
 
-        let mut field = new_memo_field(field_id, number, shape_ref, &author, text, &template)?;
+        let mut field = new_memo_field(
+            field_id, number, shape_ref, &author, text, &template, created,
+        )?;
         // A new memo is an editable field like Hancom's (editable + dirty bits).
         field.properties |= 0x8001;
 
@@ -1320,7 +1349,7 @@ impl DocumentCore {
         ))
     }
 
-    /// Insert a memo in a table cell or text box addressed by a cell path.
+    /// Insert a memo in a table cell or text box addressed by a cell path, written now.
     pub fn insert_memo_by_path(
         &mut self,
         section_idx: usize,
@@ -1330,6 +1359,30 @@ impl DocumentCore {
         end_char_idx: usize,
         author: &str,
         text: &str,
+    ) -> Result<String, MemoError> {
+        self.insert_memo_by_path_time(
+            section_idx,
+            para_idx,
+            path,
+            start_char_idx,
+            end_char_idx,
+            author,
+            text,
+            MemoTime::now(),
+        )
+    }
+
+    /// [`Self::insert_memo_by_path`] with the creation time the file records.
+    pub fn insert_memo_by_path_time(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        path: &[(usize, usize, usize)],
+        start_char_idx: usize,
+        end_char_idx: usize,
+        author: &str,
+        text: &str,
+        created: MemoTime,
     ) -> Result<String, MemoError> {
         if path.is_empty() {
             return Err(MemoError::invalid_range("cellPath가 비어 있음"));
@@ -1341,22 +1394,15 @@ impl DocumentCore {
         let text = &normalize_memo_text(text);
         check_text_size(text)?;
         let (number, field_id) = self.next_memo_identity()?;
-        let shape_ref = self
-            .document
-            .sections
-            .get(section_idx)
-            .map(|section| section.section_def.memo_shape_id)
-            .unwrap_or(0);
-        let shape_ref = if shape_ref != 0 {
-            shape_ref as u32
-        } else {
-            65535
-        };
+        let shape_ref = 65535;
         let template = self
             .get_cell_paragraph_mut_by_path(section_idx, para_idx, path)
             .map(|para| para.clone())
             .map_err(|_| MemoError::invalid_range("문단 위치를 찾을 수 없음"))?;
-        let mut field = new_memo_field(field_id, number, shape_ref, &author, text, &template)?;
+        let template = self.memo_body_template(&template);
+        let mut field = new_memo_field(
+            field_id, number, shape_ref, &author, text, &template, created,
+        )?;
         field.properties |= 0x8001;
 
         {
@@ -1538,6 +1584,28 @@ impl DocumentCore {
         Ok(r#"{"ok":true}"#.to_string())
     }
 
+    /// A new memo body paragraph takes the document's 메모 style shapes, as Hancom
+    /// writes it; without that style it falls back to the anchor paragraph.
+    fn memo_body_template(&self, anchor: &Paragraph) -> Paragraph {
+        let memo_style = self
+            .document
+            .doc_info
+            .styles
+            .iter()
+            .find(|style| style.local_name == "메모" || style.english_name == "Memo");
+        match memo_style {
+            Some(style) => Paragraph {
+                para_shape_id: style.para_shape_id,
+                char_shapes: vec![crate::model::paragraph::CharShapeRef {
+                    start_pos: 0,
+                    char_shape_id: u32::from(style.char_shape_id),
+                }],
+                ..Paragraph::new_empty()
+            },
+            None => anchor.clone(),
+        }
+    }
+
     fn next_memo_identity(&self) -> Result<(u32, u32), MemoError> {
         let number = max_memo_number(&self.document).saturating_add(1).max(1);
         Ok((number, self.next_click_here_field_id()))
@@ -1599,12 +1667,16 @@ fn memo_json(hit: &MemoHit, protected: bool, reason: &str, page: u32) -> String 
         }
         None => ("null".to_string(), "null".to_string(), "null".to_string()),
     };
+    let time = memo_created_ms(&field.command)
+        .map(|ms| ms.to_string())
+        .unwrap_or_else(|| "null".to_string());
     format!(
-        "{{\"id\":{},\"index\":{},\"author\":\"{}\",\"date\":{},\"text\":\"{}\",\"place\":\"{}\",\"sectionIndex\":{},\"paraIndex\":{},\"startCharIdx\":{},\"endCharIdx\":{},\"path\":{},\"page\":{},\"editable\":{},\"readOnlyReason\":{}}}",
+        "{{\"id\":{},\"index\":{},\"author\":\"{}\",\"date\":{},\"time\":{},\"text\":\"{}\",\"place\":\"{}\",\"sectionIndex\":{},\"paraIndex\":{},\"startCharIdx\":{},\"endCharIdx\":{},\"path\":{},\"page\":{},\"editable\":{},\"readOnlyReason\":{}}}",
         hit.id,
         memo_number(field),
         json_escape(&memo_author(field)),
         date,
+        time,
         json_escape(&memo_text(field)),
         hit.place,
         hit.section_index,
@@ -1624,8 +1696,9 @@ fn memo_json(hit: &MemoHit, protected: bool, reason: &str, page: u32) -> String 
 
 /// Read the `{author,text}` argument of the insert entries. A missing member is
 /// empty; anything that is not an object of strings is rejected.
-pub(crate) fn parse_memo_input(json: &str) -> Result<(String, String), MemoError> {
-    let invalid = || MemoError::insert_failed("메모 입력은 {author,text} 문자열 객체여야 함");
+pub(crate) fn parse_memo_input(json: &str) -> Result<(String, String, MemoTime), MemoError> {
+    let invalid =
+        || MemoError::insert_failed("메모 입력은 {author,text,time?,offset?} 객체여야 함");
     let value: serde_json::Value = serde_json::from_str(json).map_err(|_| invalid())?;
     let object = value.as_object().ok_or_else(invalid)?;
     let member = |key: &str| match object.get(key) {
@@ -1633,7 +1706,24 @@ pub(crate) fn parse_memo_input(json: &str) -> Result<(String, String), MemoError
         Some(serde_json::Value::String(text)) => Ok(text.clone()),
         Some(_) => Err(invalid()),
     };
-    Ok((member("author")?, member("text")?))
+    // `time` is the creation instant in Unix milliseconds and `offset` the
+    // writer's local offset from UTC in minutes. Without them the host clock is used.
+    let number = |key: &str| match object.get(key) {
+        None => Ok(None),
+        Some(value) => value
+            .as_f64()
+            .filter(|n| n.is_finite())
+            .map(Some)
+            .ok_or_else(invalid),
+    };
+    let created = match (number("time")?, number("offset")?) {
+        (Some(ms), offset) => MemoTime {
+            unix_ms: ms as i64,
+            offset_minutes: offset.map_or(0, |minutes| minutes.clamp(-1440.0, 1440.0) as i32),
+        },
+        (None, _) => MemoTime::now(),
+    };
+    Ok((member("author")?, member("text")?, created))
 }
 
 /// Trim, drop `/`, `\`, `;` and control characters, cap at 64 UTF-16 units.
@@ -1669,16 +1759,135 @@ fn check_text_size(text: &str) -> Result<(), MemoError> {
     Ok(())
 }
 
-/// `MEMO/<memoShapeIDRef>/<Number>/<id1>/<id2>/<Author>/\;;`
-pub(crate) fn memo_command(shape_ref: u32, number: u32, field_id: u32, author: &str) -> String {
-    let id2 = field_id
-        .wrapping_mul(2_654_435_761)
-        .wrapping_add(number)
-        .max(1);
+/// `MEMO/<memoShapeIDRef>/<Number>/<low>/<high>/<Author>/\;;`. Hancom writes
+/// the creation time there as the two halves of a FILETIME (UTC, 100 ns
+/// units since 1601); saving to HWPX turns them into `CreateDateTime`.
+pub(crate) fn memo_command(shape_ref: u32, number: u32, created: MemoTime, author: &str) -> String {
+    let (low, high) = created.filetime();
     format!(
         "MEMO/{}/{}/{}/{}/{}/\\;;",
-        shape_ref, number, field_id, id2, author
+        shape_ref, number, low, high, author
     )
+}
+
+/// Milliseconds between 1601-01-01 (FILETIME) and 1970-01-01 (Unix).
+const FILETIME_UNIX_EPOCH_MS: i64 = 11_644_473_600_000;
+
+/// When a memo was written: a UTC instant and the writer's local offset.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MemoTime {
+    pub unix_ms: i64,
+    pub offset_minutes: i32,
+}
+
+impl MemoTime {
+    /// The host clock. In the browser it also knows the local offset.
+    pub fn now() -> Self {
+        #[cfg(target_arch = "wasm32")]
+        {
+            Self::at(js_sys::Date::now() as i64)
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let unix_ms = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_or(0, |elapsed| elapsed.as_millis() as i64);
+            Self::at(unix_ms)
+        }
+    }
+
+    /// An instant with the host's local offset at that instant (UTC outside the browser).
+    pub fn at(unix_ms: i64) -> Self {
+        #[cfg(target_arch = "wasm32")]
+        let offset_minutes = -(js_sys::Date::new(&wasm_bindgen::JsValue::from_f64(unix_ms as f64))
+            .get_timezone_offset() as i32);
+        #[cfg(not(target_arch = "wasm32"))]
+        let offset_minutes = 0;
+        Self {
+            unix_ms,
+            offset_minutes,
+        }
+    }
+
+    fn filetime(self) -> (u32, u32) {
+        let ticks = (self.unix_ms + FILETIME_UNIX_EPOCH_MS).max(0) as u64 * 10_000;
+        (ticks as u32, (ticks >> 32) as u32)
+    }
+
+    /// Hancom's `CreateDateTime`: the writer's local wall time followed by `Z`
+    /// (Hancom 12.30 wrote `2026-11-05T09:33:20Z` for 00:33:20 UTC in Seoul).
+    pub fn hancom_date_time(self) -> String {
+        let local = self.unix_ms.div_euclid(1000) + i64::from(self.offset_minutes) * 60;
+        let (days, secs) = (local.div_euclid(86_400), local.rem_euclid(86_400));
+        // Howard Hinnant's civil_from_days.
+        let z = days + 719_468;
+        let era = z.div_euclid(146_097);
+        let doe = z - era * 146_097;
+        let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+        let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+        let mp = (5 * doy + 2) / 153;
+        let day = doy - (153 * mp + 2) / 5 + 1;
+        let month = if mp < 10 { mp + 3 } else { mp - 9 };
+        let year = yoe + era * 400 + i64::from(month <= 2);
+        format!(
+            "{:04}-{:02}-{:02}T{:02}:{:02}:{:02}Z",
+            year,
+            month,
+            day,
+            secs / 3600,
+            secs / 60 % 60,
+            secs % 60
+        )
+    }
+}
+
+/// The creation instant a memo command carries, in Unix milliseconds. `None`
+/// when the two id slots are not a plausible FILETIME (1980–2200).
+pub(crate) fn memo_created_ms(command: &str) -> Option<i64> {
+    let tokens: Vec<&str> = command.split('/').collect();
+    if tokens.first() != Some(&"MEMO") {
+        return None;
+    }
+    let low: u32 = tokens.get(3)?.parse().ok()?;
+    let high: u32 = tokens.get(4)?.parse().ok()?;
+    let ticks = (u64::from(high) << 32) | u64::from(low);
+    let unix_ms = (ticks / 10_000) as i64 - FILETIME_UNIX_EPOCH_MS;
+    (315_532_800_000..7_258_118_400_000)
+        .contains(&unix_ms)
+        .then_some(unix_ms)
+}
+
+/// Hancom's HWPX memo parameters, derived from the command: the seven Hancom
+/// 12.30 writes (`CreateDateTime` only when the command holds a real time).
+pub(crate) fn memo_parameters(command: &str) -> crate::model::control::ParameterList {
+    let tokens: Vec<&str> = command.split('/').collect();
+    let number: i64 = tokens.get(2).and_then(|t| t.parse().ok()).unwrap_or(0);
+    let text = |name: &str, value: String| Parameter::String {
+        name: Some(name.to_string()),
+        value,
+        preserve_space: false,
+    };
+    let mut items = vec![
+        Parameter::Integer {
+            name: Some("Prop".to_string()),
+            value: 0,
+        },
+        text("Command", command.to_string()),
+        text("ID", format!("memo{number}")),
+        Parameter::Integer {
+            name: Some("Number".to_string()),
+            value: number,
+        },
+        text("Author", tokens.get(5).copied().unwrap_or("").to_string()),
+        text(
+            "MemoShapeIDRef",
+            tokens.get(1).copied().unwrap_or("65535").to_string(),
+        ),
+    ];
+    if let Some(ms) = memo_created_ms(command) {
+        items.push(text("CreateDateTime", MemoTime::at(ms).hancom_date_time()));
+    }
+    crate::model::control::ParameterList { name: None, items }
 }
 
 fn new_memo_field(
@@ -1688,10 +1897,26 @@ fn new_memo_field(
     author: &str,
     text: &str,
     template: &Paragraph,
+    created: MemoTime,
 ) -> Result<Field, MemoError> {
+    let command = memo_command(shape_ref, number, created, author);
+    let mut parameters = memo_parameters(&command);
+    // `memo_parameters` reads the time back in the host zone; keep the writer's.
+    for item in &mut parameters.items {
+        if let Parameter::String {
+            name: Some(key),
+            value,
+            ..
+        } = item
+        {
+            if key == "CreateDateTime" {
+                *value = created.hancom_date_time();
+            }
+        }
+    }
     Ok(Field {
         field_type: FieldType::Memo,
-        command: memo_command(shape_ref, number, field_id, author),
+        command,
         properties: 0x8001,
         extra_properties: 0,
         field_id,
@@ -1703,7 +1928,7 @@ fn new_memo_field(
         memo_paragraphs: memo_paragraphs_from_text(text, template)?,
         memo_text_direction: None,
         raw_parameters_xml: None,
-        parameters: Default::default(),
+        parameters,
         guide_residue: None,
         hyperlink_format: None,
     })

@@ -109,24 +109,30 @@ fn author_drops_command_separators_and_is_limited_to_64_units() {
 #[test]
 fn the_memo_command_carries_shape_number_ids_and_author() {
     let mut core = core_with("anchor");
+    let now = || {
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis() as i64
+    };
+    let before = now();
     core.insert_memo_at(0, 0, 0, 6, "hancom", "body").unwrap();
+    let after = now();
     let list = memo_list(&core);
     let field = memo_fields(std::slice::from_ref(first_para(&core)))[0];
     let tokens: Vec<&str> = field.command.split('/').collect();
     assert_eq!(tokens[0], "MEMO");
-    let shape: u32 = tokens[1].parse().unwrap();
-    let section_shape = core.document().sections[0].section_def.memo_shape_id as u32;
-    assert_eq!(
-        shape,
-        if section_shape != 0 {
-            section_shape
-        } else {
-            65535
-        }
-    );
+    // 한컴 12.30은 구역의 메모 모양을 가리키는 65535를 쓴다.
+    assert_eq!(tokens[1], "65535");
     assert_eq!(tokens[2], list[0]["index"].to_string());
-    assert_eq!(tokens[3], field.field_id.to_string());
-    assert_ne!(tokens[4].parse::<u32>().unwrap(), 0);
+    // 두 id 칸은 만든 때의 FILETIME(UTC, 1601년부터 100ns) 아래·위 32비트다.
+    let ticks = (tokens[4].parse::<u64>().unwrap() << 32) | tokens[3].parse::<u64>().unwrap();
+    let written = (ticks / 10_000) as i64 - 11_644_473_600_000;
+    assert!(
+        (before..=after).contains(&written),
+        "{written} ∉ {before}..={after}"
+    );
+    assert_eq!(list[0]["time"].as_i64(), Some(written));
     assert_eq!(tokens[5], "hancom");
     assert_eq!(tokens[6], "\\;;");
     assert_eq!(list[0]["author"], "hancom");
@@ -571,4 +577,66 @@ fn memos_in_a_distribution_document_are_read_only() {
     ] {
         assert_eq!(error.code.as_str(), "memo_read_only");
     }
+}
+
+/// 한컴 12.30이 쓴 메모 명령의 두 id 칸은 만든 때의 FILETIME이다. 서울에서 09:33:20에 단
+/// 메모는 `MEMO/65535/1/1112218336/31288509/kkomi/\;;`, HWPX `CreateDateTime`은
+/// `2026-11-05T09:33:20Z`(지역 시각 뒤에 Z)였다.
+#[test]
+fn the_memo_time_is_the_filetime_hancom_writes() {
+    let mut core = core_with("anchor");
+    // 2026-11-05 00:33:20.782 UTC, 서울(+9시간)
+    let json = r#"{"author":"kkomi","text":"첫 메모","time":1793838800782,"offset":540}"#;
+    core.insert_memo_json_native(0, 0, 0, 6, json).unwrap();
+    let field = memo_fields(std::slice::from_ref(first_para(&core)))[0].clone();
+    assert_eq!(field.command, r"MEMO/65535/1/1112218336/31288509/kkomi/\;;");
+    assert_eq!(
+        memo_list(&core)[0]["time"].as_i64(),
+        Some(1_793_838_800_782)
+    );
+    // 새 메모의 HWPX 매개변수는 한컴처럼 일곱 개이고 만든 때는 쓴 사람의 지역 시각이다.
+    let named = |name: &str| {
+        field.parameters.items.iter().find_map(|item| match item {
+            Parameter::String {
+                name: Some(key),
+                value,
+                ..
+            } if key == name => Some(value.clone()),
+            Parameter::Integer {
+                name: Some(key),
+                value,
+            } if key == name => Some(value.to_string()),
+            _ => None,
+        })
+    };
+    assert_eq!(field.parameters.items.len(), 7);
+    assert_eq!(
+        named("CreateDateTime").as_deref(),
+        Some("2026-11-05T09:33:20Z")
+    );
+    assert_eq!(named("Author").as_deref(), Some("kkomi"));
+    assert_eq!(named("ID").as_deref(), Some("memo1"));
+    assert_eq!(named("Number").as_deref(), Some("1"));
+    assert_eq!(named("MemoShapeIDRef").as_deref(), Some("65535"));
+    let reopened = DocumentCore::from_bytes(&core.export_hwpx_native().unwrap()).unwrap();
+    assert_eq!(memo_list(&reopened)[0]["date"], "2026-11-05T09:33:20Z");
+    assert_eq!(
+        memo_list(&reopened)[0]["time"].as_i64(),
+        Some(1_793_838_800_782)
+    );
+}
+
+/// 시각이 아닌 id 칸(옛 rhwp가 만든 메모)은 만든 때가 없다.
+#[test]
+fn a_memo_without_a_filetime_has_no_time() {
+    let mut core = core_with("anchor");
+    core.insert_memo_at(0, 0, 0, 6, "t", "body").unwrap();
+    for control in &mut core.document_mut().sections[0].paragraphs[0].controls {
+        if let Control::Field(field) = control {
+            field.command = r"MEMO/65535/1/7/2654435762/t/\;;".to_string();
+        }
+    }
+    core.set_memo_text(memo_list(&core)[0]["id"].as_u64().unwrap() as u32, "x")
+        .unwrap();
+    assert_eq!(memo_list(&core)[0]["time"], Value::Null);
 }

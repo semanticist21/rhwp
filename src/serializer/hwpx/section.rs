@@ -3711,31 +3711,15 @@ fn generated_field_parameters(field: &Field) -> Option<String> {
         return None;
     }
     // HWP5-origin memo fields have their whole identity in the command. Hancom's
-    // HWPX shape carries the same values as named parameters; emitting only
-    // `Command` loses the author and number for readers that do not split it.
+    // HWPX shape carries the same values as named parameters, with the creation
+    // FILETIME of the command as `CreateDateTime`.
     if field.field_type == crate::model::control::FieldType::Memo
         && field.command.starts_with("MEMO/")
     {
-        let tokens: Vec<&str> = field.command.split('/').collect();
-        let shape = tokens.get(1).copied().unwrap_or("65535");
-        let number = tokens.get(2).copied().unwrap_or("0");
-        let author = tokens.get(5).copied().unwrap_or("");
-        return Some(format!(
-            concat!(
-                r#"<hp:parameters cnt="6" name="">"#,
-                r#"<hp:integerParam name="Prop">0</hp:integerParam>"#,
-                r#"<hp:stringParam name="Command">{command}</hp:stringParam>"#,
-                r#"<hp:stringParam name="ID">memo{number}</hp:stringParam>"#,
-                r#"<hp:integerParam name="Number">{number}</hp:integerParam>"#,
-                r#"<hp:stringParam name="Author">{author}</hp:stringParam>"#,
-                r#"<hp:stringParam name="MemoShapeIDRef">{shape}</hp:stringParam>"#,
-                r#"</hp:parameters>"#,
-            ),
-            command = xml_escape(&field.command),
-            number = xml_escape(number),
-            author = xml_escape(author),
-            shape = xml_escape(shape),
-        ));
+        return Some(
+            crate::document_core::queries::memo_query::memo_parameters(&field.command)
+                .render_xml("parameters"),
+        );
     }
     Some(format!(
         r#"<hp:parameters cnt="1" name=""><hp:stringParam name="Command">{}</hp:stringParam></hp:parameters>"#,

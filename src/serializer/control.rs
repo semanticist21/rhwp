@@ -380,6 +380,10 @@ fn plain_control_payload(payload: ControlPayload<'_>) -> Vec<u8> {
 /// 순수 판정 함수로 분리해 단위 테스트가 실제 stderr 를 가로채지 않고도 이 조건을
 /// 검증할 수 있게 한다. 호출부(`serialize_control`)가 실제 경고를 `eprintln!` 한다.
 fn field_parameter_loss_warning(field: &Field) -> Option<String> {
+    // 메모의 매개변수(번호·지은이·모양·만든 때)는 모두 command 에 들어 있어 잃지 않는다.
+    if field.field_type == FieldType::Memo && field.command.starts_with("MEMO/") {
+        return None;
+    }
     let lost: Vec<String> = field
         .parameters
         .items
