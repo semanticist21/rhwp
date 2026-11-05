@@ -18,6 +18,8 @@ mod form_query;
 pub mod hwpctrl_sets;
 pub mod hyperlink_geometry;
 pub(crate) mod memo_query;
+#[cfg(test)]
+mod memo_reply_tests;
 mod memo_shape_query;
 #[cfg(all(not(target_arch = "wasm32"), feature = "native-skia"))]
 pub mod png_export;
