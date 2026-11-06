@@ -2718,6 +2718,12 @@ impl DocumentCore {
                         (para_idx < end_para_idx && range_end == sel_end) ||
                         // 같은 문단 내 강제 줄바꿈: 줄 끝까지 선택되고 다음 줄 시작이 sel_end이면 확장
                         (range_end == sel_end && range_end >= line_char_end && line_idx + 1 < line_count));
+                    // 여러 줄에 걸친 블록의 줄 사이 여백만 채운다. 한 줄 안에서는 글자 자리부터 칠한다.
+                    let extend_left_to_column = cell_target.is_none()
+                        && !partial_start
+                        && (selection_continues
+                            || para_idx > start_para_idx
+                            || range_start > sel_start);
 
                     let (area_left, area_right) = if cell_target.is_none() {
                         find_column_area(rh.page, rh.x)
@@ -2748,7 +2754,7 @@ impl DocumentCore {
                         run_rects.sort_by_key(|(start, _)| *start);
                         let count = run_rects.len();
                         for (index, (_, mut rect)) in run_rects.into_iter().enumerate() {
-                            if index == 0 && !partial_start && cell_target.is_none() {
+                            if index == 0 && extend_left_to_column {
                                 rect.width += rect.x - area_left;
                                 rect.x = area_left;
                             }
@@ -2767,16 +2773,15 @@ impl DocumentCore {
                     }
 
                     // y/h는 항상 left_hit 기준 (right_hit가 다음 줄에 있을 수 있음)
-                    let (page_idx, rect_x, rect_y, rect_h) =
-                        if !partial_start && cell_target.is_none() {
-                            (lh.page, area_left, lh.y, lh.h)
-                        } else {
-                            (lh.page, lh.x, lh.y, lh.h)
-                        };
+                    let (page_idx, rect_x, rect_y, rect_h) = if extend_left_to_column {
+                        (lh.page, area_left, lh.y, lh.h)
+                    } else {
+                        (lh.page, lh.x, lh.y, lh.h)
+                    };
 
                     let width = if selection_continues {
                         (area_right - rect_x).max(0.0)
-                    } else if !partial_start && cell_target.is_none() {
+                    } else if extend_left_to_column {
                         (rh.x - rect_x).max(0.0)
                     } else {
                         (rh.x - lh.x).abs()

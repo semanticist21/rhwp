@@ -66,6 +66,35 @@ fn space_width(doc: &HwpDocument) -> f64 {
     after["x"].as_f64().unwrap() - before["x"].as_f64().unwrap()
 }
 
+#[test]
+fn body_selection_of_leading_spaces_starts_at_the_first_space() {
+    for paragraph_format in [
+        r#"{"alignment":"right"}"#,
+        r#"{"alignment":"center"}"#,
+        r#"{"indent":2400}"#,
+    ] {
+        let mut doc = blank("  ");
+        doc.apply_para_format_native(0, 0, paragraph_format)
+            .unwrap();
+        let start = caret(&doc, 0)["x"].as_f64().unwrap();
+        let end = caret(&doc, 2)["x"].as_f64().unwrap();
+        let selection = value(&doc.get_selection_rects(0, 0, 0, 0, 2).unwrap());
+        let rects = selection.as_array().unwrap();
+        assert_eq!(rects.len(), 1, "{paragraph_format}");
+        let x = rects[0]["x"].as_f64().unwrap();
+        let width = rects[0]["width"].as_f64().unwrap();
+        assert!(
+            (x - start).abs() < 0.15,
+            "{paragraph_format}: {x} != {start}"
+        );
+        assert!(
+            (x + width - end).abs() < 0.15,
+            "{paragraph_format}: {} != {end}",
+            x + width
+        );
+    }
+}
+
 fn reopen(doc: &HwpDocument, hwpx: bool) -> HwpDocument {
     let bytes = if hwpx {
         doc.export_hwpx_native().unwrap()
