@@ -642,12 +642,14 @@ fn write_section_def<W: std::io::Write>(
     };
     // 대표Language 다음 UINT16은 구역 끝 목록에 둔 확장 바탕쪽(마지막 쪽·임의 쪽) 수다. 한컴 12.30은
     // 이 수만큼만 구역 끝 바탕쪽 목록을 읽는다(0이면 그 바탕쪽을 무시한다. 한컴 저장본에서 확인).
+    // HWP에서 읽은 구역 정의 컨트롤 사본에는 구역 끝 바탕쪽이 없으므로(구역 모델에만 붙는다) 모델에
+    // 확장 바탕쪽이 있을 때만 그 수로 고친다. 모두 지우면 바탕쪽 지우기가 원본 값을 0으로 돌린다.
     let extensions = sd.master_pages.iter().filter(|m| m.is_extension).count() as u16;
-    if extensions > 0 && extra.len() < 4 {
-        extra.resize(4, 0);
-    }
-    if let Some(slot) = extra.get_mut(2..4) {
-        slot.copy_from_slice(&extensions.to_le_bytes());
+    if extensions > 0 {
+        if extra.len() < 4 {
+            extra.resize(4, 0);
+        }
+        extra[2..4].copy_from_slice(&extensions.to_le_bytes());
     }
     w.write_bytes(&extra)?;
 

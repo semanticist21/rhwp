@@ -316,10 +316,14 @@ impl DocumentCore {
         let slot = crate::document_core::master_page_slot(apply_to)
             .ok_or_else(|| HwpError::RenderError("바탕쪽 번호를 확인해 주세요".to_string()))?;
         self.master_page_mut(section_idx, slot)?;
-        self.document.sections[section_idx]
-            .section_def
-            .master_pages
-            .remove(slot);
+        let section_def = &mut self.document.sections[section_idx].section_def;
+        section_def.master_pages.remove(slot);
+        // 구역 끝 바탕쪽이 남지 않으면 구역 정의의 끝 목록 수(대표Language 다음 UINT16)도 0이다.
+        if !section_def.master_pages.iter().any(|m| m.is_extension) {
+            if let Some(count) = section_def.raw_ctrl_extra.get_mut(2..4) {
+                count.fill(0);
+            }
+        }
         self.document.sections[section_idx].raw_stream = None;
         self.sync_section_def_controls_from_section(section_idx);
         self.mark_section_dirty(section_idx);
