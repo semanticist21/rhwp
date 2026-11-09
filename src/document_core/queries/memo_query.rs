@@ -378,6 +378,86 @@ pub(crate) fn renumber_memos(paragraphs: &mut [Paragraph], mut next: u32) -> u32
     next
 }
 
+/// 넣는 쪽이 정한 메모 만든 때: Unix ms와 쓴 사람의 UTC 차(분).
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct MemoTime {
+    unix_ms: i64,
+    offset_minutes: Option<i32>,
+}
+
+impl MemoTime {
+    /// HWP 명령의 UTC FILETIME(100ns, 1601년부터).
+    fn filetime(self) -> u64 {
+        (self.unix_ms + 11_644_473_600_000).max(0) as u64 * 10_000
+    }
+
+    /// 한컴 `CreateDateTime`: 쓴 사람의 지역 시각 뒤에 Z(한컴 12.30은 서울 00:33:20 UTC를
+    /// `2026-11-05T09:33:20Z`로 썼다). UTC 차를 모르면 None.
+    fn hancom_date_time(self) -> Option<String> {
+        let offset = chrono::FixedOffset::east_opt(self.offset_minutes? * 60)?;
+        let time = chrono::DateTime::from_timestamp_millis(self.unix_ms)?;
+        Some(
+            time.with_timezone(&offset)
+                .format("%Y-%m-%dT%H:%M:%SZ")
+                .to_string(),
+        )
+    }
+}
+
+/// insert 입력의 선택 값 `time`(Unix ms)과 `offset`(UTC 차, 분). 없으면 엔진 시계를 쓴다.
+/// FILETIME 두 칸에 담고 다시 읽을 수 있는 1980–2200년만 받는다.
+pub(crate) fn parse_memo_time(json: &str) -> Result<Option<MemoTime>, MemoError> {
+    let invalid = || MemoError::insert_failed("메모 만든 때는 1980–2200년의 Unix ms여야 함");
+    let value: serde_json::Value =
+        serde_json::from_str(json).map_err(|_| MemoError::insert_failed("메모 입력 JSON 오류"))?;
+    let number = |key: &str| match value.get(key) {
+        None => Ok(None),
+        Some(number) => number
+            .as_f64()
+            .filter(|n| n.is_finite())
+            .map(Some)
+            .ok_or_else(invalid),
+    };
+    let Some(ms) = number("time")? else {
+        return Ok(None);
+    };
+    if !(315_532_800_000.0..7_258_118_400_000.0).contains(&ms) {
+        return Err(invalid());
+    }
+    Ok(Some(MemoTime {
+        unix_ms: ms as i64,
+        offset_minutes: number("offset")?.map(|minutes| minutes.clamp(-1440.0, 1440.0) as i32),
+    }))
+}
+
+/// 한컴 12.30이 새 메모에 쓰는 HWPX 매개변수 일곱 개. 만든 때는 쓴 사람의 지역 시각이다.
+fn memo_parameters(command: &str, date: String) -> crate::model::control::ParameterList {
+    let tokens: Vec<&str> = command.split('/').collect();
+    let number: i64 = tokens.get(2).and_then(|t| t.parse().ok()).unwrap_or(0);
+    let text = |name: &str, value: String| Parameter::String {
+        name: Some(name.to_string()),
+        value,
+        preserve_space: false,
+    };
+    let integer = |name: &str, value: i64| Parameter::Integer {
+        name: Some(name.to_string()),
+        value,
+    };
+    let items = vec![
+        integer("Prop", 0),
+        text("Command", command.to_string()),
+        text("ID", format!("memo{number}")),
+        integer("Number", number),
+        text("Author", tokens.get(5).copied().unwrap_or("").to_string()),
+        text(
+            "MemoShapeIDRef",
+            tokens.get(1).copied().unwrap_or("65535").to_string(),
+        ),
+        text("CreateDateTime", date),
+    ];
+    crate::model::control::ParameterList { name: None, items }
+}
+
 /// 메모 명령의 만든 때(UTC FILETIME 하위·상위 칸)를 Unix ms로. 시각이 없거나 1980–2200년 밖이면 None.
 pub(crate) fn memo_created_ms(command: &str) -> Option<i64> {
     const FILETIME_UNIX_EPOCH_MS: i64 = 11_644_473_600_000;
@@ -1274,13 +1354,16 @@ impl DocumentCore {
         json: &str,
     ) -> Result<String, MemoError> {
         let (author, text) = parse_memo_input(json)?;
-        self.insert_memo_at(
+        let created = parse_memo_time(json)?;
+        self.insert_memo_at_checked(
             section_idx,
             para_idx,
             start_char_idx,
             end_char_idx,
             &author,
             &text,
+            created,
+            true,
         )
     }
 
@@ -1296,9 +1379,10 @@ impl DocumentCore {
         json: &str,
     ) -> Result<String, MemoError> {
         let (author, text) = parse_memo_input(json)?;
+        let created = parse_memo_time(json)?;
         let path = Self::parse_cell_path(path_json)
             .map_err(|e| MemoError::new(MemoErrorCode::InvalidRange, e.to_string()))?;
-        self.insert_memo_by_path(
+        self.insert_memo_by_path_checked(
             section_idx,
             para_idx,
             &path,
@@ -1306,6 +1390,8 @@ impl DocumentCore {
             end_char_idx,
             &author,
             &text,
+            created,
+            true,
         )
     }
 
@@ -1327,6 +1413,7 @@ impl DocumentCore {
             end_char_idx,
             author,
             text,
+            None,
             true,
         )
     }
@@ -1341,6 +1428,7 @@ impl DocumentCore {
         end_char_idx: usize,
         author: &str,
         text: &str,
+        created: Option<MemoTime>,
         check_overlap: bool,
     ) -> Result<String, MemoError> {
         if self.document_protected() {
@@ -1368,7 +1456,9 @@ impl DocumentCore {
                 .ok_or_else(|| MemoError::invalid_range("문단 위치를 찾을 수 없음"))?,
         );
 
-        let mut field = new_memo_field(field_id, number, shape_ref, &author, text, &template)?;
+        let mut field = new_memo_field(
+            field_id, number, shape_ref, &author, text, &template, created,
+        )?;
         // A new memo is an editable field like Hancom's (editable + dirty bits).
         field.properties |= 0x8001;
 
@@ -1434,6 +1524,7 @@ impl DocumentCore {
             end_char_idx,
             author,
             text,
+            None,
             true,
         )
     }
@@ -1449,6 +1540,7 @@ impl DocumentCore {
         end_char_idx: usize,
         author: &str,
         text: &str,
+        created: Option<MemoTime>,
         check_overlap: bool,
     ) -> Result<String, MemoError> {
         if path.is_empty() {
@@ -1477,7 +1569,9 @@ impl DocumentCore {
             .map(|para| para.clone())
             .map_err(|_| MemoError::invalid_range("문단 위치를 찾을 수 없음"))?;
         let template = self.memo_body_template(&template);
-        let mut field = new_memo_field(field_id, number, shape_ref, &author, text, &template)?;
+        let mut field = new_memo_field(
+            field_id, number, shape_ref, &author, text, &template, created,
+        )?;
         field.properties |= 0x8001;
 
         {
@@ -1700,6 +1794,7 @@ impl DocumentCore {
         json: &str,
     ) -> Result<String, MemoError> {
         let (author, text) = parse_memo_input(json)?;
+        let created = parse_memo_time(json)?;
         let hits = self.memo_hits();
         let parents = self.memo_parent_map(&hits);
         let root = parents.get(&parent_id).copied().unwrap_or(parent_id);
@@ -1725,6 +1820,7 @@ impl DocumentCore {
                 end,
                 &author,
                 &text,
+                created,
                 false,
             )?
         } else {
@@ -1737,6 +1833,7 @@ impl DocumentCore {
                 end,
                 &author,
                 &text,
+                created,
                 false,
             )?
         };
@@ -1911,15 +2008,22 @@ fn new_memo_field(
     author: &str,
     text: &str,
     template: &Paragraph,
+    created: Option<MemoTime>,
 ) -> Result<Field, MemoError> {
-    let time = crate::model::memo_time::now();
+    let time = created.map_or_else(crate::model::memo_time::now, MemoTime::filetime);
+    let command = format!(
+        "MEMO/{shape_ref}/{number}/{}/{}/{author}/\\;;",
+        time as u32,
+        time >> 32
+    );
+    // 넣는 쪽이 UTC 차를 주면 한컴처럼 그 사람의 지역 시각을 HWPX 만든 때로 남긴다.
+    let parameters = created
+        .and_then(|created| created.hancom_date_time())
+        .map(|date| memo_parameters(&command, date))
+        .unwrap_or_default();
     Ok(Field {
         field_type: FieldType::Memo,
-        command: format!(
-            "MEMO/{shape_ref}/{number}/{}/{}/{author}/\\;;",
-            time as u32,
-            time >> 32
-        ),
+        command,
         properties: 0x8001,
         extra_properties: 0,
         field_id,
@@ -1931,7 +2035,7 @@ fn new_memo_field(
         memo_paragraphs: memo_paragraphs_from_text(text, template)?,
         memo_text_direction: None,
         raw_parameters_xml: None,
-        parameters: Default::default(),
+        parameters,
         guide_residue: None,
         hyperlink_format: None,
     })

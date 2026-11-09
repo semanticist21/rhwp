@@ -249,6 +249,15 @@ fn removing_an_earlier_section_memo_drops_its_list_from_the_last_section() {
         })
         .collect();
     assert_eq!(texts, vec!["둘째 메모".to_string()]);
-    let tail = reopened.sections[1].trailing_lists.is_none();
-    assert!(tail, "지운 메모의 목록이 남지 않는다");
+    // 마지막 구역 끝 원본 목록에는 남은 메모 하나의 목록만 있다.
+    let lists = reopened.sections[1]
+        .trailing_lists
+        .as_ref()
+        .map_or(0, |tail| {
+            tail.records
+                .iter()
+                .filter(|raw| raw.level == 1 && raw.tag_id == rhwp::parser::tags::HWPTAG_MEMO_LIST)
+                .count()
+        });
+    assert_eq!(lists, 1, "지운 메모의 목록이 남지 않는다");
 }

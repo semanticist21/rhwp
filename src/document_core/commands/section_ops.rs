@@ -44,9 +44,12 @@ impl DocumentCore {
                 section.paragraphs.len()
             ))
         })?;
-        if section.trailing_lists.is_some() {
+        let tail_blocks = section.trailing_lists.is_some();
+        if tail_blocks && !self.release_memo_only_tail(section_idx) {
             return Err(unsupported_tail());
         }
+        let section = &self.document.sections[section_idx];
+        let para = &section.paragraphs[para_idx];
         let length = logical_paragraph_length(para);
         let char_offset = char_offset.min(length);
         let last = para_idx + 1 == section.paragraphs.len();
@@ -184,10 +187,12 @@ impl DocumentCore {
             )));
         }
         let previous = section_idx - 1;
-        if self.document.sections[previous].trailing_lists.is_some()
-            || self.document.sections[section_idx].trailing_lists.is_some()
-        {
-            return Err(unsupported_tail());
+        for index in [previous, section_idx] {
+            if self.document.sections[index].trailing_lists.is_some()
+                && !self.release_memo_only_tail(index)
+            {
+                return Err(unsupported_tail());
+            }
         }
         if self.document.sections[section_idx].paragraphs.is_empty() {
             return Err(HwpError::RenderError(format!(
@@ -310,6 +315,27 @@ impl DocumentCore {
         }
         // 쪽마다 새로 시작하는 각주는 쪽 배정 뒤에 센다.
         self.refresh_footnote_numbers(section_idx);
+    }
+}
+
+impl DocumentCore {
+    /// 구역 끝 원본 목록이 문서 모델과 같은 메모 목록뿐이면 버리고 모델이 마지막 구역 끝에 쓰게 한다.
+    /// 바탕쪽 목록이나 모델에 없는 메모(변경 추적으로 숨긴 메모)가 남은 목록은 그대로 두고 false다.
+    fn release_memo_only_tail(&mut self, section_idx: usize) -> bool {
+        let sections = &self.document.sections;
+        let Some(tail) = sections[section_idx].trailing_lists.as_ref() else {
+            return true;
+        };
+        let lists = crate::model::section_tail::collect(sections, &crate::storage::Unbounded)
+            .unwrap_or_else(|never| match never {});
+        let owned = tail.memo_seal == Some(crate::model::section_tail::memo_digest(&lists));
+        if !owned || !tail.record_groups().all(|(memo, _)| memo) {
+            return false;
+        }
+        let section = &mut self.document.sections[section_idx];
+        section.trailing_lists = None;
+        section.raw_stream = None;
+        true
     }
 }
 
