@@ -28,12 +28,14 @@ impl LayoutEngine {
 
     /// 원자 행 사이의 이어받기도 새 자식 표의 바깥 위 프레임을 연다.
     /// 부모 예약과 실제 자식 원점에서 같은 원본 여백을 한 번 소비한다.
+    /// 병합 칸 블록 안에서 이어받는 조각은 행 사이가 아니므로 새 프레임을 열지 않는다
+    /// (한/글 12.30 인쇄: 블록 조각의 다음 쪽은 바깥 위 여백 없이 이어진다).
     pub(in crate::renderer::layout) fn nested_row_continuation_outer_top(
         &self,
         child: &Table,
         cut: &NestedTableCut,
     ) -> Option<f64> {
-        (!child.common.treat_as_char && cut.start_row > 0)
+        (!child.common.treat_as_char && cut.start_row > 0 && !cut.start_cut_is_block)
             .then(|| crate::renderer::hwpunit_to_px(i32::from(child.outer_margin_top), self.dpi))
     }
 
@@ -164,5 +166,43 @@ impl LayoutEngine {
             required
         };
         (required - previous).max(0.0)
+    }
+}
+
+#[cfg(test)]
+mod continuation_outer_top_tests {
+    use super::*;
+
+    fn cut(start_row: usize, start_cut_is_block: bool) -> NestedTableCut {
+        NestedTableCut {
+            start_row,
+            end_row: start_row + 1,
+            start_cut: vec![3],
+            end_cut: Vec::new(),
+            is_block_split: start_cut_is_block,
+            start_cut_is_block,
+        }
+    }
+
+    /// 행 사이에서 이어받는 자식 표는 바깥 위 여백을 다시 열고, 병합 칸 블록 안에서
+    /// 이어받는 조각은 열지 않는다(한/글 12.30 인쇄에서 블록 조각은 여백 없이 이어진다).
+    #[test]
+    fn block_continuations_do_not_reopen_the_outer_top_margin() {
+        let engine = LayoutEngine::new(96.0);
+        let child = Table {
+            outer_margin_top: 141,
+            ..Table::default()
+        };
+        assert!(engine
+            .nested_row_continuation_outer_top(&child, &cut(2, false))
+            .is_some_and(|top| top > 1.8));
+        assert_eq!(
+            engine.nested_row_continuation_outer_top(&child, &cut(2, true)),
+            None
+        );
+        assert_eq!(
+            engine.nested_row_continuation_outer_top(&child, &cut(0, false)),
+            None
+        );
     }
 }
