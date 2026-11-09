@@ -147,16 +147,18 @@ impl DocumentCore {
         ))
     }
 
-    /// 쪽에서 고칠 바탕쪽. 그 쪽에 그린 바탕쪽이 있으면 그것을, 감춰 그리지 않았으면 그 쪽 구역(없으면
-    /// 앞 구역)에서 쪽의 홀짝에 맞는 바탕쪽을 고른다. 한컴 도움말 "바탕쪽 고치기"처럼 현재 구역에
-    /// 바탕쪽이 없으면 앞 구역으로 거슬러 찾는다.
+    /// 쪽에서 고칠 바탕쪽. 그 쪽에 그린 바탕쪽이 있으면 그것을(겹쳐 그린 마지막 쪽·임의 쪽 바탕쪽이
+    /// 있으면 한컴 12.30처럼 그것을), 감춰 그리지 않았으면 그 쪽 구역(없으면 앞 구역)에서 쪽의 홀짝에
+    /// 맞는 바탕쪽을 고른다. 한컴 도움말 "바탕쪽 고치기"처럼 현재 구역에 바탕쪽이 없으면 앞 구역으로
+    /// 거슬러 찾는다.
     ///
     /// 반환: `{"ok":true,"sectionIndex":N,"applyTo":16+n}` 또는 `{"ok":true,"found":false}`
     pub fn get_master_page_edit_target_native(&self, page_num: u32) -> Result<String, HwpError> {
         let (page, _, _) = self.find_page(page_num)?;
         let target = page
-            .active_master_page
-            .as_ref()
+            .extra_master_pages
+            .last()
+            .or(page.active_master_page.as_ref())
             .map(|r| (r.section_index, r.master_page_index))
             .or_else(|| {
                 let odd = page.page_number % 2 == 1;
@@ -582,6 +584,11 @@ mod tests {
             set_master_text(&mut core, slot, text);
         }
         let marks = ['가', '나', '다', '라'];
+        // 한컴 12.30처럼 겹쳐 그린 쪽(2쪽)에서 고칠 바탕쪽은 임의 2쪽 바탕쪽이다.
+        assert!(core
+            .get_master_page_edit_target_native(1)
+            .unwrap()
+            .contains(&format!("\"applyTo\":{}", MASTER_PAGE_APPLY_BASE + 2)));
         // 1쪽 양 쪽, 2쪽 양 쪽 위에 임의 2쪽(겹치게 하기), 3쪽은 마지막 쪽 바탕쪽만(같은 쪽 임의 3쪽은 그리지 않음).
         let expect = |core: &DocumentCore| {
             assert_eq!(drawn(core, 0, &marks), "가");
