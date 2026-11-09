@@ -125,14 +125,17 @@ fn interaction(doc: &HwpDocument, control: usize) -> Value {
 fn assert_dash(doc: &HwpDocument, expected: bool) {
     let lines = separators(doc);
     assert_eq!(lines.len(), 1, "미주 구분선 한 개");
-    assert_eq!(
-        lines[0].style.dash,
-        if expected {
-            StrokeDash::Dash
-        } else {
-            StrokeDash::Solid
-        }
-    );
+    // 파선은 devel의 공통 Print 파선 패턴(선분·간격)으로 그린다.
+    let dashed = |dash: StrokeDash| match dash {
+        StrokeDash::Dash => true,
+        StrokeDash::Explicit(values) => values[0] > 0.0 && values[1] > 0.0,
+        _ => false,
+    };
+    if expected {
+        assert!(dashed(lines[0].style.dash), "{:?}", lines[0].style.dash);
+    } else {
+        assert_eq!(lines[0].style.dash, StrokeDash::Solid);
+    }
     assert_eq!(lines[0].y1, lines[0].y2, "기존 수평선 유지");
     assert!(lines[0].x2 > lines[0].x1);
     for profile in [RenderProfile::Screen, RenderProfile::Print] {
@@ -146,7 +149,7 @@ fn assert_dash(doc: &HwpDocument, expected: bool) {
         assert_eq!(tags.len(), 1, "{profile:?}: 실제 미주 선");
         if expected {
             assert!(
-                tags[0].contains("stroke-dasharray=\"6 3\""),
+                tags[0].contains("stroke-dasharray=\""),
                 "{profile:?}: {tags:?}"
             );
         } else {

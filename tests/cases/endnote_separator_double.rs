@@ -179,26 +179,44 @@ fn attribute(tag: &str, name: &str) -> f64 {
 
 fn assert_thin(doc: &HwpDocument, kind: u8) {
     let rendered = lines(doc);
-    assert_eq!(rendered.len(), 1, "굵기0은 가시 단일선/파선/이중선");
     let line = &rendered[0];
-    assert_eq!(
-        line.style.line_type,
-        if kind == 8 {
-            LineRenderType::Double
-        } else {
-            LineRenderType::Single
-        }
-    );
+    if kind == 8 && rendered.len() == 2 {
+        // devel은 이중선을 같은 길이의 실선 두 획으로 긋는다. 두 획의 굵기 합이 0.1mm다.
+        assert!(rendered
+            .iter()
+            .all(|l| l.style.line_type == LineRenderType::Single
+                && l.x1 == line.x1
+                && l.x2 == line.x2));
+        assert!(rendered[1].y1 > line.y1, "두 획은 위아래로 떨어진다");
+        close(
+            rendered.iter().map(|l| l.style.width).sum(),
+            0.32,
+            "이중선 두 획 굵기 합",
+        );
+    } else {
+        assert_eq!(rendered.len(), 1, "굵기0은 가시 단일선/파선/이중선");
+        assert_eq!(
+            line.style.line_type,
+            if kind == 8 {
+                LineRenderType::Double
+            } else {
+                LineRenderType::Single
+            }
+        );
+        close(line.style.width, 0.32, "규격0.1mm의 600dpi 양자화 획");
+    }
     assert_eq!(line.style.color, COLOR);
-    assert_eq!(
-        line.style.dash,
-        if kind == 2 {
-            StrokeDash::Dash
-        } else {
-            StrokeDash::Solid
-        }
-    );
-    close(line.style.width, 0.32, "규격0.1mm의 600dpi 양자화 획");
+    // 파선은 devel의 공통 Print 파선 패턴(선분·간격)으로 그린다.
+    if kind == 2 {
+        assert!(
+            matches!(line.style.dash, StrokeDash::Explicit(values) if values[0] > 0.0 && values[1] > 0.0)
+                || line.style.dash == StrokeDash::Dash,
+            "{:?}",
+            line.style.dash
+        );
+    } else {
+        assert_eq!(line.style.dash, StrokeDash::Solid);
+    }
     close(line.x2 - line.x1, 80.0, "구분선 길이 유지");
     // 굵기는 흐름에 더하지 않으므로 여백 0이면 첫 미주는 선 중심에서 시작한다.
     assert!(
@@ -218,7 +236,8 @@ fn assert_thin(doc: &HwpDocument, kind: u8) {
         if kind != 8 {
             close(attribute(tags[0], "stroke-width"), 0.32, "SVG 실제 획 굵기");
         }
-        assert_eq!(tags[0].contains("stroke-dasharray=\"6 3\""), kind == 2);
+        // 파선의 간격은 devel의 공통 Print 파선 패턴을 쓴다.
+        assert_eq!(tags[0].contains("stroke-dasharray=\""), kind == 2);
     }
 }
 

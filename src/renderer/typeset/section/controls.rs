@@ -296,9 +296,8 @@ impl TypesetEngine {
                         }
                         // [Task #1052] 글상자 내 각주 수집 (engine.rs:1376-1398 동등)
                         // NO_LS 호스트의 측정 원점만 전달한다. 저장 vpos 소유자는
-                        // 기존 저장 배치 경로에 남긴다. rhwp가 합성한 줄(bit 31)만 가진
-                        // 호스트도 저장 줄이 없는 호스트다(HWPX 저장은 그 줄을 싣지 않는다).
-                        let host_top = (crate::renderer::para_has_no_stored_line_segs(para)
+                        // 기존 저장 배치 경로에 남긴다.
+                        let host_top = (para.line_segs.is_empty()
                             && (st.pages.len(), st.current_column)
                                 == (picture_host_origin.0, picture_host_origin.1))
                             .then_some(picture_host_origin.2);
