@@ -634,13 +634,22 @@ fn write_section_def<W: std::io::Write>(
     //   UINT16 대표Language (5.0.1.5 이상)
     // 한컴 정답지는 26 byte payload + 8 byte zero (확장 영역) = 34 byte payload + 4 byte ctrl_id = 38 byte CTRL_HEADER.
     // 원본 추가 바이트 복원 (라운드트립용)
-    if !sd.raw_ctrl_extra.is_empty() {
-        w.write_bytes(&sd.raw_ctrl_extra)?;
+    // HWPX 출처: 한컴 default 10 byte (Language 0 + zero 8)
+    let mut extra = if sd.raw_ctrl_extra.is_empty() {
+        vec![0u8; 10]
     } else {
-        // HWPX 출처: 한컴 default 10 byte (Language 0 + zero 8)
-        w.write_u16(0)?; // 대표Language = 0 (Application 지정)
-        w.write_bytes(&[0u8; 8])?; // 추가 zero padding (관찰된 한컴 정답지 패턴)
+        sd.raw_ctrl_extra.clone()
+    };
+    // 대표Language 다음 UINT16은 구역 끝 목록에 둔 확장 바탕쪽(마지막 쪽·임의 쪽) 수다. 한컴 12.30은
+    // 이 수만큼만 구역 끝 바탕쪽 목록을 읽는다(0이면 그 바탕쪽을 무시한다. 한컴 저장본에서 확인).
+    let extensions = sd.master_pages.iter().filter(|m| m.is_extension).count() as u16;
+    if extensions > 0 && extra.len() < 4 {
+        extra.resize(4, 0);
     }
+    if let Some(slot) = extra.get_mut(2..4) {
+        slot.copy_from_slice(&extensions.to_le_bytes());
+    }
+    w.write_bytes(&extra)?;
 
     Ok(())
 }

@@ -594,6 +594,12 @@ mod tests {
         // 한컴 12.30 HWP: 기본 바탕쪽은 구역 정의 아래 종류 0, 확장 바탕쪽은 구역 끝 목록에 종류 3(마지막 쪽)·
         // n + 3(임의 쪽)과 속성 bit 0 겹치게 하기·bit 1 맨 위로 보내기.
         assert_eq!(hwp_master_lists(&hwp), [(0, 0), (3, 0), (5, 1), (6, 2)]);
+        // 구역 정의의 대표Language 다음 UINT16은 구역 끝 바탕쪽 목록 수다(한컴 12.30 저장본·samples HWP).
+        // 0이면 한컴이 구역 끝 바탕쪽을 읽지 않는다.
+        let extra = &DocumentCore::from_bytes(&hwp).unwrap().document.sections[0]
+            .section_def
+            .raw_ctrl_extra;
+        assert_eq!(extra.get(2..4), Some(&3u16.to_le_bytes()[..]));
         let hwpx = core.export_hwpx_native().unwrap();
         for bytes in [&hwp, &hwpx] {
             let reopened = DocumentCore::from_bytes(bytes).unwrap();
