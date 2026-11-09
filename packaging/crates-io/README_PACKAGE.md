@@ -3,8 +3,9 @@
 HWP/HWPX 문서의 파싱·편집·저장·렌더링을 Rust 애플리케이션과 자동화 작업에 연결합니다.
 주 사용자는 문서 처리 기능을 자신의 프로그램에 포함하는 Rust 개발자와 CLI 자동화 사용자입니다.
 
-**현재 crates.io 게시 준비 중입니다.** 아래 0.9.0 registry 의존·설치 명령은 게시 후의 사용 안내이며,
-현재 게시 완료를 뜻하지 않습니다. 이번 로컬 검증 후보는 0.9.0입니다. 제품 릴리즈와 crates.io 게시 일정은 별도로 결정합니다.
+**0.9.0부터 crates.io 배포를 제공합니다.** 아래 예제는 공개 registry에 게시된 0.9.0을
+사용합니다. 해당 버전이 아직 조회되지 않는 배포 진행 중에는 같은 버전의 소스를 빌드할 수 있습니다.
+[게시 버전과 소스](https://github.com/edwardkim/rhwp/releases/tag/v0.9.0)를 확인하세요.
 
 ## Rust에서 구조 읽기와 저장
 
@@ -122,6 +123,10 @@ PDF 가져오기·JBIG2·JPEG 2000·ICC 색 변환을 기본 포함하며, 손�
 파서·제품 요청·host 각각의 한도와 책임을 구분해야 합니다.
 현행 제한과 일반 미지원의 차이는
 [보안 제한 현황](https://github.com/edwardkim/rhwp/blob/devel/mydocs/manual/security_feature_limits.md)에 있습니다.
+[PDF 개발자 시작 안내](https://github.com/edwardkim/rhwp/blob/devel/mydocs/manual/pdf_developer_onboarding.md)와
+[English quick start](https://github.com/edwardkim/rhwp/blob/devel/mydocs/manual/pdf_developer_onboarding_EN.md)에
+CLI·Rust·WASM·Worker 예제, 암호 입력·배치 선택·한도 오류 대응을 정리했습니다.
+
 Rust에서 직접 PDF를 가져올 때도 같은 요청 정책을 전달할 수 있습니다.
 
 ```rust

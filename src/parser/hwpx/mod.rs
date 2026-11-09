@@ -528,8 +528,10 @@ pub(crate) fn parse_hwpx_with_reservation(
         .find(|(path, _)| path == "version.xml")
         .and_then(|(_, bytes)| std::str::from_utf8(bytes).ok())
         .is_some_and(physical_para_margin_units_from_version);
-    let (mut doc_info, doc_properties) =
-        header::parse_hwpx_header_with_plain_margin_units(&header_xml, physical_plain_margin)?;
+    let (mut doc_info, doc_properties) = header::parse_hwpx_header_with_plain_margin_units(
+        &canonicalize_header_image_refs(&header_xml, &package_info.bin_data_items),
+        physical_plain_margin,
+    )?;
     let default_para_shape_id = u16::try_from(doc_info.para_shapes.len()).ok();
     let default_para_shape_scope = section::DefaultParaShapeScope::enter(default_para_shape_id);
     if let Ok(bytes) = reader.read_file_bytes_limited(

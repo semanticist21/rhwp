@@ -2,24 +2,33 @@
 kind: guide
 status: active
 canonical: mydocs/manual/pr_review_workflow.md
-last_verified: 2026-10-18
+last_verified: 2026-11-08
 ---
 
 # 로컬 사전 검증
 
 이 가이드는 PR의 코드·sample·frontend 변경을 로컬에서 확인하는 절차다. **PR 제출 전에 4.3의
-변경 범위별 필수 검증과 해당 보조 절차를 빠짐없이 완료한다.** 기여자·메인터너·콜라보레이터 모두
-같은 기준을 적용한다. 실행 head·base SHA, 명령·환경·실제 결과와 증적을 PR 본문 또는 기존 검증
+변경 범위별 필수 검증과 해당 역할의 보조 절차를 빠짐없이 완료한다.** 일반 기여자의 제출 검증과
+통합 담당 collaborator·maintainer의 추가 검증을 구분한다. 실행 head·base SHA, 명령·환경·실제 결과와 증적을 PR 본문 또는 기존 검증
 기록에 연결한다. 비해당 항목은 변경 범위와 소비 경로를 근거로 구분하며, 실패·미실행 항목을
 비해당으로 바꾸거나 새 PR의 CI에 넘겨 제출 전 검증을 대신하지 않는다. 정본에서 허용한 동일
 code head의 기존 CI·증적 재사용은 그 조건을 확인해 기록한다.
 
-**조판에 영향을 주는 변경이 포함된 PR은 제출 전 최종 head에서 행정업무운영 편람 HWPX의
-Native 383쪽 검사를 실행하고 통과해야 한다.** 저장소 루트에서
+| 적용 역할 | 검증 책임 |
+| --- | --- |
+| 일반 사용자·외부 contributor | 변경 범위에 따른 일반 검증과 Native/fresh WASM 시각 증적 제출. 조판 영향 PR의 `--handbook-gate` 실행·통과도 포함한다. 비공개 원본 OTF 보유나 정본 보호 TSV 전체의 특별 하락 금지 검증은 제출 조건이 아니다. |
+| 통합 담당 collaborator·maintainer | 위 일반 검증에 더해 조판·렌더링 영향 PR의 정본 보호 TSV 전체에 대한 특별 하락 금지 검증을 완료한다. 이 특별 검증의 원본 글꼴 확보·환경 정합·보정·재검증도 통합 담당자의 책임이다. |
+
+**조판에 영향을 주는 변경이 포함된 PR은 일반 기여자를 포함하여 제출 전 최종 head에서
+행정업무운영 편람 HWPX Native 383쪽 `--handbook-gate`를 실행하고 통과해야 한다.**
+필요한 글꼴은 지원 웹폰트 공급 경로를 사용할 수 있으므로 비공개 원본 OTF 보유를 요구하지 않는다. 저장소 루트에서
 `venv/bin/python scripts/visual_sweep.py --handbook-gate --out output/pr-review/<검증명>`을
-실행한다. 다른 Visual Sweep 실행에 같은 옵션을 추가해도 된다. 90% 미달, #8389의
-페이지별 기준 하락, 미실행·실패·누락·쪽수 불일치는 제출 보류다. 실행 head·명령·결과와
+실행한다. 다른 Visual Sweep 실행에 같은 옵션을 추가해도 된다. gate의 90%·페이지별 기준 하락
+검사 실패, 미실행·누락·쪽수 불일치는 제출 보류다. 실행 head·명령·결과와
 전체 TSV를 기록한다. 일반 Visual Sweep은 이 검사를 자동으로 반복하지 않는다.
+편람 gate와 별도로, [정본 보호 TSV 전체의 특별 하락 금지 검증](../verification/visual_verification_governance.md#정본-보호-tsv의-공식-표시값-보존)은
+통합 담당 collaborator·maintainer만 수행한다. 일반 기여자에게 비공개 원본 OTF 설치나 이 특별 검증의 재현을 요구하지 않는다.
+일반 시각 검증의 90%·쪽수·내용 보존과 페이지별 98% px 회귀 조건은 계속 적용한다.
 
 일반 제출은 **검증을 완료한 Open PR**로 한다. Draft는 미완성 설계·WIP의 조기 논의처럼 특별한
 목적을 명시한 경우에만 사용하며, 에이전트는 작업지시자의 명시적 Draft 지시가 있어야 생성한다.
@@ -130,6 +139,28 @@ find "${rhwp_review_source_dir:?기본 작업공간 경로를 먼저 고정하�
 pgrep -alf '(^|/)(cargo|rustc|wasm-pack)( |$)' || true
 ~~~
 
+### 편람 130쪽의 WMF 렌더링 차이
+
+여기서 130쪽은 TSV의 `page=130`, 즉 PDF의 130번째 쪽이며 지면에 인쇄된 쪽 번호는
+122다. 2026-11-07 완료한 전쪽 검증(96 DPI, 색상 경계 보정 전 2px 실루엣)의 실제 값은
+다음과 같다.
+
+| 원본 | Native raw | fresh WASM raw | 경계 보정 후 보조값 |
+| --- | ---: | ---: | ---: |
+| 편람 HWP | 99.96% | 99.96% | 양쪽 99.97% |
+| 편람 HWPX | 99.96% | 99.96% | 양쪽 99.97% |
+
+HWP/HWPX의 Native·fresh WASM 네 결과 모두 **나머지 382쪽은 raw 100.00%**다.
+일반 기여자를 포함한 편람 `--handbook-gate`는 이 중 HWPX Native의 383쪽을 선택하여
+나머지 382쪽의 100.00%와 130쪽의 raw 99.96% 대비 하락이 없는지 확인한다. 필요한 글꼴은
+지원 웹폰트 공급 경로를 사용할 수 있다. HWP·fresh WASM 및 다른 문서까지 정본 전체를
+대조하는 특별 하락 금지 검증은 통합 담당 collaborator·maintainer가 별도로 수행한다.
+
+행정업무운영 편람의 이 쪽에는 알려진 WMF 렌더링 차이가 있다. 이 WMF 영역을 독립 한컴
+Print와 100% 일치시키는 보정을 이번 PR 검증의 완료 조건으로 요구하지 않으며, 100%를
+강제하는 회귀 기대값도 추가하지 않는다. 130쪽은 전쪽 TSV에 포함하고 실제 raw와
+review·overlay에서 확인한 WMF 차이를 그대로 기록한다.
+
 ### 리베이스로 반영한 PR의 기능 보존 검증
 
 리베이스 뒤에는 현재 작업의 개선과 **새 기준에서 들어온 PR의 기능 유지·개선**을 함께 확인한다.
@@ -156,6 +187,10 @@ pgrep -alf '(^|/)(cargo|rustc|wasm-pack)( |$)' || true
    유지/개선/후퇴/미검증 → 보정·재검증 결과`를 연결한다. 리베이스 전 실행은 출처 기록이며 새
    후보의 검증으로 표시하지 않는다. 실행으로 확인한 후퇴와 필수 증거 부족을 구분하고, 어느 쪽이든
    해소 전에는 준비 완료·새 PR 생성·승인·통합을 보류한다. 별도 보고서 파일을 중복 작성할 필요는 없다.
+
+collaborator·maintainer는 이 기능 보존 검증에
+[정본 보호 TSV의 공식 두 자리 표시값 보존](../verification/visual_verification_governance.md#정본-보호-tsv의-공식-표시값-보존)도
+적용한다. 일반 사용자·외부 contributor에게 원본 OTF 설치나 이 특별 보호 검증의 재현을 요구하지 않는다.
 
 ### 고정 review target과 실행 환경
 
@@ -448,14 +483,50 @@ git status --short --branch
 
 ## 4.2 merge simulation
 
+새 PR 제출 후보는 최신 base와의 병합뿐 아니라 **리뷰어가 지정되지 않은 본인 계정의 기존
+열린 PR 전체와의 병합도 생성 전에 시뮬레이션한다.** 이미 리뷰어가 지정된 PR은 작업 중이므로
+제외하고 근거를 기록한다. 리뷰어 미지정 Draft는 포함하며 각 대상 PR의 최신 head를 fetch해
+고정하고 후보와 개별 비교한다. 함께 통합할 대상 PR은 예정 순서의 누적 결과도 확인한다.
+대상 조회·갱신·제출 보류 조건은
+[제출 전 병합 시뮬레이션](../codex/docs_and_git_workflow.md#4-제출-후보와-본인-열린-pr의-병합-시뮬레이션)을 따른다.
+
+현재 작업 트리와 원 PR branch를 건드리지 않는 기본 경로는 다음과 같다. `head SHA`가
+가리키는 정확한 commit을 사용하며, 기존 PR을 실제로 merge하거나 push하는 명령이 아니다.
+
+~~~bash
+# 후보와 최신 base, 각 기존 PR의 fetch·SHA 확인 후 실행한다.
+rhwp_merge_log_dir="output/pr-review/<review-id>/logs"
+mkdir -p "$rhwp_merge_log_dir"
+git merge-tree --write-tree \
+  "${rhwp_review_base_sha:?최신 base SHA를 먼저 고정하세요}" \
+  "${rhwp_review_candidate_sha:?제출 후보 SHA를 먼저 고정하세요}" \
+  > "$rhwp_merge_log_dir/candidate-base-merge-tree.log" 2>&1
+
+# 본인의 리뷰어 미지정 열린 PR마다 반복한다. 각 실행의 종료 코드를 확인하고 기록한다.
+git merge-tree --write-tree \
+  "$rhwp_review_candidate_sha" \
+  "${rhwp_existing_pr_head_sha:?기존 PR 최신 head SHA를 먼저 고정하세요}" \
+  > "$rhwp_merge_log_dir/pr-${rhwp_existing_pr_number:?기존 PR 번호를 먼저 지정하세요}-merge-tree.log" 2>&1
+~~~
+
+종료 코드 0은 충돌 없음, 1은 병합 충돌이며 그 밖의 실패도 제출을 막는다. 첫 검사부터
+결과를 판정하고 실패한 상태에서 다음 명령으로 덮어쓰지 않는다. 로그에 기록된 tree SHA만
+보고 성공으로 처리하지 않는다. PR별 SHA·명령·종료 코드·충돌 파일·로그를 기존 검토 기록에
+남기고, 생성 직전 목록이나 SHA가 바뀌면 영향을 받는 검사를 다시 실행한다.
+
+실제 merge 상태와 결과 tree를 더 조사해야 할 때만 작업 전용 임시 worktree에서 다음 경로를
+사용한다. 현재 구현·검증 작업 트리에서 직접 실행하지 않는다.
+
 ~~~bash
 git switch -c prN-merge-test upstream/devel
 git merge local/prN --no-commit --no-ff
 git status
 ~~~
 
-devel 위에 PR head를 합친 결과 tree와 conflict를 확인한다. conflict 해결 방침은 작업지시자 결정이
-필요하다. 여러 PR의 누적 검토는 [다수 PR과 update branch](multi_pr_update_branch.md)를 따른다.
+devel 위에 PR head를 합친 결과 tree와 conflict를 확인한다. 승인된 보정 범위에서는 양쪽 기능을
+보존해 충돌을 해소하고 영향 검증과 시뮬레이션을 다시 수행한다. 원격 변경과 범위 밖의 추가
+조치는 기존 승인 절차를 따른다. 여러 PR의 누적 검토는
+[다수 PR과 update branch](multi_pr_update_branch.md)를 따른다.
 
 ## 4.3 변경 범위별 기본 검증
 
@@ -657,10 +728,10 @@ bwrap --ro-bind /usr /usr --symlink usr/bin /bin --symlink usr/lib /lib --symlin
 
 #### macOS
 
-개인 Mac의 글꼴을 비활성화하거나 삭제하지 않는다. 별도로 설치한 글꼴과 로컬 글꼴 접근 권한이
-없는 깨끗한 macOS 가상 머신 또는 검증 전용 계정·격리 환경을 사용한다. 계정만 분리하면
-`/Library/Fonts`의 공유 글꼴은 그대로 보이므로, 시스템에 추가된 글꼴까지 차단하지 못하면 깨끗한
-가상 머신을 사용한다. `/System/Library/Fonts` 등 OS 기본 글꼴은 보존하고 목록에 기록한다.
+개인 Mac의 글꼴을 비활성화하거나 삭제하지 않는다. 현재 Mac에서 검증 프로세스에 한정해
+추가 설치 글꼴과 로컬 글꼴 접근을 차단하는 격리 환경을 사용할 수 있다. 가상 머신이나 검증 전용
+계정은 선택 사항이다. 계정만 분리하면 `/Library/Fonts`의 공유 글꼴은 그대로 보이므로 실제
+접근 범위를 확인한다. `/System/Library/Fonts` 등 OS 기본 글꼴은 보존하고 목록에 기록한다.
 `system_profiler`의 결과를 기준 목록과 대조해 한컴·개인 글꼴이 없음을 확인한다. Fontconfig
 목록만으로 CoreText가 볼 수 있는 글꼴이 격리됐다고 판단하지 않는다.
 
@@ -675,6 +746,21 @@ env -u RHWP_FONT_PATH cargo nextest run --locked --cargo-profile release-test \
 Native Skia와 집중 검사도 이 격리 환경에서 같은 target을 순차 재사용한다. 브라우저 검사는
 로컬 글꼴 접근을 거부한 상태에서 기본 동작을 확인하며, 실제 OTF 공급 기능은 라이선스 확인
 fixture를 명시하는 별도의 검사로 실행한다.
+
+현재 계정의 프로세스 파일 sandbox를 격리 환경으로 사용할 때도 같은 검증이 필요하다.
+`~/Library/Fonts`·`/Library/Fonts`와 추가 탐색 경로, 허용 fixture 이외의 `ttfs` 및 이전 글꼴
+캐시를 차단하고 새 캐시를 사용한다. **파일 접근 차단만으로는 충분하지 않다.** CoreText가
+개인 글꼴 별칭을 계속 열거하면서 실제 프로그램은 LastResort로 바꾸면, Chrome이 해당 글꼴을
+존재하는 것으로 오인해 한글과 UI 문자를 대체 기호로 출력할 수 있다.
+
+따라서 해당 macOS에서 검증한 `sandbox-exec` 프로필을 사용할 경우 개인 Font Registry의
+`com.apple.fonts`·`com.apple.fonts.atsbridge` 조회도 프로세스에 한정해 차단하고, CoreText와
+`system_profiler`에서 개인 글꼴이 실제로 제외되는지 확인한다. OS 글꼴의 목록 순서는 달라질
+수 있으므로 이름 순서만 비교하지 않고 파일 해시·실제 프로그램과 기본 한글 표시를 대조한다.
+일반 사용자 프로세스의 등록·표시가 바뀌지 않았다는 대조 결과도 남긴다. 개인 글꼴을 삭제하거나
+비활성화하는 방식으로 대체하지 않는다. 격리 프로필·허용 파일·실제 목록·환경별 결과를 기록한다.
+OS 버전이나 프로필 차이로 격리를 확인하지 못한 범위는 검증 결과에 명시하며, 확인한 범위만
+최소 글꼴 환경의 검증 결과로 보고한다. 이를 이유로 VM 생성이나 계정 분리를 필수로 요구하지 않는다.
 
 #### Windows
 

@@ -50,9 +50,15 @@ impl TypesetEngine {
         force_page_break: bool,
         storage: &S,
     ) -> Result<bool, S::Error> {
-        // 이 단계에서는 이미 확정한 각주 영역의 기존 빈 줄 이월만 준비한다.
-        // 새 물리 예약은 뒤의 실제 문단 원점 선택 후 paragraph::flow에서 조회한다.
-        st.prepare_saved_empty_run(para_idx, paragraphs, self.dpi, |_| None);
+        // 조기 흡수 전에 실제 paint와 같은 각주 경계를 조회한다.
+        // 원본 프레임의 소속과 현재 fit을 분리하며 뒤 flow도 같은 예약을 소비한다.
+        st.prepare_saved_empty_run(para_idx, paragraphs, self.dpi, |st| {
+            crate::renderer::typeset::notes::footnotes::measure::BodyFootnoteMeasure {
+                engine: self,
+                styles,
+            }
+            .stored_current_area_height(st, paragraphs)
+        });
         if st.saved_empty_run_contains(para_idx) {
             // 실제 줄 상자를 fit/이월한다. 저장 reset 앞이라는 이유로
             // 줄의 물리 점유를 감추지 않는다.
@@ -134,7 +140,6 @@ impl TypesetEngine {
             };
         if tail_before_break_through_empty {
             st.allow_tail_safety_margin_once();
-            st.allow_tail_footnote_margin_once();
             st.reserve_saved_tail_bounds(paragraph_saved_visible_bounds(para, 0, self.dpi));
         }
 
@@ -397,10 +402,6 @@ impl TypesetEngine {
             } else {
                 // 일반 텍스트 또는 컨트롤 보유: 안전마진 1회 비활성화 (단독 텍스트 페이지 차단)
                 st.allow_tail_safety_margin_once();
-                // [Task #1725] 각주 있는 페이지의 tail 문단: 각주 안전마진(40px 버퍼)도 1회
-                // 비활성화. 한글은 tail 을 본문에 배치하는데 rhwp 각주 예약 버퍼가 tail 을 수 px
-                // 밀어 near-empty 페이지 over-pagination(국제고속선기준 258 vs 242) 을 만든다.
-                st.allow_tail_footnote_margin_once();
                 // [Task #1725 v2] 각주 없이 페이지가 수 px over-fill 되어 tail 이 밀리는 경우도
                 // 한글은 저장 tail의 본문 하단 좌표를 유지한다. 다음 fit에서 실제
                 // 저장 bottom까지의 차이만 허용하도록 bounds를 전달한다.

@@ -242,7 +242,9 @@ pub(crate) fn supports(para: &Paragraph, width_hu: i32) -> bool {
     }) && para.controls.iter().all(|c| match c {
         Control::Table(t) => t.common.treat_as_char,
         Control::Picture(p) => !p.common.treat_as_char,
-        Control::SectionDef(_)
+        Control::Header(_)
+        | Control::Footer(_)
+        | Control::SectionDef(_)
         | Control::ColumnDef(_)
         | Control::PageNumberPos(_)
         | Control::PageNumCtrl(_) => true,
@@ -676,10 +678,11 @@ pub(crate) fn plan_with_storage<S: crate::storage::Storage>(
                         InlineFlowContent::Text { range, .. } if cut == range.end));
                 // A separator consumed by a soft wrap remains in the source
                 // row. It must not create a whitespace-only row before the
-                // next word/table. Space-only paragraphs and authored breaks
-                // retain their real line boxes.
+                // next word/table, nor after the last flow content of the
+                // paragraph (Hancom hangs trailing whitespace). Space-only
+                // paragraphs and authored breaks retain their real line boxes.
                 if matches!(&item.content, InlineFlowContent::Text { range, .. }
-                    if spaces.wrap.contains(&range.start))
+                    if spaces.wrap.contains(&range.start) || spaces.trailing.contains(&range.start))
                     && row_metrics.width + item.width > row_width + 0.01
                     && !first_overhang_space
                     && !keep_oversized_space

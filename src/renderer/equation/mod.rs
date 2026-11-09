@@ -85,6 +85,33 @@ pub(crate) fn stored_horizontal_scale(width: f64, layout: &layout::LayoutBox) ->
     }
 }
 
+/// 원본 HFT 표시 face를 실제로 사용하는 수식만 같은 Print 종이 프레임으로 보낸다.
+pub(crate) fn uses_original_hft_glyphs(layout: &layout::LayoutBox) -> bool {
+    hancom_glyphs::used_font_families(layout).contains(legacy_glyphs::FONT_FAMILY)
+}
+
+/// 원본 HFT 단일 글줄의 표시 기준선을 논리 줄 프레임 안에 둔다.
+/// 독립 한컴2024 정상 저장·Print의 네 크기·28개 문자/숫자/연산자와
+/// A4/A5 대조에서 확인했다. 현대 face의 줄 프레임을 재사용하지 않는다.
+/// 저장 개체 크기나 호스트 기준선은 그대로 두고 표시 글줄만 발행한다.
+pub(crate) fn publish_original_hft_print_line(
+    equation: &mut crate::renderer::render_tree::EquationNode,
+) {
+    let value = &mut equation.layout_box;
+    let fs = value.font_size;
+    if legacy_glyphs::is_line(value, fs) {
+        if let Some((height, _)) = layout::legacy_logical_frame(value, fs) {
+            // HFT 논리 줄의 높이는 기존 측정 프레임이 소유한다. glyph의
+            // 자연 text 기준선(80%)과 저장 호스트의 84% 기준선을 구분한다.
+            value.y += height * 0.8 - value.baseline;
+            // Native/Canvas가 읽는 layout과 SVG/PDF가 읽는 표시 조각을
+            // 같은 원점에서 함께 발행한다. 캐시된 이전 SVG를 남기지 않는다.
+            equation.svg_content =
+                svg_render::render_equation_svg(value, &equation.color_str, equation.font_size);
+        }
+    }
+}
+
 /// 수식 스크립트와 BaseUnit에서 레이아웃이 소비할 intrinsic HWPUNIT 크기를 계산한다.
 pub fn intrinsic_size_hwp(script: &str, font_size: u32) -> (u32, u32) {
     let font_size_px = super::hwpunit_to_px(font_size.max(1) as i32, super::DEFAULT_DPI);
@@ -122,6 +149,17 @@ pub(crate) fn flow_metrics_hwp(equation: &crate::model::control::Equation) -> (u
 }
 
 fn compute_flow_metrics_hwp(equation: &crate::model::control::Equation) -> (u32, u32, i32) {
+    if !equation.common.size_protect && equation.uses_implicit_legacy_font() {
+        let ast = document_script::parse(equation);
+        if layout::supports_implicit_legacy(&ast) {
+            let frame = layout::EqLayout::for_equation(equation, super::DEFAULT_DPI).layout(&ast);
+            return (
+                super::px_to_hwpunit(frame.width, super::DEFAULT_DPI).max(1) as u32,
+                super::px_to_hwpunit(frame.height, super::DEFAULT_DPI).max(1) as u32,
+                super::px_to_hwpunit(frame.baseline, super::DEFAULT_DPI),
+            );
+        }
+    }
     if declared_frame::retains_unpositioned_host_frame(equation)
         || equation.retains_legacy_source_frame()
     {
@@ -131,103 +169,6 @@ fn compute_flow_metrics_hwp(equation: &crate::model::control::Equation) -> (u32,
             (equation.common.height as i32).saturating_mul(i32::from(equation.baseline)) / 100,
         );
     }
-    cached_flow_metrics(equation)
-}
-
-/// 선언 프레임 밖 흐름 메트릭이 읽는 수식 값 전부다. 값이 같으면 결과도 같으므로
-/// 편집으로 값이 바뀌면 다른 키가 되어 이전 결과를 재사용하지 않는다.
-#[derive(PartialEq, Eq, Hash)]
-struct FlowMetricsKey {
-    script: String,
-    font_name: String,
-    version_info: String,
-    font_size: u32,
-    attr: u32,
-    eqedit: u32,
-    baseline: i16,
-    width: u32,
-    height: u32,
-    width_criterion: crate::model::shape::SizeCriterion,
-    size_protect: bool,
-}
-
-impl FlowMetricsKey {
-    /// 키 값만 담은 수식. 계산이 키 밖의 값을 읽을 수 없으므로 캐시가 낡지 않는다.
-    fn equation(&self) -> crate::model::control::Equation {
-        crate::model::control::Equation {
-            script: self.script.clone(),
-            font_name: self.font_name.clone(),
-            version_info: self.version_info.clone(),
-            font_size: self.font_size,
-            attr: self.attr,
-            eqedit: self.eqedit,
-            baseline: self.baseline,
-            common: crate::model::shape::CommonObjAttr {
-                width: self.width,
-                height: self.height,
-                width_criterion: self.width_criterion,
-                size_protect: self.size_protect,
-                ..Default::default()
-            },
-            ..Default::default()
-        }
-    }
-}
-
-thread_local! {
-    static FLOW_METRICS_CACHE: std::cell::RefCell<
-        std::collections::HashMap<FlowMetricsKey, (u32, u32, i32)>,
-    > = std::cell::RefCell::default();
-}
-
-/// 조판 pass마다 비워 캐시 크기를 지금 문서의 수식 수로 묶는다.
-/// 비워도 결과는 같고 다시 계산할 뿐이다.
-pub(crate) fn clear_flow_metrics_cache() {
-    FLOW_METRICS_CACHE.with(|cache| cache.take());
-}
-
-/// 미주 조판은 같은 수식의 메트릭을 판정마다 다시 묻는다. 토큰화·조판을 반복하지 않는다.
-fn cached_flow_metrics(equation: &crate::model::control::Equation) -> (u32, u32, i32) {
-    // 새 필드가 생기면 컴파일이 멈춰 키에 넣을지 판단하게 한다.
-    // 색·treat_as_char·봉인은 흐름 메트릭이 읽지 않거나 캐시 앞 선언 프레임 판정만 읽는다.
-    let crate::model::control::Equation {
-        common,
-        attr,
-        script,
-        font_size,
-        color: _,
-        baseline,
-        unknown: _,
-        eqedit,
-        version_info,
-        font_name,
-        raw_ctrl_data: _,
-        raw_ctrl_seal: _,
-        unpositioned_host_frame_seal: _,
-        legacy_source_frame_seal: _,
-    } = equation;
-    let key = FlowMetricsKey {
-        script: script.clone(),
-        font_name: font_name.clone(),
-        version_info: version_info.clone(),
-        font_size: *font_size,
-        attr: *attr,
-        eqedit: *eqedit,
-        baseline: *baseline,
-        width: common.width,
-        height: common.height,
-        width_criterion: common.width_criterion,
-        size_protect: common.size_protect,
-    };
-    if let Some(metrics) = FLOW_METRICS_CACHE.with(|cache| cache.borrow().get(&key).copied()) {
-        return metrics;
-    }
-    let metrics = computed_flow_metrics(&key.equation());
-    FLOW_METRICS_CACHE.with(|cache| cache.borrow_mut().insert(key, metrics));
-    metrics
-}
-
-fn computed_flow_metrics(equation: &crate::model::control::Equation) -> (u32, u32, i32) {
     if let Some(intrinsic) = layout::EqLayout::legacy_flow_layout(equation, super::DEFAULT_DPI) {
         return (
             super::px_to_hwpunit(intrinsic.width, super::DEFAULT_DPI).max(1) as u32,
@@ -294,6 +235,44 @@ fn computed_flow_metrics(equation: &crate::model::control::Equation) -> (u32, u3
 pub(crate) fn normalized_simple_math_metrics(
     equation: &crate::model::control::Equation,
 ) -> Option<(u32, u32, i32)> {
+    simple_math_frame_metrics(equation, false)
+}
+
+/// 개체 상자와 기준선은 이미 현재 논리 프레임이고, 호스트 줄 캐시만 낡은 경우를 구분한다.
+/// 별도 선언 프레임·크기 보호·미지원 복합 구조는 현재 프레임으로 재해석하지 않는다.
+pub(crate) fn has_current_simple_math_frame(equation: &crate::model::control::Equation) -> bool {
+    current_simple_math_metrics(equation).is_some()
+}
+
+/// 현재 저장 상자를 보존해도, 검증된 전진폭으로 다시 측정한 줄은 가로 캐시를 재확인한다.
+/// 높이 캐시가 달라졌다는 이유만으로 미지원 복합 수식의 가로 분할까지 무효화하지 않는다.
+pub(crate) fn current_simple_math_advance_was_remeasured(
+    equation: &crate::model::control::Equation,
+) -> bool {
+    current_simple_math_metrics(equation)
+        .is_some_and(|(width, _, _)| width != equation.common.width)
+}
+
+fn current_simple_math_metrics(
+    equation: &crate::model::control::Equation,
+) -> Option<(u32, u32, i32)> {
+    if declared_frame::retains_unpositioned_host_frame(equation)
+        || equation.retains_legacy_source_frame()
+    {
+        return None;
+    }
+    simple_math_frame_metrics(equation, true).filter(|(_, height, baseline)| {
+        *height == equation.common.height
+            && (i64::from(*baseline) - i64::from(*height) * i64::from(equation.baseline) / 100)
+                .abs()
+                <= 1
+    })
+}
+
+fn simple_math_frame_metrics(
+    equation: &crate::model::control::Equation,
+    include_current: bool,
+) -> Option<(u32, u32, i32)> {
     // A valid legacy logical frame is shared by flow and HFT paint. Modern
     // simple-math cache normalization must not replace that stored owner;
     // editing refreshes the legacy frame before this query is called.
@@ -329,7 +308,7 @@ pub(crate) fn normalized_simple_math_metrics(
     }
     let (height, baseline) = font_frame.unwrap_or((intrinsic.height, intrinsic.baseline));
     let height = super::px_to_hwpunit(height, super::DEFAULT_DPI).max(1) as u32;
-    if equation.common.height <= height {
+    if equation.common.height < height || (!include_current && equation.common.height == height) {
         return None;
     }
     // 높이가 무효여도 미지원 구조의 폭까지 무효라고 추정하지 않는다.

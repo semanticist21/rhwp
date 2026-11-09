@@ -328,6 +328,23 @@ impl TypesetState {
     pub(in crate::renderer::typeset) fn mark_pre_emitted_host(&mut self, index: usize) {
         self.data.pre_emitted_host_paras.insert(index);
     }
+    /// 같은 호출이 이 쪽에 낸 호스트 글줄을 거둘 때 그 기록을 함께 지운다(#8652).
+    pub(in crate::renderer::typeset) fn retract_pre_emitted_host(&mut self, index: usize) {
+        self.data.pre_emitted_host_paras.remove(&index);
+        self.data.pre_emitted_host_heights.remove(&index);
+        self.data.pre_emitted_host_content_heights.remove(&index);
+    }
+    pub(in crate::renderer::typeset) fn request_block_table_restart(&mut self, index: usize) {
+        self.data.restart_block_table_para = Some(index);
+    }
+    pub(in crate::renderer::typeset) fn take_block_table_restart(&mut self, index: usize) -> bool {
+        if self.data.restart_block_table_para == Some(index) {
+            self.data.restart_block_table_para = None;
+            true
+        } else {
+            false
+        }
+    }
     pub(in crate::renderer::typeset) fn record_pre_emitted_host_height(
         &mut self,
         index: usize,
@@ -415,9 +432,6 @@ impl TypesetState {
     }
     pub(in crate::renderer::typeset) fn allow_tail_safety_margin_once(&mut self) {
         self.data.skip_safety_margin_once = true;
-    }
-    pub(in crate::renderer::typeset) fn allow_tail_footnote_margin_once(&mut self) {
-        self.data.skip_footnote_margin_once = true;
     }
     pub(in crate::renderer::typeset) fn mark_page_absolute_top_table(&mut self) {
         self.data.page_has_page_abs_top_table = true;
@@ -871,9 +885,6 @@ impl TypesetState {
         self.data.current_zone_design_spacing_px = spacing;
         self.data.current_zone_plain_text = plain_text;
     }
-    pub(in crate::renderer::typeset) fn record_footer_presence(&mut self, no_footer: bool) {
-        self.data.section_has_no_footer = no_footer;
-    }
     pub(in crate::renderer::typeset) fn observe_following_paragraph(
         &mut self,
         vpos: Option<i32>,
@@ -956,9 +967,10 @@ impl TypesetState {
         S: crate::storage::Storage,
     >(
         &mut self,
-        note: crate::renderer::pagination::FootnoteRef,
+        mut note: crate::renderer::pagination::FootnoteRef,
         storage: &S,
     ) -> Result<(), S::Error> {
+        note.column_index = self.data.current_column;
         if let Some(page) = self.data.pages.last_mut() {
             storage.push(&mut page.footnotes, note)?;
         }

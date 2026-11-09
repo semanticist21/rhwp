@@ -191,9 +191,11 @@ impl PagePaintContext {
             f: 0.0,
         };
         let mut sources = std::collections::HashSet::new();
+        let mut equation_sources = std::collections::HashSet::new();
         fn collect(
             node: &LayerNode,
             sources: &mut std::collections::HashSet<u32>,
+            equation_sources: &mut std::collections::HashSet<crate::renderer::render_tree::NodeId>,
             rounded: &mut bool,
             plane: crate::paint::PaintReplayPlane,
             inherited_layer: Option<crate::renderer::render_tree::RenderLayerInfo>,
@@ -206,6 +208,7 @@ impl PagePaintContext {
                         collect(
                             child,
                             sources,
+                            equation_sources,
                             rounded,
                             plane,
                             active_layer,
@@ -217,6 +220,7 @@ impl PagePaintContext {
                     collect(
                         child,
                         sources,
+                        equation_sources,
                         rounded,
                         plane,
                         active_layer,
@@ -230,6 +234,17 @@ impl PagePaintContext {
                             continue;
                         }
                         *rounded |= PagePaintContext::op_has_print_solid_fill(op, hangul2024_print);
+                        if !*rounded {
+                            if let (Some(id), PaintOp::Equation { equation, .. }) =
+                                (node.source_node_id, op)
+                            {
+                                if crate::renderer::equation::uses_original_hft_glyphs(
+                                    &equation.layout_box,
+                                ) {
+                                    equation_sources.insert(id);
+                                }
+                            }
+                        }
                         if let PaintOp::TextRun {
                             run,
                             source: Some(source),
@@ -329,6 +344,7 @@ impl PagePaintContext {
             collect(
                 node,
                 &mut sources,
+                &mut equation_sources,
                 &mut rounded,
                 plane,
                 None,
@@ -336,6 +352,11 @@ impl PagePaintContext {
             );
         }
         publish(node, &sources, transform);
+        // 이 종이/DC 계약은 명시적인 2024 Print에만 있다. Screen·HighQuality와
+        // 기존 2020 표시 경로를 같은 축으로 바꾸지 않는다.
+        if self.print_paper.is_some() {
+            super::equation_print_frame::publish(node, &equation_sources, transform);
+        }
     }
 
     fn shape_has_print_solid_fill(style: &crate::renderer::ShapeStyle) -> bool {
@@ -715,8 +736,6 @@ impl PagePaintContext {
         image: &ImageNode,
         _device_pixel: Option<f64>,
     ) -> BoundingBox {
-        let bbox = node.bbox;
-        let is_master = node.layer.as_ref().is_some_and(|layer| layer.master_page);
         let raster = image.data.as_deref().is_some_and(|bytes| {
             matches!(
                 detect_image_mime_type(bytes),
@@ -729,7 +748,19 @@ impl PagePaintContext {
                     | "image/x-pcx"
             )
         });
-        if !self.print || !raster {
+        if raster {
+            self.raster_image_frame(node, image)
+        } else {
+            node.bbox
+        }
+    }
+
+    /// 원본 PNG 또는 실제 준비가 끝난 메타파일 PNG의 같은 물리 Print 프레임이다.
+    /// 준비 전 WMF·중간 표면·이미 장치 격자에 합성된 표면의 판정은 호출자가 소유한다.
+    pub(crate) fn raster_image_frame(self, node: &RenderNode, image: &ImageNode) -> BoundingBox {
+        let bbox = node.bbox;
+        let is_master = node.layer.as_ref().is_some_and(|layer| layer.master_page);
+        if !self.print {
             return bbox;
         }
         let (width, height) = self.logical_size;

@@ -1004,6 +1004,7 @@ impl DocumentCore {
             raw_ctrl_seal: None,
             raw_table_record_attr: tbl_rec_attr,
             raw_table_record_extra: vec![0u8; 2], // 표준 추가 2바이트
+            layout_page_break_cache: Default::default(),
         };
         // 새 표의 공개 배치 값과 HWP 헤더 비트를 맞춰 두 형식에서 같은 값을 읽는다.
         let flags = crate::serializer::control::pack_common_attr_bits(&table.common);
@@ -1174,6 +1175,7 @@ impl DocumentCore {
             center_line: CenterLine::None,
             fill,
             three_d: false,
+            break_cell_separate_line: false,
         };
 
         // 기존 BorderFill에서 동일한 항목 검색
@@ -1235,6 +1237,7 @@ impl DocumentCore {
                 center_line: CenterLine::None,
                 fill: Fill::default(),
                 three_d: false,
+                break_cell_separate_line: false,
             });
         bf.raw_data = None;
 
@@ -1254,9 +1257,15 @@ impl DocumentCore {
             .filter(|fill_type| !matches!(fill_type.as_str(), "gradient" | "image"))
         {
             bf.fill = if fill_type_str == "solid" {
-                let bg = json_color(json, "fillColor").unwrap_or(0xFFFFFF);
-                let pat_c = json_color(json, "patternColor").unwrap_or(0);
-                let pat_t = json_i32(json, "patternType").unwrap_or(0);
+                // 부분 편집은 기존 색상/무늬를 보존한다. 새 단색의 무늬 없음은 -1이며,
+                // HWP에서 읽은 가로 무늬 0을 무늬 없음으로 바꾸면 안 된다 (#8733).
+                let existing = bf.fill.solid;
+                let bg = json_color(json, "fillColor")
+                    .unwrap_or_else(|| existing.map_or(0xFFFFFF, |fill| fill.background_color));
+                let pat_c = json_color(json, "patternColor")
+                    .unwrap_or_else(|| existing.map_or(0, |fill| fill.pattern_color));
+                let pat_t = json_i32(json, "patternType")
+                    .unwrap_or_else(|| existing.map_or(-1, |fill| fill.pattern_type));
                 Fill {
                     fill_type: FillType::Solid,
                     solid: Some(SolidFill {

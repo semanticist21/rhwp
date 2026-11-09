@@ -42,6 +42,7 @@ impl TypesetEngine {
             if follows_same_host_note {
                 let line = &fn_ctrl.paragraphs[0].line_segs[0];
                 st.record_current_footnote(FootnoteRef {
+                    column_index: 0,
                     number: fn_ctrl.number,
                     source: FootnoteSource::Body {
                         para_index: para_idx,
@@ -86,6 +87,7 @@ impl TypesetEngine {
         {
             st.defer_body_footnote_for_next_page(
                 FootnoteRef {
+                    column_index: 0,
                     number: fn_ctrl.number,
                     source,
                     fragment: None,
@@ -171,7 +173,6 @@ impl TypesetEngine {
             if !st.footnote_fragment_fits_current_page(
                 content_height,
                 draw_separator,
-                true,
                 overlap_guard,
             ) {
                 // terminal 표가 이미 확정된 page의 body/각주 lane을
@@ -214,7 +215,7 @@ impl TypesetEngine {
                     para,
                 )
                 .is_none()
-                && !st.footnote_fragment_fits_current_page(content_height, true, false, 0.0);
+                && !st.footnote_fragment_fits_current_page(content_height, true, 0.0);
             let body_tail_reset =
                 native_hwp5_body_footnote_tail_reset(st, para_idx, para, ctrl_idx);
             // 두 줄 각주는 full-note owner route와 다른 계약이다. marker
@@ -392,6 +393,7 @@ impl TypesetEngine {
                         )
                     {
                         st.record_current_footnote(FootnoteRef {
+                            column_index: 0,
                             number: fn_ctrl.number,
                             source: source.clone(),
                             fragment: Some(split.suffix),
@@ -406,6 +408,7 @@ impl TypesetEngine {
             }
             if let Some(split) = current_page_reset_fragments {
                 st.record_current_footnote(FootnoteRef {
+                    column_index: 0,
                     number: fn_ctrl.number,
                     source: source.clone(),
                     fragment: Some(split.prefix),
@@ -415,6 +418,7 @@ impl TypesetEngine {
                 // 표시 뒤 본문은 현재 쪽의 남은 본문 상자를 계속 사용한다.
                 st.defer_body_footnote_for_next_page(
                     FootnoteRef {
+                        column_index: 0,
                         number: fn_ctrl.number,
                         source: source.clone(),
                         fragment: Some(split.suffix),
@@ -444,6 +448,7 @@ impl TypesetEngine {
                 }
             }
             st.record_current_footnote(FootnoteRef {
+                column_index: 0,
                 number: fn_ctrl.number,
                 source,
                 fragment: None,

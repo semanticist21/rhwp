@@ -6,6 +6,17 @@
 pub(crate) mod helpers;
 pub(crate) use helpers::*;
 
+/// 문단 서식 JSON(`--props` 등)이 바꿀 속성을 하나라도 담는지 (#8439). 어댑터가 아무 키도
+/// 읽지 못한 입력을 성공으로 처리하지 않도록 미리 확인할 때 쓴다.
+pub fn para_format_props_have_effect(props_json: &str) -> bool {
+    helpers::para_format_props_have_effect(props_json)
+}
+
+/// 글자 서식 JSON 이 바꿀 속성을 하나라도 담는지 (#8439).
+pub fn char_format_props_have_effect(props_json: &str) -> bool {
+    helpers::char_format_props_have_effect(props_json)
+}
+
 #[cfg(feature = "pdf-import")]
 mod pdf_import_session;
 #[cfg(feature = "pdf-import")]
@@ -295,8 +306,9 @@ pub struct DocumentCore {
     pub(crate) layer_tree_json_cache: RefCell<Vec<Vec<(u16, String)>>>,
     /// [#4969 Q3-E5] 페이지 레이어 트리 캐시 — (출력옵션 지문, immutable tree).
     /// page render tree와 같은 세대에서 무효화하며, 페이지당 최근 변형 4개로 제한한다.
-    /// `ResourceArena`의 font bytes는 `Arc<[u8]>`라 캐시 hit clone이 payload를 복제하지 않는다.
-    pub(crate) page_layer_tree_cache: RefCell<Vec<Vec<(u16, PageLayerTree)>>>,
+    /// Native의 공유 조회는 node·text·image payload를 깊게 복제하지 않는다.
+    /// 기존 소유값 조회는 호출자가 독립적으로 수정할 수 있는 clone을 반환한다.
+    pub(crate) page_layer_tree_cache: RefCell<Vec<Vec<(u16, Arc<PageLayerTree>)>>>,
     /// 그림 신원 키(`imageKey`)의 문서 단위 세대 번호 (Task #3315).
     ///
     /// `bin_data_id` 는 append-only 라 세션 중 id→바이트가 안정하지만, undo 스냅샷

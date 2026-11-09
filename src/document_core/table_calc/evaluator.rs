@@ -423,6 +423,10 @@ fn eval_function(
         "CEILING" => unary_fn(args, ctx, get_cell, f64::ceil),
         "FLOOR" => unary_fn(args, ctx, get_cell, f64::floor),
         "ROUND" => {
+            // 한/글은 ROUND(x, 자릿수)만 받는다. 자릿수를 뺀 ROUND(x)는 rhwp가 받아 온 형태라 0자리로 둔다.
+            if args.is_empty() || args.len() > 2 {
+                return Err("ROUND는 1~2개 인수 필요 (값, 자릿수)".into());
+            }
             let value = eval_node(&args[0], ctx, get_cell)?;
             let digits = match args.get(1) {
                 Some(arg) => eval_node(arg, ctx, get_cell)?,
@@ -473,8 +477,9 @@ fn validate_function_args(name: &str, count: usize) -> Result<(), String> {
     Ok(())
 }
 
-/// 소수점 아래 `digits` 자리에서 반올림한다(음수면 소수점 위). 한/글 12.30처럼 0.5는 0에서
-/// 먼 쪽으로 올리고, 이진 표현 오차를 15자리 유효 숫자에서 걷어 ROUND(2.675,2)를 2.68로 낸다.
+/// 소수점 아래 `digits` 자리에서 반올림한다(음수면 소수점 위, 소수 부분은 버린다). 한/글 12.30처럼
+/// 0.5는 0에서 먼 쪽으로 올리고, 이진 표현 오차를 15자리 유효 숫자에서 걷어 ROUND(2.675,2)를
+/// 2.68로 낸다.
 fn round_to_digits(value: f64, digits: f64) -> f64 {
     let digits = digits.trunc().clamp(-308.0, 308.0) as i32;
     let scale = 10f64.powi(digits.abs());

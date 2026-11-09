@@ -417,6 +417,7 @@ fn parse_hwp_inner_with_limits(
         }
     }?;
     document.seal_section_tail_provenance();
+    document.seal_loaded_memo_tails();
     Ok(document)
 }
 
@@ -472,6 +473,7 @@ fn parse_hwp_with_cfb(
         .consume(doc_info_data.len())
         .map_err(ParseError::CfbError)?;
     let (mut doc_info, doc_properties) = parse_doc_info_stream(&doc_info_data, encrypted)?;
+    doc_info::apply_v5024_strike_bits(&mut doc_info.char_shapes, &file_header.version);
     if let Ok(bytes) = cfb.read_stream_raw_limited(
         crate::model::native_font_program::HWP_STREAM,
         crate::model::native_font_program::MAX_BYTES,
@@ -829,10 +831,11 @@ fn decode_viewtext_paragraph_stream(
 
 fn parse_visible_section(
     data: &[u8],
+    previous: &mut [crate::model::document::Section],
     doc_info: &crate::model::document::DocInfo,
 ) -> Result<crate::model::document::Section, body_text::BodyTextError> {
     let projected = tracked_viewtext::project(data, doc_info)?;
-    body_text::parse_body_text_section(projected.as_deref().unwrap_or(data))
+    body_text::parse_section_with_previous(projected.as_deref().unwrap_or(data), previous)
 }
 
 /// CfbReader로 섹션들 파싱
@@ -903,7 +906,7 @@ fn parse_sections_strict(
             .consume(section_data.len())
             .map_err(ParseError::CfbError)?;
 
-        match parse_visible_section(&section_data, doc_info) {
+        match parse_visible_section(&section_data, &mut sections, doc_info) {
             Ok(mut section) => {
                 // 원본 BodyText 스트림 보존 (라운드트립용)
                 section.raw_stream = Some(section_data);
@@ -926,7 +929,6 @@ fn parse_sections_strict(
     // [#6868 잔여] 구역 경계를 넘는 누름틀의 종료 마커를 잇는다 — 구역 하나를 파싱하는
     // 동안에는 앞 구역에서 열린 필드를 볼 수 없다.
     body_text::link_orphan_field_ends_across_sections(&mut sections);
-    body_text::attach_memo_lists_across_sections(&mut sections);
 
     Ok(sections)
 }
@@ -977,6 +979,7 @@ fn parse_hwp_with_lenient(
         .consume(doc_info_data.len())
         .map_err(ParseError::CfbError)?;
     let (mut doc_info, doc_properties) = parse_doc_info_stream(&doc_info_data, encrypted)?;
+    doc_info::apply_v5024_strike_bits(&mut doc_info.char_shapes, &file_header.version);
     if let Ok(bytes) = lenient.read_stream_raw_limited(
         crate::model::native_font_program::HWP_STREAM,
         crate::model::native_font_program::MAX_BYTES,
@@ -1042,7 +1045,7 @@ fn parse_hwp_with_lenient(
             .consume(section_data.len())
             .map_err(ParseError::CfbError)?;
 
-        match parse_visible_section(&section_data, &doc_info) {
+        match parse_visible_section(&section_data, &mut sections, &doc_info) {
             Ok(mut section) => {
                 section.raw_stream = Some(section_data);
                 sections.push(section);
@@ -1062,7 +1065,6 @@ fn parse_hwp_with_lenient(
 
     // [#6868 잔여] 구역 경계를 넘는 누름틀의 종료 마커 — strict 경로와 같다.
     body_text::link_orphan_field_ends_across_sections(&mut sections);
-    body_text::attach_memo_lists_across_sections(&mut sections);
 
     // BinData 로드 시도
     let bin_data_content = load_bin_data_content_lenient(
@@ -1190,7 +1192,11 @@ fn load_bin_data_content_lenient(
         let is_storage = match bd.data_type {
             BinDataType::Embedding => false,
             BinDataType::Storage => true,
-            BinDataType::Link => continue,
+            BinDataType::Link => {
+                // 연결 레코드도 순번 자리를 지켜야 뒤 그림이 제 항목을 가리킨다.
+                contents.push(crate::model::bin_data::hwp5_link_slot());
+                continue;
+            }
         };
 
         let ext = if is_storage {
@@ -2135,7 +2141,11 @@ fn load_bin_data_content(
         let is_storage = match bd.data_type {
             BinDataType::Embedding => false,
             BinDataType::Storage => true,
-            BinDataType::Link => continue,
+            BinDataType::Link => {
+                // 연결 레코드도 순번 자리를 지켜야 뒤 그림이 제 항목을 가리킨다.
+                contents.push(crate::model::bin_data::hwp5_link_slot());
+                continue;
+            }
         };
 
         // 스토리지 이름 생성: BIN0001.jpg (이미지) / BIN0001.OLE (OLE)

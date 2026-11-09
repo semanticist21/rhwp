@@ -14,6 +14,9 @@ use wasm_bindgen::prelude::*;
 #[cfg(target_arch = "wasm32")]
 use web_sys::HtmlCanvasElement;
 
+#[cfg(target_arch = "wasm32")]
+mod canvas2d_outline_preview;
+
 use crate::document_core::helpers::parse_removed_para_meta;
 use crate::document_core::{
     DeferredPaginationJobState, DeferredPaginationStepResult, DocumentCore, DEFAULT_FALLBACK_FONT,
@@ -491,6 +494,12 @@ impl std::ops::DerefMut for HwpDocument {
     }
 }
 
+impl From<DocumentCore> for HwpDocument {
+    fn from(core: DocumentCore) -> Self {
+        Self { core }
+    }
+}
+
 /// 네이티브(비-WASM) 환경용 래퍼 메서드.
 ///
 /// 테스트 및 CLI 환경에서 `HwpDocument::from_bytes()` 등을 직접 호출할 수 있도록 한다.
@@ -501,6 +510,12 @@ impl HwpDocument {
 
     pub fn from_bytes_with_password(data: &[u8], password: &[u8]) -> Result<HwpDocument, HwpError> {
         DocumentCore::from_bytes_with_password(data, password).map(|core| HwpDocument { core })
+    }
+
+    /// 인증 성공 뒤에만 문서를 교체하는 Native/Rust command. 기존 constructor는
+    /// 호환용으로 유지하며, 암호 처리와 문서 조회를 분리할 때 이 경로를 사용한다.
+    pub fn load_bytes(&mut self, data: &[u8], password: Option<&[u8]>) -> Result<(), HwpError> {
+        self.core.load_bytes(data, password)
     }
 
     pub fn find_initial_column_def(paragraphs: &[Paragraph]) -> ColumnDef {
@@ -767,7 +782,9 @@ impl HwpDocument {
     /// 암호화되지 않은 일반 문서에 비밀번호를 전달해도 정상 로드된다.
     #[wasm_bindgen(js_name = openWithPassword)]
     pub fn open_with_password(data: &[u8], password: &str) -> Result<HwpDocument, JsValue> {
-        Self::from_bytes_with_password(data, password.as_bytes()).map_err(|e| e.into())
+        let mut document = Self::from(DocumentCore::new_empty());
+        document.load_bytes(data, Some(password.as_bytes()))?;
+        Ok(document)
     }
 
     /// 빈 문서 생성 (테스트/미리보기용)
@@ -830,6 +847,36 @@ impl HwpDocument {
         face_index: u32,
     ) -> Result<bool, JsValue> {
         self.register_hft_outline_font_native(family, bytes, face_index)
+            .map_err(JsValue::from)
+    }
+
+    /// FontFace에 적재된 SFNT 조각들을 같은 family의 실제 조회 순서로 등록한다.
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen(js_name = registerHftOutlineFontCandidates)]
+    pub fn register_hft_outline_font_candidates(
+        &mut self,
+        family: &str,
+        programs: js_sys::Array,
+    ) -> Result<bool, JsValue> {
+        use wasm_bindgen::JsCast;
+        if programs.length() == 0 || programs.length() > 64 {
+            return Err(JsValue::from_str("outline font candidate limit exceeded"));
+        }
+        let mut total = 0usize;
+        let mut bytes = Vec::new();
+        for program in programs.iter() {
+            let array = program
+                .dyn_into::<js_sys::Uint8Array>()
+                .map_err(|_| JsValue::from_str("outline font candidate must be Uint8Array"))?;
+            total = total.saturating_add(array.length() as usize);
+            if array.length() == 0 || array.length() > 32 * 1024 * 1024 || total > 64 * 1024 * 1024
+            {
+                return Err(JsValue::from_str("outline font byte limit exceeded"));
+            }
+            bytes.push(array.to_vec());
+        }
+        let candidates: Vec<_> = bytes.iter().map(|bytes| (bytes.as_slice(), 0)).collect();
+        self.register_hft_outline_font_candidates_native(family, &candidates)
             .map_err(JsValue::from)
     }
 
@@ -1305,6 +1352,21 @@ impl HwpDocument {
     ) -> Result<(), JsValue> {
         render_patch_boundary::render_page_to_canvas_filtered_with_profile(
             self, page_num, canvas, scale, layer_kind, profile,
+        )
+    }
+
+    /// Explicit Canvas2D outline preview with actual selection diagnostics.
+    #[cfg(target_arch = "wasm32")]
+    #[wasm_bindgen(js_name = renderPageToCanvasStrictOutlineWithProfile)]
+    pub fn render_page_to_canvas_strict_outline_with_profile(
+        &self,
+        page_num: u32,
+        canvas: &HtmlCanvasElement,
+        scale: f64,
+        profile: &str,
+    ) -> Result<String, JsValue> {
+        render_patch_boundary::render_page_to_canvas_strict_outline_with_profile(
+            self, page_num, canvas, scale, profile,
         )
     }
 
@@ -4397,6 +4459,83 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 표 셀 안 문단에 그림을 넣는다 — 서명·도장처럼 셀과 함께 움직여야 하는 그림.
+    ///
+    /// `insertPicture` 의 셀 분기는 그림을 표 밖 본문 문단에 띄운다. 이 API 는 그림을
+    /// `cell_path_json` 이 가리키는 셀 문단의 컨트롤로 넣는다(가로 기준 단, 세로 기준 문단,
+    /// 한컴 저장본과 같은 구조). `offset_x_hu`/`offset_y_hu` 는 그 기준의 HWPUNIT(음수 허용).
+    /// 반환 `controlIdx` 는 셀 문단 안 번호다 — 속성은 `setCellPicturePropertiesByPath` 로 바꾼다.
+    #[wasm_bindgen(js_name = insertPictureInCell)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_picture_in_cell(
+        &mut self,
+        section_idx: u32,
+        para_idx: u32,
+        char_offset: u32,
+        cell_path_json: &str,
+        image_data: &[u8],
+        width: u32,
+        height: u32,
+        natural_width_px: u32,
+        natural_height_px: u32,
+        extension: &str,
+        description: &str,
+        offset_x_hu: Option<i32>,
+        offset_y_hu: Option<i32>,
+    ) -> Result<String, JsValue> {
+        let cell_path = DocumentCore::parse_cell_path(cell_path_json).map_err(JsValue::from)?;
+        self.insert_picture_in_cell_native(
+            section_idx as usize,
+            para_idx as usize,
+            char_offset as usize,
+            &cell_path,
+            image_data,
+            width,
+            height,
+            natural_width_px,
+            natural_height_px,
+            extension,
+            description,
+            offset_x_hu,
+            offset_y_hu,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 띄운 그림을 다른 문단·셀 문단으로 옮겨 붙인다 (다른 쪽으로 끌어 놓기).
+    /// 셀 경로 JSON 이 `[]` 이면 본문 문단이다.
+    #[wasm_bindgen(js_name = relocateFloatingPicture)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn relocate_floating_picture(
+        &mut self,
+        src_section: u32,
+        src_para: u32,
+        src_cell_path_json: &str,
+        src_control: u32,
+        dst_section: u32,
+        dst_para: u32,
+        dst_char_offset: u32,
+        dst_cell_path_json: &str,
+        horz_offset: i32,
+        vert_offset: i32,
+    ) -> Result<String, JsValue> {
+        let src_path = DocumentCore::parse_cell_path(src_cell_path_json).map_err(JsValue::from)?;
+        let dst_path = DocumentCore::parse_cell_path(dst_cell_path_json).map_err(JsValue::from)?;
+        self.relocate_floating_picture_native(
+            src_section as usize,
+            src_para as usize,
+            &src_path,
+            src_control as usize,
+            dst_section as usize,
+            dst_para as usize,
+            dst_char_offset as usize,
+            &dst_path,
+            horz_offset,
+            vert_offset,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// 커서 위치에 그림을 삽입한다 (확장, options object — #1413).
     ///
     /// positional `insertPicture` 와 동일 동작의 얇은 어댑터. 이미지 바이너리는 별도
@@ -4727,6 +4866,24 @@ impl HwpDocument {
             parent_para_idx as usize,
             cell_path_json,
             inner_control_idx as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 표 셀·글상자 안의 도형 하나를 전체 소유 경로로 삭제한다.
+    #[wasm_bindgen(js_name = deleteCellShapeControlByPath)]
+    pub fn delete_cell_shape_control_by_path(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        cell_path_json: &str,
+        inner_control_idx: usize,
+    ) -> Result<String, JsValue> {
+        self.delete_cell_shape_control_by_path_native(
+            section_idx,
+            parent_para_idx,
+            cell_path_json,
+            inner_control_idx,
         )
         .map_err(|e| e.into())
     }
@@ -8628,6 +8785,11 @@ impl HwpDocument {
             attr: 1 << 3,
             ..Default::default()
         }; // a,b,c
+
+        // 합성 기본 목록은 문서의 0번 모양을 참조하지 않고 본문을 따른다.
+        for head in &mut n.heads {
+            head.char_shape_id = u32::MAX;
+        }
         self.core.document.doc_info.numberings.push(n);
         // 새 번호 정의는 DocInfo 원본 스트림에 없어 HWP 저장이 모델에서 다시 쓰게 한다.
         self.core.document.doc_info.raw_stream_dirty = true;
@@ -8692,6 +8854,9 @@ impl HwpDocument {
 
         n.start_number = json_i32(json, "startNumber").unwrap_or(1) as u16;
         n.level_start_numbers = [n.start_number as u32; crate::model::style::NUMBERING_LEVELS];
+        for head in &mut n.heads {
+            head.char_shape_id = u32::MAX;
+        }
         self.core.document.doc_info.numberings.push(n);
         // 새 번호 정의는 DocInfo 원본 스트림에 없어 HWP 저장이 모델에서 다시 쓰게 한다.
         self.core.document.doc_info.raw_stream_dirty = true;
@@ -8759,6 +8924,7 @@ impl HwpDocument {
             bullet_char: bullet_ch,
             attr: 1 << 3, // 자동 내어쓰기 (한/글 기본 머리 모양)
             text_distance: 50,
+            char_shape_id: u32::MAX,
             ..Default::default()
         };
         self.core.document.doc_info.bullets.push(b);

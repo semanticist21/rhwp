@@ -1,7 +1,7 @@
 //! 표/셀 관련 native 명령 (object_ops 분할, #1904).
 
 use super::MIN_SHAPE_SIZE;
-use crate::document_core::helpers::{get_textbox_from_shape, get_textbox_from_shape_mut};
+use crate::document_core::helpers::{get_textbox_at, get_textbox_at_mut};
 use crate::document_core::DocumentCore;
 use crate::error::HwpError;
 use crate::model::control::Control;
@@ -145,13 +145,7 @@ impl DocumentCore {
                 }
                 // [Task #1171] 글상자(Shape text_box) — cell_index=0 sentinel.
                 crate::model::control::Control::Shape(shape) => {
-                    if cell_idx != 0 {
-                        return Err(HwpError::RenderError(format!(
-                            "경로[{}]: 글상자의 cell_index는 0이어야 합니다 ({})",
-                            i, cell_idx
-                        )));
-                    }
-                    let text_box = get_textbox_from_shape_mut(shape).ok_or_else(|| {
+                    let text_box = get_textbox_at_mut(shape, cell_idx).ok_or_else(|| {
                         HwpError::RenderError(format!(
                             "경로[{}]: controls[{}]가 텍스트 글상자가 아닙니다",
                             i, ctrl_idx
@@ -408,13 +402,7 @@ impl DocumentCore {
                     })?;
                 }
                 crate::model::control::Control::Shape(shape) => {
-                    if cell_idx != 0 {
-                        return Err(HwpError::RenderError(format!(
-                            "경로[{}]: 글상자의 cell_index는 0이어야 합니다 ({})",
-                            i, cell_idx
-                        )));
-                    }
-                    let text_box = get_textbox_from_shape(shape.as_ref()).ok_or_else(|| {
+                    let text_box = get_textbox_at(shape.as_ref(), cell_idx).ok_or_else(|| {
                         HwpError::RenderError(format!(
                             "경로[{}]: controls[{}]가 텍스트 글상자가 아닙니다",
                             i, ctrl_idx
@@ -560,6 +548,7 @@ impl DocumentCore {
                     center_line: CenterLine::None,
                     fill: Fill::default(),
                     three_d: false,
+                    break_cell_separate_line: false,
                 };
                 self.document.doc_info.border_fills.push(new_bf);
                 self.document.doc_info.raw_stream = None;
@@ -707,6 +696,7 @@ impl DocumentCore {
             raw_table_record_attr: 2 | (u32::from(options.repeat_header.unwrap_or(true)) << 2),
             // [#3570] 한컴은 TABLE 레코드를 zone 개수까지만 쓴다 — 여분 2바이트 없음.
             raw_table_record_extra: Vec::new(),
+            layout_page_break_cache: Default::default(),
         };
         table.rebuild_grid();
 
@@ -986,6 +976,7 @@ impl DocumentCore {
                     center_line: CenterLine::None,
                     fill: Fill::default(),
                     three_d: false,
+                    break_cell_separate_line: false,
                 };
                 self.document.doc_info.border_fills.push(new_bf);
                 self.document.doc_info.raw_stream = None;
@@ -1092,6 +1083,7 @@ impl DocumentCore {
             raw_table_record_attr: 0x04000006,
             // [#3570] 한컴은 TABLE 레코드를 zone 개수까지만 쓴다 — 여분 2바이트 없음.
             raw_table_record_extra: Vec::new(),
+            layout_page_break_cache: Default::default(),
         };
         table.rebuild_grid();
         let added_border_fill = self.document.doc_info.border_fills.len() != border_fills_before;
@@ -1365,7 +1357,9 @@ impl DocumentCore {
                 line_spacing: 600,
                 // 한/글 표준: 자리 차지 표 문단의 줄 폭은 0이다(본문 표 만들기와 같다).
                 segment_width: if treat_as_char { inner_width } else { 0 },
-                tag: LineSeg::TAG_SINGLE_SEGMENT_LINE,
+                // 새 표의 앵커는 한컴 파일에서 읽은 저장 사다리가 아니다.
+                // 뒤 합성 문단과 같은 재조판 경로가 표의 점유를 함께 소비한다.
+                tag: LineSeg::TAG_SINGLE_SEGMENT_LINE | LineSeg::TAG_IMPLEMENTATION_PROPERTY,
                 ..Default::default()
             }],
             para_shape_id: default_para_shape_id,
@@ -1822,6 +1816,24 @@ impl DocumentCore {
         )
     }
 
+    /// 표 셀·글상자 안의 도형을 소유 경로로 삭제한다. 본문의 같은 번호를 지우지 않는다.
+    pub fn delete_cell_shape_control_by_path_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        cell_path_json: &str,
+        inner_control_idx: usize,
+    ) -> Result<String, HwpError> {
+        self.delete_cell_control_by_path_native(
+            section_idx,
+            parent_para_idx,
+            cell_path_json,
+            inner_control_idx,
+            |c| matches!(c, Control::Shape(_)),
+            "도형이",
+        )
+    }
+
     /// [#6771] 표 셀/글상자 **내부 표** 삭제 (cell_path 기반).
     ///
     /// 공공 양식은 작성 안내문을 셀 안 1×1 표(점선 상자)로 넣어 두고 본문에 "안내 박스는
@@ -1846,7 +1858,7 @@ impl DocumentCore {
         )
     }
 
-    /// 셀·글상자 안 컨트롤 하나를 지우는 공통 몸통 — 그림·표가 같은 절차를 쓴다.
+    /// 셀·글상자 안 컨트롤 하나를 지우는 공통 몸통 — 그림·도형·표가 같은 절차를 쓴다.
     ///
     /// `accepts` 가 지목한 컨트롤 종류를 검사하고, 그 컨트롤이 본문에서 차지하던 8바이트
     /// 자리를 걷어낸 뒤 문단을 다시 흘린다. `kind_label` 은 오류 문구의 조사까지 담는다
@@ -1939,9 +1951,7 @@ impl DocumentCore {
         if caption_changed {
             crate::parser::assign_auto_numbers(&mut self.document);
         }
-        let section = &mut self.document.sections[section_idx];
-        section.raw_stream = None;
-        self.recompose_section(section_idx);
+        self.finish_loaded_source_cache_after_object_edit(section_idx);
         self.paginate_if_needed();
         self.invalidate_page_tree_cache();
         let outer_table_ctrl = path.first().unwrap().0;

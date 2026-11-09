@@ -45,6 +45,7 @@ use crate::renderer::svg_layer::SvgLayerRenderer;
 use crate::renderer::typeset::TypesetEngine;
 use crate::renderer::TextStyle;
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 const MAX_EMBEDDED_FONT_BYTES: usize = 32 * 1024 * 1024;
 const MAX_EMBEDDED_FONT_BYTES_PER_PAGE: usize = 64 * 1024 * 1024;
@@ -872,6 +873,14 @@ fn section_has_unplaced_stored_rows(paragraphs: &[Paragraph]) -> bool {
     paragraphs.iter().all(|para| unplaced(para, &mut found)) && found
 }
 
+/// 같은 저장 프레임에서 이어지는 다음 문단의 첫 저장 줄 위치. 단·쪽 나눔이면 없다.
+fn next_frame_vpos(paragraphs: &[Paragraph], index: usize) -> Option<i32> {
+    let next = paragraphs.get(index.checked_add(1)?)?;
+    matches!(next.column_type, ColumnBreakType::None)
+        .then(|| next.line_segs.first().map(|line| line.vertical_pos))
+        .flatten()
+}
+
 fn discard_widthless_rows_for_render(para: &mut Paragraph) {
     if !para.line_segs.is_empty()
         && para.line_segs.iter().all(|seg| {
@@ -1481,8 +1490,21 @@ impl DocumentCore {
         page_num: u32,
         profile: RenderProfile,
     ) -> Result<PageLayerTree, HwpError> {
+        self.build_page_layer_tree_shared_with_profile(page_num, profile)
+            .map(|tree| tree.as_ref().clone())
+    }
+
+    /// 같은 페이지·출력 profile의 immutable layer tree를 공유한다.
+    ///
+    /// 캐시 무효화 이후에도 반환한 tree는 해당 시점의 snapshot으로 유효하다.
+    /// 호출자가 보유한 `Arc`의 수명은 내부 캐시의 최근 변형 4개 제한과 독립적이다.
+    pub fn build_page_layer_tree_shared_with_profile(
+        &self,
+        page_num: u32,
+        profile: RenderProfile,
+    ) -> Result<Arc<PageLayerTree>, HwpError> {
         self.require_portable_metrics()?;
-        self.build_canvas_page_layer_tree_with_profile(page_num, profile)
+        self.build_canvas_page_layer_tree_shared_with_profile(page_num, profile)
     }
 
     /// Canvas2D-only replay entry. Its caller owns the browser font generation;
@@ -1492,6 +1514,15 @@ impl DocumentCore {
         page_num: u32,
         profile: RenderProfile,
     ) -> Result<PageLayerTree, HwpError> {
+        self.build_canvas_page_layer_tree_shared_with_profile(page_num, profile)
+            .map(|tree| tree.as_ref().clone())
+    }
+
+    fn build_canvas_page_layer_tree_shared_with_profile(
+        &self,
+        page_num: u32,
+        profile: RenderProfile,
+    ) -> Result<Arc<PageLayerTree>, HwpError> {
         // Canvas 화면의 보충 폭은 인쇄 조판의 정본이 아니다. SVG·Native와
         // 마찬가지로 호출자가 전체 인쇄 쪽수 조회 전에 portable로 전환해야 한다.
         if profile == RenderProfile::Print {
@@ -1524,7 +1555,7 @@ impl DocumentCore {
             .layer_output_options_fingerprint(profile, crate::paint::LayerJsonOptions::default());
         if let Some(variants) = self.page_layer_tree_cache.borrow().get(idx) {
             if let Some((_, tree)) = variants.iter().find(|(value, _)| *value == fingerprint) {
-                return Ok(tree.clone());
+                return Ok(Arc::clone(tree));
             }
         }
         let show_editor_visuals = profile.shows_editor_visuals();
@@ -1727,6 +1758,7 @@ impl DocumentCore {
                 .with_print_crop_marks(self.document.print_crop_marks());
             Ok(builder.build_with_embedded_fonts(tree, &embedded_fonts))
         })?;
+        let layer_tree = Arc::new(layer_tree);
         {
             let mut cache = self.page_layer_tree_cache.borrow_mut();
             if cache.len() <= idx {
@@ -1737,7 +1769,7 @@ impl DocumentCore {
             if variants.len() >= 4 {
                 variants.remove(0);
             }
-            variants.push((fingerprint, layer_tree.clone()));
+            variants.push((fingerprint, Arc::clone(&layer_tree)));
         }
         Ok(layer_tree)
     }
@@ -3349,8 +3381,8 @@ impl DocumentCore {
             "{{\"pageNum\":{},\"pageNumType\":{},\"pictureNum\":{},\"tableNum\":{},\"equationNum\":{},\
             \"columnSpacing\":{},\"defaultTabSpacing\":{},\
             \"hideHeader\":{},\"hideFooter\":{},\"hideMasterPage\":{},\
-            \"hideBorder\":{},\"hideFill\":{},\"hideEmptyLine\":{},\"outlineNumberingId\":{},\
-            \"lineGrid\":{},\"charGrid\":{},\"wonggojiFormat\":{}}}",
+            \"hideBorder\":{},\"hideFill\":{},\"hideEmptyLine\":{},\
+            \"outlineNumberingId\":{},\"lineGrid\":{},\"charGrid\":{},\"wonggojiFormat\":{}}}",
             sd.page_num, sd.page_num_type,
             sd.picture_num, sd.table_num, sd.equation_num,
             sd.column_spacing, sd.default_tab_spacing,
@@ -3366,7 +3398,14 @@ impl DocumentCore {
         use super::super::helpers::{json_bool, json_u16, json_u32};
 
         // 개요 번호 모양은 문서의 번호 정의(1부터)를 가리킨다. 0은 정의 없이 개요 수준만 쓴다.
-        let outline_numbering_id = json_u16(json, "outlineNumberingId");
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct OutlineNumberingProps {
+            outline_numbering_id: Option<u16>,
+        }
+        let outline_numbering_id = serde_json::from_str::<OutlineNumberingProps>(json)
+            .map_err(|error| HwpError::RenderError(format!("구역 개요 번호 JSON 오류: {error}")))?
+            .outline_numbering_id;
         if let Some(id) = outline_numbering_id {
             if usize::from(id) > self.document.doc_info.numberings.len() {
                 return Err(HwpError::RenderError(format!("개요 번호 정의 {} 없음", id)));
@@ -3504,8 +3543,8 @@ impl DocumentCore {
             .get(section_idx)
             .and_then(|section| section.section_def.cell_grid());
         self.apply_section_def_json(section_idx, json)?;
-        // 기본 탭 간격은 해소 스타일에 들어 있다.
-        self.rebuild_resolved_styles();
+        // 구역 기본 탭은 composition/측정/배치가 현재 SectionDef에서 읽는다.
+        // 공통 문단·글꼴 스타일을 다시 해소할 필요가 없다.
         self.refit_cell_grid(section_idx, grid_before);
         let page_count = self.recompose_and_paginate();
         Ok(format!("{{\"ok\":true,\"pageCount\":{}}}", page_count))
@@ -3549,7 +3588,6 @@ impl DocumentCore {
         for idx in 0..count {
             self.apply_section_def_json(idx, json)?;
         }
-        self.rebuild_resolved_styles();
         for (idx, grid_before) in grids_before.into_iter().enumerate() {
             self.refit_cell_grid(idx, grid_before);
         }
@@ -4712,6 +4750,12 @@ impl DocumentCore {
     /// 단일 문단만 재조판한다.
     pub(crate) fn recompose_paragraph(&mut self, section_idx: usize, para_idx: usize) {
         self.invalidate_page_tree_cache();
+        let _tabs = self.styles.section_tab_scope(
+            self.document.sections[section_idx]
+                .section_def
+                .default_tab_spacing,
+            self.dpi,
+        );
         let para = &self.document.sections[section_idx].paragraphs[para_idx];
         self.composed[section_idx][para_idx] =
             compose_paragraph_with_horizontal_shaping(para, &self.styles);
@@ -4722,6 +4766,12 @@ impl DocumentCore {
     /// composed 벡터에 새 문단 항목을 삽입한다 (문단 분할/붙여넣기 후).
     pub(crate) fn insert_composed_paragraph(&mut self, section_idx: usize, para_idx: usize) {
         self.invalidate_page_tree_cache();
+        let _tabs = self.styles.section_tab_scope(
+            self.document.sections[section_idx]
+                .section_def
+                .default_tab_spacing,
+            self.dpi,
+        );
         let para = &self.document.sections[section_idx].paragraphs[para_idx];
         let composed = compose_paragraph_with_horizontal_shaping(para, &self.styles);
         self.composed[section_idx].insert(para_idx, composed);
@@ -5402,7 +5452,6 @@ impl DocumentCore {
         // [#4968 R4C-3] 이번 pass의 모든 fresh-layout 경로가 동일한 exact-source
         // generation을 읽는다. 등록 source가 없으면 None으로 K0 fast path를 고정한다.
         self.ensure_exact_font_measurement_contexts();
-        crate::renderer::equation::clear_flow_metrics_cache();
         // [#7436] 편집으로 문단이 늘거나 줄면 뒤 번호가 바뀐다. 측정·배치 전에 문서 순서로
         // 번호 문자열을 다시 정해 두 경로가 같은 값을 쓰게 한다.
         crate::renderer::layout::assign_numbering_markers(
@@ -5580,6 +5629,9 @@ impl DocumentCore {
         let mut issue2424_typeset_elapsed = std::time::Duration::ZERO;
         let mut issue2424_postprocess_elapsed = std::time::Duration::ZERO;
         for (idx, section) in self.document.sections.iter().enumerate() {
+            let _tabs = self
+                .styles
+                .section_tab_scope(section.section_def.default_tab_spacing, self.dpi);
             if !self.dirty_sections[idx] {
                 // dirty가 아닌 구역에서도 carry를 업데이트
                 if let Some(pages) = self.pagination.get(idx) {
@@ -6479,7 +6531,21 @@ impl DocumentCore {
                     }
                 }
             }
+            // 자기 자리차지 표 띠에 걸친 저장 줄은 한컴이 띠 끝으로 내리고 같은 저장
+            // 프레임의 뒤 사다리를 함께 민다. 측정·배치가 같은 사다리를 소비하도록
+            // 렌더 사본의 저장 위치를 그 결과로 바꾼다.
+            let band_crossing = (profile.hwp5_stored_pagination_layout()
+                || profile.hwpx_stored_layout())
+                && !profile.session_edited()
+                && source_paragraphs.iter().enumerate().any(|(index, paragraph)| {
+                    crate::renderer::render_normalization::stored_band_crossing_line::band_crossing_line_shift(
+                        paragraph,
+                        next_frame_vpos(source_paragraphs, index),
+                    )
+                    .is_some()
+                });
             if matches.is_empty()
+                && !band_crossing
                 && !has_cell_stack
                 && widthless.is_empty()
                 && inline_frames.is_empty()
@@ -6549,6 +6615,46 @@ impl DocumentCore {
                         storage.push(&mut frame_changes, index)?;
                     }
                 }
+            }
+            if band_crossing {
+                // 원점 이동만 하므로 문자 축과 원본 태그는 보존한다(위 이동과 같은 계약).
+                // 쪽·단 리셋이나 단 나눔에서 저장 프레임이 끝나면 미는 양도 끝난다.
+                let mut shift_hu = 0i32;
+                let mut previous_source_end = None;
+                for (index, paragraph) in np.iter_mut().enumerate() {
+                    let source = &source_paragraphs[index];
+                    if !matches!(source.column_type, ColumnBreakType::None)
+                        || source.line_segs.first().is_some_and(|line| {
+                            previous_source_end.is_some_and(|end| line.vertical_pos < end)
+                        })
+                    {
+                        shift_hu = 0;
+                    }
+                    previous_source_end = source.line_segs.last().map(|line| line.vertical_pos);
+                    // 판정은 원본 사다리로 한다. 앞 문단을 민 양은 이 문단과 다음 문단에 같게 더해진다.
+                    let crossing = crate::renderer::render_normalization::stored_band_crossing_line::band_crossing_line_shift(
+                        source,
+                        next_frame_vpos(source_paragraphs, index),
+                    );
+                    if shift_hu == 0 && crossing.is_none() {
+                        continue;
+                    }
+                    let (first_shifted, line_shift, frame_shift) =
+                        crossing.map_or((0, 0, 0), |c| (c.first_line, c.line_shift, c.frame_shift));
+                    for (line_index, line) in paragraph.line_segs.iter_mut().enumerate() {
+                        let shift = if line_index >= first_shifted {
+                            shift_hu.saturating_add(line_shift)
+                        } else {
+                            shift_hu
+                        };
+                        line.vertical_pos = line.vertical_pos.saturating_add(shift);
+                    }
+                    shift_hu = shift_hu.saturating_add(frame_shift);
+                    paragraph.source_line_seg_vertical_pos = None;
+                    storage.push(&mut frame_changes, index)?;
+                }
+                frame_changes.sort_unstable();
+                frame_changes.dedup();
             }
             for &index in &widthless {
                 discard_widthless_rows_for_render(&mut np[index]);
@@ -6784,7 +6890,7 @@ impl DocumentCore {
                 }
             }
             Control::Shape(shape) => {
-                let valid = super::super::helpers::get_textbox_from_shape(shape)
+                let valid = super::super::helpers::get_textbox_at(shape, cell_idx)
                     .is_some_and(|textbox| cell_para_idx < textbox.paragraphs.len());
                 if !valid {
                     return Err(HwpError::RenderError(format!(
@@ -6793,6 +6899,7 @@ impl DocumentCore {
                 }
                 RenderPathEntry::ShapeTextBox {
                     control_index: control_idx,
+                    textbox_index: cell_idx,
                     paragraph_index: cell_para_idx,
                 }
             }
@@ -8418,6 +8525,15 @@ impl DocumentCore {
         // (이전 구역 + 현재 구역의 이전 페이지 모두 포함하여 구역 간 번호 연속 지원)
         self.layout_engine.reset_numbering_state();
         let sec_idx = page_content.section_index;
+        let _tabs = self.styles.section_tab_scope(
+            self.document
+                .sections
+                .get(sec_idx)
+                .map_or(0, |section| section.section_def.default_tab_spacing),
+            self.dpi,
+        );
+        self.layout_engine
+            .set_section_tab_key(self.styles.section_tab_key());
         self.layout_engine.set_section_column_spacing_hu(
             self.document
                 .sections
@@ -9741,6 +9857,7 @@ mod tests {
             entry,
             RenderPathEntry::ShapeTextBox {
                 control_index: 1,
+                textbox_index: 0,
                 paragraph_index: 0
             }
         )));

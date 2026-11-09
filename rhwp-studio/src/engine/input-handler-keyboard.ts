@@ -271,6 +271,8 @@ function deleteSelectedObject(wasm: WasmBridge, ref: PictureDeleteRef): void {
     }
   } else if (ref.type === 'equation') {
     wasm.deleteEquationControl(ref.sec, ref.ppi, ref.ci);
+  } else if (ref.cellPath && ref.cellPath.length > 0) {
+    wasm.deleteCellShapeControlByPath(ref.sec, ref.ppi, ref.cellPath, ref.ci);
   } else {
     wasm.deleteShapeControl(ref.sec, ref.ppi, ref.ci);
   }
@@ -1152,7 +1154,7 @@ export function onKeyDown(this: any, e: KeyboardEvent): void {
   if (this.cursor.isInPictureObjectSelection()) {
     if (e.key === 'Escape') {
       e.preventDefault();
-      this.cursor.moveOutOfSelectedPicture();
+      this.cursor.returnToSelectedObjectOwner();
       this.pictureObjectRenderer?.clear();
       this.eventBus.emit('picture-object-selection-changed', false);
       this.updateCaret();

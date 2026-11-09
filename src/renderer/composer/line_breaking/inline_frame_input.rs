@@ -3,6 +3,24 @@
 
 use super::*;
 
+/// 글앞·글뒤 개체의 본체는 종이층 소유지만 원시 앵커는 문단 줄에 속한다.
+/// 폭·높이는 개체에서 가져오지 않고 그 줄의 글자 상자를 유지한다.
+/// 배제 밴드를 만드는 어울림·자리차지 개체는 각 흐름 소유자에 남긴다.
+pub(super) fn is_nonflow_anchor(control: &Control) -> bool {
+    use crate::model::shape::TextWrap;
+    let common = match control {
+        Control::Table(table) => &table.common,
+        Control::Picture(picture) => &picture.common,
+        Control::Shape(shape) => shape.common(),
+        _ => return false,
+    };
+    !common.treat_as_char
+        && matches!(
+            common.text_wrap,
+            TextWrap::InFrontOfText | TextWrap::BehindText
+        )
+}
+
 pub(super) fn project(
     source: &Paragraph,
     styles: &ResolvedStyleSet,
@@ -29,10 +47,20 @@ pub(crate) fn project_with_storage<S: crate::storage::Storage>(
             .zip(source.try_control_text_positions(storage)?)
             .zip(source.control_utf16_positions_with_storage(storage)?)
         {
-            let Some((width, height)) =
-                inline_control_occupied_size_hwp_with_storage(control, styles, dpi, storage)?
-            else {
-                continue;
+            let (width, height) = match control {
+                // 머리말/꼬리말 내용은 별도 프레임이 그리지만 본문에 있는
+                // 8-unit 기준 문자는 폭 0인 줄 토큰이다. 넘친 TAC 개체 뒤의
+                // 기준 문자를 지우면 한/글이 남기는 다음 줄까지 사라진다.
+                Control::Header(_) | Control::Footer(_) => (0, 0),
+                _ => {
+                    let Some(size) = inline_control_occupied_size_hwp_with_storage(
+                        control, styles, dpi, storage,
+                    )?
+                    else {
+                        continue;
+                    };
+                    size
+                }
             };
             let position = if chars.is_empty() && source.char_offsets.is_empty() {
                 0

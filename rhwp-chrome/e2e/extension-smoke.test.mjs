@@ -133,6 +133,19 @@ async function runOnce(prefix) {
     viewerUrl.searchParams.set('url', `${fixture.origin}/smoke.hwp`);
     viewerUrl.searchParams.set('filename', 'extension-smoke.hwp');
     await guard(page.goto(viewerUrl.href, { waitUntil: 'domcontentloaded' }));
+    // #1328/#1454 requires an explicit font choice even in an isolated profile.
+    // Font choice precedes document initialization and canvas creation.
+    // Exercise the real consent button; do not preseed storage or disable the dialog.
+    await guard(page.waitForFunction(() =>
+      /extension-smoke\.hwp/.test(document.getElementById('sb-message')?.textContent ?? '')
+      || [...document.querySelectorAll('.modal-overlay button')].some(button =>
+        /^(대체 글꼴로 보기|View with substitute fonts)$/.test(button.textContent.trim()))));
+    diagnostics.fontChoice = await guard(page.evaluate(() => {
+      const button = [...document.querySelectorAll('.modal-overlay button')].find(button =>
+        /^(대체 글꼴로 보기|View with substitute fonts)$/.test(button.textContent.trim()));
+      button?.click();
+      return button ? 'substitute-font-button' : 'not-required';
+    }));
     await guard(page.waitForSelector('#scroll-container canvas', { visible: true }));
     await guard(page.waitForFunction(() => {
       const message = document.getElementById('sb-message')?.textContent?.trim() ?? '';

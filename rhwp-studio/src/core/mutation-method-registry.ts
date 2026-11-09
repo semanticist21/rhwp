@@ -40,9 +40,11 @@ export const MUTATING_METHODS: readonly string[] = [
   'pasteTableCellsTransposed', 'transposeTableCellsInPlace', 'pasteTableCellsTransposedAsTable',
   'evaluateTableFormula',
   // 그림/도형/수식 개체
-  'insertPicture', 'assignPictureImage', 'setPictureProperties',
+  'insertPicture', 'insertPictureInCell', 'relocateFloatingPicture',
+  'assignPictureImage', 'setPictureProperties',
   'setHeaderFooterPictureProperties', 'setCellPicturePropertiesByPath',
   'setCellShapePropertiesByPath', 'deletePictureControl', 'deleteCellPictureControlByPath',
+  'deleteCellShapeControlByPath',
   'createShapeControl', 'setShapeProperties', 'deleteShapeControl', 'changeShapeZOrder',
   'applyShapeZOrderPairs', // [#5769 후속] z 절대 대입 — SetZOrderCommand 의 undo/redo 경로
   'groupShapes', 'ungroupShape', 'moveLineEndpoint', 'updateConnectorsInSection',

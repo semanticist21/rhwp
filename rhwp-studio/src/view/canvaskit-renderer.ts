@@ -88,6 +88,7 @@ import { imageCropSelectionIsEmpty } from './image-crop-scale.ts';
 import { magnificationFiltering } from './image-sampling.ts';
 import { drawEquationTextWithFonts } from './canvaskit/equation-text-replay.ts';
 import { drawDeclaredEquationFontGlyph } from './canvaskit/equation-font-glyph.ts';
+import { drawPositionedEquationGlyphs } from './canvaskit/positioned-equation-glyphs.ts';
 import { drawEquationGlyphOutline } from './canvaskit/equation-glyph-outline.ts';
 import {
   boundedCanvasKitSourceImageKey,
@@ -137,7 +138,7 @@ import {
   type StaticSvgPathLayer,
   type StaticSvgTextLayer,
 } from './static-svg-path-layers';
-import { getLocalFontRecords, loadLocalFontBytesFor, localFontFaceKey, resolveLocalFont, resolveRendererLocalFont,
+import { getLocalFontRecords, loadLocalFontBytesFor, localFontFaceKey, resolveLocalFont, resolveRendererLocalFont, resolveRendererLocalFontCandidates,
   hasHostFontProvider, loadRendererLocalFont, getHostFontState, type LocalFontRecord } from '@/core/local-fonts';
 import { hostFontStyle } from '@/core/host-font-requests';
 import { canvasKitFontFaceData } from './canvaskit/sfnt-face';
@@ -2412,9 +2413,7 @@ export class CanvasKitLayerRenderer {
           for (const [x, y] of textShadowOffsets(style)) draw(shadowPaint, x, y);
         }
         if ((style.outlineType ?? 0) > 0) {
-          const stroke = this.makeStrokePaint(style.color ?? '#000000', Math.max(size / 25, 0.5));
-          effects.push(stroke); stroke.setStrokeJoin(this.canvasKit.StrokeJoin.Round);
-          draw(effectPaint('#ffffff')); draw(stroke);
+          this.withCharOutlineStroke(canvas, style, draw);
         } else draw(paint);
       }
       this.currentReplayFeatureCounts.glyphRuns += 1;
@@ -3711,14 +3710,7 @@ export class CanvasKitLayerRenderer {
             }
             drawPass(stroke);
           } else if (outlineType > 0) {
-            const outlineFillPaint = this.makeFillPaint('#ffffff');
-            effectPaints.push(outlineFillPaint);
-            const outlineStrokePaint = this.makeStrokePaint(
-              style.color ?? '#000000',
-              Math.max(fontSize / 25, 0.5),
-            );
-            effectPaints.push(outlineStrokePaint);
-            drawPass(outlineFillPaint, 0, 0, outlineStrokePaint);
+            this.withCharOutlineStroke(canvas, style, drawPass);
           } else {
             drawPass(paint);
           }
@@ -4233,7 +4225,7 @@ export class CanvasKitLayerRenderer {
     const draw = (originX: number, originY: number) => {
       const baselineY = originY + decoration.baseline;
       if (decoration.kind === 'underline') {
-        if (decoration.underline === 'top' && decoration.topUnderline) {
+        if ((decoration.underline === 'top' || decoration.underline === 'bottom') && decoration.topUnderline) {
           if (textWidth <= 0) return;
           const geometry = decoration.topUnderline;
           const phase = geometry.phase ?? 0;
@@ -4499,6 +4491,21 @@ export class CanvasKitLayerRenderer {
     }
     return { ...family.select(style?.bold === true, style?.italic === true),
       paragraphTypefaces: faces.map(face => face.typeface) };
+  }
+
+  /** 준비와 paint가 같은 family/style 분할 프로그램을 소비한다. */
+  private positionedEquationTypefaces(fontFamily: string): Typeface[] {
+    const selected = new Set<Typeface>();
+    for (const family of parseCssFontFamilyList(fontFamily)) {
+      for (const record of resolveRendererLocalFontCandidates(family, { weight: 400, slant: 'normal' })) {
+        const prepared = this.localTypefaces.get(localFontFaceKey(record));
+        if (prepared?.typeface) selected.add(prepared.typeface);
+      }
+      const prepared = this.findPreparedTypeface(family);
+      if (prepared?.typeface) selected.add(prepared.typeface);
+      for (const typeface of prepared?.paragraphTypefaces ?? []) if (typeface) selected.add(typeface);
+    }
+    return [...selected];
   }
 
   private findPreparedTypeface(fontFamily: string | undefined, style?: LayerTextStyle): CanvasKitLocalTypeface | null {
@@ -4925,33 +4932,13 @@ export class CanvasKitLayerRenderer {
     );
 
     switch (layout.kind.type) {
-      case 'hancomGlyphs': {
-        const run = layout.kind;
-        const typeface = this.findPreparedTypeface(run.fontFamily ?? 'HyhwpEQ')?.typeface;
-        const glyphs = Array.from(run.glyphs);
-        const shears = run.shears ?? glyphs.map(() => 0);
-        if (!typeface || glyphs.length !== run.positions.length
-          || glyphs.length !== shears.length || !shears.every(Number.isFinite)
-          || glyphs.length > CanvasKitLayerRenderer.MAX_EQUATION_TEXT_LENGTH
-          || !run.positions.every(Number.isFinite) || !Number.isFinite(run.baselineShift)) return false;
-        const font = new this.canvasKit.Font(typeface, fontSize);
-        font.setHinting(this.canvasKit.FontHinting.None);
-        font.setSubpixel(true);
-        const paint = this.makeFillPaint(color);
-        try {
-          const ids = font.getGlyphIDs(run.glyphs, glyphs.length);
-          if (!ids || ids.some(id => id === 0)) return false;
-          glyphs.forEach((glyph, index) => {
-            canvas.save();
-            try {
-              canvas.translate(x + run.positions[index], y + layout.baseline + run.baselineShift);
-              canvas.concat([1, -shears[index], 0, 0, 1, 0, 0, 0, 1]);
-              canvas.drawText(glyph, 0, 0, paint, font);
-            } finally { canvas.restore(); }
-          });
-          return true;
-        } finally { font.delete(); paint.delete(); }
-      }
+      case 'hancomGlyphs':
+        return drawPositionedEquationGlyphs({
+          canvasKit: this.canvasKit,
+          typefaces: this.positionedEquationTypefaces(layout.kind.fontFamily ?? 'HyhwpEQ'),
+          maxTextLength: CanvasKitLayerRenderer.MAX_EQUATION_TEXT_LENGTH,
+          makeFillPaint: fillColor => this.makeFillPaint(fillColor),
+        }, canvas, layout.kind, x, y + layout.baseline, fontSize, color);
       case 'row':
         return layout.kind.children.every((box) => child(box));
       case 'text':
@@ -6154,6 +6141,28 @@ export class CanvasKitLayerRenderer {
       imageRef,
       reason,
     });
+  }
+
+  private withCharOutlineStroke(
+    canvas: SkCanvas,
+    style: NonNullable<LayerTextRunOp['style']>,
+    draw: (paint: SkPaint) => void,
+  ): void {
+    const stroke = style.outlineStroke;
+    if (!stroke || !Number.isFinite(stroke.width) || stroke.width <= 0) {
+      // 이전 producer는 기존 fallback 경로로 보내며 미지원 재생을 성공으로 세지 않는다.
+      this.unsupportedOps.add('textOutline:missingResolvedStroke');
+      return;
+    }
+    const paint = this.makeStrokePaint(style.color ?? '#000000', this.deviceStrokeWidth(canvas, stroke.width));
+    paint.setStrokeCap(this.canvasKit.StrokeCap.Round);
+    paint.setStrokeJoin(this.canvasKit.StrokeJoin.Round);
+    try {
+      this.drawStrokeWithDash(undefined, paint, () => draw(paint),
+        stroke.intervals.length > 0 ? stroke.intervals : undefined);
+    } finally {
+      paint.delete();
+    }
   }
 
   private makeFillPaint(color: string, opacity = 1): SkPaint {

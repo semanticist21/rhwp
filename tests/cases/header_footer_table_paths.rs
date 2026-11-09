@@ -1,3 +1,26 @@
+//! 관계형 회귀: 머리말·꼬리말 셀 경로의 편집·원본 속성·내용 보존. 원본 HWPUNIT 폭 계약은 절대 배치 핀이 아니다.
+//! 주석 갱신: 2026-11-06T08:25:01+09:00 (Asia/Seoul).
+//! 직전 파일 변경: 5172f2d55c73b2ed33d4d3657d81e769bc9004c2, 작성 2026-11-06T08:13:58+09:00, 커밋 2026-11-06T08:13:58+09:00.
+//! 측정일: 2026-11-06 KST. 제품 source 86709ac16711820e61baa3b87e2c4ddaac23573e.
+//! Print 프로필·96 DPI·PDFium·색상 경계 보정 전 2px raw. 독립 PDF와 전체 쪽수가 같다.
+//! 대응 실문서·API 저장본의 전쪽 결과이며 입력 개입·합성 분기의 전수 시각 측정으로 주장하지 않는다.
+//! header-table.hwp (api-8571-header-table-hwp): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! header-table.hwpx (api-8571-header-table-hwpx): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! non-inline-header-table.hwp (api-8571-non-inline-header-table-hwp): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! non-inline-header-table.hwpx (api-8571-non-inline-header-table-hwpx): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! header-tac-explicit-break.hwpx (header-tac-explicit-break): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! header-tac-mixed-text.hwpx (header-tac-mixed-text): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! header-tac-pair-fit.hwpx (header-tac-pair-fit): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! header-tac-pair-wrap.hwpx (header-tac-pair-wrap): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! header-stale.hwpx (api-8571-height-contract-header-stale): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! header-near.hwpx (api-8571-height-contract-header-near): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! header-grown.hwpx (api-8571-height-contract-header-grown): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! footer-stale.hwpx (api-8571-height-contract-footer-stale): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! footer-near-complete.hwpx (api-8571-height-contract-footer-near-complete): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! footer-grown.hwpx (api-8571-height-contract-footer-grown): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! 원본·PDF SHA, 명령·원본별 전쪽 TSV·정밀 raw·대표 PNG:
+//! mydocs/pr/assets/semanticist21_20261105/validation-r6/README.md 및 measurements.md.
+//! 원본 형식 계약:
 //! 관계형 및 고정형 회귀: 셀 경로의 머리말·꼬리말 뿌리로 머리말·꼬리말 문단에 표를 만들고,
 //! 그 셀을 고치고, 머리말 문단에 붙이고, 표를 지운다.
 //! 주석 갱신: 2026-11-03T13:40:00+09:00 (Asia/Seoul). 절대 px 위치를 고정하지 않는다.
@@ -53,7 +76,7 @@ fn cell(hf: usize, para: usize, cell: usize, cell_para: usize) -> Path {
 /// 머리말 첫 문단에 1×2 표를 만들고 칸에 `hp`·`hq`를 넣는다.
 fn doc_with_header_table() -> (HwpDocument, usize, usize) {
     let (mut doc, host, hf) = doc_with_header();
-    doc.create_table_in_cell_by_path_native(0, host, &[(hf, 0, 0)], 0, 1, 2, None, None, false)
+    doc.create_table_in_cell_by_path_native(0, host, &[(hf, 0, 0)], 0, 1, 2, None, None, true)
         .unwrap();
     doc.insert_text_in_cell_by_path(0, host, &cell(hf, 0, 0, 0), 0, "hp")
         .unwrap();
@@ -75,7 +98,7 @@ fn create_table_in_header_paragraph_matches_hancom() {
     assert_eq!(text_width, 42_520, "한/글 새 문서와 같은 머리말 글 영역 폭");
 
     let json = doc
-        .create_table_in_cell_by_path_native(0, host, &[(hf, 0, 0)], 0, 1, 2, None, None, false)
+        .create_table_in_cell_by_path_native(0, host, &[(hf, 0, 0)], 0, 1, 2, None, None, true)
         .unwrap();
     let v: serde_json::Value = serde_json::from_str(&json).unwrap();
     assert_eq!(

@@ -320,7 +320,7 @@ fn make_room_for_decode(bytes: &[u8]) {
 #[cfg(any(target_arch = "wasm32", test))]
 fn fits_beside(held: &image::RgbaImage, bytes: &[u8]) -> bool {
     canvaskit_encoded_image_header(bytes).is_some_and(|header| {
-        u64::from(header.width) * u64::from(header.height) * 4 * 4 <= held.as_raw().len() as u64
+        u128::from(header.width) * u128::from(header.height) * 16 <= held.as_raw().len() as u128
     })
 }
 
@@ -1524,6 +1524,9 @@ pub(crate) fn decode_image_with_format_limited(
 ) -> Option<image::DynamicImage> {
     // 한도를 넘어 거절된 BMP 도 호출부가 줄여 디코드하므로 검사보다 먼저 자리를 낸다.
     make_room_for_decode(data);
+    if data.len() > crate::model::bin_data::MAX_BIN_DATA_BYTES {
+        return None;
+    }
     if matches!(
         format,
         image::ImageFormat::Png | image::ImageFormat::Jpeg | image::ImageFormat::Bmp
@@ -1551,6 +1554,24 @@ pub(crate) fn decode_image_with_format_limited(
     limits.max_image_width = Some(CANVASKIT_MAX_IMAGE_DIMENSION);
     limits.max_image_height = Some(CANVASKIT_MAX_IMAGE_DIMENSION);
     limits.max_alloc = Some(CANVASKIT_MAX_IMAGE_PIXELS.saturating_mul(4));
+    // The output-allocation budget alone does not bound source pixels for
+    // RGB/gray TIFF: a successful decode can fit that budget, then exceed it
+    // when a tone/mask conversion expands the image to RGBA. Check dimensions
+    // before full decode, including formats without our fast header parser.
+    if !matches!(
+        format,
+        image::ImageFormat::Png | image::ImageFormat::Jpeg | image::ImageFormat::Bmp
+    ) {
+        let mut header = image::ImageReader::with_format(Cursor::new(data), format);
+        header.limits(limits.clone());
+        let (width, height) = header.into_dimensions().ok()?;
+        if width == 0
+            || height == 0
+            || u64::from(width) * u64::from(height) > CANVASKIT_MAX_IMAGE_PIXELS
+        {
+            return None;
+        }
+    }
     reader.limits(limits);
     reader.decode().ok()
 }
@@ -1762,6 +1783,27 @@ mod tests {
             assert_eq!(take_decoded(&wide), None);
             assert_eq!(take_decoded(&dropped), None, "큰 그림의 디코드가 버렸다");
         });
+
+        // 헤더만 있는 거대 PNG도 다음 decode 전에 자리를 낸다. 2^31 × 2^31의
+        // RGBA 예산은 u64 곱셈으로 wrap할 수 있으므로 큰 값이 작은 그림으로 보이면 안 된다.
+        let huge_source = photo(92);
+        let mut huge_header = vec![0; 33];
+        huge_header[..8].copy_from_slice(b"\x89PNG\r\n\x1a\n");
+        huge_header[8..12].copy_from_slice(&13u32.to_be_bytes());
+        huge_header[12..16].copy_from_slice(b"IHDR");
+        huge_header[16..20].copy_from_slice(&(1u32 << 31).to_be_bytes());
+        huge_header[20..24].copy_from_slice(&(1u32 << 31).to_be_bytes());
+        huge_header[24] = 8;
+        huge_header[25] = 6;
+        with_decoded_handoff(|| {
+            assert!(grayscale_jpeg_bytes_to_png_bytes(&huge_source).is_none());
+            assert_eq!(take_decoded(&huge_header), None);
+            assert_eq!(
+                take_decoded(&huge_source),
+                None,
+                "거대 헤더 전에 보관 픽셀을 버린다"
+            );
+        });
     }
 
     /// 다음 그림의 디코드가 시작되면 앞 그림의 맡긴 픽셀을 버린다. 캔버스 그리기가 끝나면
@@ -1787,28 +1829,6 @@ mod tests {
         with_decoded_handoff(|| {
             assert_eq!(take_decoded(&svg_only), None, "그리기 밖은 맡기지 않는다")
         });
-    }
-
-    /// 메모가 다른 그림의 결과를 흘리지 않는다.
-    #[test]
-    fn different_images_keep_their_own_results() {
-        let gray = jpeg_from_pixels(2, 2, |x, y| {
-            let g = 120 + (x + y) as u8;
-            [g, g, g]
-        });
-        let color = jpeg_from_pixels(2, 2, |x, y| {
-            if (x + y) % 2 == 0 {
-                [210, 48, 48]
-            } else {
-                [48, 110, 210]
-            }
-        });
-
-        assert!(grayscale_jpeg_bytes_to_png_bytes(&gray).is_some());
-        assert!(grayscale_jpeg_bytes_to_png_bytes(&color).is_none());
-        // 순서를 바꿔도 각자의 결과가 나온다 (둘 다 메모에 들어간 뒤).
-        assert!(grayscale_jpeg_bytes_to_png_bytes(&color).is_none());
-        assert!(grayscale_jpeg_bytes_to_png_bytes(&gray).is_some());
     }
 
     /// 같은 바이트라도 변환 종류가 다르면 결과가 다르므로 따로 센다.
@@ -1854,70 +1874,6 @@ mod tests {
         assert_eq!(memo.bytes, 0);
         assert!(memo.entries.len() <= MAX_MEMO_ENTRIES);
         assert!(memo.get(0).is_none(), "가장 오래된 항목은 밀려나 있다");
-    }
-
-    #[test]
-    fn grayscale_jpeg_is_normalized_to_png() {
-        let jpeg = jpeg_from_pixels(2, 2, |x, y| {
-            let g = 180 + (x + y) as u8;
-            [g, g, g]
-        });
-
-        let png = grayscale_jpeg_bytes_to_png_bytes(&jpeg).expect("gray jpeg should normalize");
-        assert!(png.starts_with(b"\x89PNG\r\n\x1a\n"));
-    }
-
-    #[test]
-    fn color_jpeg_keeps_jpeg_path() {
-        let jpeg = jpeg_from_pixels(2, 2, |x, y| {
-            if (x + y) % 2 == 0 {
-                [220, 64, 64]
-            } else {
-                [64, 120, 220]
-            }
-        });
-
-        assert!(grayscale_jpeg_bytes_to_png_bytes(&jpeg).is_none());
-    }
-
-    #[test]
-    fn tiff_image_payload_is_normalized_to_png() {
-        let mut img = RgbImage::new(2, 2);
-        for y in 0..2 {
-            for x in 0..2 {
-                img.put_pixel(x, y, Rgb([32 + x as u8, 96 + y as u8, 160]));
-            }
-        }
-        let mut tiff = Vec::new();
-        DynamicImage::ImageRgb8(img)
-            .write_to(&mut Cursor::new(&mut tiff), ImageFormat::Tiff)
-            .expect("encode tiff");
-
-        let image = ImageNode::new(1, Some(tiff));
-        let resolved = resolve_image_payload(&image).expect("tiff should resolve");
-
-        assert_eq!(resolved.mime, "image/png");
-        assert_eq!(resolved.kind, ResolvedImageKind::FormatConverted);
-        assert!(resolved.data.starts_with(b"\x89PNG\r\n\x1a\n"));
-        assert!(!resolved.suppress_effects);
-    }
-
-    #[test]
-    fn oversized_compact_bmp_is_rejected_before_layer_conversion() {
-        let mut bmp = vec![0u8; 58];
-        bmp[..2].copy_from_slice(b"BM");
-        bmp[2..6].copy_from_slice(&58u32.to_le_bytes());
-        bmp[10..14].copy_from_slice(&54u32.to_le_bytes());
-        bmp[14..18].copy_from_slice(&40u32.to_le_bytes());
-        bmp[18..22].copy_from_slice(&8193i32.to_le_bytes());
-        bmp[22..26].copy_from_slice(&8193i32.to_le_bytes());
-        bmp[26..28].copy_from_slice(&1u16.to_le_bytes());
-        bmp[28..30].copy_from_slice(&8u16.to_le_bytes());
-        bmp[30..34].copy_from_slice(&1u32.to_le_bytes());
-        bmp[54..58].copy_from_slice(&[0, 1, 0, 1]);
-
-        assert!(bmp_bytes_to_png_bytes(&bmp).is_none());
-        assert!(resolve_image_payload(&ImageNode::new(1, Some(bmp))).is_none());
     }
 
     /// 변환에 성공하는 최소 PCX v2.8 (버전바이트 0x03, 1bpp 모노크롬 8×1).

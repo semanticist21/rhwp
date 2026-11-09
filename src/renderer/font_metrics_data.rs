@@ -194,7 +194,8 @@ pub(crate) fn verified_program_glyph_fallback_families(face: &str) -> &'static [
         }
         // Gulim U+2024의 측정도 아래 verified_missing_glyph_supplier가
         // HDOTUM에 맡긴다. 같은 공급자를 실제 paint 후보에도 전달한다.
-        Some("Gulim") => &["Haansoft Dotum"],
+        // [#8619] Dotum 도 같은 gulim.ttc 의 U+2024 결측이며 독립 Print 는 HDOTUM 으로 그린다.
+        Some("Gulim" | "Dotum") => &["Haansoft Dotum"],
         _ => &[],
     }
 }
@@ -214,8 +215,20 @@ pub(crate) fn verified_missing_glyph_supplier(
         // 근린생활시설 표의 독립 Print는 HBATANG의 0.173em 글리프로 출력하며,
         // HBATANG.TTF의 hmtx 178/1024도 같은 자연 전진을 확인한다.
         ("DotumChe", 1024, false, false, '\u{2024}') => Some("Haansoft Batang"),
+        // 같은 gulim.TTC의 GulimChe도 이 글리프가 없다. 위임전결규정의
+        // 독립2020 Print44·86쪽은 HBATANG178/1024em과 같은 윤곽으로 공급한다.
+        // 폭 표에 없는 문자를 고정폭1em으로 추정하지 않는다. 다른 기호는 유지한다.
+        ("GulimChe", 1024, false, false, '\u{2024}') => Some("Haansoft Batang"),
+        // [#8419] batang.ttc(SHA 51d9a8d4…c9d8)의 Batang cmap에도 U+2024가 없다.
+        // 10645 운영지침의 독립 한컴2022 Print는 바탕 사이의 `․`만 Haansoft Batang
+        // CID 글꼴로 출력한다. U+2027과 다른 weight/style은 확인하지 않아 바꾸지 않는다.
+        ("Batang", 1024, false, false, '\u{2024}') => Some("Haansoft Batang"),
         // 법원 서식 Print의 Haansoft Dotum CID 3과 HDOTUM hmtx의 대응.
         ("Gulim", 1024, false, false, '\u{2024}' | '\u{2027}') => Some("Haansoft Dotum"),
+        // [#8619] gulim.ttc(SHA 05a38ff2…ee12)의 Dotum cmap에도 U+2024가 없다.
+        // 평가결과서(docs#648)의 독립 한컴2022 Print는 돋움 사이의 `․`만 Haansoft
+        // Dotum CID 글꼴의 0.173em으로 출력한다. U+2027과 다른 weight/style은 바꾸지 않는다.
+        ("Dotum", 1024, false, false, '\u{2024}') => Some("Haansoft Dotum"),
         // 기호 슬롯을 HY신명조 TTF로 지정한 독립2020 Print의 두 점은
         // HBATANG이다. HFT 한양신명조의 전진은 해당 overlay가 보존한다.
         ("HYSinMyeongJo-Medium", 1024, false, false, '\u{2024}' | '\u{2027}') => {

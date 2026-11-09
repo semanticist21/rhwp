@@ -104,7 +104,7 @@ Sixel과 Kitty 모두 **렌더링 호스트에 글꼴이 필요**하다. SSH이�
 ## PDF 가져오기 (기본 포함)
 
 `rhwp capabilities`의 `pdfImportSupport`에서 현재 바이너리의 `enabled`·`jbig2`·`jpeg2000`·
-`icc`·`boundedXrefRecovery`를 확인합니다. #8174 v2-S02 로컬 source는 JBIG2·JPEG 2000·
+`icc`·`boundedXrefRecovery`를 확인합니다. 0.9.0 준비 소스는 JBIG2·JPEG 2000·
 ICC를 기본 포함하고 예산 있는 xref 복구를 제공합니다. 실제 배포 산출물은 지원 조회로 확인합니다.
 설치·개발용 제외 빌드·실패 진단은 [PDF 이미지 코덱 가이드](pdf_image_codecs.md)를 따릅니다.
 성공한 가져오기의 `diagnostics.pdfImportSupport`도 같은 정보를 제공합니다.
@@ -181,7 +181,7 @@ rhwp import-pdf input.pdf result.hwpx --resource-limits limits.json --json
     구역별 단 수·여백·이어 붙인 문단 수를 함께 남긴다.
   - WASM `HwpDocument.importPdf(bytes, { layout: "editable" })`와 MCP `hwp_import_pdf`의 `layout`도
     같은 값을 받는다.
-- 암호 옵션은 이 명령에서 거부한다. 출력 암호가 필요하면 생성된 파일에 `convert` 또는
+- 출력 암호 설정 옵션은 이 명령에서 거부한다. 입력 열기 암호는 위와 같이 지원한다. 출력 암호가 필요하면 생성된 파일에 `convert` 또는
   `export-hwpx`의 암호 옵션을 사용한다.
 - `--no-default-features --features wasm-api`로 PDF만 제외한 CLI 빌드에도 도움말·capabilities는 보이며 `available=false`, 실행은
   `PDF_IMPORT_DISABLED`(exit 1)다. `capabilities.formats.read`에는 feature-on일 때만 PDF를 넣는다.
@@ -306,6 +306,9 @@ HWP/HWPX → SVG.
 ### `export-png <파일> [옵션]` *(native-skia feature 필요)*
 HWP/HWPX → PNG(Skia raster, AI 파이프라인/VLM 연동). 상세: [export_png_command.md](export_png_command.md)
 - `-o`, `-p`, `--font-path` (공통/폰트). `-p`는 0부터 시작하며 여러 번 지정할 수 있다.
+  - Native는 `--font-path`·`RHWP_FONT_PATH`의 `ttf`·`otf`·`ttc`를 경로 순서대로 최대 256개,
+    파일 하나 32 MiB까지 싣는다. 파일은 복사하지 않고 매핑해 공유하므로 전체 바이트 합계 제한은
+    없다(#8597). 한도를 넘어 싣지 않은 파일은 stderr에 `WARN: Native 글꼴 ...`과 이유를 남긴다.
 - `--json` — 전체 쪽수와 실제 PNG 경로·bytes·출력 backend/profile의 JSON manifest만 stdout에 출력.
 - `--metadata-only` — PNG를 만들지 않고 전체 쪽수 JSON만 출력.
 - `--render-tree-output <폴더>` — 같은 문서·글꼴 환경의 선택 쪽 render tree를 함께 저장.
@@ -1478,6 +1481,9 @@ MCP `hwp_insert_table`은 `atField`, `widths`, `alignments`, `repeatHeader`로 �
 
 ### `edit apply-char-format <파일> --props <JSON> [--section N] [--para N] [--offset N] [--count N] [-o <출력>] [--dry-run] [--verify] [--json]`
 본문 문단 글자 범위에 글자 서식을 적용한다. 코어 `apply_char_format_native`. `--props` 필수(예: `{"bold":true}`). `--count` 생략 시 문단 끝까지.
+글꼴은 ID(`fontId`·`fontIds`) 대신 이름 `fontName`(예: `{"fontName":"HY헤드라인M"}`)으로도 줄 수 있다. 문서 글꼴 목록에
+없으면 언어 슬롯마다 새로 등록하고 일곱 슬롯 모두 그 이름을 가리킨다. `fontId`·`fontIds` 와 함께 주면 거부한다.
+`apply-char-format-in-cell`·머리말/꼬리말 글자 서식도 같은 키를 받는다.
 
 ### `edit apply-para-format <파일> --props <JSON> [--section N] [--para N] [-o <출력>] [--dry-run] [--verify] [--json]`
 본문 문단에 문단 서식을 적용한다. 코어 `apply_para_format_native`. `--props` 필수(예: `{"alignment":"center"}`).
@@ -1884,6 +1890,7 @@ rhwp export-svg output/poc/ingest/sample_minimal.hwpx \
 | `title` |  | 있으면 본문 최상단 가운데 정렬 제목 문단 |
 | `font` |  | 기본 글꼴 이름 (기본값 `함초롬바탕`) |
 | `page_size` |  | `{"width_mm":210,"height_mm":297}` (기본 A4) |
+| `outline_numbering` |  | 개요 번호 모양 — 수준 1 부터 1~7개의 `{"text","num_format"}`. 생략하면 번호 정의 없이 종전과 같다 |
 | `blocks` |  | `heading`(level 1~7) · `paragraph` · `table` 블록의 나열 |
 
 `table` 블록:
@@ -1910,9 +1917,31 @@ rhwp scaffold spec.json -o out.hwpx --json
 ]}
 ```
 
+`outline_numbering` 항목:
+
+| 필드 | 필수 | 설명 |
+| --- | --- | --- |
+| `text` | ✓ | 한/글 문단 번호 형식 문자열. `^1`~`^7` 이 그 수준의 번호가 된다(예: `"^1."`, `"(^5)"`). 자기 수준보다 깊은 `^N` 은 거부 |
+| `num_format` |  | `digit`(기본) · `circled_digit` · `roman_capital` · `roman_small` · `latin_capital` · `latin_small` · `hangul_syllable` |
+
+지정하면 문단 번호 정의 하나를 만들고 구역 개요 번호(`secPr@outlineShapeIDRef`)가 그것을 가리킨다.
+지정하지 않은 뒤쪽 수준은 한/글 새 문서의 개요 기본값(`1.` `가.` `1)` `가)` `(1)` `(가)` `①`)으로 채운다.
+
+```json
+{"version":"1","title":"추진 계획","outline_numbering":[
+  {"text":"^1.","num_format":"roman_capital"},
+  {"text":"^2."},
+  {"text":"^3.","num_format":"hangul_syllable"}],
+ "blocks":[{"type":"heading","level":1,"text":"추진 배경"},
+           {"type":"heading","level":2,"text":"현황"},
+           {"type":"heading","level":3,"text":"세부 내용"}]}
+```
+
+위 명세의 제목은 `I. 추진 배경` · `1. 현황` · `가. 세부 내용` 으로 번호가 붙는다(로마 대문자 글자 모양은 조판기에 따라 `I` 또는 `Ⅰ`).
+
 - `--json` 봉투: `schemaVersion`·`source`·`output`·`format`·`bytes`·`blockCount`·
   `paragraphCount`·`tableCount`.
-- 지원 요소는 왕복 검증을 통과한 것만 노출한다 — 제목, 개요 수준 제목, 본문 문단, 단순 표.
+- 지원 요소는 왕복 검증을 통과한 것만 노출한다 — 제목, 개요 수준 제목, 개요 번호 모양, 본문 문단, 단순 표.
 
 ### `hwpx-roundtrip <파일.hwpx | --batch 폴더> [-o <출력폴더>] [--lineseg-report]`
 HWPX → IR → HWPX roundtrip 검증(**구조 보존 게이트**, #1315 baseline). 재조립 `.rt.hwpx` 와

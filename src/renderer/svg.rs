@@ -332,6 +332,17 @@ impl SvgRenderer {
         self.begin_page(width, height);
     }
 
+    /// 공통 그룹의 좌표계만 직렬화한다. 자식의 논리 bbox는 다시 배치하지 않는다.
+    pub(super) fn begin_layer_transform(&mut self, [a, b, c, d, e, f]: [f64; 6]) {
+        self.output.push_str(&format!(
+            "<g transform=\"matrix({a} {b} {c} {d} {e} {f})\">\n"
+        ));
+    }
+
+    pub(super) fn end_layer_transform(&mut self) {
+        self.output.push_str("</g>\n");
+    }
+
     /// Closes the SVG document consumed by direct `PageLayerTree` replay.
     pub(super) fn end_layer_page(&mut self) {
         self.end_page();
@@ -1084,22 +1095,24 @@ impl SvgRenderer {
                         if let Some(start) = segment.rfind('>') {
                             let text = &segment[start + 1..];
                             let header = &segment[..start];
-                            let family =
-                                if header
-                                    .rsplit("<text ")
-                                    .next()
-                                    .is_some_and(|attrs| attrs.contains("font-family=\"HyhwpEQ\""))
-                                {
-                                    super::equation::hancom_glyphs::FONT_FAMILY
-                                } else if header.rsplit("<text ").next().is_some_and(|attrs| {
-                                    attrs.contains("font-family=\"HancomEQN\"")
-                                }) {
-                                    "HancomEQN"
-                                } else if super::equation::text_has_cjk(text) {
-                                    "Haansoft Batang"
-                                } else {
-                                    "Latin Modern Math"
-                                };
+                            // 표시 조각이 선언한 실제 face를 공급한다. 구형 원본
+                            // glyph를 영문이라는 이유로 다른 수학 face로 추정하지 않는다.
+                            let family = header
+                                .rsplit("<text")
+                                .next()
+                                .and_then(|attrs| {
+                                    super::svg_fragment::find_svg_attr_value(attrs, "font-family")
+                                })
+                                .and_then(|families| families.split(',').next())
+                                .map(|face| face.trim().trim_matches(['\'', '"']))
+                                .filter(|face| !face.is_empty())
+                                .unwrap_or_else(|| {
+                                    if super::equation::text_has_cjk(text) {
+                                        "Haansoft Batang"
+                                    } else {
+                                        "Latin Modern Math"
+                                    }
+                                });
                             self.font_codepoints
                                 .entry(family.to_string())
                                 .or_default()
@@ -3477,7 +3490,7 @@ impl Renderer for SvgRenderer {
         // [#7151] 합성 볼드는 굵기를 획으로 명시한다 — 색이 fill 과 같아야 하므로
         // 속성 자체는 fill 을 아는 `attrs_for_cluster` 에서 붙인다.
         // 외곽선 글자는 채우지 않고 윤곽만 긋는다. 합성 볼드 획과 겹치지 않게 그 획은 끈다.
-        let outline_attrs = super::stroke_pattern::char_outline_stroke(style.outline_type).map(
+        let outline_attrs = style.text_paint.is_none().then(|| super::stroke_pattern::char_outline_stroke(style.outline_type)).flatten().map(
             |(width, intervals)| {
                 let mut attrs = format!(
                     " stroke=\"{color}\" stroke-width=\"{width:.2}\" stroke-linecap=\"round\" stroke-linejoin=\"round\""
@@ -3575,6 +3588,7 @@ impl Renderer for SvgRenderer {
             )
         };
 
+        let symbol_sources = super::implicit_symbol::sources(&metric_source, text);
         // 클러스터 단위 렌더링: 옛한글 자모 조합 시퀀스를 하나의 <text>로 묶음
         let metric_text = super::composer::display_projection_metric_text(
             &metric_source,
@@ -3673,6 +3687,15 @@ impl Renderer for SvgRenderer {
                             y - ink.above_baseline + dy, ink.radius_x, ink.radius_y, shadow_color));
                             continue;
                         }
+                    }
+                    if let Some((cx, cy, rx, ry)) =
+                        super::implicit_symbol::ink(symbol_sources.as_deref(), *char_idx, style)
+                    {
+                        self.output.push_str(&format!(
+                            "<ellipse cx=\"{:.4}\" cy=\"{:.4}\" rx=\"{rx:.4}\" ry=\"{ry:.4}\" fill=\"{shadow_color}\"/>\n",
+                            x + cluster_x(*char_idx, cluster_str) + cx + dx, y + cy + dy,
+                        ));
+                        continue;
                     }
                     if is_middle_dot(cluster_str) {
                         let adv = cluster_advance(*char_idx, cluster_str);
@@ -3778,6 +3801,41 @@ impl Renderer for SvgRenderer {
                         self.draw_enclosed_pua(glyph, char_x, y, style, font_size);
                         continue;
                     }
+                }
+                if let Some((cx, cy, rx, ry)) =
+                    super::implicit_symbol::ink(symbol_sources.as_deref(), *char_idx, style)
+                {
+                    let char_x = x + cluster_x(*char_idx, cluster_str);
+                    if style.emboss || style.engrave {
+                        let offset = (font_size / 20.0).max(1.0);
+                        let (upper, lower) = if style.emboss {
+                            ("#ffffff", "#808080")
+                        } else {
+                            ("#808080", "#ffffff")
+                        };
+                        for (delta, fill) in [(-offset, upper), (offset, lower)] {
+                            self.output.push_str(&format!(
+                                "<ellipse cx=\"{:.4}\" cy=\"{:.4}\" rx=\"{rx:.4}\" ry=\"{ry:.4}\" fill=\"{fill}\"/>\n",
+                                char_x + cx + delta, y + cy + delta,
+                            ));
+                        }
+                    }
+                    let fill = if outline_attrs.is_some() {
+                        "none"
+                    } else {
+                        &color
+                    };
+                    let attrs = attrs_for_cluster(cluster_str, fill);
+                    let outline = outline_attrs.as_deref().unwrap_or("");
+                    self.output.push_str(&format!(
+                        "<ellipse cx=\"{:.4}\" cy=\"{:.4}\" rx=\"{rx:.4}\" ry=\"{ry:.4}\" {attrs}{outline}/>\n",
+                        char_x + cx, y + cy,
+                    ));
+                    self.output.push_str(&format!(
+                        "<text x=\"{char_x:.4}\" y=\"{y:.4}\" fill-opacity=\"0\">{}</text>\n",
+                        escape_xml(cluster_str),
+                    ));
+                    continue;
                 }
                 if let Some((cx, cy, rx, ry)) =
                     super::legacy_hft_bullet_geometry(cluster_str, style)
@@ -3925,8 +3983,7 @@ impl Renderer for SvgRenderer {
                 // 글자색으로 바꿔 그렸다(hwpx_sample2 12쪽: 정답지 검정 25개 vs
                 // rhwp 글자색 #082108 24개). 저장값을 그대로 쓴다.
                 let ul_color = color_to_svg(style.underline_color);
-                let top =
-                    crate::renderer::text_decoration::top_underline_geometry(style, font_size);
+                let top = crate::renderer::text_decoration::underline_geometry(style, font_size);
                 let multi =
                     crate::renderer::text_decoration::underline_multi_lines(style.underline_shape)
                         .filter(|_| style.underline != UnderlineType::Top);
@@ -4593,6 +4650,9 @@ fn font_local_aliases(font_family: &str) -> Vec<&'static str> {
         "한컴 윤고딕 240" | "Haan YGodic 240" => {
             vec!["한컴 윤고딕 240", "Haan YGodic 240"]
         }
+        "한컴 윤고딕 250" | "Haan YGodic 250" => {
+            vec!["한컴 윤고딕 250", "Haan YGodic 250"]
+        }
         "맑은 고딕" => vec!["맑은 고딕", "Malgun Gothic"],
         "바탕" => vec!["바탕", "Batang"],
         "돋움" => vec!["돋움", "Dotum"],
@@ -4761,6 +4821,7 @@ fn known_font_filenames(font_name: &str) -> Vec<&'static str> {
         // 연결한다. 실제 face를 공급해도 영문 파일명 때문에 대체 글꼴을 고르면 안 된다.
         "한컴 윤고딕 230" | "Haan YGodic 230" => vec!["HANYGO230.ttf"],
         "한컴 윤고딕 240" | "Haan YGodic 240" => vec!["HANYGO240.ttf"],
+        "한컴 윤고딕 250" | "Haan YGodic 250" => vec!["HANYGO250.ttf"],
         // local()와 Full embed는 같은 원본 프로그램 우선순위를 사용한다.
         "한양중고딕" => vec!["H2GTRM.TTF", "HANDotum.ttf", "HDOTUM.TTF"],
         // [#6171] 한컴 Windows 설치본의 실제 파일명은 형제 항목(H2GTRM/H2MJSM)과 같은

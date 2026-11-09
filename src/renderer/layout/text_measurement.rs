@@ -977,7 +977,7 @@ fn try_char_style_to_text_style<S: crate::renderer::style_resolver::storage::Sto
                     cs.font_family_for_lang(lang_index),
                     cs.bold,
                     cs.italic,
-                    cs.source_ttf_for_lang(lang_index),
+                    styles.native_otf_metrics_source_ttf(char_style_id, lang_index),
                 )
             })
             .flatten(),
@@ -988,12 +988,22 @@ fn try_char_style_to_text_style<S: crate::renderer::style_resolver::storage::Sto
             fixed_glyph_advances: false,
             source_font_is_hft: cs.source_hft_for_lang(lang_index),
             source_font_is_ttf: cs.source_ttf_for_lang(lang_index),
+            selected_primary_font_program: cs
+                .font_families_primary_program
+                .get(lang_index)
+                .copied()
+                .flatten(),
             source_verified_hft_bold_tracking: cs.verified_hft_bold_tracking_for_lang(lang_index),
             source_hwp3_hft_bold: (styles.hwp3_variant || styles.source_hwp3_native)
                 && cs.source_hft_for_lang(lang_index),
             hft_print_frame: cs.hft_print_frame_for_lang(lang_index),
             preserve_glyph_ink: cs
                 .font_families_preserve_glyph_ink
+                .get(lang_index)
+                .copied()
+                .unwrap_or(false),
+            natural_program_metrics: cs
+                .font_families_natural_program_metrics
                 .get(lang_index)
                 .copied()
                 .unwrap_or(false),
@@ -1094,7 +1104,7 @@ fn try_char_style_to_text_style<S: crate::renderer::style_resolver::storage::Sto
                                 cs.font_family_for_lang(1),
                                 cs.bold,
                                 cs.italic,
-                                cs.source_ttf_for_lang(1),
+                                styles.native_otf_metrics_source_ttf(char_style_id, 1),
                             )
                         })
                         .flatten(),
@@ -1109,6 +1119,11 @@ fn try_char_style_to_text_style<S: crate::renderer::style_resolver::storage::Sto
                         font_metric_trusted: cs.font_metric_trusted_for_lang(1),
                         source_font_is_hft: cs.source_hft_for_lang(1),
                         source_font_is_ttf: cs.source_ttf_for_lang(1),
+                        selected_primary_font_program: cs
+                            .font_families_primary_program
+                            .get(1)
+                            .copied()
+                            .flatten(),
                         source_verified_hft_bold_tracking: cs
                             .verified_hft_bold_tracking_for_lang(1),
                         letter_spacing: cs.letter_spacing_for_lang(1),
@@ -1241,7 +1256,13 @@ static KOPUB_DOTUM_LATIN_0: [u16; 95] = [
 /// KoPub Dotum Light의 전진은 독립 Print와 TTF에서 확인했다(#7765).
 /// 글꼴의 모든 문자를 인증하지 않으며 검증된 범위만 별도로 확인한다.
 pub(crate) fn verified_source_projection_face(face: &str, bold: bool, italic: bool) -> bool {
-    !bold && !italic && matches!(face.trim(), "KoPub돋움체 Light" | "KoPub Dotum Light")
+    let face = face.trim();
+    !bold
+        && !italic
+        && (matches!(face, "KoPub돋움체 Light" | "KoPubDotum Light" | "KoPub Dotum Light")
+            // 같은 Light 프로그램의 설치 조회 이름도 동일한 검증 범위를 쓴다.
+            // Medium/Bold·World와 계열 이름만 같은 프로그램은 인증하지 않는다.
+            || super::super::installed_font_program_aliases("KoPub돋움체 Light").contains(&face))
 }
 
 pub(crate) fn verified_source_projection_text(
@@ -2209,6 +2230,33 @@ fn char_width_decision_with_hft_tracking<'a>(
             embedded.em_fraction = Some(em);
             embedded.width_source = "sourceContextualMetric";
         }
+        // 표시용 family로 내려가기 전에 원본 결측 기호의 검증된 공급 계약을
+        // 해소한다. 표시 치환이 원본의 독립 Print 전진을 전각 추정으로 바꾸지 않는다.
+        // HFT 원본은 대체 메트릭이 가리키는 TTF 프로그램을 쓰지 않으므로 그 cmap 결측이
+        // 공급 근거가 아니다(#8619: `#세고딕` 기호 슬롯은 독립 Print 가 HFT 전각 점을 그린다).
+        if embedded.width_px.is_none()
+            && latin.is_none()
+            && !style.hft_hangul_face
+            && !style.hft_fullwidth_dot
+            && !style.source_font_is_hft
+        {
+            if let Some(metric) = embedded.metric.and_then(|primary| {
+                font_metrics_data::verified_missing_glyph_supplier(primary.metric, c)
+                    .and_then(|face| font_metrics_data::find_metric_decision(face, false, false))
+            }) {
+                if let Some(width) = metric.metric.get_width(c) {
+                    embedded = EmbeddedWidthDecision {
+                        width_px: Some(quantize_hwp_px(
+                            font_size * f64::from(width) / f64::from(metric.metric.em_size),
+                        )),
+                        em_fraction: Some(f64::from(width) / f64::from(metric.metric.em_size)),
+                        width_source: "metricGlyphFallback",
+                        metric: Some(metric),
+                        character_match: "hit",
+                    };
+                }
+            }
+        }
         // 부분 표의 미수집은 글리프 부재가 아니다. 확인한 원본 폭이 없으면
         // 기존 표시 face의 폭을 보존한다. ASCII 밖의 전각 괄호도 반각으로 줄이지 않는다.
         if (c.is_ascii_graphic() || source_hft_metric)
@@ -2353,32 +2401,6 @@ fn char_width_decision_with_hft_tracking<'a>(
                 }
             }
         }
-        // 원 프로그램에서 결측이며 독립 Print로 확인한 공급 face의 전진을 쓴다.
-        // 돋움체→한컴바탕과 굴림→한컴돋움은 같은 결측 기호라도 공급자가 다르다.
-        // 실제 굴림 글리프 hit와 HFT 치환은 보존하고, 확인된 결측만 대체한다.
-        if embedded.width_px.is_none()
-            && latin.is_none()
-            && !style.hft_hangul_face
-            && !style.hft_fullwidth_dot
-            && metric_family == display_family
-        {
-            if let Some(metric) = embedded.metric.and_then(|primary| {
-                font_metrics_data::verified_missing_glyph_supplier(primary.metric, c)
-                    .and_then(|face| font_metrics_data::find_metric_decision(face, false, false))
-            }) {
-                if let Some(width) = metric.metric.get_width(c) {
-                    embedded = EmbeddedWidthDecision {
-                        width_px: Some(quantize_hwp_px(
-                            font_size * f64::from(width) / f64::from(metric.metric.em_size),
-                        )),
-                        em_fraction: Some(f64::from(width) / f64::from(metric.metric.em_size)),
-                        width_source: "metricGlyphFallback",
-                        metric: Some(metric),
-                        character_match: "hit",
-                    };
-                }
-            }
-        }
         // 행의 공통 측정 규칙으로 폭을 고르며 원문의 useFontSpace 속성을 바꾸지 않는다.
         // 일반 공백과 NBSP는 메트릭 조회 출처를 보존하고 명시한 글꼴 공백이 우선한다.
         if style.layout_half_space
@@ -2510,6 +2532,25 @@ fn char_width_decision_with_hft_tracking<'a>(
     // authentic DB glyph advances or explicit HWP rules. Collection and layout
     // share this eligibility decision; synthetic PUA boxes remain shapes.
     let dash_leader = is_dash_leader_run(chars, i);
+    let source_ttf = latin.map_or(style.source_font_is_ttf, |slot| slot.source_font_is_ttf);
+    // 원본 폭 표가 없는 HFT 전각 글자의 굵기 전진은 표시용 OTF의
+    // intrinsic 전진과 별개다. 공급 뒤 width_source가 nativeOtf로 바뀌어도
+    // 공급 전의 꾸밈 소유를 보존한다. 자연 전진을 직접 선택한 세션과
+    // 원본 family 주소가 없는 합성 스타일은 이 소유를 추정하지 않는다.
+    let inferred_hft_fullwidth = !style.natural_program_metrics
+        && !source_ttf
+        && latin.map_or(style.source_font_is_hft, |slot| slot.source_font_is_hft)
+        && latin.map_or(!style.font_family.trim().is_empty(), |slot| {
+            !slot.font_family.trim().is_empty()
+        })
+        && width_source == "heuristicFullwidth";
+    // 명시적으로 선택한 자연 전진은 화면과 인쇄에서 동일하게 소비한다.
+    // 선언된 TTF 유형과 폭 표의 hit만으로 기존 leader를 자연 전진으로 승격하지
+    // 않는다. 특히 유형 미상 원본을 HWPX로 저장해 TTF로 표기해도 폭은 같아야 한다.
+    let clamp_dash_leader = dash_leader
+        && !(style.natural_program_metrics
+            && character_match == "hit"
+            && width_source == "embeddedMetric");
     // Native paint와 동일한 OTF의 글리프를 우선 사용한다. 다만 독립 Print와
     // 원본 HFT로 확인한 전진은 표시용 프로그램의 hmtx와 별도의 조판 계약이다.
     let verified_source_advance = matches!(
@@ -2524,7 +2565,6 @@ fn char_width_decision_with_hft_tracking<'a>(
     let otf_metrics = latin.map_or(style.native_otf_metrics.as_ref(), |slot| {
         slot.native_otf_metrics.as_ref()
     });
-    let source_ttf = latin.map_or(style.source_font_is_ttf, |slot| slot.source_font_is_ttf);
     let otf_advance = if !source_ttf
             && cluster_len[i] <= 1
             && !dash_leader
@@ -2542,7 +2582,8 @@ fn char_width_decision_with_hft_tracking<'a>(
     };
     // 등록된 원본 TrueType의 자연 전진은 폭 표가 없는 추정 글리프에만 쓴다.
     // 확인된 원본 폭, HFT 계약, 공백·대시 규칙은 바꾸지 않는다.
-    let ttf_advance = if source_ttf
+    let ttf_advance = if (source_ttf
+        || otf_metrics.is_some_and(|font| font.uses_original_truetype()))
         && cluster_len[i] <= 1
         && !dash_leader
         && !c.is_whitespace()
@@ -2580,11 +2621,17 @@ fn char_width_decision_with_hft_tracking<'a>(
     let (base_width_raw, width_source) = supplement
         .map(|entry| (entry.natural_advance_px(), entry.width_source()))
         .unwrap_or((base_width_raw, width_source));
-    let base_width_px = if dash_leader {
+    let base_width_px = if clamp_dash_leader {
         base_width_raw.min(font_size * 0.3)
     } else {
         base_width_raw
     };
+    // 별도 암묵적 기호 프로그램의 전진은 본문 HFT 꾸밈이 소유하지 않는다.
+    // 독립 Print의 반각 이중선처럼 같은 run 안에서도 공급 프로그램이 다르면
+    // 본문용 굵기 자간을 빌리지 않는다. 준비된 원 PUA 프로그램·본문 글리프와
+    // 리터럴 Unicode 문자는 기존의 자기 프로그램 계약을 유지한다.
+    let include_hft_bold_tracking =
+        include_hft_bold_tracking && width_source != "implicitSymbolProgram";
     // 원본 HFT의 굵기는 intrinsic 글리프 폭을 바꾸지 않고 약0.05em의
     // 추가 전진을 준다. 독립 Print 22행의 굵기·크기·자간 대조를 따른다.
     // 표시용 TTF의 bold 메트릭이나 배분 자간과 구분하고 원본 자간을 함께 소비한다.
@@ -2600,7 +2647,22 @@ fn char_width_decision_with_hft_tracking<'a>(
                         });
                     let verified_program = verified_source
                         && otf_metrics.is_some_and(|font| font.has_verified_hft_bold_tracking(c));
-                    if style.source_hwp3_hft_bold || source_hft_metric || verified_program {
+                    // 선언 유형만 HFT인 실제 주 프로그램에는 fallback의 추정 꾸밈을
+                    // 더하지 않는다. 원본 쿼리·프로그램 해시와 이 글리프의 실제 공급자가
+                    // 모두 같아야 하며, 결측 글리프의 뒤 프로그램은 이 자격을 빌리지 않는다.
+                    if style.source_hwp3_hft_bold
+                        || source_hft_metric
+                        || verified_program
+                        || (inferred_hft_fullwidth
+                            && !latin
+                                .map_or(style.selected_primary_font_program, |slot| {
+                                    slot.selected_primary_font_program
+                                })
+                                .is_some_and(|digest| {
+                                    otf_metrics
+                                        .is_some_and(|font| font.glyph_program_matches(c, &digest))
+                                }))
+                    {
                         font_size * 0.05
                     } else {
                         let original_face = latin
@@ -2639,7 +2701,7 @@ fn char_width_decision_with_hft_tracking<'a>(
         advanced + glyph_letter_spacing(letter_spacing, advanced, font_size)
     } else {
         let em_fraction = match em_exact {
-            Some(em) if !dash_leader => em,
+            Some(em) if !clamp_dash_leader => em,
             _ if font_size > 0.0 => base_width_px / font_size,
             _ => 0.0,
         };
@@ -2722,7 +2784,7 @@ fn char_width_decision_with_hft_tracking<'a>(
         applied_letter_spacing_px,
         metric,
         character_match,
-        dash_leader,
+        dash_leader: clamp_dash_leader,
         negative_spacing_clamped,
     }
 }
@@ -2943,7 +3005,8 @@ pub(crate) fn trace_char_width_decisions<'a>(
 
 /// CJK 문자 여부 판별 (EmbeddedTextMeasurer의 히우리스틱 폭 계산에서 사용)
 pub(crate) fn is_cjk_char(c: char) -> bool {
-    ('\u{1100}'..='\u{11FF}').contains(&c)   // 한글 자모
+    c == '\u{3007}' // 한자 숫자 영: Unicode East_Asian_Width=W, 한컴 Print 전진 1em
+    || ('\u{1100}'..='\u{11FF}').contains(&c) // 한글 자모
     || ('\u{3130}'..='\u{318F}').contains(&c) // 한글 호환 자모 (ㆍ U+318D 포함)
     || ('\u{AC00}'..='\u{D7AF}').contains(&c) // 한글 음절
     || ('\u{A960}'..='\u{A97F}').contains(&c) // 한글 자모 확장-A (옛한글 초성)

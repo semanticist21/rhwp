@@ -1465,15 +1465,9 @@ fn parse_note_pr_children(
                                     }
                                 }
                                 b"type" => {
-                                    if let Ok(s) =
-                                        std::str::from_utf8(attr.value.as_ref().as_bytes())
-                                    {
-                                        // 한/글은 같은 구분선을 HWP 선 코드와 HWPX 이름으로
-                                        // 테두리와 같은 표에 따라 쓴다(점선 3 = `DASH`).
+                                    if std::str::from_utf8(attr.value.as_ref().as_bytes()).is_ok() {
                                         shape.separator_line_type =
-                                            super::header::border_line_type_code(
-                                                super::header::border_line_type_from_name(s),
-                                            );
+                                            super::header::parse_border_line_type_code(&attr);
                                     }
                                 }
                                 b"width" => {
@@ -6103,15 +6097,9 @@ fn parse_ctrl_autonum(
                             // 과거 parse_u8 은 문자열을 0으로만 떨궈 DIGIT 외 형식을 잃었다.
                             // pageNum formatType 과 동일한 문자열→코드 매핑을 사용한다.
                             b"type" => {
-                                an.format = match attr_str(&attr).as_str() {
-                                    // [#6872] 사용자 기호. 종전에는 `_ => 0` 에 걸려
-                                    // DIGIT 으로 떨어졌고, 왕복 저장본의 각주 번호
-                                    // 모양이 사용자 기호에서 숫자로 바뀌었다.
-                                    // 코드는 `NumberFormat::UserChar` 의 서수(18)를
-                                    // 그대로 쓴다 — 표 134 의 0~16 과 겹치지 않는다.
-                                    "USER_CHAR" => 18,
-                                    other => number_type_code(other),
-                                };
+                                // 모델의 순서값이 아니라 HWP의 실제 번호 코드로 통일한다.
+                                // USER_CHAR=0x81이며 본문 참조·접두·왕복 저장이 함께 쓴다.
+                                an.format = number_type_code(&attr_str(&attr));
                             }
                             b"userChar" => {
                                 let s = attr_str(&attr);
@@ -7042,6 +7030,7 @@ fn parse_equation(
         eqedit,
         font_name,
         version_info,
+        implicit_legacy_font: false,
         raw_ctrl_data: Vec::new(),
         raw_ctrl_seal: None,
         unpositioned_host_frame_seal: None,

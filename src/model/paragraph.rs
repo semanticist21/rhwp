@@ -4,6 +4,9 @@ use super::control::{Control, FieldType, CTRL_CHAR_CODE_UNITS};
 use serde::{Deserialize, Serialize};
 
 mod control_source;
+mod marker_head;
+
+pub use marker_head::MarkerHead;
 
 /// 편집 입력의 줄바꿈을 LF로 통일한다. CR은 HWP5에서 문단 종료 코드다.
 pub fn normalize_text_newlines(text: &str) -> std::borrow::Cow<'_, str> {
@@ -226,26 +229,9 @@ pub enum NumberingMarker {
     Unresolved,
     /// 번호·개요 문단이 아니거나, 그려질 번호가 없다.
     Absent,
-    /// 그려질 번호 문자열과 그 수준의 문단 머리 속성.
+    /// 번호 문자열과 그 수준의 문단 머리 속성. 빈 문자열도 본문 거리를 점유한다.
     Text(String, MarkerHead),
 }
-
-/// 목록 마커(글머리표·번호)의 문단 머리 속성 — HWP5 표 41·44 의 속성·너비 보정·본문과의 거리.
-///
-/// 줄 나눔과 배치가 마커가 차지하는 영역을 같은 값으로 정하도록 번호 문자열과 함께 둔다.
-#[derive(Debug, Default, Clone, Copy, PartialEq)]
-pub struct MarkerHead {
-    /// 속성: bit0-1 정렬(0 왼쪽 · 1 가운데 · 2 오른쪽), bit2 인스턴스 폭,
-    /// bit3 자동 내어쓰기, bit4 본문과의 거리 단위(0 글자 크기 비율 · 1 HWPUNIT).
-    pub attr: u32,
-    /// 너비 보정값 (HWPUNIT)
-    pub width_adjust: i16,
-    /// 본문과의 거리 (bit4 에 따라 % 또는 HWPUNIT)
-    pub text_distance: i16,
-    /// 마커 글자 모양 (`u32::MAX` 는 참조 없음 — 문단 첫 글자 모양을 따른다)
-    pub char_shape_id: u32,
-}
-crate::storage::clone_copy!(MarkerHead);
 
 /// 줄 구성에서 선택한 공백 측정 규칙. 저장 형식의 bit나 글꼴 대체 규칙이 아니다.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
@@ -272,7 +258,7 @@ impl NumberingMarker {
     /// 그려질 번호 문자열 — 계산 전이거나 번호가 없으면 `None`.
     pub fn text(&self) -> Option<&str> {
         match self {
-            NumberingMarker::Text(text, _) => Some(text),
+            NumberingMarker::Text(text, _) if !text.is_empty() => Some(text),
             _ => None,
         }
     }
@@ -1216,6 +1202,72 @@ impl Paragraph {
             *co += 8;
         }
         self.shift_position_metadata_for_stream_insertion(insert_pos, 8);
+    }
+
+    /// 구역·단 정의를 보강할 때 기존 선행 컨트롤의 슬롯과 소유 인덱스를 보존한다.
+    pub(crate) fn insert_leading_definition<S: crate::storage::Storage>(
+        &mut self,
+        index: usize,
+        control: Control,
+        storage: &S,
+    ) -> Result<(), S::Error> {
+        debug_assert!(matches!(
+            control,
+            Control::SectionDef(_) | Control::ColumnDef(_)
+        ));
+        let leading_defs = self
+            .controls
+            .iter()
+            .take_while(|control| matches!(control, Control::SectionDef(_) | Control::ColumnDef(_)))
+            .count();
+        debug_assert!(index <= leading_defs);
+        // Aligning the parallel records and inserting a definition can grow both
+        // vectors. Reserve through the request storage before changing coordinates.
+        storage.reserve(&mut self.controls, 1)?;
+        let additional_records = self
+            .controls
+            .len()
+            .saturating_sub(self.ctrl_data_records.len())
+            + 1;
+        storage.reserve(&mut self.ctrl_data_records, additional_records)?;
+        let existing_room = self.char_offsets.first().copied().unwrap_or(0);
+        let auxiliary_slots = self
+            .field_ranges
+            .iter()
+            .filter(|range| range.end_char_idx == 0)
+            .count()
+            + self
+                .orphan_field_ends
+                .iter()
+                .filter(|end| end.char_idx == 0)
+                .count()
+            + self
+                .title_marks
+                .iter()
+                .filter(|mark| mark.char_idx == 0)
+                .count();
+        // 선행 갭은 머리말·누름틀 등이 이미 쓰고 있으므로 빈 예약 공간만 재사용한다.
+        let occupied_controls = (existing_room as usize / 8)
+            .saturating_sub(auxiliary_slots)
+            .min(self.controls.len());
+        let required_slots = occupied_controls.max(leading_defs) + auxiliary_slots + 1;
+        let shift = (required_slots as u32 * 8).saturating_sub(existing_room);
+        for offset in &mut self.char_offsets {
+            *offset += shift;
+        }
+        self.shift_position_metadata_for_stream_insertion(
+            (index as u32 * 8).min(existing_room),
+            shift,
+        );
+        for range in &mut self.field_ranges {
+            if range.control_idx >= index {
+                range.control_idx += 1;
+            }
+        }
+        self.align_ctrl_data_records();
+        self.ctrl_data_records.insert(index, None);
+        self.controls.insert(index, control);
+        Ok(())
     }
 
     /// 선행 확장 제어문자가 들어갈 만큼 첫 텍스트 앞 스트림 좌표를 확보한다.
@@ -2419,9 +2471,9 @@ impl Paragraph {
             source_line_seg_vertical_pos: None,
             // 새 줄은 본문 축을 이어 붙인 저장 줄이 아니다.
             layout_rebased_body_axis: false,
-            layout_cell_grid: None,
             // 갈라진 문단은 앞 문단의 새 저장 줄에 이어 계산된다.
             stored_flow_shifted: false,
+            layout_cell_grid: None,
             // 새로 계산된 줄은 `char_offsets` 와 같은 HWP5 축에서 나오므로 보정이 없다 (#5961).
             hwpx_axis_shift: 0,
             range_tags: new_range_tags,
@@ -2954,7 +3006,7 @@ impl Paragraph {
                         .then(|| order(Slot::Control(r.control_idx)))
                         .flatten();
                     let end = order(Slot::End(ri));
-                    // 계산식 결과와 날짜·파일 경로 코드 경계에 친 글자도 한/글처럼 필드 밖에 둔다.
+                    // 계산식·날짜·파일 경로 코드 경계의 입력은 필드 밖에 둔다.
                     let outside = matches!(
                         self.controls.get(r.control_idx),
                         Some(Control::Field(field))

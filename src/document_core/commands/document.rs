@@ -1,5 +1,6 @@
 //! 문서 생성/로딩/저장/설정 관련 native 메서드
 
+mod cell_line_frame;
 mod grown_table_heights;
 mod hft_outline_fonts;
 mod initial_fields;
@@ -167,6 +168,18 @@ impl DocumentCore {
 
     pub fn from_bytes(data: &[u8]) -> Result<DocumentCore, HwpError> {
         Self::from_bytes_inner(data, None)
+    }
+
+    /// 문서를 열어 현재 Core를 원자적으로 교체한다.
+    ///
+    /// 성공 결과에는 문서·암호·metadata를 싣지 않는다. 암호의 보관 수명은
+    /// 각 파서의 계약을 따른다(HWP5 지연 이미지 복호화 등).
+    /// 성공 뒤 기존 조회 API로 완성된 문서를 사용한다. 인증·파싱에 실패하면 현재
+    /// 문서와 편집 상태를 그대로 유지한다. 성공하면 새 문서의 초기 상태로 교체한다.
+    pub fn load_bytes(&mut self, data: &[u8], password: Option<&[u8]>) -> Result<(), HwpError> {
+        let replacement = Self::from_bytes_inner(data, password)?;
+        *self = replacement;
+        Ok(())
     }
 
     /// 비밀번호로 보호된 HWP/HWPX 파일을 비밀번호와 함께 로드한다.
@@ -920,21 +933,20 @@ impl DocumentCore {
                 for ctrl in &mut para.controls {
                     if let Control::Table(ref mut table) = ctrl {
                         let is_rowbreak_table = matches!(
-                            table.page_break,
+                            table.layout_page_break(),
                             crate::model::table::TablePageBreak::RowBreak
                         );
                         let owner_widths = table.paragraph_frame_owner_widths();
                         let table_padding = table.padding;
                         for (cell, owner_width) in table.cells.iter_mut().zip(owner_widths) {
-                            let cell_w_px = crate::renderer::hwpunit_to_px(owner_width, dpi);
-                            let frame_padding = cell.paragraph_frame_padding(&table_padding);
-                            let pad_left =
-                                crate::renderer::hwpunit_to_px(frame_padding.left as i32, dpi);
-                            let pad_right =
-                                crate::renderer::hwpunit_to_px(frame_padding.right as i32, dpi);
-                            let cell_inner_width = crate::renderer::composer::cell_inner_text_width(
-                                cell_w_px, pad_left, pad_right, dpi,
-                            );
+                            let Some(cell_inner_width) = cell_line_frame::inline_extent_px(
+                                cell,
+                                owner_width,
+                                &table_padding,
+                                dpi,
+                            ) else {
+                                continue;
+                            };
                             // [#2195/#2146] 사선(대각선) 셀의 빈 문단은 코너 라벨의
                             // 짝 — 한글은 흐름 배치하지 않으므로 합성 제외 (21761835
                             // r0 라벨 셀 선언 52.4px 유지, 합성 시 +2.4 팽창).
@@ -1425,6 +1437,8 @@ impl DocumentCore {
                         .iter()
                         .map(|line| line.vertical_pos)
                         .collect();
+                    let owns_float_bands = !was_reflowed
+                        && crate::renderer::float_placement::owns_embedded_float_bands(para, dpi);
                     let preserve_source_frames = !was_reflowed
                         && (text_only_controls || source_tac_frames[pi].is_some())
                         && !para.stored_text_partition_dirty
@@ -1452,6 +1466,10 @@ impl DocumentCore {
                     let mut previous_source_end = None;
                     for (line_index, seg) in para.line_segs.iter_mut().enumerate() {
                         let source_vpos = source_positions[line_index];
+                        if owns_float_bands {
+                            inner_vpos = running_vpos
+                                .saturating_add(source_vpos.saturating_sub(source_positions[0]));
+                        }
                         if preserve_source_frames
                             && line_index > 0
                             && (para.controls.is_empty()
@@ -1481,6 +1499,10 @@ impl DocumentCore {
                     }
                     // 비-TAC TopAndBottom Picture/Table: 개체 높이를 vpos에 반영
                     for ctrl in para.controls.iter() {
+                        if owns_float_bands {
+                            // 저장 줄 사이의 띠와 그 뒤 줄을 이미 한 번 예약했다.
+                            continue;
+                        }
                         let (obj_height, obj_v_offset, obj_margin_top, obj_margin_bottom) =
                             match ctrl {
                                 Control::Picture(p)
@@ -1701,6 +1723,127 @@ impl DocumentCore {
             })
     }
 
+    /// 셀·글상자·머리말/꼬리말의 문단 기준 어울림 개체는 본문과 같은 밴드 프레임을 쓴다.
+    /// 실제 배제 영역을 함께 가진 프레임에서 원본 저장 줄을 수용하고, 맞지 않는 줄만
+    /// 다시 발행한다. 쪽/용지 기준 개체와 저장 좌표를 보존하는 형식은 기존 소유자에 둔다.
+    fn project_container_float_bands(
+        paragraphs: &mut [Paragraph],
+        width: f64,
+        project_here: bool,
+        admit_stored: bool,
+        styles: &ResolvedStyleSet,
+        dpi: f64,
+    ) {
+        use crate::model::shape::{HorzRelTo, VertRelTo};
+        if project_here && width > 0.0 {
+            let mut host = 0;
+            while host < paragraphs.len() {
+                let p = &paragraphs[host];
+                let local_shapes =
+                    p.controls
+                        .iter()
+                        .filter(|c| control_owns_body_band(c))
+                        .all(|c| {
+                            matches!(c, Control::Shape(shape)
+                        if shape.common().horz_rel_to == HorzRelTo::Para
+                            && shape.common().vert_rel_to == VertRelTo::Para)
+                        });
+                if !local_shapes
+                    || !p.controls.iter().any(control_owns_body_band)
+                    || (!admit_stored && !crate::renderer::para_has_no_stored_line_segs(p))
+                {
+                    host += 1;
+                    continue;
+                }
+                if let Some(band) = crate::renderer::composer::layout_container_picture_band(
+                    paragraphs,
+                    host,
+                    width,
+                    styles,
+                    dpi,
+                    admit_stored,
+                ) {
+                    let range = band.paragraph_range.clone();
+                    if range.start == host {
+                        for ((paragraph, (rows, spaces)), preserved) in paragraphs[range.clone()]
+                            .iter_mut()
+                            .zip(band.line_segs.into_iter().zip(band.space_metrics))
+                            .zip(band.preserved_stored)
+                        {
+                            if !preserved {
+                                paragraph.publish_float_band_rows(rows, spaces);
+                            }
+                        }
+                        host = range.end.max(host + 1);
+                        continue;
+                    }
+                }
+                host += 1;
+            }
+        }
+        for paragraph in paragraphs {
+            for control in &mut paragraph.controls {
+                match control {
+                    Control::Table(table) => {
+                        for cell in &mut table.cells {
+                            let padding = cell.effective_padding(&table.padding);
+                            let content_width = (f64::from(cell.width)
+                                - f64::from(padding.left)
+                                - f64::from(padding.right))
+                            .max(0.0)
+                                * dpi
+                                / 7200.0;
+                            Self::project_container_float_bands(
+                                &mut cell.paragraphs,
+                                content_width,
+                                true,
+                                admit_stored,
+                                styles,
+                                dpi,
+                            );
+                        }
+                    }
+                    Control::Header(header) => Self::project_container_float_bands(
+                        &mut header.paragraphs,
+                        width,
+                        true,
+                        admit_stored,
+                        styles,
+                        dpi,
+                    ),
+                    Control::Footer(footer) => Self::project_container_float_bands(
+                        &mut footer.paragraphs,
+                        width,
+                        true,
+                        admit_stored,
+                        styles,
+                        dpi,
+                    ),
+                    Control::Shape(shape) => {
+                        let shape_width = shape.common().width;
+                        if let Some(text) = shape.drawing_mut().and_then(|d| d.text_box.as_mut()) {
+                            let content_width = (f64::from(shape_width)
+                                - f64::from(text.margin_left)
+                                - f64::from(text.margin_right))
+                            .max(0.0)
+                                * dpi
+                                / 7200.0;
+                            Self::project_container_float_bands(
+                                &mut text.paragraphs,
+                                content_width,
+                                true,
+                                admit_stored,
+                                styles,
+                                dpi,
+                            );
+                        }
+                    }
+                    _ => {}
+                }
+            }
+        }
+    }
+
     /// [#8399] rhwp 가 계산한 줄뿐인(또는 줄이 없는) 문단에 어울림 개체 밴드가 걸리면 그 밴드를
     /// 줄로 발행한다.
     ///
@@ -1714,6 +1857,16 @@ impl DocumentCore {
         let hwp3_layout = document.layout_profile().hwp3_layout();
         for section in &mut document.sections {
             let page_def = section.section_def.page_def.clone();
+            let initial_columns = Self::find_initial_column_def(&section.paragraphs);
+            let container_layout = PageLayoutInfo::from_page_def(&page_def, &initial_columns, dpi);
+            Self::project_container_float_bands(
+                &mut section.paragraphs,
+                container_layout.body_area.width,
+                false,
+                !hwp3_layout,
+                styles,
+                dpi,
+            );
             let mut min_projected = None;
             let mut host_index = 0usize;
             while host_index < section.paragraphs.len() {
@@ -1987,13 +2140,11 @@ impl DocumentCore {
                         .is_some_and(crate::renderer::layout::border_style_has_diagonal)
             };
             for (cell, owner_width) in table.cells.iter_mut().zip(owner_widths) {
-                let padding = cell.paragraph_frame_padding(&table_padding);
-                let inner_width = crate::renderer::composer::cell_inner_text_width(
-                    crate::renderer::hwpunit_to_px(owner_width, dpi),
-                    crate::renderer::hwpunit_to_px(padding.left as i32, dpi),
-                    crate::renderer::hwpunit_to_px(padding.right as i32, dpi),
-                    dpi,
-                );
+                let Some(inner_width) =
+                    cell_line_frame::inline_extent_px(cell, owner_width, &table_padding, dpi)
+                else {
+                    continue;
+                };
                 let diagonal = bf_has_diagonal(cell.border_fill_id)
                     || table.zones.iter().any(|zone| {
                         zone.start_row <= cell.row
@@ -2338,15 +2489,14 @@ impl DocumentCore {
                         let owner_widths = table.paragraph_frame_owner_widths();
                         let table_padding = table.padding;
                         for (cell, owner_width) in table.cells.iter_mut().zip(owner_widths) {
-                            let cell_w_px = crate::renderer::hwpunit_to_px(owner_width, dpi);
-                            let frame_padding = cell.paragraph_frame_padding(&table_padding);
-                            let pad_left =
-                                crate::renderer::hwpunit_to_px(frame_padding.left as i32, dpi);
-                            let pad_right =
-                                crate::renderer::hwpunit_to_px(frame_padding.right as i32, dpi);
-                            let cell_inner_width = crate::renderer::composer::cell_inner_text_width(
-                                cell_w_px, pad_left, pad_right, dpi,
-                            );
+                            let Some(cell_inner_width) = cell_line_frame::inline_extent_px(
+                                cell,
+                                owner_width,
+                                &table_padding,
+                                dpi,
+                            ) else {
+                                continue;
+                            };
                             for cell_para in &mut cell.paragraphs {
                                 if Self::needs_reflow_broadly(cell_para) {
                                     // 셀 내용 상자 — 위와 같은 이유로 미스냅.

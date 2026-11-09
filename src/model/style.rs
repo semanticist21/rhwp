@@ -494,7 +494,7 @@ pub struct Bullet {
     pub char_shape_id: u32,
     /// 글머리표 문자 (●, ■, ▶ 등)
     pub bullet_char: char,
-    /// 이미지 글머리표 여부 (0=문자, ID=이미지)
+    /// HWP의 그림 사용 여부 또는 HWPX의 정규화한 그림 ID. 실제 참조는 `image_reference()`로 읽는다.
     pub image_bullet: i32,
     /// HWPX에서 그림 사용을 표시했지만 실제 그림 참조가 없는 원본 속성이다.
     #[serde(skip_serializing)]
@@ -634,6 +634,9 @@ pub struct BorderFill {
     pub fill: Fill,
     /// 3차원 효과 (HWPX borderFill@threeD)
     pub three_d: bool,
+    /// 표 참조 문맥의 자동 분할 경계선 별도 설정(HWPX breakCellSeparateLine).
+    /// 선 종류·굵기·색은 diagonal을 사용하며 네 변·중심선과 구분한다.
+    pub break_cell_separate_line: bool,
 }
 
 /// 중심선 방향 (HWPX borderFill@centerLine)
@@ -914,7 +917,7 @@ pub struct ShapeBorderLine {
 }
 
 /// 글자 모양 수정 사항 (None이면 해당 속성 변경 안 함)
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct CharShapeMods {
     pub bold: Option<bool>,
     pub italic: Option<bool>,
@@ -951,6 +954,9 @@ pub struct CharShapeMods {
     pub engrave: Option<bool>,
     /// 언어별 개별 글꼴 ID (7개: 한글/영문/한자/일어/기타/기호/사용자)
     pub font_ids: Option<[u16; 7]>,
+    /// 글꼴 이름 (`fontName`). 모양에 직접 적용하지 않고, `DocumentCore::resolve_font_name_mods` 가
+    /// 적용 전에 문서 글꼴 목록에서 찾거나 등록해 `font_ids` 로 바꾼다.
+    pub font_name: Option<String>,
     /// 글자 테두리/배경 ID (1-based, 0=없음)
     pub border_fill_id: Option<u16>,
     /// 강조점 종류 (0~6)
@@ -1091,7 +1097,7 @@ impl CharShapeMods {
 }
 
 /// 문단 모양 수정 사항 (None이면 해당 속성 변경 안 함)
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, PartialEq)]
 pub struct ParaShapeMods {
     pub alignment: Option<Alignment>,
     pub line_spacing: Option<i32>,

@@ -382,10 +382,6 @@ fn plain_control_payload(payload: ControlPayload<'_>) -> Vec<u8> {
 /// 순수 판정 함수로 분리해 단위 테스트가 실제 stderr 를 가로채지 않고도 이 조건을
 /// 검증할 수 있게 한다. 호출부(`serialize_control`)가 실제 경고를 `eprintln!` 한다.
 fn field_parameter_loss_warning(field: &Field) -> Option<String> {
-    // 메모의 매개변수(번호·지은이·모양·만든 때)는 모두 command 에 들어 있어 잃지 않는다.
-    if field.field_type == FieldType::Memo && field.command.starts_with("MEMO/") {
-        return None;
-    }
     let lost: Vec<String> = field
         .parameters
         .items
@@ -1715,9 +1711,17 @@ fn write_picture_extra<W: std::io::Write>(
 ) -> std::io::Result<()> {
     let extra = &pic.raw_picture_extra;
     let transparency = pic.image_attr.transparency_alpha_byte();
-    if extra.len() >= 18 {
-        w.write_bytes(&extra[..extra.len() - 1])?;
+    let layout = crate::model::image::picture_extra_layout(extra);
+    if let Some(alpha_offset) = layout.alpha_offset {
+        w.write_bytes(&extra[..alpha_offset])?;
         w.write_u8(transparency)?;
+        w.write_bytes(&extra[alpha_offset + 1..])?;
+    } else if extra.len() > 18 {
+        // 그림 효과 정보가 있고 투명도 바이트가 생략된 꼬리: 원본 크기 뒤에 붙인다.
+        w.write_bytes(extra)?;
+        if transparency > 0 {
+            w.write_u8(transparency)?;
+        }
     } else {
         w.write_bytes(extra)?;
         if transparency > 0 {
@@ -3291,10 +3295,11 @@ fn serialize_equation_control(eq: &Equation, level: u16, records: &mut Vec<Recor
     w.write_i16(eq.baseline).unwrap();
     // [Task #1061] unknown: u16 — HWP5 spec 표 105 누락 영역, hwplib 정합
     w.write_u16(eq.unknown).unwrap();
-    // version_info: HWP string
-    w.write_hwp_string(&eq.version_info).unwrap();
-    // font_name: HWP string
-    w.write_hwp_string(&eq.font_name).unwrap();
+    // 생략된 선택 문자열은 빈 HWPX 속성으로 바꾸지 않고 같은 HWP5 출처로 저장한다.
+    if !eq.uses_implicit_legacy_font() {
+        w.write_hwp_string(&eq.version_info).unwrap();
+        w.write_hwp_string(&eq.font_name).unwrap();
+    }
 
     records.push(Record {
         tag_id: tags::HWPTAG_EQEDIT,

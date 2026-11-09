@@ -174,15 +174,13 @@ where
     let mut section_bytes_list = Vec::new();
     let mut viewtext_history = Vec::new();
     let mut form_id_allocator = None;
-    let last_section = doc.sections.len().saturating_sub(1);
-    for (section_index, section) in doc.sections.iter().enumerate() {
-        // 한컴처럼 모든 구역의 메모 목록은 마지막 구역(나눠 쓰면 그 마지막 스트림) 끝에 쓴다.
-        let memo_tail = |last_stream: bool| {
-            if section_index == last_section && last_stream {
-                super::body_text::MemoTail::Document(&doc.sections)
-            } else {
-                super::body_text::MemoTail::Elsewhere
-            }
+    let memos =
+        crate::model::section_tail::collect(&doc.sections, storage).map_err(storage_error)?;
+    for (section_idx, section) in doc.sections.iter().enumerate() {
+        let tail: &[_] = if section_idx + 1 == doc.sections.len() {
+            &memos
+        } else {
+            &[]
         };
         let split_starts: Vec<usize> =
             if !split_multi_sec_pr || section.raw_provenance_permits_reuse() {
@@ -208,12 +206,11 @@ where
             let bytes = super::body_text::try_serialize_section_for_version(
                 &prepared,
                 output_version,
-                memo_tail(true),
+                tail,
                 storage,
             )
             .map_err(storage_error)?;
-            // 원본 스트림을 그대로 썼을 때만(메모 목록이 낡아 다시 쓴 경우 제외) 검토 스트림으로 나눈다.
-            if prepared.raw_stream.as_deref() == Some(&bytes[..]) {
+            if prepared.raw_provenance_permits_reuse() {
                 if let Some(visible) =
                     crate::parser::tracked_viewtext::project(&bytes, &doc.doc_info)
                         .map_err(|error| SerializeError::UnsupportedInput(error.to_string()))?
@@ -265,7 +262,7 @@ where
                 super::body_text::try_serialize_section_for_version(
                     &prepared,
                     output_version,
-                    memo_tail(k + 1 == starts.len()),
+                    if k + 1 == starts.len() { tail } else { &[] },
                     storage,
                 )
                 .map_err(storage_error)?,
@@ -684,7 +681,11 @@ where
     // 4. /BinData/BIN{XXXX}.{ext}
     // BinData는 개별 압축 속성에 따라 재압축
     const CFB_MAGIC: [u8; 8] = [0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1];
-    for content in bin_data_content {
+    for (index, content) in bin_data_content.iter().enumerate() {
+        // 연결 레코드 자리 항목은 저장 스트림이 없다.
+        if crate::model::bin_data::is_hwp5_link_slot(content, bin_data_list.get(index)) {
+            continue;
+        }
         let (storage_id, ext, mut should_compress) =
             find_bin_data_info_with_compress(bin_data_list, content, compressed);
         if password.is_some() {

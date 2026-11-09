@@ -1892,6 +1892,8 @@ fn write_text_style(buf: &mut String, style: &TextStyle) {
     if let Some(paint) = style.text_paint {
         buf.push_str(",\"textPaint\":");
         buf.push_str(&serde_json::to_string(&paint).expect("finite resolved text paint"));
+    } else {
+        write_char_outline_stroke(buf, style.outline_type);
     }
     write_synthetic_italic_skew(buf, style.italic);
     if let Some(layout) = &style.bidi_layout {
@@ -1946,6 +1948,8 @@ fn write_paint_text_style(buf: &mut String, style: &PaintTextStyle) {
     if let Some(paint) = style.text_paint {
         buf.push_str(",\"textPaint\":");
         buf.push_str(&serde_json::to_string(&paint).expect("finite resolved text paint"));
+    } else {
+        write_char_outline_stroke(buf, style.outline_type);
     }
     write_synthetic_italic_skew(buf, style.italic);
     style.script_metrics.write_json(
@@ -1962,6 +1966,25 @@ fn write_paint_text_style(buf: &mut String, style: &PaintTextStyle) {
         style.continuous_shadow.as_ref(),
     );
     buf.push('}');
+}
+
+// Native·SVG·Canvas2D가 쓰는 같은 pen 결과를 CanvasKit에도 전달한다.
+// 소비자가 종류 번호에서 다시 굵기·반복 구간을 추측하지 않는다.
+fn write_char_outline_stroke(buf: &mut String, outline_type: u8) {
+    let Some((width, intervals)) = crate::renderer::char_outline_stroke(outline_type) else {
+        return;
+    };
+    let _ = write!(
+        buf,
+        ",\"outlineStroke\":{{\"width\":{width},\"intervals\":["
+    );
+    for (index, value) in intervals.iter().enumerate() {
+        if index > 0 {
+            buf.push(',');
+        }
+        let _ = write!(buf, "{value}");
+    }
+    buf.push_str("]}");
 }
 
 fn write_synthetic_italic_skew(buf: &mut String, italic: bool) {
@@ -3073,7 +3096,7 @@ fn write_text_decoration(
     let _ = write!(buf, "],\"positionsComplete\":{complete}");
     if kind == TextDecorationKind::Underline {
         if let Some(top) =
-            crate::renderer::text_decoration::top_underline_geometry(&run.style, font_size)
+            crate::renderer::text_decoration::underline_geometry(&run.style, font_size)
         {
             let _ = write!(
                 buf,
@@ -3206,6 +3229,9 @@ fn write_line_style(buf: &mut String, style: &LineStyle) {
     }
     if style.compound_component {
         buf.push_str(",\"compoundComponent\":true");
+    }
+    if style.preserve_fractional_position {
+        buf.push_str(",\"preserveFractionalPosition\":true");
     }
     if let Some(shadow) = &style.shadow {
         buf.push_str(",\"shadow\":");

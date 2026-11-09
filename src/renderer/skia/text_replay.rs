@@ -346,6 +346,7 @@ impl SkiaTextReplay<'_> {
                 let metric_source = text;
                 let text = expand_pua_render_text_in_style(text, style);
                 let text = text.as_str();
+                let symbol_sources = crate::renderer::implicit_symbol::sources(metric_source, text);
                 let metric_text = crate::renderer::composer::display_projection_metric_text(
                     metric_source,
                     text,
@@ -437,8 +438,14 @@ impl SkiaTextReplay<'_> {
                 };
                 let is_middle_dot = crate::renderer::render_tree::is_vector_middle_dot;
                 // 외곽선 글자는 SVG·Canvas와 같은 굵기·반복 구간으로 윤곽만 긋는다.
-                let outline =
-                    crate::renderer::stroke_pattern::char_outline_stroke(style.outline_type);
+                // PDF의 명시 paint는 독립적인 채움·획 계약을 우선한다.
+                let outline = style
+                    .text_paint
+                    .is_none()
+                    .then(|| {
+                        crate::renderer::stroke_pattern::char_outline_stroke(style.outline_type)
+                    })
+                    .flatten();
                 let draw_text_pass = |color: Color, stroke_width: Option<f32>, dx: f32, dy: f32| {
                     let mut text_paint = Paint::default();
                     text_paint.set_anti_alias(true);
@@ -468,6 +475,22 @@ impl SkiaTextReplay<'_> {
                                 2 => paint::Join::Bevel,
                                 _ => paint::Join::Miter,
                             });
+                        } else {
+                            text_paint.set_stroke_cap(paint::Cap::Round);
+                            text_paint.set_stroke_join(paint::Join::Round);
+                            if let Some((_, intervals)) =
+                                outline.as_ref().filter(|(_, v)| !v.is_empty())
+                            {
+                                let intervals: Vec<f32> =
+                                    intervals.iter().map(|v| *v as f32).collect();
+                                text_paint
+                                    .set_path_effect(skia_safe::PathEffect::dash(&intervals, 0.0));
+                            }
+                            super::line_replay::floor_stroke_to_device(
+                                canvas,
+                                &mut text_paint,
+                                self.raster_target,
+                            );
                         }
                     } else {
                         text_paint.set_style(paint::Style::Fill);
@@ -538,6 +561,24 @@ impl SkiaTextReplay<'_> {
                         if cluster.starts_with(|ch: char| {
                             ch < '\u{0020}' && !matches!(ch, '\t' | '\n' | '\r')
                         }) {
+                            continue;
+                        }
+                        if let Some((cx, cy, rx, ry)) = crate::renderer::implicit_symbol::ink(
+                            symbol_sources.as_deref(),
+                            *char_idx,
+                            style,
+                        ) {
+                            let cx = f64::from(char_x) + cx;
+                            let cy = y + f64::from(dy) + cy;
+                            canvas.draw_oval(
+                                skia_safe::Rect::from_xywh(
+                                    (cx - rx) as f32,
+                                    (cy - ry) as f32,
+                                    (2.0 * rx) as f32,
+                                    (2.0 * ry) as f32,
+                                ),
+                                &text_paint,
+                            );
                             continue;
                         }
                         if let Some((cx, cy, rx, ry)) =
@@ -715,7 +756,9 @@ impl SkiaTextReplay<'_> {
                                 font.set_embolden(false);
                                 let mut paint = text_paint.clone();
                                 paint.set_style(paint::Style::StrokeAndFill);
-                                paint.set_stroke_width(font_size * 0.02);
+                                paint.set_stroke_width(
+                                    font_size * crate::renderer::HANCOM_FAUX_BOLD_STROKE_EM as f32,
+                                );
                                 paint.set_stroke_miter(10.0);
                                 paint
                             });
@@ -931,7 +974,7 @@ impl SkiaTextReplay<'_> {
                         // [#5730] 아래 밑줄은 기준선 + 0.17em (한글 2022 프로브 실측) —
                         // 이중/삼중선(shape 7~10)은 em 비례 실측표를 따른다.
                         // SVG 백엔드(renderer/svg.rs)와 같은 표(text_decoration)를 소비한다.
-                        let top = crate::renderer::text_decoration::top_underline_geometry(
+                        let top = crate::renderer::text_decoration::underline_geometry(
                             style,
                             font_size as f64,
                         );

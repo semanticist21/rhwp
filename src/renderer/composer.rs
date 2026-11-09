@@ -18,9 +18,16 @@ use crate::model::shape::{Caption, CaptionDirection, ShapeObject};
 use crate::renderer::layout_frame::LayoutFrame;
 pub use crate::renderer::layout_frame::ParagraphBox;
 
+mod caption_paragraph;
+mod object_host_tail;
+pub(crate) use object_host_tail::{composed_object_tail, composed_tac_row};
 mod frame_geometry;
+pub(crate) use caption_paragraph::{
+    compose_caption_paragraph, compose_caption_paragraph_with_storage,
+};
 mod inline_table_frame;
 mod nested_table_frames;
+mod vertical_cell_lines;
 pub(crate) use inline_table_frame::{
     inline_table_needs_reflow_measurement, inline_table_needs_reflow_measurement_with_storage,
     inline_table_width_cache_is_stale, inline_table_width_cache_is_stale_with_storage,
@@ -31,6 +38,7 @@ pub(crate) use nested_table_frames::{
     recompose_cell_lines_with_nested_tables, recompose_cell_lines_with_nested_tables_with_storage,
     table_cells_have_no_stored_lines,
 };
+pub(crate) use vertical_cell_lines::compose_vertical_cell_lines;
 mod inline_frame_admission;
 mod inline_picture_metrics;
 mod resolved_fields;
@@ -152,6 +160,11 @@ impl ComposedTextRun {
         style.regenerated_font_metrics = self.regenerated_font_metrics;
         style.literal_figure_space = self.literal_figure_space;
         style.literal_soft_hyphen = self.literal_soft_hyphen;
+        if self.footnote_marker.is_some() {
+            style.script_metrics = super::script_metrics::ScriptMetricsContract::NoteReference;
+            style.superscript = true;
+            style.subscript = false;
+        }
         if self.literal_figure_space {
             style.literal_figure_space_em =
                 styles.literal_figure_space_em(self.char_style_id, self.lang_index);
@@ -275,10 +288,17 @@ crate::storage::clone_fields!(ComposedParagraph, {lines, para_style_id, inline_c
 /// clear the session cache instead of reaching into the source model.
 #[derive(Default)]
 pub(crate) struct SingleLineOverflowCache {
+    section_tab_key: std::cell::Cell<u64>,
     entries: std::cell::RefCell<std::collections::HashMap<(usize, u32), bool>>,
 }
 
 impl SingleLineOverflowCache {
+    fn use_section_tab_key(&self, key: u64) {
+        if self.section_tab_key.replace(key) != key {
+            self.clear();
+        }
+    }
+
     #[inline]
     fn get(&self, para: &Paragraph, width_key: u32) -> Option<bool> {
         self.entries
@@ -343,12 +363,12 @@ pub mod lineseg_compare;
 
 pub(crate) use line_breaking::{
     control_owns_body_band, is_line_end_forbidden, is_line_start_forbidden,
-    layout_paragraph_in_frame, layout_paragraph_in_frame_with_storage,
-    layout_picture_anchor_in_frame, layout_picture_band, paragraph_flow_end, paragraph_flow_state,
-    recalculate_section_vpos, reflow_line_segs, reflow_line_segs_after_cell_split,
-    reflow_line_segs_after_cell_text_edit, reflow_line_segs_in_stored_section, restamp_indentation,
-    row_is_carved_from_box, supports_picture_band_frame_controls, tokenize_paragraph, BreakToken,
-    StoredRowMissPolicy,
+    layout_container_picture_band, layout_paragraph_in_frame,
+    layout_paragraph_in_frame_with_storage, layout_picture_anchor_in_frame, layout_picture_band,
+    paragraph_flow_end, paragraph_flow_state, recalculate_section_vpos, reflow_line_segs,
+    reflow_line_segs_after_cell_split, reflow_line_segs_after_cell_text_edit,
+    reflow_line_segs_in_stored_section, restamp_indentation, row_is_carved_from_box,
+    supports_picture_band_frame_controls, tokenize_paragraph, BreakToken, StoredRowMissPolicy,
 };
 
 #[cfg(test)]

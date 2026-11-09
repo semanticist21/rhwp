@@ -15,6 +15,30 @@ impl LayoutEngine {
         index: usize,
         styles: &ResolvedStyleSet,
     ) -> bool {
+        self.stored_nested_unit_frame_break(cell, table, index, styles, false)
+    }
+
+    /// 완결 행으로 닫힌 개체 프레임만 상위 쪽 경계로 전달한다.
+    /// 자식 문단의 저장 재시작은 그 자식의 내용 컷이며, 부모의 현재 쪽을
+    /// 강제로 닫는 증거와 구분한다.
+    pub(super) fn stored_nested_object_unit_frame_break(
+        &self,
+        cell: &Cell,
+        table: &Table,
+        index: usize,
+        styles: &ResolvedStyleSet,
+    ) -> bool {
+        self.stored_nested_unit_frame_break(cell, table, index, styles, true)
+    }
+
+    fn stored_nested_unit_frame_break(
+        &self,
+        cell: &Cell,
+        table: &Table,
+        index: usize,
+        styles: &ResolvedStyleSet,
+        object_frame_only: bool,
+    ) -> bool {
         let profile = self.profile.get();
         if profile.session_edited()
             || !(profile.hwpx_stored_layout() || profile.hwp5_stored_pagination_layout())
@@ -29,7 +53,9 @@ impl LayoutEngine {
         let Some(unit) = units.get(index) else {
             return false;
         };
-        if Self::stored_in_paragraph_unit_is_original_restart(cell, unit) {
+        if !object_frame_only
+            && self.stored_in_paragraph_unit_is_original_restart(table, cell, unit)
+        {
             return true;
         }
         let Some(child) = cell.paragraphs.get(unit.para_idx).and_then(|paragraph| {
@@ -43,6 +69,19 @@ impl LayoutEngine {
         }) else {
             return false;
         };
+        // 원본의 첫 개체 상자가 완결 행에서 닫힌 경우는 문자 줄 reset이 아니다.
+        // 상위 컷에서도 같은 자식 행 계획을 인증하고, 그 행의 첫 유닛만 보존한다.
+        if unit.stored_frame_break_before
+            && unit
+                .nested_row
+                .is_some_and(|row| self.stored_measured_object_frame_row_count(child) == Some(row))
+            && unit
+                .nested_table_fragment
+                .as_ref()
+                .is_none_or(|fragment| fragment.start_cut.iter().all(|&start| start == 0))
+        {
+            return true;
+        }
         if let Some((row, fragment)) = unit.nested_row.zip(unit.nested_table_fragment.as_ref()) {
             return self.stored_nested_source_cut_frame_break(
                 child,
@@ -50,6 +89,7 @@ impl LayoutEngine {
                 &fragment.start_cut,
                 fragment.is_block,
                 styles,
+                object_frame_only,
             );
         }
         if !unit.mixed_nested_recursive {
@@ -67,6 +107,7 @@ impl LayoutEngine {
             &cut.start_cut,
             cut.start_cut_is_block,
             styles,
+            object_frame_only,
         )
     }
 
@@ -77,6 +118,7 @@ impl LayoutEngine {
         cut: &[usize],
         is_block: bool,
         styles: &ResolvedStyleSet,
+        object_frame_only: bool,
     ) -> bool {
         let mut cells = if is_block {
             let block = super::super::table_partial::rowspan_block_range(table, row);
@@ -94,7 +136,7 @@ impl LayoutEngine {
             let Some(&start) = cut.get(order) else {
                 return false;
             };
-            self.stored_nested_source_unit_frame_break(cell, table, start, styles)
+            self.stored_nested_unit_frame_break(cell, table, start, styles, object_frame_only)
         })
     }
 }

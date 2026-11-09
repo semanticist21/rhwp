@@ -237,6 +237,9 @@ pub struct RenderNode {
     /// Public source provenance, separate from header/footer layout cache keys.
     #[serde(skip)]
     pub header_footer_source: Option<(usize, HeaderFooterImageRef)>,
+    /// 실제 글상자가 있는 도형의 편집 소유 주소. 장식 도형의 외곽은 글상자 클릭 영역이 아니다.
+    #[serde(skip)]
+    pub(crate) textbox_source: Option<(usize, CellContext)>,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize)]
@@ -276,6 +279,7 @@ impl RenderNode {
             print_clip_bbox: None,
             control_code: ControlCode::Automatic,
             header_footer_source: None,
+            textbox_source: None,
             paint_clip: None,
         }
     }
@@ -868,6 +872,17 @@ impl BoundingBox {
             width: rect.width() as f64 * scale,
             height: rect.height() as f64 * scale,
         }
+    }
+}
+
+/// Preserve the body ink boundary already resolved by layout. Only editor marks
+/// have a separate, nonprinting right gutter; paint backends must not add one
+/// when those marks are hidden.
+pub fn body_clip_with_editor_marks(clip: BoundingBox, show_editor_marks: bool) -> BoundingBox {
+    if show_editor_marks {
+        BoundingBox::new(clip.x, clip.y, clip.width + 48.0, clip.height)
+    } else {
+        clip
     }
 }
 

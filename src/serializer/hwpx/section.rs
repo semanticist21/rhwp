@@ -3711,15 +3711,36 @@ fn generated_field_parameters(field: &Field) -> Option<String> {
         return None;
     }
     // HWP5-origin memo fields have their whole identity in the command. Hancom's
-    // HWPX shape carries the same values as named parameters, with the creation
-    // FILETIME of the command as `CreateDateTime`.
+    // HWPX shape carries the same values as named parameters; emitting only
+    // `Command` loses the author and number for readers that do not split it.
     if field.field_type == crate::model::control::FieldType::Memo
         && field.command.starts_with("MEMO/")
     {
-        return Some(
-            crate::document_core::queries::memo_query::memo_parameters(&field.command)
-                .render_xml("parameters"),
-        );
+        let tokens: Vec<&str> = field.command.split('/').collect();
+        let shape = tokens.get(1).copied().unwrap_or("65535");
+        let number = tokens.get(2).copied().unwrap_or("0");
+        let author = tokens.get(5).copied().unwrap_or("");
+        let date = crate::model::memo_time::date(&field.command);
+        return Some(format!(
+            concat!(
+                r#"<hp:parameters cnt="{count}" name="">"#,
+                r#"<hp:integerParam name="Prop">0</hp:integerParam>"#,
+                r#"<hp:stringParam name="Command">{command}</hp:stringParam>"#,
+                r#"<hp:stringParam name="ID">memo{number}</hp:stringParam>"#,
+                r#"<hp:integerParam name="Number">{number}</hp:integerParam>"#,
+                r#"<hp:stringParam name="Author">{author}</hp:stringParam>"#,
+                r#"<hp:stringParam name="MemoShapeIDRef">{shape}</hp:stringParam>"#,
+                r#"{date}</hp:parameters>"#,
+            ),
+            count = if date.is_some() { 7 } else { 6 },
+            date = date
+                .map(|d| format!(r#"<hp:stringParam name="CreateDateTime">{d}</hp:stringParam>"#))
+                .unwrap_or_default(),
+            command = xml_escape(&field.command),
+            number = xml_escape(number),
+            author = xml_escape(author),
+            shape = xml_escape(shape),
+        ));
     }
     Some(format!(
         r#"<hp:parameters cnt="1" name=""><hp:stringParam name="Command">{}</hp:stringParam></hp:parameters>"#,

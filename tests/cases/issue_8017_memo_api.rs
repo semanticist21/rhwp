@@ -107,7 +107,7 @@ fn author_drops_command_separators_and_is_limited_to_64_units() {
 }
 
 #[test]
-fn the_memo_command_carries_shape_number_ids_and_author() {
+fn the_memo_command_carries_shape_number_creation_time_and_author() {
     let mut core = core_with("anchor");
     let now = || {
         std::time::SystemTime::now()
@@ -133,6 +133,7 @@ fn the_memo_command_carries_shape_number_ids_and_author() {
         "{written} ∉ {before}..={after}"
     );
     assert_eq!(list[0]["time"].as_i64(), Some(written));
+    assert!(list[0]["date"].is_string());
     assert_eq!(tokens[5], "hancom");
     assert_eq!(tokens[6], "\\;;");
     assert_eq!(list[0]["author"], "hancom");
@@ -277,6 +278,22 @@ fn set_memo_text_reaches_the_saved_file() {
 }
 
 #[test]
+fn inserting_a_style_after_a_memo_edit_keeps_the_new_body() {
+    use rhwp::wasm_api::HwpDocument;
+
+    let mut core = core_with("anchor");
+    core.insert_memo_at(0, 0, 0, 6, "tester", "original")
+        .unwrap();
+    let mut doc = HwpDocument::new(&core.export_hwp_native().unwrap()).unwrap();
+    let list: Value = serde_json::from_str(&doc.get_memo_list()).unwrap();
+    let id = list[0]["id"].as_u64().unwrap() as u32;
+    doc.set_memo_text(id, "edited").unwrap();
+    assert_eq!(doc.create_style(r#"{"name":"Memo style","index":1}"#), 1);
+    let saved = DocumentCore::from_bytes(&doc.export_hwp().unwrap()).unwrap();
+    assert_eq!(memo_list(&saved)[0]["text"], "edited");
+}
+
+#[test]
 fn deleting_the_whole_anchor_removes_the_memo_and_a_part_keeps_it() {
     let mut core = core_with("hello world");
     core.insert_memo_at(0, 0, 0, 5, "t", "body").unwrap();
@@ -385,6 +402,11 @@ fn a_pasted_hwpx_memo_is_written_with_its_new_number() {
             memo["paraIndex"].as_u64().unwrap() as usize,
         )
     };
+    let source_command = memo_fields(std::slice::from_ref(
+        &core.document().sections[section].paragraphs[para],
+    ))[0]
+        .command
+        .clone();
     let para_len = core.document().sections[section].paragraphs[para]
         .text
         .chars()
@@ -418,6 +440,16 @@ fn a_pasted_hwpx_memo_is_written_with_its_new_number() {
         pasted.len(),
         1,
         "the written HWPX carries number {next} once"
+    );
+    assert_eq!(
+        pasted[0].command.split('/').skip(3).collect::<Vec<_>>(),
+        source_command.split('/').skip(3).collect::<Vec<_>>(),
+        "복사해도 원래 생성 시각과 작성자가 보존된다"
+    );
+    assert!(before[0]["date"].is_string());
+    assert_eq!(
+        string_param(pasted[0], "CreateDateTime").as_deref(),
+        before[0]["date"].as_str()
     );
     assert_eq!(string_param(pasted[0], "ID"), Some(format!("memo{next}")));
     assert_eq!(

@@ -1,6 +1,6 @@
 //! 중첩 셀의 문단 모양 조회·적용·ID 복원. UI 좌표는 전체 셀 경로로 해석한다.
 
-use super::formatting::cell_para_shape_affects_vpos;
+use super::formatting::{cell_para_shape_affects_vpos, marker_shape_changed};
 use crate::document_core::helpers::{
     build_tab_def_from_json, json_has_border_keys, json_has_tab_keys, parse_json_i16_array,
     parse_para_shape_mods,
@@ -123,6 +123,12 @@ impl DocumentCore {
             .para_shapes
             .get(old_id as usize)
             .is_none_or(|old| cell_para_shape_affects_vpos(old, new_shape));
+        let marker_changed = self
+            .document
+            .doc_info
+            .para_shapes
+            .get(old_id as usize)
+            .is_none_or(|old| marker_shape_changed(old, new_shape));
         let (old_indent, new_indent) = self.para_shape_indents(old_id, shape_id);
         let inner_para = path.last().unwrap().2;
         // 머리말·꼬리말 문단은 셀 첫 문단의 저장 줄 원점을 쓰지 않는다. 머리말 문단 모양 바꾸기
@@ -134,6 +140,9 @@ impl DocumentCore {
         let paragraph = self.get_cell_paragraph_mut_by_path(section, parent, path)?;
         paragraph.para_shape_id = shape_id;
         restamp_indentation(&mut paragraph.line_segs, old_indent, new_indent);
+        if marker_changed {
+            paragraph.invalidate_layout_inputs();
+        }
         if header_footer {
             self.reflow_cell_paragraph_by_path(section, parent, path, inner_para);
         } else {

@@ -1130,7 +1130,7 @@ impl DocumentCore {
                         .paragraphs
                 }
                 Control::Shape(s) => {
-                    &mut super::super::helpers::get_textbox_from_shape_mut(s)
+                    &mut super::super::helpers::get_textbox_at_mut(s, cell_idx)
                         .ok_or_else(|| HwpError::RenderError("글상자 없음".to_string()))?
                         .paragraphs
                 }

@@ -1,3 +1,16 @@
+//! 검사 유형: 관계형·고정형(한컴 계산 결과·필드 보존); 페이지 절대 px 좌표 핀 없음.
+//! 주석 갱신: 2026-11-05T13:37:58+09:00; 직전 파일 변경: 76ac4bedc7bfbd590f5b39bb6e99026239999433 2026-11-05T12:25:04+09:00.
+//! 측정일 2026-11-05, 제품 source 6337fe4d10; 96 DPI·Print·Native Skia/fresh WASM Canvas·2px raw 실루엣.
+//! table-formula-easy: 전1쪽 Native 최저 100.00% / fresh WASM 최저 100.00%; 누락 없음.
+//! table-formula-hancom-result: 전1쪽 Native 최저 100.00% / fresh WASM 최저 100.00%; 누락 없음.
+//! table-formula-stale: 전1쪽 Native 최저 100.00% / fresh WASM 최저 100.00%; 누락 없음.
+//! table-formula-cycles: 전1쪽 Native 최저 100.00% / fresh WASM 최저 100.00%; 누락 없음.
+//! table-formula-easy-edited-hwpx: 전1쪽 Native 최저 100.00% / fresh WASM 최저 100.00%; 누락 없음.
+//! table-formula-recalculated-hwp: 전1쪽 Native 최저 100.00% / fresh WASM 최저 100.00%; 누락 없음.
+//! table-formula-recalculated-hwpx: 전1쪽 Native 최저 100.00% / fresh WASM 최저 100.00%; 누락 없음.
+//! 증거: mydocs/pr/assets/semanticist21-20261105-next10/validation/pre8622/candidate/{native,wasm}/<위 key>.tsv, validation.md 및 같은 영역의 독립 Print 확대 판독.
+//! 순수 API/합성 계약 검사와 실물 문서의 시각 측정은 구분한다. 계산한 원본 크기·관계는 유지한다.
+//!
 //! 표 계산식은 결과 글이 아니라 한/글 12.30처럼 셀의 FORMULA 필드로 남고, 셀을 고치면 다시 계산한다.
 //!
 //! 기대값은 한/글 12.30 Mac에서 직접 계산해 저장한 값이다. `table_formula/stale.hwpx`는 한/글
@@ -77,6 +90,7 @@ fn recalculate(doc: &mut DocumentCore) -> Value {
 }
 
 /// 한/글 12.30이 `stale.hwpx`의 F1에 7을 치자 다시 계산해 저장한 결과(`cprobe1-hc.hwpx`).
+/// #8484를 함께 통합해 LN과 자릿수 ROUND도 같은 실제 필드 경로로 대조한다.
 const HANCOM_RESULTS: [(&str, &str); 37] = [
     ("D1", "20.00"),         // AVG(LEFT): 빈 셀은 세지 않는다
     ("D2", "6"),             // PRODUCT(LEFT): 빈 셀은 곱하지 않는다
@@ -97,7 +111,7 @@ const HANCOM_RESULTS: [(&str, &str); 37] = [
     ("A8", "1,414,214,000"), // =SQRT(2)*1000000000: 함수 결과를 소수 여섯째 자리로 맞춘다
     ("B8", "1.23457"),       // =SUM(0.1234567,0)*10
     ("C8", "1,000,000"),     // =1/3*3000000: 사칙연산은 맞추지 않는다
-    ("D8", "333,333"),       // =ROUND(1/3,7)*1000000
+    ("D8", "333,333"),       // =ROUND(1/3,7)*1000000: 필드 함수 결과는 여섯째 자리
     ("E8", "2,333,333"),     // =AVG(1,2,4)*1000000
     ("F8", "3"),             // =ABS(-0.0000025)*1000000
     ("A9", "10"),            // =B10+0: 뒤 셀 계산식의 새 값을 쓴다
@@ -131,6 +145,8 @@ fn recalculates_a_table_the_way_hancom_did() {
     let commands = formula_commands(&doc);
     assert!(commands.contains(&"=SQRT(2)*1000000000??%g,;;1,414,214,000".to_string()));
     assert!(commands.contains(&"=1/0??%g,;;잘못된 계산식".to_string()));
+    assert!(commands.contains(&"=LN(0)??%g,;;잘못된 계산식".to_string()));
+    assert!(commands.contains(&"=ROUND(1/3,7)*1000000??%g,;;333,333".to_string()));
     // 이미 맞는 표는 다시 계산해도 바뀌지 않는다.
     assert_eq!(recalculate(&mut doc)["changed"], serde_json::json!([]));
 }

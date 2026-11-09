@@ -1,3 +1,5 @@
+// 검사 유형: 관계형 소스 가드의 위임 분류. PDF 일치율·실물 px 기대값은 비해당이다.
+// 주석 갱신: 2026-11-05 20:31 KST.
 /// 무효화하지 않는 `pub fn (&mut self)` 전수 목록 — (파일, 함수, 분류, 근거).
 ///
 /// 파일 경로는 [`SCAN_ROOT`] 기준 상대 경로다. 병합 `devel` 기준 46건(2026-08-30 동결).
@@ -100,6 +102,18 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
 
     ),
     (
+        "commands/object_ops/picture.rs",
+        "insert_picture_native",
+        Exempt::DelegatesTo("insert_picture_native_anchored"),
+        "기존 그림 넣기 진입점은 구역 무효화를 수행하는 공통 구현에 위임한다(칸 문단 앵커 여부만 다르다, #8556).",
+    ),
+    (
+        "commands/object_ops/picture.rs",
+        "insert_picture_in_cell_native",
+        Exempt::DelegatesTo("insert_picture_native_anchored"),
+        "칸 경로를 검증한 뒤 같은 공통 구현에 칸 문단 앵커로 위임한다(#8556).",
+    ),
+    (
         "commands/border_paint_edit.rs",
         "discard_border_paint_undo_native",
         Exempt::SessionState,
@@ -170,6 +184,12 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "register_hft_outline_font_native",
         Exempt::SessionState,
         "#7902: hft_outline_fonts의 paint 전용 프로그램만 등록·교체한다. 문서 IR과 저장 HWP 바이트 보존은 hft_outline_font_contract의 public API 실행으로 검사한다.",
+    ),
+    (
+        "commands/document/hft_outline_fonts.rs",
+        "register_hft_outline_font_candidates_native",
+        Exempt::SessionState,
+        "실제 후보 순서의 paint 전용 CFF 세션만 원자적으로 등록·교체한다. hft_outline_font_contract가 공개 단일·분할 API의 저장 IR·HWP 바이트 보존과 오류 시 기존 후보 보존을 검사한다. raw stream을 무효화할 문서 편집은 하지 않는다.",
     ),
     (
         "font_environment.rs",
@@ -295,9 +315,21 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     ),
     (
         "commands/object_ops/table.rs",
+        "delete_cell_shape_control_by_path_native",
+        Exempt::DelegatesTo("delete_cell_control_by_path_native"),
+        "#7375: 도형 종류를 검증하는 래퍼. 공통 helper가 해당 셀 컨트롤 삭제와 구역 raw_stream 무효화를 수행한다. issue_7375_cell_shape_move_transform에서 HWP/HWPX 저장·재열기 뒤 삭제가 유지되는지 검증한다.",
+    ),
+    (
+        "commands/object_ops/table.rs",
         "delete_cell_table_control_by_path_native",
         Exempt::DelegatesTo("delete_cell_control_by_path_native"),
         "표 종류를 지정하는 래퍼. 공통 helper가 삭제와 구역 raw_stream 무효화를 수행한다.",
+    ),
+    (
+        "commands/object_ops/table.rs",
+        "set_cell_shape_properties_by_path_native",
+        Exempt::DelegatesTo("finish_loaded_source_cache_after_object_edit"),
+        "#7375: 공통 helper가 변경된 모델의 원본 캐시를 무효화하고, 모델·DocInfo·저장 프레임이 모두 원본과 같아졌을 때만 봉인한 캐시를 복원한다. issue_7375_cell_shape_move_transform에서 이동·곡률 저장과 다른 편집 보존, 원래 표시 경계의 복원을 검증한다.",
     ),
     // ── 세션/캐시 상태만 변경 (문서 IR 비변경) ──────────────────────────────
     (
@@ -561,6 +593,13 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "활성 필드 해제 + 렌더 캐시 무효화. 직렬화 비대상.",
     ),
     // ── 문서 전체 교체·생성 ────────────────────────────────────────────────
+    (
+        "commands/document.rs",
+        "load_bytes",
+        Exempt::WholeDocument,
+        "[#8745] 인증·파싱 성공 뒤 Core 전체를 교체한다. 새 문서의 raw_stream·raw_provenance도 \
+         함께 설정하며 실패 시 기존 문서와 패스스루 상태를 유지한다.",
+    ),
     (
         "commands/document.rs",
         "create_blank_document_native",

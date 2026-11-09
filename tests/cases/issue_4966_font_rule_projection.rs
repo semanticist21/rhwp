@@ -148,7 +148,7 @@ fn sealed_v1_semantics_change_only_by_recorded_replacement() {
     let v2_rules = v2["rules"].as_array().expect("current v2 rules");
 
     assert_eq!(v1_rules.len(), 830);
-    assert_eq!(v2["summary"]["activeRuleCount"], 850);
+    assert_eq!(v2["summary"]["activeRuleCount"], 855);
     assert_eq!(v2["summary"]["retiredRuleCount"], 8);
 
     let mut expected_semantics: BTreeMap<_, _> = v1_rules
@@ -277,8 +277,12 @@ fn sealed_v1_semantics_change_only_by_recorded_replacement() {
             ),
             "rust-layout-name",
         ),
+        (
+            include_str!("../../assets/font-rules/changes/issue-8575-ygodic250-metric-name.json"),
+            "rust-layout-metric",
+        ),
     ] {
-        // 공개 프로그램 공급 두 건도 기록된 add-rule만 의미 비교에 반영한다.
+        // 공개 프로그램 공급도 기록된 add-rule만 의미 비교에 반영한다.
         let addition: serde_json::Value =
             serde_json::from_str(payload).expect("기록된 폰트 규칙 추가");
         assert_eq!(addition["expectedDelta"]["projectionId"], projection);
@@ -306,10 +310,13 @@ fn sealed_v1_semantics_change_only_by_recorded_replacement() {
         }
     }
     // 정부상징 공급 교체는 각 투영에서 기존 두 규칙을 교체하고 두 별칭을 추가한다.
+    // 이후 한겨레결체 공급 별칭을 추가한 순서도 변경 기록과 같게 유지한다.
     // 변경 기록과 활성·폐기 원장의 의미를 모두 비교하며 봉인 원본은 유지한다.
     for payload in [
         include_str!("../../assets/font-rules/changes/issue-8533-rokg-webfont.json"),
         include_str!("../../assets/font-rules/changes/issue-8533-rokg-canvaskit.json"),
+        include_str!("../../assets/font-rules/changes/issue-1994-hankyoreh-webfont.json"),
+        include_str!("../../assets/font-rules/changes/issue-1994-hankyoreh-canvaskit.json"),
     ] {
         let change: serde_json::Value = serde_json::from_str(payload).unwrap();
         let projection = change["expectedDelta"]["projectionId"].as_str().unwrap();
@@ -621,7 +628,7 @@ fn canonical_layout_name_projection_reaches_public_trace() {
 fn canonical_layout_metric_projection_reaches_public_lookup() {
     let registry = registry();
     let rules = projection_rules(&registry, "rust-layout-metric");
-    assert_eq!(rules.len(), 71);
+    assert_eq!(rules.len(), 72);
 
     for rule in rules {
         let source = source_face(rule);

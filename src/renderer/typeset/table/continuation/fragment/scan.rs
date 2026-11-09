@@ -54,7 +54,6 @@ impl TypesetEngine {
             .or(input.fragment_row_heights)
             .unwrap_or(&input.prepared.whole_row_fit_heights);
         let total_footnote = input.prepared.total_footnote_height;
-        let fn_margin = input.prepared.footnote_margin;
         let strict_following_plain_text_fit = input.prepared.strict_following_plain_text_fit;
         let source_next_positive_rewind = input.prepared.source_next_positive_rewind;
         let cursor_row = input.start.cursor_row;
@@ -235,15 +234,22 @@ impl TypesetEngine {
         let scan_vars = BlockRowScanVars {
             // 이전 쪽에서 이어진 문단 뒤의 저장 줄은 원래 쪽 좌표계일 수 있다.
             // 첫 표 프레임을 현재 흐름 원점에서 인증하지 못했다면 그 내부 컷도
-            // 현재 쪽의 경계로 승격하지 않는다. 이어받은 표 조각은 별도로 판정한다.
-            source_frame_origin_unverified: !is_continuation
-                && saved_first_fragment_source_frame.is_none()
-                && para_idx.checked_sub(1).is_some_and(|previous| {
-                    matches!(st.current_items.last(),
-                        Some(crate::renderer::pagination::PageItem::PartialParagraph {
-                            para_index, start_line, ..
-                        }) if *para_index == previous && *start_line > 0)
-                }),
+            // 현재 쪽의 경계로 승격하지 않는다.
+            // [#8539] 이어받은 조각도 같다. 앞 조각이 저장 프레임 중간에서 용량으로
+            // 잘렸으면 이 조각은 저장본의 쪽 체인과 다른 자리에서 시작하므로, 뒤 행의
+            // 저장 프레임 끝도 이 쪽의 끝으로 인증하지 않는다(시작 행은 원래도 같은
+            // `row_start_owns_stored_frame` 판정을 쓴다).
+            source_frame_origin_unverified: if is_continuation {
+                !layout_engine.row_start_owns_stored_frame(table, cursor_row, start_cut, styles)
+            } else {
+                saved_first_fragment_source_frame.is_none()
+                    && para_idx.checked_sub(1).is_some_and(|previous| {
+                        matches!(st.current_items.last(),
+                            Some(crate::renderer::pagination::PageItem::PartialParagraph {
+                                para_index, start_line, ..
+                            }) if *para_index == previous && *start_line > 0)
+                    })
+            },
             cursor_row,
             row_count: scan_row_count,
             cs,
@@ -491,7 +497,7 @@ impl TypesetEngine {
         // 함께 다음 조각으로 — 한글 규칙).
         // [#7732] 표 각주를 이 쪽에서 빼면 남는 각주는 이미 정해진 쪽 각주뿐이라 경계가 확정이다.
         // 그 경계를 지키는 40px 여유도 함께 되돌린다(한/글은 각주 구분선 바로 위까지 행을 놓는다).
-        let table_fn_reserved = (total_footnote - st.current_footnote_height).max(0.0) + fn_margin;
+        let table_fn_reserved = (total_footnote - st.current_footnote_height).max(0.0);
         let is_split_fragment = end_row < row_count || split_end_limit > 0.0;
         // [#7732] 앵커 줄이 자기 각주와 함께 다음 조각으로 간다는 #2097 가정은 한/글 출력과
         // 다르다. 한/글은 칸 각주 때문에 행을 줄이지 않고, 앵커가 이 조각에 있어도 각주는
@@ -610,13 +616,8 @@ impl TypesetEngine {
                     .fold((0.0, 0usize), |(height, count), note| {
                         (height + note.content_height, count + 1)
                     });
-                let terminal_note_reservation = st
-                    .projected_fresh_footnote_height(terminal_note_content, terminal_note_count)
-                    + if terminal_note_count > 0 {
-                        st.footnote_safety_margin
-                    } else {
-                        0.0
-                    };
+                let terminal_note_reservation =
+                    st.projected_fresh_footnote_height(terminal_note_content, terminal_note_count);
                 let terminal_block_fits = last.block_size > 1
                     && last.b_start >= cursor_row
                     && rows.required_height(&last, &[])

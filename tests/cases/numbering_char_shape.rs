@@ -1,3 +1,15 @@
+//! 관계형 회귀: 번호 글자 모양과 본문 글자 크기의 추종·서식·저장 참조 관계. 입력 단위의 크기 환산은 절대 배치 핀이 아니다.
+//! 주석 갱신: 2026-11-06T08:25:01+09:00 (Asia/Seoul).
+//! 직전 파일 변경: 5172f2d55c73b2ed33d4d3657d81e769bc9004c2, 작성 2026-11-06T08:13:58+09:00, 커밋 2026-11-06T08:13:58+09:00.
+//! 측정일: 2026-11-06 KST. 제품 source 86709ac16711820e61baa3b87e2c4ddaac23573e.
+//! Print 프로필·96 DPI·PDFium·색상 경계 보정 전 2px raw. 독립 PDF와 전체 쪽수가 같다.
+//! 대응 실문서·API 저장본의 전쪽 결과이며 입력 개입·합성 분기의 전수 시각 측정으로 주장하지 않는다.
+//! follow-two-sizes.hwp (8528-follow-two-sizes-hwp-2022): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! follow-end-20pt.hwp (8528-follow-end-20pt-hwp-2022): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! follow-two-sizes.hwpx (8528-follow-two-sizes-hwpx-2022): 전 1쪽, Native 최저 100.0%, fresh WASM 최저 100.0%.
+//! 원본·PDF SHA, 명령·원본별 전쪽 TSV·정밀 raw·대표 PNG:
+//! mydocs/pr/assets/semanticist21_20261105/validation-r6/README.md 및 measurements.md.
+//! 원본 형식 계약:
 //! 문단 번호 사용자 정의 모양의 글자 모양 지정·본문 글자 크기 따름(한/글 12.30 Mac).
 //!
 //! 한/글은 '본문 글자 크기 따름' 번호 글자 모양의 기준 크기를 0으로 저장하고, 번호를 문단 끝(문단
@@ -117,7 +129,7 @@ fn follow_body_size_number_uses_paragraph_end_not_first_character() {
 fn fixed_number_char_shape_keeps_its_size_and_detaching_restores_body_shape() {
     let mut doc = paragraphs(&[2000], None);
     let (id, char_shape) = number_all(&mut doc, 1, Some(r#"{"fontSize":1000,"italic":true}"#));
-    assert_ne!(char_shape, 0, "0은 머리 모양에서 '참조 없음'이다");
+    assert_ne!(char_shape, 0, "글자 모양 지정 API의 기존 양수 ID 반환");
     assert_sizes(&markers(&doc), &[PT10_PX]);
     assert_eq!(
         doc.set_numbering_char_shape_native(id, 0, None).unwrap(),
@@ -157,4 +169,32 @@ fn number_char_shape_reaches_hwpx_numbering_kept_from_source() {
         char_shape
     );
     assert_sizes(&markers(&saved), &[PT20_PX]);
+}
+
+fn fixture(name: &str) -> HwpDocument {
+    let path = format!(
+        "{}/tests/fixtures/numbering_char_shape/{name}",
+        env!("CARGO_MANIFEST_DIR")
+    );
+    HwpDocument::from_bytes(&std::fs::read(path).unwrap()).unwrap()
+}
+
+/// 한/글 12.30 Mac 저장본(저장자 이름만 바꿈). 번호 글자 모양은 기준 크기 0(본문 글자 크기 따름)이다.
+///
+/// - `follow-two-sizes`: 20pt 문단과 10pt 문단에 기울임 번호. 한/글은 20pt·10pt 번호로 그린다.
+/// - `follow-end-20pt.hwp`: 글자는 10pt, 문단 끝만 20pt인 문단에 진하게 번호. 한/글은 20pt 번호로 그린다.
+#[test]
+fn hancom_follow_body_size_numbers_draw_at_the_paragraph_end_size() {
+    for (name, sizes) in [
+        ("follow-two-sizes.hwp", vec![PT20_PX, PT10_PX]),
+        ("follow-two-sizes.hwpx", vec![PT20_PX, PT10_PX]),
+        ("follow-end-20pt.hwp", vec![PT20_PX]),
+    ] {
+        let doc = fixture(name);
+        let got = markers(&doc);
+        assert_eq!(got.len(), sizes.len(), "{name}: {got:?}");
+        for ((size, _), want) in got.iter().zip(&sizes) {
+            assert!((size - want).abs() < 0.06, "{name}: {got:?}");
+        }
+    }
 }
