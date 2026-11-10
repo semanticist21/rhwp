@@ -3922,9 +3922,12 @@ impl WebCanvasRenderer {
             self.ctx.set_line_cap("round");
             self.ctx.set_line_join("round");
             // 장치 한 칸보다 가는 pen은 다른 선과 같이 한 칸으로 올린다. 반복 구간은 그대로다.
-            self.ctx.set_line_width(line_width);
+            // 굵은 실선(pen 두 개)은 올린 한 칸의 두 배로 그려 한컴 화면처럼 실선보다 굵다.
+            let pens = if style.outline_type == 3 { 2.0 } else { 1.0 };
+            self.ctx.set_line_width(line_width / pens);
             self.floor_line_width_to_device();
-            let line_width = self.ctx.line_width();
+            let line_width = self.ctx.line_width() * pens;
+            self.ctx.set_line_width(line_width);
             render_pass(
                 &self.ctx,
                 0.0,
