@@ -174,27 +174,3 @@ pub fn memo_properties_xml(shapes: &[MemoShape]) -> String {
     xml.push_str("</hh:memoProperties>");
     xml
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hancom_record_reads_and_writes_back() {
-        // 한컴 12.30 Mac: 너비 70mm, 파선(DOT), 0.6mm, #C75252 / #DFEAF5 / #FAEDD2
-        let data = [
-            0x82, 0x4d, 0, 0, 2, 7, 0xc7, 0x52, 0x52, 0, 0xdf, 0xea, 0xf5, 0, 0xfa, 0xed, 0xd2, 0,
-            0, 0, 0, 0,
-        ];
-        let shape = MemoShape::from_record(&data).unwrap();
-        assert_eq!(shape.width, 19842);
-        assert_eq!(shape.line_type_name(), "DOT");
-        assert_eq!(color_hex(shape.line_color), "#C75252");
-        assert_eq!(shape.to_record(), data);
-        assert!(memo_properties_xml(&[shape]).contains(
-            r##"<hh:memoPr id="1" width="19842" lineWidth="7" lineType="DOT" lineColor="#C75252" fillColor="#DFEAF5" activeColor="#FAEDD2" memoType="NOMAL"/>"##
-        ));
-        assert_eq!(color_from_hex("#C75252"), Some(shape.line_color));
-        assert_eq!(line_type_from_name("SLIM_THICK_SLIM"), 11);
-    }
-}

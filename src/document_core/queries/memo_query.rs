@@ -1692,16 +1692,35 @@ impl DocumentCore {
         if self.document_protected() {
             return Err(MemoError::read_only("protected"));
         }
-        // 한컴처럼 부모 메모를 지우면 댓글도 지운다.
-        let replies: Vec<u32> = self
-            .memo_parent_map(&self.memo_hits())
-            .into_iter()
-            .filter(|(_, parent)| *parent == id)
-            .map(|(reply, _)| reply)
-            .collect();
-        for reply in replies {
-            self.remove_memo(reply)?;
+        // 삭제 전에 전체 자손을 확인한다. 손상된 부모 순환은 문서를 바꾸지 않고
+        // 거절하며, 깊은 댓글도 호출 스택을 늘리지 않고 자식부터 지운다.
+        let hits = self.memo_hits();
+        let parents = self.memo_parent_map(&hits);
+        let mut children: HashMap<u32, Vec<u32>> = HashMap::new();
+        for hit in &hits {
+            if let Some(&parent) = parents.get(&hit.id) {
+                children.entry(parent).or_default().push(hit.id);
+            }
         }
+        let mut pending = vec![id];
+        let mut visited = HashSet::new();
+        let mut order = Vec::new();
+        while let Some(current) = pending.pop() {
+            if !visited.insert(current) {
+                return Err(MemoError::invalid_range("메모 댓글 부모 관계가 순환함"));
+            }
+            order.push(current);
+            if let Some(replies) = children.get(&current) {
+                pending.extend(replies.iter().copied());
+            }
+        }
+        for current in order.into_iter().rev() {
+            self.remove_memo_only(current)?;
+        }
+        Ok(r#"{"ok":true}"#.to_string())
+    }
+
+    fn remove_memo_only(&mut self, id: u32) -> Result<String, MemoError> {
         self.document
             .memo_parents
             .retain(|(reply, parent)| *reply != id && *parent != id);
@@ -1767,11 +1786,6 @@ impl DocumentCore {
         Ok(r#"{"ok":true}"#.to_string())
     }
 
-    fn next_memo_identity(&self) -> Result<(u32, u32), MemoError> {
-        let number = max_memo_number(&self.document).saturating_add(1).max(1);
-        Ok((number, self.next_click_here_field_id()))
-    }
-
     /// 댓글 번호 → 부모 메모 번호. 부모와 댓글이 모두 목록에 있는 관계만 쓴다.
     fn memo_parent_map(&self, hits: &[MemoHit]) -> HashMap<u32, u32> {
         if self.document.memo_parents.is_empty() {
@@ -1797,7 +1811,14 @@ impl DocumentCore {
         let created = parse_memo_time(json)?;
         let hits = self.memo_hits();
         let parents = self.memo_parent_map(&hits);
-        let root = parents.get(&parent_id).copied().unwrap_or(parent_id);
+        let mut root = parent_id;
+        let mut visited = HashSet::new();
+        while let Some(&parent) = parents.get(&root) {
+            if !visited.insert(root) {
+                return Err(MemoError::invalid_range("메모 댓글 부모 관계가 순환함"));
+            }
+            root = parent;
+        }
         let parent = hits
             .into_iter()
             .find(|hit| hit.id == root)
@@ -1844,6 +1865,11 @@ impl DocumentCore {
             as u32;
         self.document.memo_parents.push((id, root));
         Ok(result)
+    }
+
+    fn next_memo_identity(&self) -> Result<(u32, u32), MemoError> {
+        let number = max_memo_number(&self.document).saturating_add(1).max(1);
+        Ok((number, self.next_click_here_field_id()))
     }
 
     /// 새 메모 본문 문단은 한컴처럼 문서의 메모 스타일 모양을 쓴다. 그 스타일이 없으면 기준 문단을 따른다.

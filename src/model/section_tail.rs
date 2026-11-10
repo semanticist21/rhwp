@@ -43,33 +43,22 @@ impl SectionTail {
             Some((memo, group))
         })
     }
-}
 
-/// 구역 끝 원본 목록에서 바탕쪽 목록(메모 목록 바로 뒤가 아닌 수준 1 LIST_HEADER와 그 문단)의
-/// 레코드인지를 차례로 표시한다. 메모 목록은 MEMO_LIST 다음 LIST_HEADER로 시작한다.
-pub(crate) fn master_list_mask(records: &[RawRecord]) -> Vec<bool> {
-    use crate::parser::tags::{HWPTAG_LIST_HEADER, HWPTAG_MEMO_LIST};
-    let mut master = false;
-    let mut after_memo = false;
-    records
-        .iter()
-        .map(|raw| {
-            if raw.level == 1 {
-                if raw.tag_id == HWPTAG_LIST_HEADER {
-                    master = !after_memo;
-                } else if raw.tag_id == HWPTAG_MEMO_LIST {
-                    master = false;
-                }
-                after_memo = raw.tag_id == HWPTAG_MEMO_LIST;
-            }
-            master
-        })
-        .collect()
+    /// 원본 레코드마다 바탕쪽 목록(메모가 아닌 수준 1 LIST_HEADER로 시작하는 목록)에 속하는지 표시한다.
+    pub(crate) fn master_list_mask(&self) -> Vec<bool> {
+        use crate::parser::tags::HWPTAG_LIST_HEADER;
+        self.record_groups()
+            .flat_map(|(memo, group)| {
+                let master = !memo && group[0].level == 1 && group[0].tag_id == HWPTAG_LIST_HEADER;
+                std::iter::repeat_n(master, group.len())
+            })
+            .collect()
+    }
 }
 
 /// 구역 끝 원본 목록이 바탕쪽 목록을 가졌는지. 가졌으면 그 구역의 확장 바탕쪽은 원본이 저장한다.
 pub(crate) fn holds_master_lists(tail: &SectionTail) -> bool {
-    master_list_mask(&tail.records).contains(&true)
+    tail.master_list_mask().contains(&true)
 }
 
 /// 본문 글자/캐럿 위치는 제외하고, 원본 목록의 의미·참조를 바꾸는 바탕쪽 모델만 봉인한다.

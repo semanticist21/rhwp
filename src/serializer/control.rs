@@ -636,17 +636,6 @@ fn write_section_def<W: std::io::Write>(
     } else {
         sd.raw_ctrl_extra.clone()
     };
-    // 대표Language 다음 UINT16은 구역 끝 목록에 둔 확장 바탕쪽(마지막 쪽·임의 쪽) 수다. 한컴 12.30은
-    // 이 수만큼만 구역 끝 바탕쪽 목록을 읽는다(0이면 그 바탕쪽을 무시한다. 한컴 저장본에서 확인).
-    // HWP에서 읽은 구역 정의 컨트롤 사본에는 구역 끝 바탕쪽이 없으므로(구역 모델에만 붙는다) 모델에
-    // 확장 바탕쪽이 있을 때만 그 수로 고친다. 모두 지우면 바탕쪽 지우기가 원본 값을 0으로 돌린다.
-    let extensions = sd.master_pages.iter().filter(|m| m.is_extension).count() as u16;
-    if extensions > 0 {
-        if extra.len() < 4 {
-            extra.resize(4, 0);
-        }
-        extra[2..4].copy_from_slice(&extensions.to_le_bytes());
-    }
     // 추가 바이트의 7·8번째는 메모 모양 번호다. 모양을 가리키는 구역만 그 자리를 쓰고, 0이면 원본을 그대로 둔다.
     if sd.memo_shape_id != 0 {
         let at = crate::parser::body_text::MEMO_SHAPE_ID_AT;
@@ -656,6 +645,8 @@ fn write_section_def<W: std::io::Write>(
         extra[at..at + 2].copy_from_slice(&sd.memo_shape_id.to_le_bytes());
     }
     w.write_bytes(&extra)?;
+    // 대표Language 다음 UINT16(구역 끝 바탕쪽 목록 수)은 구역을 다 쓴 뒤 실제로 쓴 목록 수로 채운다
+    // (serializer::body_text::set_tail_master_count).
 
     Ok(())
 }
@@ -1688,10 +1679,14 @@ fn write_picture_data<W: std::io::Write>(
         // border_opacity(1) + instance_id(4) + image_effect(4) = 9바이트
         w.write_u8(pic.border_opacity)?;
         w.write_u32(pic.instance_id)?;
-        w.write_u32(0)?; // image_effect_extra
-                         // 원본 이미지 크기(HWPUNIT) + 플래그(1): 한컴 호환 추가 9바이트
-                         // [#1929] IR img_dim(HWPX hp:imgDim 대응)이 있으면 우선 기록 —
-                         // 종전 crop 폴백만으로는 HWPX→HWP5 왕복에서 imgDim 소실.
+        if let Some(radius) = pic.effects.soft_edge_radius {
+            write_picture_soft_edge(radius, w)?;
+        } else {
+            w.write_u32(0)?; // image_effect_extra
+        }
+        // 원본 이미지 크기(HWPUNIT) + 플래그(1): 한컴 호환 추가 9바이트
+        // [#1929] IR img_dim(HWPX hp:imgDim 대응)이 있으면 우선 기록 —
+        // 종전 crop 폴백만으로는 HWPX→HWP5 왕복에서 imgDim 소실.
         let (dim_w, dim_h) = if pic.img_dim != (0, 0) {
             pic.img_dim
         } else {
@@ -1712,6 +1707,38 @@ fn write_picture_extra<W: std::io::Write>(
     let extra = &pic.raw_picture_extra;
     let transparency = pic.image_attr.transparency_alpha_byte();
     let layout = crate::model::image::picture_extra_layout(extra);
+    let old_radius = crate::model::image::picture_soft_edge_radius(extra);
+    let plain_tail = matches!(extra.len(), 9 | 17 | 18) && extra.get(5..9) == Some(&[0, 0, 0, 0]);
+    if old_radius.is_some() || (plain_tail && pic.effects.soft_edge_radius.is_some()) {
+        // 확인한 단독 효과만 현재 모델에서 갱신한다. 알 수 없는 복합 효과의
+        // 가변 바이트를 재구성하거나 원본 크기와 반경을 혼동하지 않는다.
+        let start = if old_radius.is_some() { 13 } else { 9 };
+        w.write_bytes(&extra[..5])?;
+        if let Some(radius) = pic.effects.soft_edge_radius {
+            write_picture_soft_edge(radius, w)?;
+        } else {
+            w.write_u32(0)?;
+        }
+        if let Some(alpha) = layout.alpha_offset {
+            w.write_bytes(&extra[start..alpha])?;
+            w.write_u8(transparency)?;
+            w.write_bytes(&extra[alpha + 1..])?;
+        } else {
+            w.write_bytes(&extra[start..])?;
+            // 생략된 alpha는 기본 불투명이다. 투명도를 실제로 편집한 경우만
+            // 새 꼬리를 붙이며 원본의 누락된 크기를 임의로 materialize하지 않는다.
+            if pic.image_attr.clamped_transparency() > 0 {
+                if extra.len() == start {
+                    // crop 끝점은 전체 원본 크기가 아니다. 알려지지 않은
+                    // imgDim은 0으로 유지해 실제 bitmap의 기존 기준을 보존한다.
+                    w.write_u32(pic.img_dim.0)?;
+                    w.write_u32(pic.img_dim.1)?;
+                }
+                w.write_u8(transparency)?;
+            }
+        }
+        return Ok(());
+    }
     if let Some(alpha_offset) = layout.alpha_offset {
         w.write_bytes(&extra[..alpha_offset])?;
         w.write_u8(transparency)?;
@@ -1741,6 +1768,21 @@ fn write_picture_extra<W: std::io::Write>(
         }
     }
     Ok(())
+}
+
+fn write_picture_soft_edge<W: std::io::Write>(
+    radius: f64,
+    w: &mut ByteWriter<W>,
+) -> std::io::Result<()> {
+    let radius = radius as f32;
+    if !radius.is_finite() || radius < 0.0 {
+        return Err(std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "부드러운 가장자리 반경이 HWP5 f32 범위를 벗어납니다",
+        ));
+    }
+    w.write_u32(4)?;
+    w.write_bytes(&radius.to_le_bytes())
 }
 
 // ============================================================

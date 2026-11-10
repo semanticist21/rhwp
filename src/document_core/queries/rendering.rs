@@ -1731,8 +1731,7 @@ impl DocumentCore {
                 .with_layout_dpi(self.dpi)
                 .with_metafile_fonts(&if profile == RenderProfile::Print
                     && (crate::paint::metafile::has_wmf(&tree.root)
-                        || (self.hangul2024_compat
-                            && crate::paint::text_shadow::needs_font_metrics(&tree.root))
+                        || crate::paint::text_shadow::needs_font_metrics(&tree.root)
                         || crate::paint::dot_leader::needs_font_program(&tree.root))
                 {
                     metafile_fonts::with_document_fonts(&self.metafile_fonts, &self.document)
@@ -8365,7 +8364,7 @@ impl DocumentCore {
     /// 실제 page tree cache와 섞지 않고 마지막 편집 target 한 건만 재사용한다. 선택
     /// 드래그는 hit-test와 selection geometry를 프레임마다 연속 조회하므로, 캐시가
     /// 없으면 같은 대표 페이지를 매번 full build하게 된다 (#6452).
-    pub(crate) fn build_header_footer_edit_preview_tree(
+    pub fn build_header_footer_edit_preview_tree(
         &self,
         page_num: u32,
         section_idx: usize,

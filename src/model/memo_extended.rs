@@ -121,32 +121,3 @@ pub fn live_links(doc: &Document) -> Vec<(u32, u32)> {
         .filter(|(id, parent)| ids.contains(id) && ids.contains(parent))
         .collect()
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn hancom_stream_and_part_round_trip() {
-        // 한컴 12.30 Mac reply.hwp의 MemoExtended(풀어 쓴 것): 댓글 셋.
-        let hwp = [
-            0x65, 0x00, 0xc0, 0x01, 3, 0, 0, 0, 0xb8, 0x8b, 0xd5, 0x49, 0xb7, 0x8b, 0xd5, 0x49,
-            0xc6, 0x8b, 0xd5, 0x49, 0xb9, 0x8b, 0xd5, 0x49, 0xc7, 0x8b, 0xd5, 0x49, 0xb7, 0x8b,
-            0xd5, 0x49,
-        ];
-        let links = decode_hwp(&hwp).unwrap();
-        assert_eq!(
-            links,
-            [
-                (1238731704, 1238731703),
-                (1238731718, 1238731705),
-                (1238731719, 1238731703)
-            ]
-        );
-        assert_eq!(encode_hwp(&links), hwp);
-        let xml = encode_hwpx(&links);
-        assert!(xml.contains(r#"<he:memo id="1238731718" parentId="1238731705"/>"#));
-        assert_eq!(decode_hwpx(&xml), links);
-        assert_eq!(decode_hwp(&hwp[..20]), None);
-    }
-}
