@@ -56,3 +56,69 @@ fn body_selection_observes_edits_that_invalidate_a_warm_tree() {
     assert_eq!(doc.get_selection_rects(0, 0, 1, 0, 3).unwrap(), after);
     assert_eq!(perf_counters::thread_page_tree_builds(), 0);
 }
+
+fn rects(raw: &str) -> Vec<serde_json::Value> {
+    serde_json::from_str::<serde_json::Value>(raw)
+        .unwrap()
+        .as_array()
+        .unwrap()
+        .clone()
+}
+
+fn caret_x(doc: &HwpDocument, para: usize, offset: usize) -> f64 {
+    let caret: serde_json::Value =
+        serde_json::from_str(&doc.get_cursor_rect_native(0, para, offset).unwrap()).unwrap();
+    caret["x"].as_f64().unwrap()
+}
+
+fn right(rect: &serde_json::Value) -> f64 {
+    rect["x"].as_f64().unwrap() + rect["width"].as_f64().unwrap()
+}
+
+/// 한컴 12.30 Mac: 문단 끝까지 고른 줄은 글자 끝에 문단 부호 폭만 더 칠하고, 빈 문단은 그 폭의
+/// 상자를 보인다. 단 오른쪽 끝까지 칠하는 것은 자동 줄바꿈된 줄뿐이다.
+#[test]
+fn body_selection_ends_lines_at_the_paragraph_mark() {
+    let mut doc = HwpDocument::create_empty();
+    doc.create_blank_document_native().unwrap();
+    let lines = ["첫째 줄입니다", "둘째 줄", "", "", "셋째 줄 글자"];
+    doc.insert_text_native(0, 0, 0, lines[0]).unwrap();
+    for (index, text) in lines.iter().enumerate().skip(1) {
+        let end = lines[index - 1].chars().count();
+        doc.split_paragraph_native(0, index - 1, end, None).unwrap();
+        doc.insert_text_native(0, index, 0, text).unwrap();
+    }
+
+    let selected = rects(&doc.get_selection_rects(0, 0, 0, 4, 3).unwrap());
+    assert_eq!(selected.len(), 5, "문단마다 한 줄씩 칠한다: {selected:?}");
+    for (para, rect) in selected.iter().enumerate().take(4) {
+        let end = caret_x(&doc, para, lines[para].chars().count());
+        let mark = right(rect) - end;
+        assert!(
+            mark > 2.0 && mark < 5.0,
+            "{para}번 문단은 글자 끝에서 문단 부호 폭만 더 칠한다: {mark}"
+        );
+    }
+    assert!((right(&selected[4]) - caret_x(&doc, 4, 3)).abs() < 0.15);
+
+    // 왼쪽 정렬 영어 문단의 첫 줄은 낱말 단위로 넘어가 글자 끝이 단 끝보다 앞에 선다.
+    let text = "Extraordinarily long words like internationalization and characterization \
+                wrap unevenly across ragged lines so the right edge stays uneven everywhere.";
+    doc.split_paragraph_native(0, 4, 6, None).unwrap();
+    doc.insert_text_native(0, 5, 0, text).unwrap();
+    doc.apply_para_format_native(0, 5, r#"{"alignment":"left"}"#)
+        .unwrap();
+    let wrapped = rects(
+        &doc.get_selection_rects(0, 5, 0, 5, text.chars().count() as u32)
+            .unwrap(),
+    );
+    assert!(wrapped.len() >= 2, "{wrapped:?}");
+    let page: serde_json::Value =
+        serde_json::from_str(&doc.get_page_info_native(0).unwrap()).unwrap();
+    let column = &page["columns"][0];
+    let column_right = column["x"].as_f64().unwrap() + column["width"].as_f64().unwrap();
+    assert!(
+        (right(&wrapped[0]) - column_right).abs() < 0.15,
+        "자동 줄바꿈된 줄은 단 오른쪽 끝까지 칠한다: {wrapped:?} / {column_right}"
+    );
+}
