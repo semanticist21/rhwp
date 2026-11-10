@@ -176,6 +176,25 @@ impl PageLayoutInfo {
         let target_footer = LayoutRect::from_hwpunit_rect(&target_areas.footer_area, self.dpi);
 
         let delta_x = target_body.x - self.body_area.x;
+        // 위로 넘기기의 짝수 쪽은 제본 여백이 아래로 가서 쪽 전체가 위로 옮겨진다.
+        let delta_y = target_body.y - self.body_area.y;
+        if delta_y.abs() >= f64::EPSILON
+            && (target_body.height - self.body_area.height).abs() < f64::EPSILON
+        {
+            for area in [
+                &mut self.header_area,
+                &mut self.body_area,
+                &mut self.footer_area,
+            ] {
+                area.y += delta_y;
+            }
+            if self.footnote_area.width > 0.0 || self.footnote_area.height > 0.0 {
+                self.footnote_area.y += delta_y;
+            }
+            for column_area in &mut self.column_areas {
+                column_area.y += delta_y;
+            }
+        }
         if delta_x.abs() < f64::EPSILON
             && (target_body.width - self.body_area.width).abs() < f64::EPSILON
         {

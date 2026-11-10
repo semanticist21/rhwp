@@ -221,27 +221,40 @@ impl PageAreas {
         };
 
         let is_even_page = page_number != 0 && page_number.is_multiple_of(2);
-        let (effective_left, effective_right) =
-            if page_def.binding == BindingMethod::DuplexSided && is_even_page {
-                (
-                    page_def.margin_right,
-                    page_def.margin_left.saturating_add(page_def.margin_gutter),
-                )
-            } else {
-                (
-                    page_def.margin_left.saturating_add(page_def.margin_gutter),
-                    page_def.margin_right,
-                )
-            };
+        let top_flip = page_def.binding == BindingMethod::TopFlip;
+        let (effective_left, effective_right) = if top_flip {
+            (page_def.margin_left, page_def.margin_right)
+        } else if page_def.binding == BindingMethod::DuplexSided && is_even_page {
+            (
+                page_def.margin_right,
+                page_def.margin_left.saturating_add(page_def.margin_gutter),
+            )
+        } else {
+            (
+                page_def.margin_left.saturating_add(page_def.margin_gutter),
+                page_def.margin_right,
+            )
+        };
+        // 위로 넘기기: 한컴 12.30은 제본 여백을 홀수 쪽 위, 짝수 쪽 아래에 두고 머리말·꼬리말도
+        // 함께 옮긴다. 본문 높이는 두 쪽이 같다.
+        let (gutter_top, gutter_bottom) = match (top_flip, is_even_page) {
+            (true, false) => (page_def.margin_gutter, 0),
+            (true, true) => (0, page_def.margin_gutter),
+            _ => (0, 0),
+        };
 
         let mut content_left = effective_left;
         let mut content_right = page_width.saturating_sub(effective_right);
         // HWP 본문 시작 = margin_header + margin_top (한컴 도움말 기준)
-        let mut content_top = page_def.margin_header.saturating_add(page_def.margin_top);
+        let mut content_top = page_def
+            .margin_header
+            .saturating_add(page_def.margin_top)
+            .saturating_add(gutter_top);
         // HWP 본문 끝 = height - margin_footer - margin_bottom
         let mut content_bottom = page_height
             .saturating_sub(page_def.margin_footer)
-            .saturating_sub(page_def.margin_bottom);
+            .saturating_sub(page_def.margin_bottom)
+            .saturating_sub(gutter_bottom);
         // [Task #1583] 여백 과대(합 ≥ 용지)로 본문이 소멸하면 용지의 5% 기본 여백으로
         // 폴백 — 본문 영역이 항상 양수가 되도록 보장.
         if content_bottom <= content_top {
@@ -255,7 +268,7 @@ impl PageAreas {
 
         let header_area = Rect {
             left: content_left as i32,
-            top: page_def.margin_top as i32,
+            top: page_def.margin_top.saturating_add(gutter_top) as i32,
             right: content_right as i32,
             bottom: content_top as i32,
         };
@@ -271,7 +284,9 @@ impl PageAreas {
             left: content_left as i32,
             top: content_bottom as i32,
             right: content_right as i32,
-            bottom: page_height.saturating_sub(page_def.margin_footer) as i32,
+            bottom: page_height
+                .saturating_sub(page_def.margin_footer)
+                .saturating_sub(gutter_bottom) as i32,
         };
 
         PageAreas {
