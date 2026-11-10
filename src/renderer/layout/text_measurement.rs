@@ -206,6 +206,23 @@ fn measure_segment_from(
     w
 }
 
+/// 소수점 탭 뒤 조각에서 첫 소수점 앞까지의 폭. 소수점이 없으면 다음 탭까지 전체 폭이다.
+fn measure_decimal_head(
+    chars: &[char],
+    cluster_len: &[u8],
+    start: usize,
+    char_width: &dyn Fn(usize) -> f64,
+) -> f64 {
+    let end = chars[start..]
+        .iter()
+        .position(|&c| c == '.' || c == '\t')
+        .map_or(chars.len(), |offset| start + offset);
+    (start..end)
+        .filter(|&i| cluster_len[i] != 0)
+        .map(char_width)
+        .sum()
+}
+
 fn tab_suffix_is_ascii_page_number(chars: &[char], start: usize) -> bool {
     let mut seen_digit = false;
     for ch in chars.iter().skip(start) {
@@ -469,8 +486,13 @@ fn compute_char_positions_walk(
                         let seg_w = measure_segment_from(&chars, &cluster_len, i + 1, &char_width);
                         x = (rel_tab - seg_w / 2.0).max(x);
                     }
+                    3 => {
+                        // 소수점: 첫 소수점(없으면 조각 끝)을 탭 위치에 맞춘다.
+                        let seg_w = measure_decimal_head(&chars, &cluster_len, i + 1, &char_width);
+                        x = (rel_tab - seg_w).max(x);
+                    }
                     _ => {
-                        // 왼쪽(0), 소수점(3)
+                        // 왼쪽(0)
                         x = rel_tab.max(x);
                     }
                 }
@@ -689,8 +711,14 @@ impl EmbeddedTextMeasurer {
                                     measure_segment_from(&chars, &cluster_len, i + 1, &char_width);
                                 total = (rel_tab - seg_w / 2.0).max(total);
                             }
+                            3 => {
+                                // 소수점: 첫 소수점(없으면 조각 끝)을 탭 위치에 맞춘다.
+                                let seg_w =
+                                    measure_decimal_head(&chars, &cluster_len, i + 1, &char_width);
+                                total = (rel_tab - seg_w).max(total);
+                            }
                             _ => {
-                                // 왼쪽(0), 소수점(3) → 왼쪽과 동일 처리
+                                // 왼쪽(0)
                                 total = rel_tab.max(total);
                             }
                         }

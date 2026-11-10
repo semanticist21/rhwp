@@ -19,6 +19,11 @@ pub(crate) enum PendingTab {
         position: f64,
         fill_type: u8,
     },
+    /// 소수점 탭: 뒤 블록의 첫 소수점(없으면 끝)을 탭 위치에 맞춘다.
+    Decimal {
+        position: f64,
+        fill_type: u8,
+    },
 }
 
 impl PendingTab {
@@ -28,7 +33,13 @@ impl PendingTab {
             Self::StoredStart { position, .. } => position,
             Self::Right { position, .. } => position - block_width,
             Self::Center { position, .. } => position - block_width / 2.0,
+            Self::Decimal { position, .. } => position - block_width,
         }
+    }
+
+    /// 폭을 `decimal_tab_block_width`로 재야 하는 소수점 탭인가.
+    pub(super) fn is_decimal(self) -> bool {
+        matches!(self, Self::Decimal { .. })
     }
 
     pub(super) fn is_right_alignment(self) -> bool {
@@ -112,6 +123,10 @@ pub(crate) fn resolve_last_tab_pending(
             fill_type,
         }),
         2 => Some(PendingTab::Center {
+            position,
+            fill_type,
+        }),
+        3 => Some(PendingTab::Decimal {
             position,
             fill_type,
         }),

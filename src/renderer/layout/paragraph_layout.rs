@@ -2026,12 +2026,23 @@ pub(crate) fn right_tab_block_width(
     line_start: usize,
 ) -> f64 {
     let mut w = 0.0;
+    let mut chars = 0;
     for r in runs.iter().skip(start) {
-        if r.text.contains('\t') {
+        // 다음 탭이 든 런은 그 탭 앞까지가 이 블록이다(한컴: 줄의 마지막이 아닌 오른쪽·가운데 탭도
+        // 탭 뒤 낱말의 끝·가운데를 탭 위치에 맞춘다).
+        if let Some(tab) = r.text.find('\t') {
+            let head = &r.text[..tab];
+            if r.char_overlap.is_none() && !head.is_empty() {
+                let mut ts = r.text_style(styles);
+                ts.tab_stops = tab_stops.to_vec();
+                w += estimate_text_width_exact(head, &ts);
+                chars += head.chars().count();
+            }
             break;
         }
         if let Some(overlap) = &r.char_overlap {
             w += crate::renderer::char_overlap::advance(&r.text, overlap, &r.text_style(styles));
+            chars += r.text.chars().count();
             continue;
         }
         let mut ts = r.text_style(styles);
@@ -2042,6 +2053,7 @@ pub(crate) fn right_tab_block_width(
         // [Task #874] text_start_offset 은 right_tab_block_width 가 측정만 하므로
         // 영향 없음 — 0 그대로.
         w += estimate_text_width_exact(effective_text_for_metrics(r), &ts);
+        chars += r.text.chars().count();
     }
     let start_pos = line_start
         + runs
@@ -2049,14 +2061,33 @@ pub(crate) fn right_tab_block_width(
             .take(start)
             .map(|run| run.text.chars().count())
             .sum::<usize>();
-    let end_pos = start_pos
-        + runs
-            .iter()
-            .skip(start)
-            .take_while(|run| !run.text.contains('\t'))
-            .map(|run| run.text.chars().count())
-            .sum::<usize>();
-    w + right_tab_fields::tail_space(para, start_pos..end_pos, styles)
+    w + right_tab_fields::tail_space(para, start_pos..start_pos + chars, styles)
+}
+
+/// 소수점 탭 뒤 블록에서 첫 소수점 앞까지의 폭. 소수점이 없으면 블록 전체 폭이다(한컴 12.30:
+/// `12.34`는 소수점이, `1234`는 끝이 탭 위치에 선다). 다음 탭에서 멈춘다.
+pub(crate) fn decimal_tab_block_width(
+    runs: &[crate::renderer::composer::ComposedTextRun],
+    start: usize,
+    styles: &ResolvedStyleSet,
+) -> f64 {
+    let mut w = 0.0;
+    for r in runs.iter().skip(start) {
+        let end = r.text.find(['\t', '.']);
+        let head = &r.text[..end.unwrap_or(r.text.len())];
+        if !head.is_empty() {
+            w += match &r.char_overlap {
+                Some(overlap) => {
+                    crate::renderer::char_overlap::advance(&r.text, overlap, &r.text_style(styles))
+                }
+                None => estimate_text_width_exact(head, &r.text_style(styles)),
+            };
+        }
+        if end.is_some() {
+            break;
+        }
+    }
+    w
 }
 
 /// [Issue #6179] 오른쪽 탭 뒤에 오는 **자리차지(TAC) 개체**까지 포함한 정렬 블록 폭.
@@ -9234,21 +9265,25 @@ impl LayoutEngine {
                     // 셀 우단으로 덮어쓰거나 문단 왼쪽 여백을 다시 더하지 않는다.
                     // [Issue #842 #4] 탭 다음 콘텐츠가 여러 composed run 으로 쪼개진 경우
                     // (스크립트·char-shape 경계, 예 "Ctrl+(회색)5") 전체 블록 폭 기준 정렬.
-                    let next_w = right_tab_block_width(
-                        &comp_line.runs,
-                        run_idx,
-                        styles,
-                        tab_width,
-                        &tab_stops,
-                        auto_tab_right,
-                        available_width,
-                        if pending.is_right_alignment() {
-                            para
-                        } else {
-                            None
-                        },
-                        comp_line.char_start,
-                    );
+                    let next_w = if pending.is_decimal() {
+                        decimal_tab_block_width(&comp_line.runs, run_idx, styles)
+                    } else {
+                        right_tab_block_width(
+                            &comp_line.runs,
+                            run_idx,
+                            styles,
+                            tab_width,
+                            &tab_stops,
+                            auto_tab_right,
+                            available_width,
+                            if pending.is_right_alignment() {
+                                para
+                            } else {
+                                None
+                            },
+                            comp_line.char_start,
+                        )
+                    };
                     x = col_area.x + pending.block_start(next_w);
                     resolved_tab_block = true;
                 } // end else (non-blank run)
@@ -11356,21 +11391,25 @@ impl LayoutEngine {
                     // [Issue #842 #4] 탭 다음 콘텐츠가 여러 composed run 으로 쪼개진 경우
                     // (스크립트·char-shape 경계) 전체 블록 폭 기준으로 정렬해야 마지막 글자가
                     // 탭스톱에 맞는다. (선행 공백 run "예 16" 케이스도 합산에 포함되어 동작 유지.)
-                    let run_w = right_tab_block_width(
-                        &comp_line.runs,
-                        run_idx_est,
-                        styles,
-                        tab_width,
-                        &tab_stops,
-                        auto_tab_right,
-                        available_width,
-                        if pending.is_right_alignment() {
-                            para
-                        } else {
-                            None
-                        },
-                        comp_line.char_start,
-                    );
+                    let run_w = if pending.is_decimal() {
+                        decimal_tab_block_width(&comp_line.runs, run_idx_est, styles)
+                    } else {
+                        right_tab_block_width(
+                            &comp_line.runs,
+                            run_idx_est,
+                            styles,
+                            tab_width,
+                            &tab_stops,
+                            auto_tab_right,
+                            available_width,
+                            if pending.is_right_alignment() {
+                                para
+                            } else {
+                                None
+                            },
+                            comp_line.char_start,
+                        )
+                    };
                     est_x = pending.block_start(run_w);
                 }
             }
