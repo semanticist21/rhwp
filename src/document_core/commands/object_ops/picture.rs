@@ -433,7 +433,7 @@ impl DocumentCore {
                 "\"vertOffset\":{},\"horzOffset\":{},",
                 "\"textWrap\":\"{}\",\"restrictInPage\":{},\"allowOverlap\":{},\"sizeProtect\":{},",
                 "\"brightness\":{},\"contrast\":{},\"effect\":\"{}\",\"transparency\":{},",
-                "\"description\":\"{}\",",
+                "\"description\":\"{}\",\"href\":\"{}\",",
                 // 회전/대칭
                 "\"rotationAngle\":{},\"horzFlip\":{},\"vertFlip\":{},",
                 // 원본 크기
@@ -460,6 +460,7 @@ impl DocumentCore {
             effect,
             pic.image_attr.clamped_transparency(),
             desc_escaped,
+            crate::document_core::helpers::json_escape(pic.href.as_deref().unwrap_or("")),
             // 회전/대칭
             sa.rotation_angle, sa.horz_flip, sa.vert_flip,
             // 원본 크기
@@ -539,6 +540,33 @@ impl DocumentCore {
                 was_tac && !now_tac,
             )
         };
+
+        // 그림 하이퍼링크는 HWPX `hp:pic@href`이고, HWP는 한컴처럼 그림 뒤 CTRL_DATA ParameterSet이다.
+        // HWP 원본 문서는 변환 어댑터를 거치지 않으므로 여기서 본문 문단의 CTRL_DATA를 맞춘다.
+        if let Some(href) = crate::document_core::helpers::json_str(props_json, "href") {
+            let data = if href.is_empty() {
+                None
+            } else {
+                match crate::document_core::converters::hwpx_to_hwp::build_picture_href_ctrl_data(
+                    &href,
+                    &crate::storage::Unbounded,
+                ) {
+                    Ok(data) => Some(data),
+                    Err(never) => match never {},
+                }
+            };
+            if let Some(para) = self
+                .document
+                .sections
+                .get_mut(section_idx)
+                .and_then(|section| section.paragraphs.get_mut(parent_para_idx))
+            {
+                para.align_ctrl_data_records();
+                if let Some(slot) = para.ctrl_data_records.get_mut(control_idx) {
+                    *slot = data;
+                }
+            }
+        }
 
         // [Task #1151 v2] floating → inline migration (H1 정합, samples/tac-verify/).
         // 한컴 산출물 Scenario A~D 분석: tac false→true 시 picture 의 control 위치는
@@ -1185,6 +1213,10 @@ impl DocumentCore {
         // description
         if let Some(v) = json_str(props_json, "description") {
             pic.common.description = v;
+        }
+        // 그림 하이퍼링크(한컴 `주소;1;0;1`). 빈 값은 링크를 푼다.
+        if let Some(v) = json_str(props_json, "href") {
+            pic.href = (!v.is_empty()).then_some(v);
         }
 
         let mut caption_created = false;
@@ -4304,6 +4336,67 @@ mod bindata_storage_id_collision_tests {
             core.document.bin_data_content[0].data.load(),
             EXISTING_IMAGE
         );
+    }
+
+    /// CCL 넣기의 그림 링크: 속성으로 걸고 풀면 HWPX `href`와 HWP CTRL_DATA에 같이 남거나 빠진다.
+    #[test]
+    fn picture_href_property_round_trips_hwp_and_hwpx() {
+        let href = "http://creativecommons.org/licenses/by/4.0/deed.ko;1;0;1";
+        let mut core = make_core_with_storage_hole();
+        let result = core
+            .insert_picture_native(
+                0,
+                0,
+                0,
+                &[],
+                &minimal_png(),
+                6600,
+                2325,
+                88,
+                31,
+                "png",
+                "",
+                None,
+                None,
+            )
+            .expect("insert_picture_native");
+        let ctrl = crate::document_core::helpers::json_u32(&result, "controlIdx")
+            .expect("controlIdx") as usize;
+        core.set_picture_properties_native(0, 0, ctrl, &format!("{{\"href\":\"{href}\"}}"))
+            .expect("set href");
+        assert!(core
+            .get_picture_properties_native(0, 0, ctrl)
+            .unwrap()
+            .contains(&format!("\"href\":\"{href}\"")));
+
+        let picture_href = |core: &DocumentCore| {
+            let para = &core.document.sections[0].paragraphs[0];
+            let index = para
+                .controls
+                .iter()
+                .position(|c| matches!(c, Control::Picture(_)))
+                .expect("picture");
+            let Control::Picture(pic) = &para.controls[index] else {
+                unreachable!()
+            };
+            let data = para.ctrl_data_records.get(index).cloned().flatten();
+            (pic.href.clone(), data)
+        };
+        let units =
+            |text: &str| -> Vec<u8> { text.encode_utf16().flat_map(u16::to_le_bytes).collect() };
+        let hwpx = DocumentCore::from_bytes(&core.export_hwpx_native().unwrap()).unwrap();
+        assert_eq!(picture_href(&hwpx).0.as_deref(), Some(href));
+        let hwp = DocumentCore::from_bytes(&core.export_hwp_native().unwrap()).unwrap();
+        let data = picture_href(&hwp).1.expect("HWP 그림 CTRL_DATA");
+        assert!(data
+            .windows(units("creativecommons.org").len())
+            .any(|w| w == units("creativecommons.org")));
+
+        core.set_picture_properties_native(0, 0, ctrl, r#"{"href":""}"#)
+            .expect("clear href");
+        assert_eq!(picture_href(&core), (None, None));
+        let hwp = DocumentCore::from_bytes(&core.export_hwp_native().unwrap()).unwrap();
+        assert_eq!(picture_href(&hwp).1, None);
     }
 
     #[test]

@@ -2627,7 +2627,7 @@ fn adapt_picture_href_ctrl_data<S: crate::storage::Storage>(
     Ok(())
 }
 
-fn build_picture_href_ctrl_data<S: crate::storage::Storage>(
+pub(crate) fn build_picture_href_ctrl_data<S: crate::storage::Storage>(
     href: &str,
     storage: &S,
 ) -> Result<Vec<u8>, S::Error> {
