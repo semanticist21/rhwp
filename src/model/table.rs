@@ -2564,15 +2564,37 @@ impl Table {
             .map(|i| base_w + if i == 0 { remainder_w } else { 0 })
             .collect();
 
-        // 높이 분배
-        let sub_heights: Vec<HwpUnit> = if equal_row_height || n_rows > 1 {
+        // 높이 분배. 한컴 12.30은 줄 높이를 같게 나누지 않으면 앞 줄들을 글 한 줄 높이(셀 위·아래
+        // 안 여백 포함)로 두고 마지막 줄이 나머지를 갖는다(높이 6000 셀을 세 줄로: 1282·1282·3436).
+        let target = &self.cells[cell_idx];
+        let one_line = target
+            .paragraphs
+            .first()
+            .and_then(|para| para.line_segs.first())
+            .map(|seg| seg.line_height)
+            .filter(|height| *height > 0)
+            .unwrap_or(1000) as u32
+            + target.padding.top.max(0) as u32
+            + target.padding.bottom.max(0) as u32;
+        let leading = one_line.saturating_mul(u32::from(n_rows).saturating_sub(1));
+        let sub_heights: Vec<HwpUnit> = if n_rows == 1 {
+            vec![target_height]
+        } else if !equal_row_height && leading < target_height {
+            (0..n_rows)
+                .map(|i| {
+                    if i + 1 == n_rows {
+                        target_height - leading
+                    } else {
+                        one_line
+                    }
+                })
+                .collect()
+        } else {
             let base_h = target_height / n_rows as u32;
             let remainder_h = target_height - base_h * n_rows as u32;
             (0..n_rows)
                 .map(|i| base_h + if i == 0 { remainder_h } else { 0 })
                 .collect()
-        } else {
-            vec![target_height]
         };
 
         // 서브셀의 col_span/row_span 분배 (grid_cols를 m_cols개에 분배)
