@@ -1258,6 +1258,94 @@ impl Table {
         Ok(())
     }
 
+    /// 셀 블록(병합 셀을 온전히 품는 사각형)만 남긴 표를 만든다. 한컴 12.30의 셀 블록 복사처럼
+    /// 블록 밖 줄·칸을 지워 칸 너비·병합·셀 모양을 지키고, 셀 범위 서식은 블록과 겹치는 부분만 블록
+    /// 좌표로 옮긴다. 캡션은 블록에 속하지 않아 빼고, 바깥 여백은 한컴이 붙인 블록 표처럼 네 방향
+    /// 0.5mm로 둔다. 블록 경계에 걸친 병합 셀은 거절한다.
+    pub fn cell_block(
+        &self,
+        start_row: u16,
+        start_col: u16,
+        end_row: u16,
+        end_col: u16,
+    ) -> Result<Table, String> {
+        if start_row > end_row
+            || start_col > end_col
+            || end_row >= self.row_count
+            || end_col >= self.col_count
+        {
+            return Err("셀 블록이 표 밖에 있습니다".to_string());
+        }
+        // (블록 안에 다 드는가, 블록과 겹치는가)
+        let inside = |from: u16, span: u16, start: u16, end: u16| {
+            let last = from.saturating_add(span.max(1) - 1);
+            (from >= start && last <= end, from <= end && last >= start)
+        };
+        for cell in &self.cells {
+            let (rows_in, rows_touch) = inside(cell.row, cell.row_span, start_row, end_row);
+            let (cols_in, cols_touch) = inside(cell.col, cell.col_span, start_col, end_col);
+            if rows_touch && cols_touch && !(rows_in && cols_in) {
+                return Err("병합 셀이 블록 경계에 걸쳐 있어 복사할 수 없습니다".to_string());
+            }
+        }
+        let mut block = self.clone();
+        for row in (end_row + 1..self.row_count)
+            .rev()
+            .chain((0..start_row).rev())
+        {
+            block.delete_row(row)?;
+        }
+        for col in (end_col + 1..self.col_count)
+            .rev()
+            .chain((0..start_col).rev())
+        {
+            block.delete_column(col)?;
+        }
+        block.zones = self
+            .zones
+            .iter()
+            .filter(|z| {
+                z.start_row <= end_row
+                    && z.end_row >= start_row
+                    && z.start_col <= end_col
+                    && z.end_col >= start_col
+            })
+            .map(|z| {
+                let mut z = z.clone();
+                z.start_row = z.start_row.max(start_row) - start_row;
+                z.end_row = z.end_row.min(end_row) - start_row;
+                z.start_col = z.start_col.max(start_col) - start_col;
+                z.end_col = z.end_col.min(end_col) - start_col;
+                z
+            })
+            .collect();
+        // 한컴 12.30: 바깥 여백 1mm인 표에서 블록을 본문에 붙이면 네 방향 모두 0.5mm(141)다.
+        const MARGIN: i16 = 141;
+        block.outer_margin_left = MARGIN;
+        block.outer_margin_right = MARGIN;
+        block.outer_margin_top = MARGIN;
+        block.outer_margin_bottom = MARGIN;
+        let margin = &mut block.common.margin;
+        (margin.left, margin.right, margin.top, margin.bottom) = (MARGIN, MARGIN, MARGIN, MARGIN);
+        use crate::model::shape::common_obj_offsets as at;
+        for range in [
+            at::MARGIN_LEFT,
+            at::MARGIN_RIGHT,
+            at::MARGIN_TOP,
+            at::MARGIN_BOTTOM,
+        ] {
+            if block.raw_ctrl_data.len() >= range.end {
+                block.raw_ctrl_data[range].copy_from_slice(&MARGIN.to_le_bytes());
+            }
+        }
+        if block.caption.take().is_some() {
+            // attr bit 29는 캡션 존재 플래그다(캡션 지우기와 같다).
+            block.attr &= !(1 << 29);
+            block.common.attr = block.attr;
+        }
+        Ok(block)
+    }
+
     /// 직사각형 범위의 셀 문단을 행/열 바꿈 복사용 데이터로 복사한다.
     pub fn copy_transpose_range(
         &self,

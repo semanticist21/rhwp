@@ -2884,6 +2884,56 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 표의 셀 블록을 블록만 남긴 새 표로 내부 클립보드에 복사한다(한컴 셀 블록 복사).
+    ///
+    /// 반환값: JSON `{"ok":true,"text":"..."}` — 줄마다 칸 글을 탭으로 나눈 글
+    #[wasm_bindgen(js_name = copyTableCells)]
+    pub fn copy_table_cells(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        control_idx: u32,
+        start_row: u32,
+        start_col: u32,
+        end_row: u32,
+        end_col: u32,
+    ) -> Result<String, JsValue> {
+        self.copy_table_cells_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            control_idx as usize,
+            start_row as u16,
+            start_col as u16,
+            end_row as u16,
+            end_col as u16,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 표의 셀 블록을 블록만 남긴 표의 HTML로 내보낸다.
+    #[wasm_bindgen(js_name = exportTableCellsHtml)]
+    pub fn export_table_cells_html(
+        &self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        control_idx: u32,
+        start_row: u32,
+        start_col: u32,
+        end_row: u32,
+        end_col: u32,
+    ) -> Result<String, JsValue> {
+        self.export_table_cells_html_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            control_idx as usize,
+            start_row as u16,
+            start_col as u16,
+            end_row as u16,
+            end_col as u16,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// 선택된 표 셀 범위를 행/열 바꿈 복사용 내부 버퍼에 저장한다.
     ///
     /// 반환값: JSON `{"ok":true,"sourceRows":N,"sourceCols":N,"targetRows":N,"targetCols":N}`
