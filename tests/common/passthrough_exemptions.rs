@@ -563,6 +563,12 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "복사 — `table_transpose_clipboard` 에만 기록.",
     ),
     (
+        "commands/table_ops.rs",
+        "copy_table_cells_native",
+        Exempt::SessionState,
+        "셀 블록 복사 — 블록만 남긴 표 사본을 `self.clipboard` 에만 기록(표 복사 copy_control_native 와 같다).",
+    ),
+    (
         "queries/field_query.rs",
         "set_active_field",
         Exempt::SessionState,
