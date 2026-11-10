@@ -2380,8 +2380,13 @@ impl DocumentCore {
             // 문단에 삽입
             // [#3214] controls 기준 인덱스를 ctrl_data_records 에 그대로 쓰기 전에 정렬한다.
             para.align_ctrl_data_records();
-            para.controls
-                .insert(insert_idx, Control::Shape(Box::new(child)));
+            // 그림 자식은 한컴처럼 그림 컨트롤로 되살린다. 도형 컨트롤에 담으면 그림 속성·쪽 개체
+            // 목록이 그 그림을 찾지 못한다.
+            let control = match child {
+                ShapeObject::Picture(picture) => Control::Picture(picture),
+                child => Control::Shape(Box::new(child)),
+            };
+            para.controls.insert(insert_idx, control);
             para.ctrl_data_records.insert(insert_idx, None);
             para.char_count += 8;
             para.control_mask |= 0x00000800;
