@@ -826,6 +826,100 @@ impl DocumentCore {
         )))
     }
 
+    /// 본문 표의 셀 블록을 블록만 남긴 새 표로 내부 클립보드에 복사한다(한컴 셀 블록 복사).
+    /// 본문에 붙이면(`pasteInternal`) 그 블록이 새 표가 된다. 원래 표는 바꾸지 않는다.
+    ///
+    /// 반환값: JSON `{"ok":true,"text":"..."}` — 줄마다 칸 글을 탭으로, 줄을 줄바꿈으로 나눈 글.
+    pub fn copy_table_cells_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        control_idx: usize,
+        start_row: u16,
+        start_col: u16,
+        end_row: u16,
+        end_col: u16,
+    ) -> Result<String, HwpError> {
+        let block = self.table_cell_block(
+            section_idx,
+            parent_para_idx,
+            control_idx,
+            (start_row, start_col, end_row, end_col),
+        )?;
+        let mut cells: Vec<_> = block.cells.iter().collect();
+        cells.sort_by_key(|cell| (cell.row, cell.col));
+        let mut text = String::new();
+        for (index, cell) in cells.iter().enumerate() {
+            if index > 0 {
+                text.push(if cells[index - 1].row == cell.row {
+                    '\t'
+                } else {
+                    '\n'
+                });
+            }
+            let paragraphs: Vec<&str> = cell.paragraphs.iter().map(|p| p.text.as_str()).collect();
+            text.push_str(&paragraphs.join(" "));
+        }
+        // 클립보드 문단(글자 모양·문단 모양·컨트롤 자료)은 표 복사와 같게 만들고 표만 블록으로 바꾼다.
+        self.copy_control_native(section_idx, parent_para_idx, &[], control_idx)?;
+        if let Some(clipboard) = self.clipboard.as_mut() {
+            clipboard.paragraphs[0].controls[0] = Control::Table(Box::new(block));
+            clipboard.plain_text = text.clone();
+        }
+        Ok(super::super::helpers::json_ok_with(&format!(
+            "\"text\":\"{}\"",
+            super::super::helpers::json_escape(&text)
+        )))
+    }
+
+    /// 본문 표의 셀 블록을 블록만 남긴 표의 HTML로 내보낸다(다른 앱에 붙일 클립보드 HTML).
+    pub fn export_table_cells_html_native(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        control_idx: usize,
+        start_row: u16,
+        start_col: u16,
+        end_row: u16,
+        end_col: u16,
+    ) -> Result<String, HwpError> {
+        let block = Control::Table(Box::new(self.table_cell_block(
+            section_idx,
+            parent_para_idx,
+            control_idx,
+            (start_row, start_col, end_row, end_col),
+        )?));
+        let mut html = String::from("<html><body>\n<!--StartFragment-->\n");
+        html.push_str(&self.control_to_html(&block, 0));
+        html.push_str("<!--EndFragment-->\n</body></html>");
+        crate::document_core::html_table_import::validate_html_common(&html)?;
+        Ok(html)
+    }
+
+    /// 본문 표에서 (시작 줄, 시작 칸, 끝 줄, 끝 칸) 블록만 남긴 표를 만든다.
+    fn table_cell_block(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        control_idx: usize,
+        (start_row, start_col, end_row, end_col): (u16, u16, u16, u16),
+    ) -> Result<crate::model::table::Table, HwpError> {
+        match self
+            .document
+            .sections
+            .get(section_idx)
+            .and_then(|section| section.paragraphs.get(parent_para_idx))
+            .and_then(|para| para.controls.get(control_idx))
+        {
+            Some(Control::Table(table)) => table
+                .cell_block(start_row, start_col, end_row, end_col)
+                .map_err(HwpError::RenderError),
+            _ => Err(HwpError::RenderError(
+                "지정된 컨트롤이 표가 아닙니다".to_string(),
+            )),
+        }
+    }
+
     /// 선택된 셀 범위를 행/열 바꿈 복사용 내부 버퍼에 저장한다.
     pub fn copy_table_cells_transposed_native(
         &mut self,
