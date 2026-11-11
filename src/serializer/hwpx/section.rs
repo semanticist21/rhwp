@@ -1328,6 +1328,26 @@ pub(crate) struct InlineCursor<'a> {
     pub nb_space_control_indices: Option<&'a [usize]>,
     /// 개체로 방출해 텍스트 커서에서 소비하지 않은 모델 자리표 수.
     pub nb_space_skipped_source_scalars: usize,
+    /// 모델 글자마다 걸린 글자 스타일 번호(`<hp:t charStyleIDRef>`). 비면 모두 없음.
+    pub char_styles: &'a [Option<u32>],
+}
+
+impl InlineCursor<'_> {
+    /// 다음에 방출할 글자의 글자 스타일 번호.
+    fn char_style_ahead(&self) -> Option<u32> {
+        self.char_styles
+            .get(self.char_idx + self.nb_space_skipped_source_scalars)
+            .copied()
+            .flatten()
+    }
+}
+
+/// `<hp:t>` 여는 태그. 글자 스타일이 있으면 `charStyleIDRef` 를 단다.
+fn hp_t_open(char_style: Option<u32>) -> String {
+    match char_style {
+        Some(id) => format!(r#"<hp:t charStyleIDRef="{id}">"#),
+        None => "<hp:t>".to_string(),
+    }
 }
 
 impl InlineCursor<'_> {
@@ -1517,13 +1537,29 @@ fn render_hp_t_content_with_storage<S: crate::storage::Storage>(
 where
     S::Error: std::fmt::Display,
 {
-    let mut t_xml = storage.string("<hp:t>").map_err(xml_error)?;
+    // 글자 스타일이 바뀌는 글자 앞에서 `<hp:t>` 를 닫고 다시 연다(한컴 실측: 한 run 안
+    // `<hp:t>하나</hp:t><hp:t charStyleIDRef="12">둘셋</hp:t>`).
+    let mut open_style = if text.is_empty() {
+        None
+    } else {
+        cursor.char_style_ahead()
+    };
+    let mut t_xml = storage.string(&hp_t_open(open_style)).map_err(xml_error)?;
     let mut buf = String::new();
     // 조각 첫머리에서도 훑는다 — char_shape 경계가 표시 자리에 걸리면 그 표시만 담은
     // 빈 run 이 나오는데(한컴 실측: `<hp:t><hp:titleMark ignore="1"/></hp:t>`),
     // 문자 루프만으로는 문자가 없어 그 run 을 그냥 지나친다.
     cursor.flush_marks_at_cursor_with_storage(&mut t_xml, &mut buf, storage)?;
     for c in text.chars() {
+        let style = cursor.char_style_ahead();
+        if style != open_style {
+            flush_buf_with_storage(&mut t_xml, &mut buf, storage)?;
+            storage.push_str(&mut t_xml, "</hp:t>").map_err(xml_error)?;
+            storage
+                .push_str(&mut t_xml, &hp_t_open(style))
+                .map_err(xml_error)?;
+            open_style = style;
+        }
         // 제목 차례 표시는 이 문자 **앞**에 놓인다.
         cursor.flush_marks_at_cursor_with_storage(&mut t_xml, &mut buf, storage)?;
         cursor.char_idx += 1;
@@ -2388,11 +2424,20 @@ where
             })
         }))
         .map_err(xml_error)?;
+    let char_styles: Vec<Option<u32>> =
+        if para.range_tags.iter().any(|t| t.char_style_id().is_some()) {
+            storage
+                .collect((0..para.char_offsets.len()).map(|i| para.char_style_id_at(i)))
+                .map_err(xml_error)?
+        } else {
+            Vec::new()
+        };
     let mut cursor = InlineCursor {
         title_marks: &para.title_marks,
         markpen_marks: &para.markpen_marks,
         markpen_idx: 0,
         mark_owned_by_prev: &mark_owned_by_prev,
+        char_styles: &char_styles,
         // [#4895] 출처가 제어 표기였던 문단만 `<hp:hypen/>` 로 되돌린다(#7993 철자).
         soft_hyphen_as_element: para.control_mask & (1u32 << 0x0018) != 0,
         // [#5174] 같은 계약 — 출처가 제어·요소 표기였던 문단만 `<hp:nbSpace/>` 로 되돌린다.

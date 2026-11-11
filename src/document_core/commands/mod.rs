@@ -1,8 +1,10 @@
 // [#6840] 발췌 산출물에서 참조 없는 BinData 를 버린다 — 쪽을 잘라도 파일이 줄지 않던 문제.
 pub(crate) mod bin_data_prune;
 mod border_paint_bands;
+// 글자 스타일 참조(영역 태그 종류 1) 적용·해제.
 pub(crate) mod border_paint_edit;
 mod border_paint_structure;
+mod char_style;
 // 한/글 글머리표·그림 글머리표 사용자 정의 모양.
 mod bullet_create;
 mod clipboard;

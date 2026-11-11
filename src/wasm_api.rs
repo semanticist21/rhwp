@@ -8709,6 +8709,12 @@ impl HwpDocument {
             }
         }
 
+        // 글자 스타일은 문단이 아니라 글자에 적힌다(영역 태그 종류 1). 그 글자를 새 모양으로.
+        if style_type == 1 && new_csid != old_csid {
+            self.core
+                .replace_char_style_shapes(style_id, old_csid, new_csid);
+        }
+
         // 스타일 캐시 무효화 + 전체 리빌드
         let num_sections = self.core.document.sections.len();
         for sec_idx in 0..num_sections {
@@ -9665,6 +9671,53 @@ impl HwpDocument {
             end_offset as usize,
             char_shape_id,
         )
+        .map_err(|e| e.into())
+    }
+
+    /// 글자 범위에 글자 스타일을 주거나(`style_id` ≥ 0) 푼다(-1, 문단 스타일 글자 모양으로
+    /// 덮어 쓴다). 글자별 글자 스타일 참조(HWP 영역 태그 종류 1, HWPX `charStyleIDRef`)도
+    /// 함께 고친다. `path_json` 이 `[]` 이면 본문 문단, 아니면 셀·글상자 경로.
+    #[wasm_bindgen(js_name = setCharStyleRangeByPath)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_char_style_range_by_path_api(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+        start_offset: u32,
+        end_offset: u32,
+        style_id: i32,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        self.set_char_style_range_by_path(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            start_offset as usize,
+            end_offset as usize,
+            u32::try_from(style_id).ok(),
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 글자 `char_offset` 의 글자 스타일 번호(없으면 -1). `path_json` 은
+    /// `setCharStyleRangeByPath` 와 같다.
+    #[wasm_bindgen(js_name = getCharStyleAtByPath)]
+    pub fn get_char_style_at_by_path_api(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+        char_offset: u32,
+    ) -> Result<i32, JsValue> {
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        self.get_char_style_at_by_path(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            char_offset as usize,
+        )
+        .map(|id| id as i32)
         .map_err(|e| e.into())
     }
 

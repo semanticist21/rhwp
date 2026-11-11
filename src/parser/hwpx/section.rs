@@ -729,6 +729,8 @@ fn parse_paragraph_body(
                                                               // 일반 동일-ID run 경계는 위치 자체가 IR이 보존할 정보이므로 제거하면 안 된다 (#3739).
     let mut preceding_run_had_sec_pr = false;
     let mut preceding_run_char_shape_id: Option<u32> = None;
+    // `<hp:t charStyleIDRef>` 글자 스타일 영역 (utf16 시작, 끝, 스타일 번호)
+    let mut char_style_ranges: Vec<(u32, u32, u32)> = Vec::new();
     // [#5961] HWP5 문단 축에서만 자리를 차지하는 앞머리 슬롯 수.
     //
     // secPr 안에만 있는 첫 단 정의를 별도 컨트롤로 만든 슬롯과, 명시적인
@@ -790,6 +792,13 @@ fn parse_paragraph_body(
                         run_has_col_pr_ctrl = false;
                     }
                     b"t" => {
+                        let char_style = ce
+                            .attributes()
+                            .flatten()
+                            .find(|a| a.key.as_ref().as_bytes() == b"charStyleIDRef")
+                            .map(|a| parse_u32(&a));
+                        let style_start =
+                            char_style.map(|_| calc_utf16_len_from_parts(&text_parts));
                         // 텍스트 읽기 (탭 확장 데이터 포함)
                         let content = read_text_content_with_tabs(reader)?;
                         if !content.literal_figure_spaces.is_empty() {
@@ -819,6 +828,12 @@ fn parse_paragraph_body(
                         // 되돌리게 한다(#4895 의 출처 표기 보존 계약).
                         if content.hyphen_element {
                             para.control_mask |= 1u32 << 0x18;
+                        }
+                        if let (Some(id), Some(start)) = (char_style, style_start) {
+                            let end = calc_utf16_len_from_parts(&text_parts);
+                            if end > start {
+                                char_style_ranges.push((start, end, id));
+                            }
                         }
                     }
                     b"tbl" => {
@@ -1112,6 +1127,22 @@ fn parse_paragraph_body(
             .into_iter()
             .map(|(pos, id)| (hwpx_map_std_pos_to_5251_axis(&text_parts, pos), id))
             .collect();
+        for range in &mut char_style_ranges {
+            range.0 = hwpx_map_std_pos_to_5251_axis(&text_parts, range.0);
+            range.1 = hwpx_map_std_pos_to_5251_axis(&text_parts, range.1);
+        }
+    }
+    // 글자 스타일은 HWP5 와 같은 영역 태그(종류 1)로 싣는다(`model::paragraph::char_style`).
+    para.range_tags
+        .extend(char_style_ranges.into_iter().map(|(start, end, id)| {
+            crate::model::paragraph::RangeTag {
+                start,
+                end,
+                tag: (1 << 24) | (id & 0x00ff_ffff),
+            }
+        }));
+    if !para.range_tags.is_empty() {
+        para.normalize_char_style_tags();
     }
     let mut visual_text = String::new();
     let mut char_offsets: Vec<u32> = Vec::new();

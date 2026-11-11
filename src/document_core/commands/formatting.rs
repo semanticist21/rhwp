@@ -413,8 +413,19 @@ impl DocumentCore {
         Ok(self.build_para_properties_json(para.para_shape_id, sec_idx))
     }
 
-    /// 글자 속성 JSON 생성 헬퍼
+    /// 글자 속성 JSON 생성 헬퍼. 글자의 글자 스타일 번호(`charStyleId`, 없으면 -1)도 싣는다.
     pub(crate) fn build_char_properties_json(
+        &self,
+        para: &crate::model::paragraph::Paragraph,
+        char_offset: usize,
+    ) -> String {
+        with_char_style_id(
+            self.build_char_shape_properties_json(para, char_offset),
+            para.char_style_id_at(char_offset),
+        )
+    }
+
+    fn build_char_shape_properties_json(
         &self,
         para: &crate::model::paragraph::Paragraph,
         char_offset: usize,
@@ -1568,11 +1579,17 @@ impl DocumentCore {
         path: &[(usize, usize, usize)],
         char_offset: usize,
     ) -> Result<String, HwpError> {
-        let char_shape_id = {
+        let (char_shape_id, char_style_id) = {
             let para = self.get_cell_paragraph_mut_by_path(sec_idx, parent_para_idx, path)?;
-            para.char_shape_id_at(char_offset).unwrap_or(0)
+            (
+                para.char_shape_id_at(char_offset).unwrap_or(0),
+                para.char_style_id_at(char_offset),
+            )
         };
-        Ok(self.build_char_properties_json_by_id(char_shape_id as u16))
+        Ok(with_char_style_id(
+            self.build_char_properties_json_by_id(char_shape_id as u16),
+            char_style_id,
+        ))
     }
 
     /// `setCharShapeIdInCell` 의 cellPath 변형 (중첩 표 지원, undo용).
@@ -2410,7 +2427,10 @@ impl DocumentCore {
                         HwpError::RenderError(format!("문단 {}/{} 범위 초과", sec_idx, para_idx))
                     })?;
                 para.apply_char_shape_to_entire_text(new_char_shape_id);
-                para.text.chars().count()
+                let len = para.text.chars().count();
+                // 한컴처럼 글자 스타일 참조도 글자에 적는다.
+                para.set_char_style_range(0, len, Some(style_id as u32));
+                len
             };
 
             self.reflow_body_paragraph(sec_idx, para_idx);
@@ -2526,7 +2546,9 @@ impl DocumentCore {
                 )?;
                 cell_para.apply_char_shape_to_entire_text(new_char_shape_id);
                 cell_para.cell_format_vpos_dirty = true;
-                cell_para.text.chars().count()
+                let len = cell_para.text.chars().count();
+                cell_para.set_char_style_range(0, len, Some(style_id as u32));
+                len
             };
 
             self.reflow_cell_paragraph(
@@ -2946,6 +2968,19 @@ fn last_page_number_position(
                 _ => None,
             })
     })
+}
+
+/// 글자 속성 JSON 객체 끝에 글자 스타일 번호를 붙인다.
+fn with_char_style_id(mut json: String, char_style_id: Option<u32>) -> String {
+    let id = char_style_id.map_or(-1, i64::from);
+    if json.ends_with('}') {
+        json.pop();
+        if !json.ends_with('{') {
+            json.push(',');
+        }
+        json.push_str(&format!("\"charStyleId\":{id}}}"));
+    }
+    json
 }
 
 #[cfg(test)]

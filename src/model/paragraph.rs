@@ -3,6 +3,7 @@
 use super::control::{Control, FieldType, CTRL_CHAR_CODE_UNITS};
 use serde::{Deserialize, Serialize};
 
+mod char_style;
 mod control_source;
 mod marker_head;
 
@@ -689,11 +690,18 @@ impl Paragraph {
         &self,
         storage: &S,
     ) -> Result<Vec<RangeTag>, S::Error> {
-        if self.markpen_marks.is_empty() {
-            return storage.collect(self.range_tags.iter().cloned());
+        // 지워져 빈 글자 스타일 영역은 쓰지 않는다.
+        let kept = |r: &&RangeTag| {
+            (self.markpen_marks.is_empty() || r.tag >> 24 != 2)
+                && (r.char_style_id().is_none() || r.start < r.end)
+        };
+        let mut ranges = storage.vec(self.range_tags.len())?;
+        for r in self.range_tags.iter().filter(kept) {
+            storage.push(&mut ranges, r.clone())?;
         }
-        let mut ranges: Vec<_> =
-            storage.collect(self.range_tags.iter().filter(|r| r.tag >> 24 != 2).cloned())?;
+        if self.markpen_marks.is_empty() {
+            return Ok(ranges);
+        }
         let mut open = storage.vec(0)?;
         for mark in &self.markpen_marks {
             let pos = mark.stream_position(self);
