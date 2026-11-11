@@ -5,6 +5,12 @@
 /// 파일 경로는 [`SCAN_ROOT`] 기준 상대 경로다. 병합 `devel` 기준 46건(2026-08-30 동결).
 const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     (
+        "commands/object_ops/common.rs",
+        "insert_new_number_native",
+        Exempt::DelegatesTo("insert_new_number_of_kind_native"),
+        "쪽 번호 종류로 번호 종류를 받는 새 번호 넣기에 위임한다. 위임 대상이 구역의 raw_stream을 비운다.",
+    ),
+    (
         "queries/memo_query.rs",
         "remove_memo",
         Exempt::DelegatesTo("remove_memo_only"),

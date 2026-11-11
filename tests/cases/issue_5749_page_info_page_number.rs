@@ -65,3 +65,37 @@ fn page_info_reports_document_page_number() {
         "문서 쪽번호는 새 번호를 따라야 한다: {after}"
     );
 }
+
+/// 한컴 12.30 새 번호로 시작의 각주·미주 번호: 그 자리 뒤 주석을 시작 번호부터 센다.
+#[test]
+fn new_number_restarts_footnote_and_endnote_counters() {
+    use rhwp::model::control::{AutoNumberType, Control};
+
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.insert_text_native(0, 0, 0, "abcd").unwrap();
+    // 뒤에서부터 넣어 앞 글자 좌표가 그대로이게 한다.
+    core.insert_endnote_native(0, 0, 4).unwrap();
+    core.insert_footnote_native(0, 0, 3).unwrap();
+    core.insert_endnote_native(0, 0, 2).unwrap();
+    core.insert_footnote_native(0, 0, 1).unwrap();
+    let numbers = |core: &DocumentCore| -> Vec<(char, u16)> {
+        core.document().sections[0].paragraphs[0]
+            .controls
+            .iter()
+            .filter_map(|control| match control {
+                Control::Footnote(note) => Some(('f', note.number)),
+                Control::Endnote(note) => Some(('e', note.number)),
+                _ => None,
+            })
+            .collect()
+    };
+    assert_eq!(numbers(&core), [('f', 1), ('e', 1), ('f', 2), ('e', 2)]);
+
+    core.insert_new_number_of_kind_native(0, 0, 2, 5, AutoNumberType::Footnote)
+        .unwrap();
+    assert_eq!(numbers(&core), [('f', 1), ('e', 1), ('f', 5), ('e', 2)]);
+    core.insert_new_number_of_kind_native(0, 0, 2, 7, AutoNumberType::Endnote)
+        .unwrap();
+    assert_eq!(numbers(&core), [('f', 1), ('e', 1), ('f', 5), ('e', 7)]);
+}

@@ -607,6 +607,7 @@ impl DocumentCore {
 }
 
 impl crate::document_core::DocumentCore {
+    /// 쪽 번호를 새로 시작하는 새 번호 지정을 넣는다.
     pub fn insert_new_number_native(
         &mut self,
         section_idx: usize,
@@ -614,8 +615,33 @@ impl crate::document_core::DocumentCore {
         char_offset: usize,
         start_num: u16,
     ) -> Result<String, crate::error::HwpError> {
+        self.insert_new_number_of_kind_native(
+            section_idx,
+            para_idx,
+            char_offset,
+            start_num,
+            crate::model::control::AutoNumberType::Page,
+        )
+    }
+
+    /// `number_type` 번호를 그 자리부터 `start_num`으로 다시 세는 새 번호 지정을 넣는다.
+    /// 한컴 12.30 새 번호로 시작의 번호 종류(쪽·각주·미주·그림·표·수식)다.
+    pub fn insert_new_number_of_kind_native(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        char_offset: usize,
+        start_num: u16,
+        number_type: crate::model::control::AutoNumberType,
+    ) -> Result<String, crate::error::HwpError> {
         use crate::error::HwpError;
         use crate::model::control::{AutoNumberType, Control, NewNumber};
+
+        if number_type == AutoNumberType::TotalPage {
+            return Err(HwpError::RenderError(
+                "총 쪽수는 새 번호로 시작할 수 없습니다".to_string(),
+            ));
+        }
 
         if section_idx >= self.document.sections.len() {
             return Err(HwpError::RenderError(format!(
@@ -631,7 +657,7 @@ impl crate::document_core::DocumentCore {
         }
 
         let new_number = NewNumber {
-            number_type: AutoNumberType::Page,
+            number_type,
             number: start_num,
         };
 
@@ -664,8 +690,23 @@ impl crate::document_core::DocumentCore {
         self.shift_active_field_for_control_insert(section_idx, para_idx, insert_idx);
 
         self.reflow_paragraph(section_idx, para_idx);
+        if matches!(
+            number_type,
+            AutoNumberType::Picture | AutoNumberType::Table | AutoNumberType::Equation
+        ) {
+            // 캡션 번호(그림·표·수식)는 문서 순서로 다시 매기고, 바뀔 수 있는 뒤 구역도 다시 짠다.
+            crate::parser::assign_auto_numbers(&mut self.document);
+            for later in section_idx + 1..self.document.sections.len() {
+                self.recompose_section(later);
+            }
+        }
         self.recompose_section(section_idx);
         self.paginate_if_needed();
+        match number_type {
+            AutoNumberType::Footnote => self.refresh_footnote_numbers(section_idx),
+            AutoNumberType::Endnote => self.refresh_endnote_numbers(section_idx),
+            _ => {}
+        }
         self.invalidate_page_tree_cache();
 
         Ok(crate::document_core::helpers::json_ok_with(&format!(

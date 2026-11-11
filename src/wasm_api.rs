@@ -3094,6 +3094,8 @@ impl HwpDocument {
     }
 
     /// 새 번호 지정 컨트롤 삽입 (쪽 > 새 번호로 시작)
+    ///
+    /// `kind`는 번호 종류다: 0 쪽(생략 시), 1 각주, 2 미주, 3 그림, 4 표, 5 수식.
     #[wasm_bindgen(js_name = insertNewNumber)]
     pub fn insert_new_number(
         &mut self,
@@ -3101,15 +3103,27 @@ impl HwpDocument {
         para_idx: u32,
         char_offset: u32,
         start_num: u32,
+        kind: Option<u8>,
     ) -> Result<String, JsValue> {
+        use crate::model::control::AutoNumberType;
         if start_num == 0 || start_num > 65535 {
             return Err(JsValue::from_str("start_num must be 1~65535"));
         }
-        self.insert_new_number_native(
+        let number_type = match kind.unwrap_or(0) {
+            0 => AutoNumberType::Page,
+            1 => AutoNumberType::Footnote,
+            2 => AutoNumberType::Endnote,
+            3 => AutoNumberType::Picture,
+            4 => AutoNumberType::Table,
+            5 => AutoNumberType::Equation,
+            _ => return Err(JsValue::from_str("kind must be 0~5")),
+        };
+        self.insert_new_number_of_kind_native(
             section_idx as usize,
             para_idx as usize,
             char_offset as usize,
             start_num as u16,
+            number_type,
         )
         .map_err(|e| e.into())
     }
