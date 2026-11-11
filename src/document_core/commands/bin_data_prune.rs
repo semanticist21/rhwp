@@ -80,7 +80,7 @@ impl BinDataPruneReport {
 ///
 /// `f` 가 값을 바꾸면 그대로 반영된다 — 모으기와 옮기기가 **같은 순회**를 쓰므로 두
 /// 단계가 서로 다른 자리를 볼 수 없다.
-fn visit_bin_data_refs(doc: &mut Document, f: &mut dyn FnMut(&mut u16)) {
+pub(crate) fn visit_bin_data_refs(doc: &mut Document, f: &mut dyn FnMut(&mut u16)) {
     fn visit_drawing(drawing: &mut DrawingObjAttr, f: &mut dyn FnMut(&mut u16)) {
         if let Some(image) = drawing.fill.image.as_mut() {
             f(&mut image.bin_data_id);

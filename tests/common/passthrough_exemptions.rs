@@ -967,4 +967,16 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         Exempt::DelegatesTo("apply_cell_border_fill_ids_at"),
         "셀 경로 표 자리로 테두리 id 대입 공통 함수에 위임한다. 공통 함수가 구역의 raw_stream을 비운다.",
     ),
+    (
+        "commands/object_ops/picture.rs",
+        "assign_picture_image_native",
+        Exempt::DelegatesTo("set_picture_image"),
+        "새 BinData로 그림 이미지 공통 함수에 위임한다. 공통 함수가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/object_ops/picture.rs",
+        "replace_picture_image_native",
+        Exempt::DelegatesTo("set_picture_image"),
+        "제자리 바꾸기로 그림 이미지 공통 함수에 위임한다. 공통 함수가 구역과 DocInfo의 raw_stream을 비운다.",
+    ),
 ];

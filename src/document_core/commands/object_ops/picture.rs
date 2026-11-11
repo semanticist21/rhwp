@@ -164,7 +164,16 @@ impl DocumentCore {
         let pic = self.resolve_picture_control_ref(section_idx, parent_para_idx, control_idx)?;
         Self::format_picture_properties_json(pic)
     }
+    /// 자르기 좌표(imgClip)의 전체 범위이자 자르기 양의 단위. 한컴 12.30은 넣을 때 줄인 그림
+    /// (imgDim = 픽셀×75가 원래 크기보다 큼)도 자르기 양을 imgDim 단위로 보이고 적는다
+    /// (3000px 그림 오른쪽 10mm → imgClip 끝 222166 = 225000 − 10mm, 틀 너비 42520 → 41984).
     fn picture_crop_extent_hu(pic: &crate::model::image::Picture) -> (i32, i32) {
+        if let Some((w, h)) = pic.crop_reference_size() {
+            return (
+                i32::try_from(w).unwrap_or(i32::MAX),
+                i32::try_from(h).unwrap_or(i32::MAX),
+            );
+        }
         let width = if pic.shape_attr.original_width > 0 {
             pic.shape_attr.original_width
         } else {
@@ -424,6 +433,7 @@ impl DocumentCore {
 
         let sa = &pic.shape_attr;
         let (crop_left, crop_top, crop_right, crop_bottom) = Self::picture_crop_ui_amounts(pic);
+        let (crop_extent_w, crop_extent_h) = Self::picture_crop_extent_hu(pic);
 
         Ok(format!(
             concat!(
@@ -438,6 +448,8 @@ impl DocumentCore {
                 "\"rotationAngle\":{},\"horzFlip\":{},\"vertFlip\":{},",
                 // 원본 크기
                 "\"originalWidth\":{},\"originalHeight\":{},",
+                // 자르기 양의 단위이자 자르기 전 그림 전체 범위(imgDim)
+                "\"cropExtentWidth\":{},\"cropExtentHeight\":{},",
                 // 자르기
                 "\"cropLeft\":{},\"cropTop\":{},\"cropRight\":{},\"cropBottom\":{},",
                 // 안쪽 여백 (그림 여백)
@@ -465,6 +477,7 @@ impl DocumentCore {
             sa.rotation_angle, sa.horz_flip, sa.vert_flip,
             // 원본 크기
             sa.original_width, sa.original_height,
+            crop_extent_w, crop_extent_h,
             // 자르기
             crop_left, crop_top, crop_right, crop_bottom,
             // 안쪽 여백
@@ -1536,50 +1549,126 @@ impl DocumentCore {
         natural_height_px: u32,
         extension: &str,
     ) -> Result<String, HwpError> {
+        self.set_picture_image(
+            section_idx,
+            parent_para_idx,
+            cell_path,
+            control_idx,
+            image_data,
+            (natural_width_px, natural_height_px),
+            extension,
+            false,
+        )
+    }
+
+    /// 그림의 이미지를 바꾼다(한컴 그림 줄이기). 그 BinData를 이 그림만 쓰면 바이트를 제자리에서
+    /// 바꿔 옛 이미지가 저장본에 남지 않고, 다른 개체도 쓰면 새 BinData를 단다. 개체 틀·원래 크기는
+    /// 그대로 두고 자르기는 새 이미지 전체, imgDim은 새 픽셀×75다. 되돌리기는 스냅샷이 맡는다.
+    ///
+    /// 반환: `{"ok":true,"binDataId":<N>,"replacedInPlace":bool}`
+    #[allow(clippy::too_many_arguments)]
+    pub fn replace_picture_image_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        cell_path: &[(usize, usize, usize)],
+        control_idx: usize,
+        image_data: &[u8],
+        natural_width_px: u32,
+        natural_height_px: u32,
+        extension: &str,
+    ) -> Result<String, HwpError> {
+        self.set_picture_image(
+            section_idx,
+            parent_para_idx,
+            cell_path,
+            control_idx,
+            image_data,
+            (natural_width_px, natural_height_px),
+            extension,
+            true,
+        )
+    }
+
+    /// 이 그림만 쓰는 내장 BinData면 그 순번을 돌려준다.
+    fn sole_embedded_bin_data(&mut self, bin_data_id: u16) -> Option<usize> {
+        let index = usize::from(bin_data_id).checked_sub(1)?;
+        let storage_id = self.document.bin_data_content.get(index)?.id;
+        let embedded = self.document.doc_info.bin_data_list.iter().any(|bd| {
+            bd.storage_id == storage_id
+                && bd.data_type == crate::model::bin_data::BinDataType::Embedding
+        });
+        let mut uses = 0usize;
+        super::super::bin_data_prune::visit_bin_data_refs(&mut self.document, &mut |id| {
+            uses += usize::from(*id == bin_data_id);
+        });
+        (embedded && uses == 1).then_some(index)
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn set_picture_image(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        cell_path: &[(usize, usize, usize)],
+        control_idx: usize,
+        image_data: &[u8],
+        (natural_width_px, natural_height_px): (u32, u32),
+        extension: &str,
+        in_place: bool,
+    ) -> Result<String, HwpError> {
         if image_data.is_empty() {
             return Err(HwpError::RenderError(
                 "이미지 데이터가 비어 있습니다".to_string(),
             ));
         }
-        // 대상 존재 검증을 BinData 등록보다 먼저 수행 — 실패 시 문서 무변형.
-        if cell_path.is_empty() {
-            self.resolve_picture_control_ref(section_idx, parent_para_idx, control_idx)?;
+        // 대상을 BinData 등록보다 먼저 찾는다 — 실패 시 문서 무변형.
+        let old_id = self
+            .picture_image_target_mut(section_idx, parent_para_idx, cell_path, control_idx)?
+            .image_attr
+            .bin_data_id;
+        let sole = if in_place {
+            self.sole_embedded_bin_data(old_id)
         } else {
-            let para = self.resolve_paragraph_by_path(section_idx, parent_para_idx, cell_path)?;
-            let ctrl = para.controls.get(control_idx).ok_or_else(|| {
-                HwpError::RenderError(format!("셀 내 컨트롤 {} 범위 초과", control_idx))
-            })?;
-            if !matches!(ctrl, Control::Picture(_)) {
-                return Err(HwpError::RenderError(
-                    "지정된 셀 내 컨트롤이 그림이 아닙니다".to_string(),
-                ));
+            None
+        };
+        let position_id = if let Some(index) = sole {
+            let content = &mut self.document.bin_data_content[index];
+            content.data = crate::model::bin_data::BinDataBytes::from_shared(image_data);
+            content.extension = extension.to_string();
+            let storage_id = content.id;
+            for bd in &mut self.document.doc_info.bin_data_list {
+                if bd.storage_id == storage_id {
+                    bd.extension = Some(extension.to_string());
+                    bd.raw_data = None;
+                }
             }
-        }
-
-        let position_id = self.register_embedded_bin_data(image_data, extension);
+            self.document.doc_info.raw_stream = None;
+            // 같은 id의 바이트를 바꾸므로 그림 캐시 키를 새로 매긴다.
+            self.bump_bin_data_epoch();
+            old_id
+        } else {
+            self.register_embedded_bin_data(image_data, extension)
+        };
 
         {
-            let pic = if cell_path.is_empty() {
-                self.resolve_picture_control_mut(section_idx, parent_para_idx, control_idx)?
-            } else {
-                let section = self.document.sections.get_mut(section_idx).ok_or_else(|| {
-                    HwpError::RenderError(format!("구역 인덱스 {} 범위 초과", section_idx))
-                })?;
-                let para = Self::resolve_cell_paragraph_mut(section, parent_para_idx, cell_path)?;
-                let ctrl = para.controls.get_mut(control_idx).ok_or_else(|| {
-                    HwpError::RenderError(format!("셀 내 컨트롤 {} 범위 초과", control_idx))
-                })?;
-                match ctrl {
-                    Control::Picture(p) => p,
-                    _ => {
-                        return Err(HwpError::RenderError(
-                            "지정된 셀 내 컨트롤이 그림이 아닙니다".to_string(),
-                        ))
-                    }
-                }
-            };
+            let pic = self.picture_image_target_mut(
+                section_idx,
+                parent_para_idx,
+                cell_path,
+                control_idx,
+            )?;
             pic.image_attr.bin_data_id = position_id;
             pic.image_attr.external_path = None;
+            pic.img_dim = (natural_width_px * 75, natural_height_px * 75);
+            // HWP 저장은 원본 꼬리 바이트의 imgDim을 그대로 쓴다. 새 크기로 덧쓴다.
+            if let Some(at) =
+                crate::model::image::picture_extra_layout(&pic.raw_picture_extra).dim_offset
+            {
+                let (w, h) = pic.img_dim;
+                pic.raw_picture_extra[at..at + 4].copy_from_slice(&w.to_le_bytes());
+                pic.raw_picture_extra[at + 4..at + 8].copy_from_slice(&h.to_le_bytes());
+            }
             pic.crop = crate::model::image::CropInfo {
                 left: 0,
                 top: 0,
@@ -1598,7 +1687,40 @@ impl DocumentCore {
             para: parent_para_idx,
             ctrl: control_idx,
         });
-        Ok(format!("{{\"ok\":true,\"binDataId\":{}}}", position_id))
+        Ok(format!(
+            "{{\"ok\":true,\"binDataId\":{},\"replacedInPlace\":{}}}",
+            position_id,
+            sole.is_some()
+        ))
+    }
+
+    fn picture_image_target_mut(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        cell_path: &[(usize, usize, usize)],
+        control_idx: usize,
+    ) -> Result<&mut crate::model::image::Picture, HwpError> {
+        let pic = if cell_path.is_empty() {
+            self.resolve_picture_control_mut(section_idx, parent_para_idx, control_idx)?
+        } else {
+            let section = self.document.sections.get_mut(section_idx).ok_or_else(|| {
+                HwpError::RenderError(format!("구역 인덱스 {} 범위 초과", section_idx))
+            })?;
+            let para = Self::resolve_cell_paragraph_mut(section, parent_para_idx, cell_path)?;
+            let ctrl = para.controls.get_mut(control_idx).ok_or_else(|| {
+                HwpError::RenderError(format!("셀 내 컨트롤 {} 범위 초과", control_idx))
+            })?;
+            match ctrl {
+                Control::Picture(p) => p,
+                _ => {
+                    return Err(HwpError::RenderError(
+                        "지정된 셀 내 컨트롤이 그림이 아닙니다".to_string(),
+                    ))
+                }
+            }
+        };
+        Ok(pic)
     }
 
     /// 커서 위치에 그림을 삽입한다 (네이티브).

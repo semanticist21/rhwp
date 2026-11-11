@@ -4759,6 +4759,37 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 그림의 이미지를 새 바이트로 바꾼다(한컴 그림 줄이기). 그 BinData를 이 그림만 쓰면 제자리에서
+    /// 바꿔 옛 이미지가 저장본에 남지 않는다. 인수는 `assignPictureImage`와 같다.
+    ///
+    /// 반환: `{"ok":true,"binDataId":<N>,"replacedInPlace":bool}`
+    #[wasm_bindgen(js_name = replacePictureImage)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn replace_picture_image(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        control_idx: u32,
+        image_data: &[u8],
+        natural_width_px: u32,
+        natural_height_px: u32,
+        extension: &str,
+    ) -> Result<String, JsValue> {
+        let cell_path = parse_cell_path_arg(cell_path_json)?;
+        self.replace_picture_image_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &cell_path,
+            control_idx as usize,
+            image_data,
+            natural_width_px,
+            natural_height_px,
+            extension,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// [Task #1142] 외부 file path 그림 reference 목록을 구조화된 JSON 배열로 반환한다.
     ///
     /// 반환: JSON 배열 `[{ key, binDataId, originalPath, basename, extension, loaded }, ...]`
