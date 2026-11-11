@@ -10,7 +10,9 @@
 //!
 //! 직렬화는 탭마다 `tab_extended` 를 차례로 꺼내 쓴다. 짝이 밀리면 기존 탭의 저장 폭(한/글이 쓴
 //! 전진폭)이 다른 탭으로 옮겨 가 한/글에서 탭 자리가 틀어진다. 새로 생긴 탭은 자리표
-//! (`TAB_EXT_PLACEHOLDER`)여서 조판이 `TabDef` 로 다시 잰다.
+//! (`TAB_EXT_PLACEHOLDER`)여서 조판이 `TabDef` 로 다시 잰다. 편집 뒤 첫 탭과 편집 앞의 오른쪽·가운데·
+//! 소수점 탭도 폭이 바뀌어 자리표로 되돌리고(한/글은 편집한 줄의 탭을 다시 잰다), 그 밖의 탭은 짝을 지킨다.
+//! HWP 저장은 자리표 탭에 조판한 폭을 적는다(`hwp_saved_tab_widths`).
 
 use rhwp::model::paragraph::{Paragraph, TAB_EXT_PLACEHOLDER};
 
@@ -34,11 +36,31 @@ fn inserted_tab_does_not_take_existing_tab_widths() {
     let mut para = para_with_tabs();
     para.insert_text_at(0, "X\t");
     assert_eq!(para.text, "X\tA\tB\tC");
-    assert_eq!(para.tab_extended, vec![TAB_EXT_PLACEHOLDER, W1, W2]);
+    // 넣은 글 뒤 첫 탭(W1)은 앞 글이 바뀌어 다시 잰다. W2는 자기 탭에 남는다.
+    assert_eq!(
+        para.tab_extended,
+        vec![TAB_EXT_PLACEHOLDER, TAB_EXT_PLACEHOLDER, W2]
+    );
 
     let mut para = para_with_tabs();
     para.insert_text_at(3, "\t");
-    assert_eq!(para.tab_extended, vec![W1, TAB_EXT_PLACEHOLDER, W2]);
+    // 앞의 왼쪽 탭(W1)은 그대로다.
+    assert_eq!(
+        para.tab_extended,
+        vec![W1, TAB_EXT_PLACEHOLDER, TAB_EXT_PLACEHOLDER]
+    );
+
+    // 앞 탭이 오른쪽 탭이면 뒤 조각이 바뀌어 그 탭도 다시 잰다.
+    let right = [2500, 0, 0x0200, 0, 0, 0, 9];
+    let mut para = Paragraph {
+        tab_extended: vec![right, W2],
+        ..para_with_tabs()
+    };
+    para.insert_text_at(2, "Y");
+    assert_eq!(
+        para.tab_extended,
+        vec![TAB_EXT_PLACEHOLDER, TAB_EXT_PLACEHOLDER]
+    );
 }
 
 #[test]
@@ -46,11 +68,16 @@ fn deleted_tab_drops_its_width() {
     let mut para = para_with_tabs();
     para.delete_text_at(1, 1);
     assert_eq!(para.text, "AB\tC");
-    assert_eq!(para.tab_extended, vec![W2]);
+    // 남은 W2는 지운 자리 뒤 첫 탭이라 다시 잰다.
+    assert_eq!(para.tab_extended, vec![TAB_EXT_PLACEHOLDER]);
 
     let mut para = para_with_tabs();
     para.delete_text_at(2, 1);
-    assert_eq!(para.tab_extended, vec![W1, W2], "탭이 없는 범위는 그대로");
+    assert_eq!(
+        para.tab_extended,
+        vec![W1, TAB_EXT_PLACEHOLDER],
+        "탭이 없는 범위를 지우면 앞 왼쪽 탭은 그대로, 뒤 첫 탭만 다시 잰다"
+    );
 }
 
 #[test]
@@ -109,15 +136,17 @@ fn document_core_edits_keep_serialized_tab_ownership() {
     core.insert_text_native(0, 2, 0, "새\t").unwrap();
     let inserted = rhwp::parse_document(&core.export_hwp_with_adapter().unwrap()).unwrap();
     let tabs = &inserted.sections[0].paragraphs[2].tab_extended;
-    assert_eq!(tabs[0], TAB_EXT_PLACEHOLDER);
-    assert_eq!(&tabs[1..], original.tab_extended.as_slice());
+    // 넣은 탭과 그 뒤 첫 탭은 조판한 폭으로 저장되고, 나머지 탭은 자기 폭을 지킨다.
+    assert_eq!(tabs.len(), 3);
+    assert!(tabs[..2].iter().all(|ext| ext[0] > 0 || ext[1] > 0));
+    assert_eq!(tabs[2], original.tab_extended[1]);
 
     core.delete_text_native(0, 2, 0, 2).unwrap();
     let split = original.text.chars().position(|c| c == '\t').unwrap() + 1;
     core.split_paragraph_native(0, 2, split, None).unwrap();
     let separated = rhwp::parse_document(&core.export_hwp_with_adapter().unwrap()).unwrap();
     let paragraphs = &separated.sections[0].paragraphs;
-    assert_eq!(paragraphs[2].tab_extended, original.tab_extended[..1]);
+    assert_eq!(paragraphs[2].tab_extended.len(), 1);
     assert_eq!(paragraphs[3].tab_extended, original.tab_extended[1..]);
     assert_eq!(
         format!("{}{}", paragraphs[2].text, paragraphs[3].text),
@@ -127,8 +156,7 @@ fn document_core_edits_keep_serialized_tab_ownership() {
     core.merge_paragraph_native(0, 3).unwrap();
     let restored = rhwp::parse_document(&core.export_hwp_with_adapter().unwrap()).unwrap();
     assert_eq!(restored.sections[0].paragraphs[2].text, original.text);
-    assert_eq!(
-        restored.sections[0].paragraphs[2].tab_extended,
-        original.tab_extended
-    );
+    let restored_tabs = &restored.sections[0].paragraphs[2].tab_extended;
+    assert_eq!(restored_tabs.len(), original.tab_extended.len());
+    assert_eq!(restored_tabs[1..], original.tab_extended[1..]);
 }

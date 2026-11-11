@@ -1594,6 +1594,23 @@ impl Paragraph {
         chars.iter().filter(|&&c| c == '\t').count()
     }
 
+    /// 글을 넣거나 지운 자리 둘레 탭의 저장 폭을 자리표로 되돌린다. 한컴은 편집한 줄의 탭을 탭
+    /// 정의로 다시 잰다. 편집 뒤 첫 탭(`next`)은 앞 글이 바뀌어 폭이 달라지고, 편집 앞 마지막
+    /// 탭(`before - 1`)은 오른쪽·가운데·소수점이면 뒤 조각이 바뀌어 폭이 달라진다(왼쪽 탭은 그대로).
+    fn drop_stale_tab_widths(&mut self, before: usize, next: usize) {
+        if let Some(ext) = self.tab_extended.get_mut(next) {
+            *ext = TAB_EXT_PLACEHOLDER;
+        }
+        if let Some(ext) = before
+            .checked_sub(1)
+            .and_then(|index| self.tab_extended.get_mut(index))
+        {
+            if !tab_ext_is_placeholder(ext) && ext[2] >> 8 != 1 {
+                *ext = TAB_EXT_PLACEHOLDER;
+            }
+        }
+    }
+
     /// [`insert_text_at`](Self::insert_text_at) 과 같되, `after_inline_control` 이면
     /// `char_offset` 자리에 놓인 개체 **뒤**(다음 글자 앞)에 넣는다 (#7444).
     /// 글자 위치만으로는 개체 앞뒤를 가릴 수 없어 논리 오프셋 입력이 이 값을 넘긴다.
@@ -1841,11 +1858,14 @@ impl Paragraph {
         super::hyperlink_format::text_edit(self, char_offset, char_offset, new_chars.len());
         // 5-0. tab_extended: 넣은 탭을 그 자리 차례에 끼워 기존 탭과의 짝을 지킨다
         let new_tabs = Self::tab_count(&new_chars);
-        if new_tabs > 0 && !self.tab_extended.is_empty() {
+        if !self.tab_extended.is_empty() {
             let at =
                 Self::tab_count(&text_chars[..effective_char_offset]).min(self.tab_extended.len());
-            self.tab_extended
-                .splice(at..at, std::iter::repeat_n(TAB_EXT_PLACEHOLDER, new_tabs));
+            if new_tabs > 0 {
+                self.tab_extended
+                    .splice(at..at, std::iter::repeat_n(TAB_EXT_PLACEHOLDER, new_tabs));
+            }
+            self.drop_stale_tab_widths(at, at + new_tabs);
         }
         // 5-1. field_ranges: 삽입 지점 이후의 char 인덱스 시프트
         let inserted_len = new_chars.len();
@@ -2029,10 +2049,13 @@ impl Paragraph {
         super::hyperlink_format::text_edit(self, char_offset, del_end, 0);
         // 5-0. tab_extended: 지운 탭의 짝을 뺀다
         let gone_tabs = Self::tab_count(&text_chars[char_offset..del_end]);
-        if gone_tabs > 0 && !self.tab_extended.is_empty() {
+        if !self.tab_extended.is_empty() {
             let at = Self::tab_count(&text_chars[..char_offset]).min(self.tab_extended.len());
-            let end = (at + gone_tabs).min(self.tab_extended.len());
-            self.tab_extended.drain(at..end);
+            if gone_tabs > 0 {
+                let end = (at + gone_tabs).min(self.tab_extended.len());
+                self.tab_extended.drain(at..end);
+            }
+            self.drop_stale_tab_widths(at, at);
         }
         // 5-1. field_ranges: 삭제 범위에 따라 축소/조정
         for fr in &mut self.field_ranges {
