@@ -5285,16 +5285,10 @@ impl LayoutEngine {
         styles: &ResolvedStyleSet,
     ) -> ComposedParagraph {
         let mut comp = crate::renderer::composer::compose_paragraph_in_context(para, styles);
-        // 번호·개요 문단은 본문처럼 번호를 그린다. 번호는 문서 순서로 미리 정해 두었다.
-        // 글머리표는 한/글 인쇄본으로 확인하지 못해 그리지 않는 종전 동작을 둔다.
-        let numbered_head = styles
-            .para_styles
-            .get(para.para_shape_id as usize)
-            .is_some_and(|style| matches!(style.head_type, HeadType::Number | HeadType::Outline));
-        if numbered_head {
-            if let Some(numbered) = self.apply_paragraph_numbering(Some(&comp), para, styles, 0) {
-                comp = numbered;
-            }
+        // 번호·개요·글머리표 문단은 본문처럼 머리를 그린다. 번호는 문서 순서로 미리 정해 두었다.
+        // 한/글 12.30도 머리말의 글머리표 문단에 글머리표를 그린다(화면, 2026-11-11).
+        if let Some(numbered) = self.apply_paragraph_numbering(Some(&comp), para, styles, 0) {
+            comp = numbered;
         }
         self.substitute_hf_field_markers(&mut comp, page_number);
         self.substitute_hf_file_name_fields(para, &mut comp);

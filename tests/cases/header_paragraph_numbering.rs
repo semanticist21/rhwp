@@ -10,7 +10,10 @@
 //! 시험 문서는 한 쪽이다. 머리말에 번호·글머리표·개요 문단이 있고 본문에도 같은 세 문단이
 //! 있다. 번호와 개요는 같은 번호 정의(1, 수준 1)를 쓴다. 한컴 한글 12.30(Mac) 인쇄
 //! PDF(`pdf/header_footer_numbering/`)는 머리말에 "1.", "2.", 본문에 "3.", "4."를 찍는다.
-//! 글머리표는 한/글이 머리말과 본문 어디에도 그리지 않아 여기서 보지 않는다.
+//! 이 문서의 글머리표는 한/글이 머리말과 본문 어디에도 그리지 않아 여기서 보지 않는다.
+//!
+//! `header-bullet.hwp`는 머리말 첫 문단이 글머리표(●), 둘째 문단이 번호 문단이다. 한컴
+//! 12.30(Mac) 화면은 "● 머리말 글머리표", "1. 머리말 번호"를 그린다(2026-11-11).
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::path::Path;
@@ -55,4 +58,18 @@ fn header_paragraph_numbering_shares_counter_with_body() {
     for expected in ["3.본문번호문단", "4.본문개요문단"] {
         assert!(body.contains(expected), "본문에 {expected:?} 없음: {body}");
     }
+}
+
+#[test]
+fn header_bullet_paragraph_draws_its_bullet() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/header_footer_numbering/header-bullet.hwp");
+    let core = DocumentCore::from_bytes(&std::fs::read(path).expect("read sample")).expect("open");
+    let tree = core.build_page_render_tree(0).expect("render tree");
+    let (mut header, mut body) = (String::new(), String::new());
+    collect_text(&tree.root, false, &mut header, &mut body);
+    assert!(
+        header.contains("●머리말글머리표1.머리말번호"),
+        "머리말 글머리표 없음: {header}"
+    );
 }
