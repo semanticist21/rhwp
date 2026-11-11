@@ -943,4 +943,28 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         Exempt::DelegatesTo("recalculate_table_formulas_by_path"),
         "본문 표 주소를 한 마디 셀 경로로 바꿔 셀 경로 함수에 위임한다. 그 함수가 대상 구역의 raw_stream을 비운다.",
     ),
+    (
+        "commands/table_ops.rs",
+        "set_cell_properties_native",
+        Exempt::DelegatesTo("set_cell_properties_at"),
+        "본문 표 자리로 셀 속성 공통 함수에 위임한다. 공통 함수가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_ops.rs",
+        "set_cell_properties_by_cell_path_native",
+        Exempt::DelegatesTo("set_cell_properties_at"),
+        "셀 경로 표 자리로 셀 속성 공통 함수에 위임한다. 공통 함수가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_ops.rs",
+        "apply_cell_border_fill_ids_native",
+        Exempt::DelegatesTo("apply_cell_border_fill_ids_at"),
+        "본문 표 자리로 테두리 id 대입 공통 함수에 위임한다. 공통 함수가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_ops.rs",
+        "apply_cell_border_fill_ids_by_cell_path_native",
+        Exempt::DelegatesTo("apply_cell_border_fill_ids_at"),
+        "셀 경로 표 자리로 테두리 id 대입 공통 함수에 위임한다. 공통 함수가 구역의 raw_stream을 비운다.",
+    ),
 ];

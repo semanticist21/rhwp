@@ -42,7 +42,55 @@ struct CellResizeUpdate {
 const LOCAL_RESIZE_UNSUPPORTED: &str =
     "행\u{b7}열별 독립 셀 경계는 HWP/HWPX에 편집 의도를 저장할 수 없어 지원하지 않습니다";
 
+/// 셀 속성 API가 고칠 표. `Path`는 본문 문단에서 셀·글상자·머리말·꼬리말을 지나 그 표에 닿는
+/// 셀 경로이고 마지막 항목의 컨트롤이 표다. 깊이 1 경로는 `Body`와 같다.
+#[derive(Clone, Copy)]
+pub(crate) enum CellTable<'a> {
+    Body(usize),
+    Path(&'a [(usize, usize, usize)]),
+}
+
+impl<'a> CellTable<'a> {
+    pub(crate) fn from_path(path: &'a [(usize, usize, usize)]) -> Result<Self, HwpError> {
+        match path {
+            [] => Err(HwpError::RenderError("경로가 비어있습니다".to_string())),
+            [(control_idx, _, _)] => Ok(Self::Body(*control_idx)),
+            _ => Ok(Self::Path(path)),
+        }
+    }
+}
+
 impl DocumentCore {
+    fn cell_table_mut(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        site: CellTable<'_>,
+    ) -> Result<&mut crate::model::table::Table, HwpError> {
+        match site {
+            CellTable::Body(control_idx) => {
+                self.get_table_mut(section_idx, parent_para_idx, control_idx)
+            }
+            CellTable::Path(path) => {
+                self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path)
+            }
+        }
+    }
+
+    fn cell_table_ref(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        site: CellTable<'_>,
+    ) -> Result<&crate::model::table::Table, HwpError> {
+        match site {
+            CellTable::Body(control_idx) => {
+                self.resolve_table_by_path(section_idx, parent_para_idx, &[(control_idx, 0, 0)])
+            }
+            CellTable::Path(path) => self.resolve_table_by_path(section_idx, parent_para_idx, path),
+        }
+    }
+
     pub(crate) fn get_table_mut(
         &mut self,
         section_idx: usize,
@@ -1324,6 +1372,18 @@ impl DocumentCore {
         self.cell_properties_json(table, cell_idx, use_effective_border_fill)
     }
 
+    /// cellzone을 합성하지 않은 셀 자체 속성을 cellPath의 표에서 읽는다.
+    pub fn get_cell_own_properties_by_cell_path_native(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        cell_idx: usize,
+    ) -> Result<String, HwpError> {
+        let table = self.resolve_table_by_path(section_idx, parent_para_idx, path)?;
+        self.cell_properties_json(table, cell_idx, false)
+    }
+
     /// 크기 변경과 같은 cellPath의 표에서 셀 속성을 읽는다.
     pub fn get_cell_properties_by_cell_path_native(
         &self,
@@ -1381,6 +1441,37 @@ impl DocumentCore {
         cell_idx: usize,
         json: &str,
     ) -> Result<String, HwpError> {
+        self.set_cell_properties_at(
+            section_idx,
+            parent_para_idx,
+            CellTable::Body(control_idx),
+            cell_idx,
+            json,
+        )
+    }
+
+    /// 중첩 표·글상자 안 표·머리말·꼬리말 표의 셀 속성을 셀 경로로 수정한다.
+    /// 응답은 `set_cell_properties_native`와 같다(`borderPaintUndoId`는 늘 null).
+    pub fn set_cell_properties_by_cell_path_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        cell_idx: usize,
+        json: &str,
+    ) -> Result<String, HwpError> {
+        let site = CellTable::from_path(path)?;
+        self.set_cell_properties_at(section_idx, parent_para_idx, site, cell_idx, json)
+    }
+
+    fn set_cell_properties_at(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        site: CellTable<'_>,
+        cell_idx: usize,
+        json: &str,
+    ) -> Result<String, HwpError> {
         let parsed: serde_json::Value =
             serde_json::from_str(json).unwrap_or(serde_json::Value::Null);
         let obj = parsed.as_object();
@@ -1417,7 +1508,7 @@ impl DocumentCore {
             let normalized = self.normalize_cell_border_fill_json_for_edit(
                 section_idx,
                 parent_para_idx,
-                control_idx,
+                site,
                 cell_idx,
                 json,
             );
@@ -1425,7 +1516,7 @@ impl DocumentCore {
                 serde_json::from_str(&normalized).unwrap_or_default();
             if value.get("borderFillId").is_none() {
                 let id = self
-                    .get_table_mut(section_idx, parent_para_idx, control_idx)?
+                    .cell_table_mut(section_idx, parent_para_idx, site)?
                     .cells
                     .get(cell_idx)
                     .ok_or_else(|| HwpError::RenderError("셀 인덱스 범위 초과".into()))?
@@ -1443,7 +1534,7 @@ impl DocumentCore {
         let mut paint_sides = [false; 4];
         if let Some(value) = cell_border_fill_json.as_deref() {
             let value: serde_json::Value = serde_json::from_str(value).unwrap_or_default();
-            let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+            let table = self.cell_table_mut(section_idx, parent_para_idx, site)?;
             let id = table
                 .cells
                 .get(cell_idx)
@@ -1484,7 +1575,8 @@ impl DocumentCore {
                 }
             }
         }
-        let paint_plan = {
+        // ponytail: 그린 테두리 조각 교체는 본문 표만 한다. 경로 표의 조각은 그대로 둔다.
+        let paint_plan = if let CellTable::Body(control_idx) = site {
             self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
             let parent = &self.document.sections[section_idx].paragraphs[parent_para_idx];
             let Control::Table(table) = &parent.controls[control_idx] else {
@@ -1498,6 +1590,8 @@ impl DocumentCore {
                 control_idx,
                 &mut crate::model::border_paint::Resources::new(&self.document.bin_data_content),
             )?
+        } else {
+            Vec::new()
         };
         if !paint_plan.is_empty()
             && (self.border_paint_store.len() >= 4096 || self.next_border_paint_id == u32::MAX)
@@ -1539,7 +1633,7 @@ impl DocumentCore {
             let mut needs_reflow = false;
             let mut size_changed = false;
             let mut width_changed = false;
-            let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+            let table = self.cell_table_mut(section_idx, parent_para_idx, site)?;
             let original_width = table.common.width;
             let direct_border_fill_id = if has_border_fill_change {
                 None
@@ -1639,13 +1733,26 @@ impl DocumentCore {
         if needs_reflow {
             let para_count = reflow_para_count;
             for cell_para_idx in 0..para_count {
-                self.reflow_cell_paragraph(
-                    section_idx,
-                    parent_para_idx,
-                    control_idx,
-                    cell_idx,
-                    cell_para_idx,
-                );
+                match site {
+                    CellTable::Body(control_idx) => self.reflow_cell_paragraph(
+                        section_idx,
+                        parent_para_idx,
+                        control_idx,
+                        cell_idx,
+                        cell_para_idx,
+                    ),
+                    CellTable::Path(path) => {
+                        let mut inner = path.to_vec();
+                        let last = inner.len() - 1;
+                        inner[last] = (inner[last].0, cell_idx, cell_para_idx);
+                        self.reflow_cell_paragraph_by_path(
+                            section_idx,
+                            parent_para_idx,
+                            &inner,
+                            cell_para_idx,
+                        );
+                    }
+                }
             }
         }
 
@@ -1682,7 +1789,7 @@ impl DocumentCore {
 
             // 대상 셀 정보 추출 + border_fill_id 변경
             let (target_row, target_col, target_col_span, target_row_span) = {
-                let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+                let table = self.cell_table_mut(section_idx, parent_para_idx, site)?;
                 let (row, col, col_span, row_span) = {
                     let cell = table.cells.get_mut(cell_idx).ok_or_else(|| {
                         HwpError::RenderError(format!("셀 인덱스 {} 범위 초과", cell_idx))
@@ -1727,40 +1834,29 @@ impl DocumentCore {
 
             // 이웃 셀의 공유 엣지 테두리를 갱신
             // borders 배열: [좌(0), 우(1), 상(2), 하(3)]
-            let neighbors = if changed_sides == [true; 4] {
-                self.update_neighbor_borders(
-                    section_idx,
-                    parent_para_idx,
-                    control_idx,
-                    cell_idx,
-                    target_row,
-                    target_col,
-                    target_col_span,
-                    target_row_span,
-                    &new_borders,
-                )
-            } else {
-                self.update_neighbor_borders_for_sides(
-                    section_idx,
-                    parent_para_idx,
-                    control_idx,
-                    cell_idx,
-                    target_row,
-                    target_col,
-                    target_col_span,
-                    target_row_span,
-                    &new_borders,
-                    &changed_sides,
-                )
-            };
+            let neighbors = self.update_neighbor_borders_for_sides(
+                section_idx,
+                parent_para_idx,
+                site,
+                cell_idx,
+                target_row,
+                target_col,
+                target_col_span,
+                target_row_span,
+                &new_borders,
+                &changed_sides,
+            );
             bf_changes.extend(neighbors);
             if new_bf_id != target_bf_before {
                 bf_changes.push((cell_idx, target_bf_before, new_bf_id));
             }
         }
 
-        let border_paint_undo_id =
-            self.commit_border_paint_plan((section_idx, parent_para_idx, control_idx), paint_plan);
+        let border_paint_undo_id = match site {
+            CellTable::Body(control_idx) => self
+                .commit_border_paint_plan((section_idx, parent_para_idx, control_idx), paint_plan),
+            CellTable::Path(_) => None,
+        };
         self.document.sections[section_idx].raw_stream = None;
         self.recompose_section(section_idx);
         self.paginate_if_needed();
@@ -1860,7 +1956,7 @@ impl DocumentCore {
         &self,
         section_idx: usize,
         parent_para_idx: usize,
-        control_idx: usize,
+        site: CellTable<'_>,
         cell_idx: usize,
         json: &str,
     ) -> String {
@@ -1879,16 +1975,7 @@ impl DocumentCore {
             return json.to_string();
         }
 
-        let Some(table) = self
-            .document
-            .sections
-            .get(section_idx)
-            .and_then(|section| section.paragraphs.get(parent_para_idx))
-            .and_then(|para| match para.controls.get(control_idx) {
-                Some(Control::Table(table)) => Some(table),
-                _ => None,
-            })
-        else {
+        let Ok(table) = self.cell_table_ref(section_idx, parent_para_idx, site) else {
             return json.to_string();
         };
         let Some(cell) = table.cells.get(cell_idx) else {
@@ -2074,6 +2161,33 @@ impl DocumentCore {
         control_idx: usize,
         json: &str,
     ) -> Result<String, HwpError> {
+        self.apply_cell_border_fill_ids_at(
+            section_idx,
+            parent_para_idx,
+            CellTable::Body(control_idx),
+            json,
+        )
+    }
+
+    /// `apply_cell_border_fill_ids_native`의 셀 경로 변형(중첩·글상자·머리말·꼬리말 표).
+    pub fn apply_cell_border_fill_ids_by_cell_path_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        json: &str,
+    ) -> Result<String, HwpError> {
+        let site = CellTable::from_path(path)?;
+        self.apply_cell_border_fill_ids_at(section_idx, parent_para_idx, site, json)
+    }
+
+    fn apply_cell_border_fill_ids_at(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        site: CellTable<'_>,
+        json: &str,
+    ) -> Result<String, HwpError> {
         #[derive(serde::Deserialize)]
         #[serde(rename_all = "camelCase")]
         struct CellIdPair {
@@ -2104,14 +2218,22 @@ impl DocumentCore {
             .map_err(|e| HwpError::RenderError(format!("border fill ids 파싱 실패: {}", e)))?;
 
         let max_bf = self.document.doc_info.border_fills.len() as u16;
-        let paint_restores = self.border_paint_restores(
-            (section_idx, parent_para_idx, control_idx),
-            &payload.border_paint_undo_ids,
-        )?;
+        let paint_restores = match site {
+            CellTable::Body(control_idx) => self.border_paint_restores(
+                (section_idx, parent_para_idx, control_idx),
+                &payload.border_paint_undo_ids,
+            )?,
+            CellTable::Path(_) if payload.border_paint_undo_ids.is_empty() => Default::default(),
+            CellTable::Path(_) => {
+                return Err(HwpError::RenderError(
+                    "경로 표에는 테두리 조각 undo가 없습니다".to_string(),
+                ))
+            }
+        };
 
         // 1단계 전수 검증 — 하나라도 어긋나면 아무것도 적용하지 않는다.
         {
-            let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+            let table = self.cell_table_mut(section_idx, parent_para_idx, site)?;
             for pair in &payload.cells {
                 if pair.cell_idx >= table.cells.len() {
                     return Err(HwpError::RenderError(format!(
@@ -2155,7 +2277,7 @@ impl DocumentCore {
 
         // 2단계 적용
         {
-            let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+            let table = self.cell_table_mut(section_idx, parent_para_idx, site)?;
             for pair in &payload.cells {
                 table.cells[pair.cell_idx].border_fill_id = pair.id;
             }
@@ -2265,6 +2387,11 @@ impl DocumentCore {
             for para in &section.paragraphs {
                 Self::collect_control_border_fill_refs(&para.controls, refs);
             }
+            for master in &section.section_def.master_pages {
+                for para in &master.paragraphs {
+                    Self::collect_control_border_fill_refs(&para.controls, refs);
+                }
+            }
         }
     }
 
@@ -2273,6 +2400,17 @@ impl DocumentCore {
         refs: &mut std::collections::HashSet<u16>,
     ) {
         for control in controls {
+            // 머리말·꼬리말·글상자 안 표도 셀 경로 API로 고치므로 그 표의 참조도 센다.
+            let inner = match control {
+                Control::Header(_) | Control::Footer(_) => control.header_footer_paragraphs(),
+                Control::Shape(shape) => {
+                    super::super::helpers::get_textbox_from_shape(shape).map(|tb| &tb.paragraphs)
+                }
+                _ => None,
+            };
+            for para in inner.into_iter().flatten() {
+                Self::collect_control_border_fill_refs(&para.controls, refs);
+            }
             let Control::Table(table) = control else {
                 continue;
             };
@@ -2309,6 +2447,7 @@ impl DocumentCore {
     /// 변경이 반영되지 않을 수 있으므로, 이웃 셀의 대응 테두리도 함께 갱신한다.
     ///
     /// borders 배열: [좌(0), 우(1), 상(2), 하(3)]
+    #[cfg(test)]
     fn update_neighbor_borders(
         &mut self,
         section_idx: usize,
@@ -2324,7 +2463,7 @@ impl DocumentCore {
         self.update_neighbor_borders_for_sides(
             section_idx,
             parent_para_idx,
-            control_idx,
+            CellTable::Body(control_idx),
             skip_cell_idx,
             target_row,
             target_col,
@@ -2339,7 +2478,7 @@ impl DocumentCore {
         &mut self,
         section_idx: usize,
         parent_para_idx: usize,
-        control_idx: usize,
+        site: CellTable<'_>,
         skip_cell_idx: usize,
         target_row: usize,
         target_col: usize,
@@ -2357,7 +2496,7 @@ impl DocumentCore {
         // 1단계: 이웃 셀 탐색 — (셀 인덱스, old_bf_id, 갱신할 방향, 새 테두리)
         let mut updates: Vec<(usize, u16, usize, BorderLine)> = Vec::new();
         {
-            let table = match self.get_table_mut(section_idx, parent_para_idx, control_idx) {
+            let table = match self.cell_table_mut(section_idx, parent_para_idx, site) {
                 Ok(t) => t,
                 Err(_) => return neighbor_changes,
             };
@@ -2453,7 +2592,7 @@ impl DocumentCore {
                 }
             };
 
-            let table = match self.get_table_mut(section_idx, parent_para_idx, control_idx) {
+            let table = match self.cell_table_mut(section_idx, parent_para_idx, site) {
                 Ok(t) => t,
                 Err(_) => return neighbor_changes,
             };

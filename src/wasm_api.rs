@@ -4006,6 +4006,67 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// `getCellOwnProperties`의 셀 경로 변형. 중첩 표·글상자 안 표와 머리말·꼬리말 표
+    /// (경로 첫 항목이 머리말·꼬리말 컨트롤, cellIndex 0, cellParaIndex = 그 문단)를 읽는다.
+    #[wasm_bindgen(js_name = getCellOwnPropertiesByPath)]
+    pub fn get_cell_own_properties_by_path(
+        &self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        cell_idx: u32,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.get_cell_own_properties_by_cell_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            cell_idx as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// `setCellProperties`의 셀 경로 변형. 경로의 마지막 항목이 고칠 표이고 `cell_idx`가 그 셀이다.
+    /// 반환은 `setCellProperties`와 같고 `borderPaintUndoId`는 늘 null이다.
+    #[wasm_bindgen(js_name = setCellPropertiesByPath)]
+    pub fn set_cell_properties_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        cell_idx: u32,
+        json: &str,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.set_cell_properties_by_cell_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            cell_idx as usize,
+            json,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// `applyCellBorderFillIds`의 셀 경로 변형(undo·redo 전용). `borderPaintUndoIds`는 받지 않는다.
+    #[wasm_bindgen(js_name = applyCellBorderFillIdsByPath)]
+    pub fn apply_cell_border_fill_ids_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        json: &str,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.apply_cell_border_fill_ids_by_cell_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            json,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// 셀 속성을 수정한다.
     ///
     /// 반환: JSON `{"ok":true,"changes":[{cellIdx,beforeId,afterId}...],
