@@ -138,7 +138,7 @@ fn advance_paragraph_number(
     Some((level_index, number))
 }
 
-/// 문단이 품은 표의 셀 문단으로 내려가 번호 카운터를 전진시킨다.
+/// 문단이 품은 표의 셀 문단과 글상자 문단으로 내려가 번호 카운터를 전진시킨다.
 ///
 /// 렌더러는 문단을 배치하면서 그 문단의 표를 같은 자리에서 조판하므로, 셀 안
 /// `Outline`/`Number` 문단도 문서 순서에 맞춰 카운터를 밀어낸다. 카운터를
@@ -157,12 +157,27 @@ fn advance_nested_table_numbers(
     }
 
     for (control_index, control) in paragraph.controls.iter().enumerate() {
-        let Control::Table(table) = control else {
-            continue;
+        // 표는 셀마다, 글상자(묶음 안 글상자 포함)는 글상자마다 문단 목록 하나다. 한컴 12.30
+        // 개요 보기도 글상자 개요 문단을 문서 순서로 넣고 번호를 이어 센다(맥미니 확인:
+        // `1. 본문` · `가. 표 셀` · `2. 글상자` · `3. 본문`). 경로의 셀 번호는 글상자 번호다.
+        let lists: Vec<(usize, &[Paragraph])> = match control {
+            // `Table::cells`는 행 우선 순서 — 렌더러가 셀 본문을 배치하는 순서와 같다.
+            Control::Table(table) => table
+                .cells
+                .iter()
+                .map(|cell| cell.paragraphs.as_slice())
+                .enumerate()
+                .collect(),
+            Control::Shape(shape) => (0..shape.textbox_shape_count())
+                .filter_map(|index| {
+                    crate::document_core::helpers::get_textbox_at(shape, index)
+                        .map(|text_box| (index, text_box.paragraphs.as_slice()))
+                })
+                .collect(),
+            _ => continue,
         };
-        // `Table::cells`는 행 우선 순서 — 렌더러가 셀 본문을 배치하는 순서와 같다.
-        for (cell_index, cell) in table.cells.iter().enumerate() {
-            for (cell_para_index, cell_paragraph) in cell.paragraphs.iter().enumerate() {
+        for (cell_index, paragraphs) in lists {
+            for (cell_para_index, cell_paragraph) in paragraphs.iter().enumerate() {
                 path.push(OutlineCellPathEntry {
                     control_index,
                     cell_index,
@@ -556,6 +571,60 @@ mod tests {
                 cell.cell_path.len()
             ),
             (1, 0, 0, 0, 1)
+        );
+    }
+
+    /// 글상자의 `Outline` 문단도 문서 순서로 목록에 들고 번호를 잇는다. 한컴 12.30 개요 보기
+    /// (맥미니, 2026-11-12): `1. 앞` · `2. 글상자` · `3. 뒤`. 경로는 (도형 컨트롤, 글상자 0, 문단).
+    #[test]
+    fn text_box_outline_paragraph_is_listed_with_path() {
+        use crate::model::shape::{DrawingObjAttr, RectangleShape, ShapeObject, TextBox};
+        let mut document = document_with_shapes(vec![outline_shape(0), ParaShape::default()]);
+        let text_box = ShapeObject::Rectangle(RectangleShape {
+            drawing: DrawingObjAttr {
+                text_box: Some(TextBox {
+                    paragraphs: vec![paragraph("글상자 개요", 0)],
+                    ..TextBox::default()
+                }),
+                ..DrawingObjAttr::default()
+            },
+            ..RectangleShape::default()
+        });
+        document.sections.push(section_with(vec![
+            paragraph("앞 개요", 0),
+            Paragraph {
+                para_shape_id: 1,
+                controls: vec![Control::Shape(Box::new(text_box))],
+                ..Paragraph::default()
+            },
+            paragraph("뒤 개요", 0),
+        ]));
+        let paragraph_pages = HashMap::from([((0, 0), 0), ((0, 1), 0), ((0, 2), 0)]);
+
+        let navigation = build_outline_navigation(&document, &paragraph_pages, &HashMap::new());
+
+        let rows: Vec<_> = navigation
+            .outline
+            .iter()
+            .map(|item| (item.number.as_str(), item.title.as_str(), item.page))
+            .collect();
+        assert_eq!(
+            rows,
+            vec![
+                ("1.", "앞 개요", 1),
+                ("2.", "글상자 개요", 1),
+                ("3.", "뒤 개요", 1)
+            ]
+        );
+        let cell = navigation.outline[1].cell.as_ref().expect("글상자 경로");
+        assert_eq!(
+            (
+                cell.parent_para_index,
+                cell.control_index,
+                cell.cell_index,
+                cell.cell_para_index
+            ),
+            (1, 0, 0, 0)
         );
     }
 }
