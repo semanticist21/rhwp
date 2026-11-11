@@ -6697,6 +6697,32 @@ impl HwpDocument {
         }
     }
 
+    /// 커서 위치의 누름틀 필드를 제거한다 (셀 경로 문단: 중첩 표·글상자·머리말·꼬리말).
+    #[wasm_bindgen(js_name = removeFieldAtByPath)]
+    pub fn remove_field_at_by_path_api(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+        char_offset: u32,
+    ) -> String {
+        let result = DocumentCore::parse_cell_path(path_json).and_then(|path| {
+            self.remove_field_at_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+                char_offset as usize,
+            )
+        });
+        match result {
+            Ok(s) => s,
+            Err(e) => {
+                let escaped = e.to_string().replace('\\', "\\\\").replace('"', "\\\"");
+                format!("{{\"ok\":false,\"error\":\"{}\"}}", escaped)
+            }
+        }
+    }
+
     /// `removeFieldAtInCell` 의 options object 변형 (#1413).
     ///
     /// options JSON 키: `{ sectionIdx, parentParaIdx, controlIdx, cellIdx, cellParaIdx,

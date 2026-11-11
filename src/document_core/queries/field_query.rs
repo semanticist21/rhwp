@@ -1343,6 +1343,50 @@ impl DocumentCore {
         Ok(r#"{"ok":true}"#.to_string())
     }
 
+    /// 셀 경로가 가리키는 문단(중첩 표 칸·글상자·캡션·머리말·꼬리말 문단)의 커서 위치에서
+    /// 필드를 제거한다. 머리말·꼬리말은 경로 첫 항목이 그 컨트롤(cell 0, cellPara = 문단)이다.
+    pub fn remove_field_at_by_path(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        char_offset: usize,
+    ) -> Result<String, HwpError> {
+        let (Some(&(outer_ctrl, _, _)), Some(&(_, _, inner_para))) = (path.first(), path.last())
+        else {
+            return Err(HwpError::InvalidField("cellPath가 비어 있음".into()));
+        };
+        let para = self.get_cell_paragraph_mut_by_path(section_idx, parent_para_idx, path)?;
+        remove_field_in_para(para, char_offset)?;
+        // 이 문단이나 그 안쪽의 활성 누름틀은 컨트롤 번호가 밀렸을 수 있다.
+        if self.active_field.as_ref().is_some_and(|active| {
+            active.section_idx == section_idx
+                && active.para_idx == parent_para_idx
+                && active
+                    .cell_path
+                    .as_deref()
+                    .is_some_and(|p| p.starts_with(path))
+        }) {
+            self.clear_active_field();
+        }
+        self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, path, inner_para);
+        self.recalculate_cell_paragraph_vpos_by_path(
+            section_idx,
+            parent_para_idx,
+            path,
+            inner_para,
+            None,
+        );
+        self.mark_cell_control_dirty(section_idx, parent_para_idx, outer_ctrl);
+        if let Some(section) = self.document.sections.get_mut(section_idx) {
+            section.raw_stream = None;
+        }
+        self.mark_section_dirty(section_idx);
+        self.paginate_if_needed();
+        self.invalidate_page_tree_cache();
+        Ok(r#"{"ok":true}"#.to_string())
+    }
+
     /// 커서가 진입한 활성 필드를 설정한다 (안내문 렌더링 스킵용).
     ///
     /// 본문 문단: `set_active_field(sec, para, char_offset)`
