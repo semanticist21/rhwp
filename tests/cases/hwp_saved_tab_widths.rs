@@ -185,3 +185,102 @@ fn hwp_save_writes_tab_widths_in_headers() {
         "머리말 {head:?} != 본문 {body:?}"
     );
 }
+
+#[test]
+fn hwp_save_writes_tab_widths_in_footnotes() {
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.insert_text_native(0, 0, 0, "본문").unwrap();
+    core.insert_footnote_native(0, 0, 2).unwrap();
+    let control = core.document().sections[0].paragraphs[0]
+        .controls
+        .iter()
+        .position(|c| matches!(c, rhwp::model::control::Control::Footnote(_)))
+        .expect("각주");
+    core.insert_text_in_footnote_native(0, 0, control, 0, 0, "가\tABC")
+        .unwrap();
+    let reopened = DocumentCore::from_bytes(&core.export_hwp_with_adapter().unwrap()).unwrap();
+    let rhwp::model::control::Control::Footnote(note) =
+        &reopened.document().sections[0].paragraphs[0].controls[control]
+    else {
+        panic!("각주");
+    };
+    let tabs = stored_tabs(&note.paragraphs[0]);
+    assert_eq!(tabs.len(), 1, "각주 탭 확장 자료");
+    assert!(tabs[0].0 > 0, "각주 탭 폭은 0이 아니다: {tabs:?}");
+}
+
+/// 머리말 안 표의 탭. 편집 API가 없어 HWPX의 본문 표를 머리말 문단으로 옮긴다(HWPX 탭은 자리표다).
+#[test]
+fn hwp_save_writes_tab_widths_in_header_tables() {
+    use std::io::{Cursor, Read, Write};
+
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.create_header_footer_native(0, true, 0).unwrap();
+    core.insert_text_in_header_footer_native(0, true, 0, 0, 0, "머리말")
+        .unwrap();
+    let created: serde_json::Value =
+        serde_json::from_str(&core.create_table_native(0, 0, 0, 1, 1).unwrap()).unwrap();
+    let para = created["paraIdx"].as_u64().unwrap() as usize;
+    let control = created["controlIdx"].as_u64().unwrap() as usize;
+    core.insert_text_in_cell_native(0, para, control, 0, 0, 0, "가\tABC")
+        .unwrap();
+    let mut input = zip::ZipArchive::new(Cursor::new(core.export_hwpx_native().unwrap())).unwrap();
+    let mut output = zip::ZipWriter::new(Cursor::new(Vec::new()));
+    for i in 0..input.len() {
+        let mut entry = input.by_index(i).unwrap();
+        let mut bytes = Vec::new();
+        entry.read_to_end(&mut bytes).unwrap();
+        if entry.name().unwrap() == "Contents/section0.xml" {
+            let mut xml = String::from_utf8(bytes).unwrap();
+            let start = xml.find("<hp:tbl ").expect("표");
+            let end = xml.find("</hp:tbl>").expect("표 끝") + "</hp:tbl>".len();
+            let table = xml[start..end].to_string();
+            xml.replace_range(start..end, "");
+            let at = xml.find("<hp:t>머리말").expect("머리말 글");
+            xml.insert_str(at, &table);
+            bytes = xml.into_bytes();
+        }
+        output
+            .start_file(
+                entry.name().unwrap(),
+                zip::write::SimpleFileOptions::default().compression_method(entry.compression()),
+            )
+            .unwrap();
+        output.write_all(&bytes).unwrap();
+    }
+    let moved = DocumentCore::from_bytes(&output.finish().unwrap().into_inner()).unwrap();
+    let header_cell_tabs = |core: &DocumentCore| {
+        core.document().sections[0]
+            .paragraphs
+            .iter()
+            .flat_map(|para| &para.controls)
+            .find_map(|control| match control {
+                rhwp::model::control::Control::Header(header) => Some(header),
+                _ => None,
+            })
+            .and_then(|header| {
+                header.paragraphs[0]
+                    .controls
+                    .iter()
+                    .find_map(|control| match control {
+                        rhwp::model::control::Control::Table(table) => {
+                            Some(stored_tabs(&table.cells[0].paragraphs[0]))
+                        }
+                        _ => None,
+                    })
+            })
+            .expect("머리말 표")
+    };
+    assert!(
+        header_cell_tabs(&moved)
+            .iter()
+            .all(|(width, _)| *width == 0),
+        "옮긴 표의 탭은 자리표다"
+    );
+    let reopened = DocumentCore::from_bytes(&moved.export_hwp_with_adapter().unwrap()).unwrap();
+    let tabs = header_cell_tabs(&reopened);
+    assert_eq!(tabs.len(), 1, "머리말 표 탭 확장 자료");
+    assert!(tabs[0].0 > 0, "머리말 표 탭 폭은 0이 아니다: {tabs:?}");
+}

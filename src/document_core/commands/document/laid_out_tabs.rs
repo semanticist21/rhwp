@@ -9,15 +9,17 @@ use crate::model::control::Control;
 use crate::model::document::Document;
 use crate::model::paragraph::{tab_ext_is_placeholder, Paragraph, TAB_EXT_PLACEHOLDER};
 use crate::renderer::layout::find_next_tab_stop;
-use crate::renderer::pagination::PageItem;
+use crate::renderer::pagination::{FootnoteRef, FootnoteSource, PageItem};
 use crate::renderer::render_tree::{RenderNode, RenderNodeType, TextRunNode};
 
-/// (구역, 최상위 문단, 머리말·꼬리말(컨트롤, 그 안 문단), 셀·글상자 경로(컨트롤, 셀, 셀 문단))
+/// (구역, 최상위 문단, 머리말·꼬리말(컨트롤, 그 안 문단), 셀·글상자 경로(컨트롤, 셀, 셀 문단),
+/// 각주(그 문단의 컨트롤, 각주 안 문단))
 type ParaKey = (
     usize,
     usize,
     Option<(usize, usize)>,
     Vec<(usize, usize, usize)>,
+    Option<(usize, usize)>,
 );
 
 /// 폭이 정해지지 않은 탭이 있는 문단. 셀·글상자·머리말·꼬리말 안까지 본다.
@@ -38,12 +40,13 @@ fn has_unlaid_tab(para: &Paragraph) -> bool {
             .any(|text_box| text_box.paragraphs.iter().any(has_unlaid_tab)),
         Control::Header(header) => header.paragraphs.iter().any(has_unlaid_tab),
         Control::Footer(footer) => footer.paragraphs.iter().any(has_unlaid_tab),
+        Control::Footnote(note) => note.paragraphs.iter().any(has_unlaid_tab),
         _ => false,
     })
 }
 
 fn paragraph_mut<'a>(doc: &'a mut Document, key: &ParaKey) -> Option<&'a mut Paragraph> {
-    let (sec, parent, header_footer, path) = key;
+    let (sec, parent, header_footer, path, note) = key;
     let mut para = doc.sections.get_mut(*sec)?.paragraphs.get_mut(*parent)?;
     if let Some((control, index)) = *header_footer {
         para = match para.controls.get_mut(control)? {
@@ -63,6 +66,12 @@ fn paragraph_mut<'a>(doc: &'a mut Document, key: &ParaKey) -> Option<&'a mut Par
             _ => return None,
         };
     }
+    if let Some((control, index)) = *note {
+        para = match para.controls.get_mut(control)? {
+            Control::Footnote(footnote) => footnote.paragraphs.get_mut(index)?,
+            _ => return None,
+        };
+    }
     Some(para)
 }
 
@@ -78,8 +87,9 @@ impl DocumentCore {
             .any(|section| section.paragraphs.iter().any(has_unlaid_tab))
     }
 
-    /// 자리표 탭에 화면 조판의 폭·종류를 적는다. 본문·표 셀·글상자와 머리말·꼬리말 문단을 다룬다.
-    // ponytail: 각주·미주와 머리말 안 표의 탭은 자리표로 남는다. 한컴에서 어긋나면 그 렌더 트리도 걷는다.
+    /// 자리표 탭에 화면 조판의 폭·종류를 적는다. 본문·표 셀·글상자, 머리말·꼬리말(안의 표 포함)과
+    /// 각주 문단을 다룬다.
+    // ponytail: 미주 탭은 자리표로 남는다(미주는 문서 끝에 다시 짠 사본 문단으로 그린다).
     pub(crate) fn write_laid_out_tab_widths(&self, snapshot: &mut Document) {
         let targets: BTreeSet<(usize, usize)> = self
             .document
@@ -127,7 +137,7 @@ impl DocumentCore {
             let Ok(tree) = self.build_page_tree_cached(page) else {
                 continue;
             };
-            collect_tab_widths(&tree.root, self.dpi, &mut found);
+            collect_tab_widths(&tree.root, sec, &content.footnotes, self.dpi, &mut found);
         }
         for (key, tabs) in found {
             let Some(para) = paragraph_mut(snapshot, &key) else {
@@ -156,25 +166,126 @@ impl DocumentCore {
     }
 }
 
-fn collect_tab_widths(node: &RenderNode, dpi: f64, found: &mut FoundTabs) {
-    // 바탕쪽·각주 영역과 캡션 줄은 문단 주소가 본문 문단과 겹칠 수 있어 건너뛴다.
+fn collect_tab_widths(
+    node: &RenderNode,
+    sec: usize,
+    footnotes: &[FootnoteRef],
+    dpi: f64,
+    found: &mut FoundTabs,
+) {
+    // 바탕쪽과 캡션 줄은 문단 주소가 본문 문단과 겹칠 수 있어 건너뛴다.
     match &node.node_type {
-        RenderNodeType::MasterPage | RenderNodeType::FootnoteArea => return,
+        RenderNodeType::MasterPage => return,
         RenderNodeType::TextLine(line) if line.caption_owner.is_some() => return,
+        RenderNodeType::FootnoteArea => {
+            collect_footnote_tab_widths(node, sec, footnotes, dpi, found);
+            return;
+        }
         _ => {}
     }
     if let RenderNodeType::TextRun(run) = &node.node_type {
         collect_run_tab_widths(node, run, dpi, found);
     }
     for child in &node.children {
-        collect_tab_widths(child, dpi, found);
+        collect_tab_widths(child, sec, footnotes, dpi, found);
+    }
+}
+
+/// 각주 영역의 글은 구역 번호 자리에 쪽 각주 차례를, 문단 번호 자리에
+/// `usize::MAX - 2000 - 각주 안 문단`을 싣는다(`layout_footnote_area`).
+fn collect_footnote_tab_widths(
+    node: &RenderNode,
+    sec: usize,
+    footnotes: &[FootnoteRef],
+    dpi: f64,
+    found: &mut FoundTabs,
+) {
+    if let RenderNodeType::TextRun(run) = &node.node_type {
+        if let (Some(note), Some(para_index)) = (
+            run.section_index.and_then(|index| footnotes.get(index)),
+            run.para_index
+                .and_then(|index| (usize::MAX - 2000).checked_sub(index)),
+        ) {
+            let key = match &note.source {
+                FootnoteSource::Body {
+                    para_index: parent,
+                    control_index,
+                } => Some((
+                    sec,
+                    *parent,
+                    None,
+                    Vec::new(),
+                    Some((*control_index, para_index)),
+                )),
+                FootnoteSource::TableCell {
+                    para_index: parent,
+                    table_control_index,
+                    cell_index,
+                    cell_para_index,
+                    cell_control_index,
+                } => Some((
+                    sec,
+                    *parent,
+                    None,
+                    vec![(*table_control_index, *cell_index, *cell_para_index)],
+                    Some((*cell_control_index, para_index)),
+                )),
+                _ => None,
+            };
+            if let Some(key) = key {
+                record_tab_widths(key, run, dpi, found);
+            }
+        }
+    }
+    for child in &node.children {
+        collect_footnote_tab_widths(child, sec, footnotes, dpi, found);
     }
 }
 
 fn collect_run_tab_widths(node: &RenderNode, run: &TextRunNode, dpi: f64, found: &mut FoundTabs) {
-    let (Some(start), Some(sec), Some(para_index)) =
-        (run.char_start, run.section_index, run.para_index)
-    else {
+    let (Some(sec), Some(para_index)) = (run.section_index, run.para_index) else {
+        return;
+    };
+    let path = |cell: &crate::renderer::layout::CellContext| -> Vec<(usize, usize, usize)> {
+        cell.path
+            .iter()
+            .map(|entry| (entry.control_index, entry.cell_index, entry.cell_para_index))
+            .collect()
+    };
+    // 머리말·꼬리말 배치는 그 안 문단 번호 i를 `usize::MAX - i`로 싣는다(안의 표는 i 그대로).
+    let inner = |index: usize| {
+        if index >= usize::MAX - 1024 {
+            usize::MAX - index
+        } else {
+            index
+        }
+    };
+    let key: ParaKey = match (&node.header_footer_source, &run.cell_context) {
+        (Some((hf_sec, hf)), None) if para_index >= usize::MAX - 1024 => (
+            *hf_sec,
+            hf.outer_para_index,
+            Some((hf.outer_control_index, usize::MAX - para_index)),
+            Vec::new(),
+            None,
+        ),
+        (Some((hf_sec, hf)), Some(cell)) => (
+            *hf_sec,
+            hf.outer_para_index,
+            Some((hf.outer_control_index, inner(cell.parent_para_index))),
+            path(cell),
+            None,
+        ),
+        (Some(_), None) => return,
+        (None, None) if para_index >= usize::MAX - 1024 => return,
+        (None, None) => (sec, para_index, None, Vec::new(), None),
+        (None, Some(cell)) => (sec, cell.parent_para_index, None, path(cell), None),
+    };
+    record_tab_widths(key, run, dpi, found);
+}
+
+/// 글 조각의 탭마다 조판한 폭과 그 탭이 쓴 정지의 종류·채움을 적는다.
+fn record_tab_widths(key: ParaKey, run: &TextRunNode, dpi: f64, found: &mut FoundTabs) {
+    let Some(start) = run.char_start else {
         return;
     };
     let text = run.display_or_text();
@@ -184,27 +295,6 @@ fn collect_run_tab_widths(node: &RenderNode, run: &TextRunNode, dpi: f64, found:
     {
         return;
     }
-    let key: ParaKey = match (&node.header_footer_source, &run.cell_context) {
-        // 머리말·꼬리말 배치는 그 안 문단 번호 i를 `usize::MAX - i`로 싣는다.
-        (Some((hf_sec, hf)), None) if para_index >= usize::MAX - 1024 => (
-            *hf_sec,
-            hf.outer_para_index,
-            Some((hf.outer_control_index, usize::MAX - para_index)),
-            Vec::new(),
-        ),
-        (Some(_), _) => return,
-        (None, None) if para_index >= usize::MAX - 1024 => return,
-        (None, None) => (sec, para_index, None, Vec::new()),
-        (None, Some(cell)) => (
-            sec,
-            cell.parent_para_index,
-            None,
-            cell.path
-                .iter()
-                .map(|entry| (entry.control_index, entry.cell_index, entry.cell_para_index))
-                .collect(),
-        ),
-    };
     let positions = run.replay_positions_for(text);
     let style = &run.style;
     let default_tab = if style.default_tab_width > 0.0 {
