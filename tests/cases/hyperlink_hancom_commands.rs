@@ -61,6 +61,32 @@ fn inserted_links_keep_hancom_commands_in_hwp_and_hwpx() {
     }
 }
 
+/// 한컴 12.30 입력어 자동 실행은 사용자가 `mailto:` 를 직접 친 주소를 웹 꼴로 적는다
+/// (`mailto\:h@i.kr;1;0;0;`, Category URL, 2026-11-12 맥미니 저장본).
+#[test]
+fn typed_mailto_link_can_use_hancom_web_form() {
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.insert_text_native(0, 0, 0, "mailto:h@i.kr").unwrap();
+    let target = HyperlinkTarget::body(0, 0);
+    core.insert_hyperlink_mail_as_web_native(&target, 0, 13, "mailto:h@i.kr")
+        .unwrap();
+    for (name, bytes) in [
+        ("HWP", core.export_hwp_native().unwrap()),
+        ("HWPX", core.export_hwpx_native().unwrap()),
+    ] {
+        let reopened = DocumentCore::from_bytes(&bytes).unwrap();
+        let commands: Vec<String> = reopened
+            .collect_all_fields()
+            .into_iter()
+            .filter(|f| f.field.field_type == FieldType::Hyperlink)
+            .map(|f| f.field.command)
+            .collect();
+        assert_eq!(commands, [r"mailto\:h@i.kr;1;0;0;"], "{name}");
+        assert_eq!(command_uri(&commands[0]), "mailto:h@i.kr", "{name}");
+    }
+}
+
 #[test]
 fn changing_hancom_web_link_to_mail_updates_category() {
     let bytes = std::fs::read(concat!(

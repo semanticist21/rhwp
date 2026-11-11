@@ -18,6 +18,10 @@ struct InsertOptions {
     uri: Option<String>,
     #[serde(default)]
     bookmark: Option<String>,
+    /// 참이면 `mailto:` 주소를 웹 주소 꼴(URL 종류)로 적는다. 한컴 입력어 자동 실행에서
+    /// 사용자가 `mailto:` 를 직접 친 주소의 저장 꼴이다.
+    #[serde(default)]
+    mail_as_web: bool,
 }
 
 #[derive(Deserialize)]
@@ -81,6 +85,9 @@ impl HwpDocument {
     pub fn insert_hyperlink_ex(&mut self, options_json: &str) -> Result<u32, JsValue> {
         let o: InsertOptions = parse(options_json)?;
         match (&o.uri, &o.bookmark) {
+            (Some(uri), None) if o.mail_as_web => self
+                .core
+                .insert_hyperlink_mail_as_web_native(&o.target, o.start, o.end, uri),
             (Some(uri), None) => self
                 .core
                 .insert_hyperlink_native(&o.target, o.start, o.end, uri),

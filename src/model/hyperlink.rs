@@ -158,11 +158,18 @@ pub fn classify_destination(uri: &str) -> Option<LinkDestinationKind> {
 
 /// Preserve the selected destination verbatim through HWP/HWPX command escaping.
 pub fn destination_command(uri: &str) -> Result<String, HwpError> {
+    destination_command_with_mail_form(uri, true)
+}
+
+/// `mail_form` 이 거짓이면 `mailto:` 주소도 웹 주소 꼴(`mailto\:a@b;1;0;0;`)로 적는다.
+/// 한컴 12.30은 사용자가 `mailto:` 를 직접 친 주소를 입력어 자동 실행으로 걸 때 이 꼴로
+/// 저장한다(전자 우편 종류가 아니라 URL 종류). `a@b.c` 꼴을 걸 때는 전자 우편 꼴이다.
+pub fn destination_command_with_mail_form(uri: &str, mail_form: bool) -> Result<String, HwpError> {
     match classify_destination(uri)
         .ok_or_else(|| HwpError::InvalidField("유효한 링크 목적지가 필요합니다".into()))?
     {
         LinkDestinationKind::Web => return web_command(uri),
-        LinkDestinationKind::Mail => return mail_command(uri),
+        LinkDestinationKind::Mail if mail_form => return mail_command(uri),
         _ => {}
     }
     let mut command = String::with_capacity(uri.len() + 16);

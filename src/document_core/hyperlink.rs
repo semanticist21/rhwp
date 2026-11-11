@@ -87,6 +87,19 @@ impl DocumentCore {
         self.insert_hyperlink_command(target, start, end, destination_command(uri)?)
     }
 
+    /// [`Self::insert_hyperlink_native`] 에서 `mailto:` 주소를 웹 주소 꼴로 적는 변형.
+    /// 한컴이 입력어 자동 실행으로 `mailto:` 를 직접 친 주소를 거는 꼴이다.
+    pub fn insert_hyperlink_mail_as_web_native(
+        &mut self,
+        target: &HyperlinkTarget,
+        start: usize,
+        end: usize,
+        uri: &str,
+    ) -> Result<u32, HwpError> {
+        let command = crate::model::hyperlink::destination_command_with_mail_form(uri, false)?;
+        self.insert_hyperlink_command(target, start, end, command)
+    }
+
     /// 선택한 표시 문자열에 문서 내부 책갈피 링크를 붙인다. 책갈피가 문서에 있어야 한다.
     pub fn insert_bookmark_hyperlink_native(
         &mut self,
