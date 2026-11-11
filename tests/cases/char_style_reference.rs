@@ -106,6 +106,28 @@ fn clearing_char_style_restores_paragraph_style_shape() {
         .is_err());
 }
 
+/// 한컴 글자 스타일 해제는 글자 스타일을 쓴 글자만 덮어 쓰고, 직접 꾸민 보통 글은 그대로 둔다.
+#[test]
+fn clearing_leaves_unstyled_direct_formatting() {
+    let (mut doc, id) = fixture();
+    doc.apply_char_format_native(0, 0, 0, 1, r#"{"bold":true}"#)
+        .unwrap();
+    doc.set_char_style_range_by_path(0, 0, &[], 3, 5, Some(id))
+        .unwrap();
+    let cleared = json(
+        &doc.set_char_style_range_by_path(0, 0, &[], 0, 6, None)
+            .unwrap(),
+    );
+    assert_eq!(cleared["changed"], 2);
+    assert_eq!(props(&doc, 0)["bold"], true);
+    assert_eq!(styles(&doc), [-1; 6]);
+    let again = json(
+        &doc.set_char_style_range_by_path(0, 0, &[], 0, 6, None)
+            .unwrap(),
+    );
+    assert_eq!(again["changed"], 0);
+}
+
 #[test]
 fn whole_paragraph_char_style_is_recorded_on_text() {
     let (mut doc, id) = fixture();
