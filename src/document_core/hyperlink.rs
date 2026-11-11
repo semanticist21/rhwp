@@ -7,7 +7,8 @@ use crate::error::HwpError;
 use crate::model::control::{Control, Field, FieldType, Parameter};
 use crate::model::event::DocumentEvent;
 use crate::model::hyperlink::{
-    bookmark_command, command_bookmark, command_uri, destination_command,
+    bookmark_command, classify_destination, command_bookmark, command_uri, destination_command,
+    LinkDestinationKind,
 };
 use crate::model::paragraph::{FieldRange, Paragraph};
 use crate::parser::tags;
@@ -263,6 +264,23 @@ impl DocumentCore {
                     "Path" => {
                         if let Some(path) = path {
                             *value = path.to_string();
+                        }
+                    }
+                    // 한컴은 웹 주소를 URL, 메일 주소를 EMAIL 종류로 적는다. 둘 사이로 바뀌면 따라 고친다.
+                    "Category"
+                        if matches!(
+                            value.as_str(),
+                            "HWPHYPERLINK_TYPE_URL" | "HWPHYPERLINK_TYPE_EMAIL"
+                        ) =>
+                    {
+                        match path.and_then(classify_destination) {
+                            Some(LinkDestinationKind::Web) => {
+                                *value = "HWPHYPERLINK_TYPE_URL".into()
+                            }
+                            Some(LinkDestinationKind::Mail) => {
+                                *value = "HWPHYPERLINK_TYPE_EMAIL".into()
+                            }
+                            _ => {}
                         }
                     }
                     _ => {}

@@ -22,6 +22,7 @@ pub fn command_uri(command: &str) -> String {
 }
 
 /// 웹 주소를 한컴의 URL 형식 Command로 만든다. 입력을 자동 정규화하지 않는다.
+/// 한컴 12.30은 `\ : ; # ?`를 escape한다(HWPX `https\://a.example.org/x\?y=1;1;0;0;`).
 /// 이 검사는 scheme/authority/공백 계약이며 DNS 조회나 접속 가능성 검사가 아니다.
 pub fn web_command(uri: &str) -> Result<String, HwpError> {
     let invalid = || HwpError::InvalidField("공백 없는 HTTP/HTTPS 절대 주소가 필요합니다".into());
@@ -39,12 +40,26 @@ pub fn web_command(uri: &str) -> Result<String, HwpError> {
     }
     let mut command = String::with_capacity(uri.len() + 16);
     for c in uri.chars() {
-        if matches!(c, '\\' | ':' | ';' | '#') {
+        if matches!(c, '\\' | ':' | ';' | '#' | '?') {
             command.push('\\');
         }
         command.push(c);
     }
     command.push_str(";1;0;0;");
+    checked_length(command)
+}
+
+/// 메일 주소를 한컴의 전자 우편 Command로 만든다. 한컴 12.30은 `mailto:a@b;2;0;0`처럼
+/// 콜론을 escape하지 않고 종류 2로 끝 세미콜론 없이 저장한다. `\ ;`만 escape한다.
+fn mail_command(uri: &str) -> Result<String, HwpError> {
+    let mut command = String::with_capacity(uri.len() + 8);
+    for c in uri.chars() {
+        if matches!(c, '\\' | ';') {
+            command.push('\\');
+        }
+        command.push(c);
+    }
+    command.push_str(";2;0;0");
     checked_length(command)
 }
 
@@ -143,8 +158,13 @@ pub fn classify_destination(uri: &str) -> Option<LinkDestinationKind> {
 
 /// Preserve the selected destination verbatim through HWP/HWPX command escaping.
 pub fn destination_command(uri: &str) -> Result<String, HwpError> {
-    classify_destination(uri)
-        .ok_or_else(|| HwpError::InvalidField("유효한 링크 목적지가 필요합니다".into()))?;
+    match classify_destination(uri)
+        .ok_or_else(|| HwpError::InvalidField("유효한 링크 목적지가 필요합니다".into()))?
+    {
+        LinkDestinationKind::Web => return web_command(uri),
+        LinkDestinationKind::Mail => return mail_command(uri),
+        _ => {}
+    }
     let mut command = String::with_capacity(uri.len() + 16);
     for c in uri.chars() {
         if matches!(c, '\\' | ':' | ';' | '#') {
