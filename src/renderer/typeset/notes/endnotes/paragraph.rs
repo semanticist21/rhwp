@@ -113,10 +113,17 @@ impl TypesetEngine {
                 endnote_start,
                 compact_no_separator_spacing,
             );
-            // 첫 paragraph에 미주 번호 prepend
-            if ep_idx == 0 {
-                prepend_endnote_marker_text(&mut en_para_copy, en_ctrl);
-            }
+            // 첫 paragraph에 미주 번호 prepend. 미주 모양이 작게면 배치가 번호 글자를 줄인다.
+            let small_marker_chars = if ep_idx == 0 {
+                let marker = prepend_endnote_marker_text(&mut en_para_copy, en_ctrl);
+                if endnote_shape.is_some_and(|shape| shape.number_code_superscript) {
+                    marker
+                } else {
+                    0
+                }
+            } else {
+                0
+            };
             let prev_render_endnote_para_local_idx = last_render_endnote_para_local_idx;
             // [#7665] 직전 렌더 미주 문단이 미주의 첫 문단(번호 장식을 받은 새 문항 제목)인가 —
             // 「문」 접두사가 아니라 소유 경계(`ep_idx == 0`)로 읽는다.
@@ -132,6 +139,7 @@ impl TypesetEngine {
                 cell_path: en_ref.cell_path.clone(),
                 note_para_index: ep_idx,
                 tail_leading_consumed_hu: 0,
+                small_marker_chars,
             });
             last_render_endnote_para_local_idx = Some(en_para_local_idx);
 
@@ -1453,6 +1461,7 @@ impl TypesetEngine {
                         cell_path: en_ref.cell_path.clone(),
                         note_para_index: ep_idx + 1,
                         tail_leading_consumed_hu: 0,
+                        small_marker_chars: 0,
                     });
                     last_render_endnote_para_local_idx = Some(st.endnote_paragraphs.len() - 1);
 

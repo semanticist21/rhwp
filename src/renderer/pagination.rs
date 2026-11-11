@@ -343,8 +343,11 @@ pub struct EndnoteParaSource {
     /// 줄의 물리 합집합을 재발행하면서 같은 전진 안에서 이미 소비한 후행 간격.
     /// 원본 파일 속성이 아니라 fit과 배치가 공유하는 미주 끝줄의 투영 결과다.
     pub tail_leading_consumed_hu: i32,
+    /// 미주 모양의 내용 번호 속성이 작게일 때 첫 문단 앞에 붙인 번호 글자 수(장식 포함, 뒤 빈칸 제외).
+    /// 배치가 그 글자만 작은 위첨자로 줄인다. 보통이거나 첫 문단이 아니면 0이다.
+    pub small_marker_chars: usize,
 }
-crate::storage::clone_fields!(EndnoteParaSource, {section_index, para_index, control_index, cell_path, note_para_index, tail_leading_consumed_hu});
+crate::storage::clone_fields!(EndnoteParaSource, {section_index, para_index, control_index, cell_path, note_para_index, tail_leading_consumed_hu, small_marker_chars});
 
 impl EndnoteParaSource {
     /// 같은 미주 컨트롤에서 나온 문단인가(내부 문단 번호는 보지 않는다).

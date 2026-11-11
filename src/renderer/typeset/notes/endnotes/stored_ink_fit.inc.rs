@@ -431,6 +431,7 @@ impl TypesetEngine {
             cell_path: Vec::new(),
             note_para_index: usize::MAX,
             tail_leading_consumed_hu: 0,
+            small_marker_chars: 0,
         };
         let successor_source = local_indices
             .last()

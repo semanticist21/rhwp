@@ -3898,6 +3898,7 @@ mod anchored_cell_paint;
 mod border_geometry;
 mod border_rendering;
 mod column_separators;
+mod endnote_marker;
 mod fill_background;
 mod fixed_textbox_flow;
 mod floating_equation;
@@ -4676,6 +4677,44 @@ impl LayoutEngine {
     /// 렌더는 이 문단 앞에 번호 장식(`문1)` 등)을 붙이므로 글자 접두사로 읽지 않는다.
     fn endnote_para_starts_note(&self, para_index: usize) -> bool {
         self.endnote_note_first_paras.borrow().contains(&para_index)
+    }
+
+    /// 미주 모양의 내용 번호 속성이 작게면 미주 첫 문단 앞 번호 글자를 각주 번호처럼 작은 위첨자로 그린다.
+    /// 번호는 첫 문단에 글자로 붙어 있어(`prepend_endnote_marker_text`) 본문과 한 글 조각일 수 있다.
+    /// 첫 줄의 앞 `small_marker_chars` 글자를 따로 조각 내 줄이고 뒤 조각들을 그만큼 당긴다.
+    fn shrink_small_endnote_marker(&self, item: &PageItem, nodes: &mut [RenderNode]) {
+        let (PageItem::FullParagraph { para_index }
+        | PageItem::PartialParagraph {
+            para_index,
+            start_line: 0,
+            ..
+        }) = item
+        else {
+            return;
+        };
+        let Some(chars) = self
+            .endnote_para_source_for(*para_index)
+            .filter(|source| source.note_para_index == 0)
+            .map(|source| source.small_marker_chars)
+            .filter(|&chars| chars > 0)
+        else {
+            return;
+        };
+        fn first_line(nodes: &mut [RenderNode]) -> Option<&mut RenderNode> {
+            for node in nodes {
+                if matches!(node.node_type, RenderNodeType::TextLine(_)) {
+                    return Some(node);
+                }
+                if let Some(line) = first_line(&mut node.children) {
+                    return Some(line);
+                }
+            }
+            None
+        }
+        let Some(line) = first_line(nodes) else {
+            return;
+        };
+        endnote_marker::shrink_leading_chars(line, *para_index, chars);
     }
 
     fn endnote_para_source_for(&self, para_index: usize) -> Option<EndnoteParaSource> {
@@ -8658,6 +8697,7 @@ impl LayoutEngine {
                             .unwrap_or(0.0)
                     };
                     y_offset = (y_offset - trailing_ls_px).max(0.0);
+                    let first_new_child = col_node.children.len();
                     let (new_y, _) = self.layout_column_item(
                         tree,
                         &mut col_node,
@@ -8690,6 +8730,10 @@ impl LayoutEngine {
                         &col_content.paragraph_float_placements,
                         &col_content.stored_column_top_spacings,
                         &col_content.float_pushed_line_spacings,
+                    );
+                    self.shrink_small_endnote_marker(
+                        item,
+                        &mut col_node.children[first_new_child..],
                     );
                     y_offset = new_y;
                     endnote_sep_body_floor = Some(new_y);
@@ -10561,6 +10605,7 @@ impl LayoutEngine {
                         .collect::<Vec<_>>()
                 );
             }
+            let first_new_child = col_node.children.len();
             let (mut new_y, was_tac) = self.layout_column_item(
                 tree,
                 &mut col_node,
@@ -10594,6 +10639,7 @@ impl LayoutEngine {
                 &col_content.stored_column_top_spacings,
                 &col_content.float_pushed_line_spacings,
             );
+            self.shrink_small_endnote_marker(item, &mut col_node.children[first_new_child..]);
             // 같은 TAC 호스트가 소비한 빈 줄 상자는 뒤의 제어 방출에도 남는다.
             let is_inline_control = match item {
                 PageItem::Shape { control_index, .. } => paragraphs

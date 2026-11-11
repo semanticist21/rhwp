@@ -81,10 +81,11 @@ pub(crate) fn endnote_first_para_render_offset(
     char_offset.saturating_sub(leading_spaces) + endnote_marker_prefix(endnote).chars().count()
 }
 
+/// 미주 번호를 첫 문단 앞에 붙이고, 붙인 번호 글자 수(뒤 빈칸 제외)를 돌려준다.
 pub(in crate::renderer::typeset) fn prepend_endnote_marker_text(
     para: &mut Paragraph,
     endnote: &crate::model::footnote::Endnote,
-) {
+) -> usize {
     // 미주 번호는 렌더 시점에 가상 텍스트로 붙이므로, line_segs/char_shapes도
     // 같은 UTF-16 stream 기준으로 함께 밀어야 한다.
     let leading_spaces = endnote_leading_space_count(para);
@@ -133,4 +134,5 @@ pub(in crate::renderer::typeset) fn prepend_endnote_marker_text(
     if let Some(char_shape_id) = separator_char_shape_id.filter(|_| has_separator) {
         para.apply_char_shape_range(prefix_len - 1, prefix_len, char_shape_id);
     }
+    prefix_len - usize::from(has_separator)
 }
