@@ -4,6 +4,7 @@ mod cell_line_frame;
 mod grown_table_heights;
 mod hft_outline_fonts;
 mod initial_fields;
+mod laid_out_tabs;
 mod metafile_fonts;
 mod reflowed_table_frames;
 mod section_activation;
@@ -2617,6 +2618,7 @@ impl DocumentCore {
         if !grows_tables
             && page_starts.is_empty()
             && self.render_normalization.text_reflowed_tables.is_empty()
+            && !self.has_unlaid_tabs()
             && (self.file_name.is_empty()
                 || !super::header_footer_ops::has_header_footer_file_name_fields(&self.document))
         {
@@ -2627,6 +2629,7 @@ impl DocumentCore {
         grown_table_heights::apply_grown_table_heights(&mut snapshot, &grown_tables);
         self.write_page_starts(&mut snapshot, &page_starts);
         self.writeback_reflowed_table_frames(&mut snapshot);
+        self.write_laid_out_tab_widths(&mut snapshot);
         super::header_footer_ops::refresh_header_footer_file_name_fields(
             &mut snapshot,
             &self.file_name,
@@ -3012,6 +3015,7 @@ impl DocumentCore {
         grown_table_heights::apply_grown_table_heights(&mut snapshot, &grown_tables);
         self.write_page_starts(&mut snapshot, &self.shifted_page_starts());
         self.writeback_reflowed_table_frames_with_storage(&mut snapshot, storage)?;
+        self.write_laid_out_tab_widths(&mut snapshot);
         let _report = try_convert_if_hwpx_source(&mut snapshot, self.source_format, storage)?;
         super::header_footer_ops::refresh_header_footer_file_name_fields(
             &mut snapshot,
