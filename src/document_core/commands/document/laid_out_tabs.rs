@@ -185,14 +185,15 @@ fn collect_run_tab_widths(node: &RenderNode, run: &TextRunNode, dpi: f64, found:
         return;
     }
     let key: ParaKey = match (&node.header_footer_source, &run.cell_context) {
-        // 머리말·꼬리말의 문단 번호는 그 컨트롤 안 번호다.
-        (Some((hf_sec, hf)), None) => (
+        // 머리말·꼬리말 배치는 그 안 문단 번호 i를 `usize::MAX - i`로 싣는다.
+        (Some((hf_sec, hf)), None) if para_index >= usize::MAX - 1024 => (
             *hf_sec,
             hf.outer_para_index,
-            Some((hf.outer_control_index, para_index)),
+            Some((hf.outer_control_index, usize::MAX - para_index)),
             Vec::new(),
         ),
-        (Some(_), Some(_)) => return,
+        (Some(_), _) => return,
+        (None, None) if para_index >= usize::MAX - 1024 => return,
         (None, None) => (sec, para_index, None, Vec::new()),
         (None, Some(cell)) => (
             sec,
@@ -217,15 +218,24 @@ fn collect_run_tab_widths(node: &RenderNode, run: &TextRunNode, dpi: f64, found:
         }
         let width =
             crate::renderer::px_to_hwpunit(positions[i + 1] - positions[i], dpi).max(0) as u32;
-        // 조판이 이 탭에 쓴 정지와 같은 정지를 찾아 종류·채움을 적는다.
-        let (_, kind, fill) = find_next_tab_stop(
-            style.line_x_offset + positions[i],
-            &style.tab_stops,
-            default_tab,
-            style.auto_tab_right,
-            style.available_width,
-            style.text_start_offset,
-        );
+        // 조판이 이 탭에 쓴 정지와 같은 정지를 찾아 종류·채움을 적는다. 자리 맞춤 왼쪽 탭
+        // (`auto_left_tab_position`)은 정지 목록보다 먼저 쓰이므로 왼쪽으로 적는다.
+        let before = style.line_x_offset + positions[i];
+        let (_, kind, fill) = if style
+            .auto_left_tab_position
+            .is_some_and(|position| position > before)
+        {
+            (0.0, 0, 0)
+        } else {
+            find_next_tab_stop(
+                before,
+                &style.tab_stops,
+                default_tab,
+                style.auto_tab_right,
+                style.available_width,
+                style.text_start_offset,
+            )
+        };
         let ext = [
             width as u16,
             (width >> 16) as u16,

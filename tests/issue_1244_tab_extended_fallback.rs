@@ -70,9 +70,11 @@ fn issue_1244_inserted_tab_has_marker_after_roundtrip() {
         "직렬화기가 한컴이 요구하는 ext[6]=0x0009 마커를 빠뜨렸다 (#1244): {:?}",
         para.tab_extended
     );
+    // 한컴은 HWP 탭 폭을 다시 계산하지 않아 저장은 조판한 폭을 적는다(`hwp_saved_tab_widths`).
+    // 폭 0 으로 남으면 탭이 무폭이 된다(#1892).
     assert!(
-        tab_ext_is_placeholder(&para.tab_extended[0]),
-        "삽입 탭은 저장 폭이 없다 — 자리표로 읽혀야 한다 (#1892 탭 무폭 회귀 차단): {:?}",
+        !tab_ext_is_placeholder(&para.tab_extended[0]) && para.tab_extended[0][0] > 0,
+        "삽입 탭은 조판한 폭으로 저장된다 (#1892 탭 무폭 회귀 차단): {:?}",
         para.tab_extended
     );
 }
@@ -104,8 +106,10 @@ fn issue_1244_multiple_inserted_tabs_all_have_marker() {
         para.tab_extended
     );
     assert!(
-        para.tab_extended.iter().all(tab_ext_is_placeholder),
-        "삽입 탭은 저장 폭이 없다 — 전부 자리표여야 한다 (#1892): {:?}",
+        para.tab_extended
+            .iter()
+            .all(|ext| !tab_ext_is_placeholder(ext) && ext[0] > 0),
+        "삽입 탭은 전부 조판한 폭으로 저장된다 (#1892): {:?}",
         para.tab_extended
     );
     assert!(

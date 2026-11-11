@@ -139,8 +139,17 @@ fn unresolved_tab_does_not_publish_a_stored_line_cache() {
         let saved = rhwp::parser::parse_document(&bytes).unwrap();
         let para = &saved.sections[0].paragraphs[0];
         assert_eq!(para.text, "\tA", "{format:?} 탭과 뒤 글자 보존");
-        if !para.line_segs.is_empty() {
+        // HWP 저장은 조판한 탭 폭을 적어 탭이 계산된 상태로 줄 캐시를 함께 싣는다
+        // (`hwp_saved_tab_widths`). HWPX는 자리표 탭이라 줄 캐시를 생략한다.
+        let resolved = para
+            .tab_extended
+            .first()
+            .is_some_and(|ext| !rhwp::model::paragraph::tab_ext_is_placeholder(ext));
+        if !para.line_segs.is_empty() && !resolved {
             stale.push(format);
+        }
+        if matches!(format, Format::Hwp) {
+            assert!(resolved, "HWP 저장은 조판한 탭 폭을 적는다");
         }
     }
     assert!(stale.is_empty(), "미계산 탭의 줄 캐시가 저장됨: {stale:?}");
