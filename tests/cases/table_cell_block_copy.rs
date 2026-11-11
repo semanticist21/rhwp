@@ -125,3 +125,194 @@ fn cell_block_copy_rejects_a_merged_cell_crossing_the_block_edge() {
     );
     assert!(!core.has_internal_clipboard_native());
 }
+
+/// 4×4 표(칸마다 "줄칸" 글)에서 (0,0)~(1,1) 블록을 복사하고 (0,0)을 칠해 둔다.
+fn paste_setup() -> DocumentCore {
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.insert_text_native(0, 0, 0, "위").unwrap();
+    core.split_paragraph_native(0, 0, 1, None).unwrap();
+    core.create_table_native(0, 1, 0, 4, 4).unwrap();
+    for i in 0..16 {
+        core.insert_text_in_cell_native(0, 1, 0, i, 0, 0, &format!("{}{}", i / 4, i % 4))
+            .unwrap();
+    }
+    core.set_cell_properties_native(
+        0,
+        1,
+        0,
+        0,
+        r##"{"fillType":"solid","fillColor":"#ffcc00"}"##,
+    )
+    .unwrap();
+    core.copy_table_cells_native(0, 1, 0, 0, 0, 1, 1).unwrap();
+    core
+}
+
+/// 줄마다 칸 글을 모은다. 병합으로 가려진 자리는 "-"다.
+fn grid(core: &DocumentCore) -> Vec<Vec<String>> {
+    let mut table = table(core, 1).clone();
+    table.rebuild_grid();
+    (0..table.row_count)
+        .map(|r| {
+            (0..table.col_count)
+                .map(|c| match table.cell_at(r, c) {
+                    Some(cell) if cell.row == r && cell.col == c => cell
+                        .paragraphs
+                        .iter()
+                        .map(|p| p.text.as_str())
+                        .collect::<Vec<_>>()
+                        .join(""),
+                    _ => "-".to_string(),
+                })
+                .collect()
+        })
+        .collect()
+}
+
+fn fill_of(core: &DocumentCore, row: u16, col: u16) -> u16 {
+    let mut table = table(core, 1).clone();
+    table.rebuild_grid();
+    table.cell_at(row, col).unwrap().border_fill_id
+}
+
+/// 한컴 12.30 셀 붙이기(2×2 블록을 (2,2)에서): 덮어 쓰기는 모양째, 내용만 덮어 쓰기는 글만 바꾸고
+/// 표 밖으로 넘치는 부분은 버린다.
+#[test]
+fn cell_paste_overwrites_contents_and_shapes_clipped_to_the_table() {
+    let mut core = paste_setup();
+    let painted = fill_of(&core, 0, 0);
+    let plain = fill_of(&core, 2, 2);
+    assert_ne!(painted, plain);
+    core.paste_table_cells_native(0, 1, 0, 2, 2, "overwrite")
+        .unwrap();
+    assert_eq!(grid(&core)[2], ["20", "21", "00", "01"]);
+    assert_eq!(grid(&core)[3], ["30", "31", "10", "11"]);
+    assert_eq!(
+        fill_of(&core, 2, 2),
+        painted,
+        "덮어 쓰기는 셀 배경도 옮긴다"
+    );
+
+    let mut core = paste_setup();
+    core.paste_table_cells_native(0, 1, 0, 2, 2, "content")
+        .unwrap();
+    assert_eq!(grid(&core)[2], ["20", "21", "00", "01"]);
+    assert_eq!(
+        fill_of(&core, 2, 2),
+        plain,
+        "내용만 덮어 쓰기는 셀 모양을 둔다"
+    );
+
+    let mut core = paste_setup();
+    core.paste_table_cells_native(0, 1, 0, 3, 3, "overwrite")
+        .unwrap();
+    assert_eq!(grid(&core).len(), 4, "표를 늘리지 않는다");
+    assert_eq!(grid(&core)[3], ["30", "31", "32", "00"]);
+}
+
+/// 한컴 12.30 끼워 넣기: 왼쪽·오른쪽은 블록 칸 수만큼 칸을 끼우고 블록을 맨 위부터 놓으며, 블록 마지막
+/// 줄이 남은 줄을 병합한다. 위·아래는 줄을 끼우고 블록을 맨 왼쪽부터 놓으며 마지막 칸이 남은 칸을 병합한다.
+#[test]
+fn cell_paste_inserts_block_columns_and_rows_like_hancom() {
+    let mut core = paste_setup();
+    core.paste_table_cells_native(0, 1, 0, 2, 2, "left")
+        .unwrap();
+    assert_eq!(
+        grid(&core),
+        [
+            ["00", "01", "00", "01", "02", "03"],
+            ["10", "11", "10", "11", "12", "13"],
+            ["20", "21", "-", "-", "22", "23"],
+            ["30", "31", "-", "-", "32", "33"],
+        ]
+    );
+    assert_eq!(fill_of(&core, 0, 2), fill_of(&core, 0, 0));
+
+    let mut core = paste_setup();
+    core.paste_table_cells_native(0, 1, 0, 2, 2, "right")
+        .unwrap();
+    assert_eq!(grid(&core)[0], ["00", "01", "02", "00", "01", "03"]);
+    assert_eq!(grid(&core)[3], ["30", "31", "32", "-", "-", "33"]);
+
+    let mut core = paste_setup();
+    core.paste_table_cells_native(0, 1, 0, 2, 2, "up").unwrap();
+    let rows = grid(&core);
+    assert_eq!(rows.len(), 6);
+    assert_eq!(rows[2], ["00", "01", "-", "-"]);
+    assert_eq!(rows[3], ["10", "11", "-", "-"]);
+    assert_eq!(rows[4], ["20", "21", "22", "23"]);
+
+    let mut core = paste_setup();
+    core.paste_table_cells_native(0, 1, 0, 2, 2, "down")
+        .unwrap();
+    let rows = grid(&core);
+    assert_eq!(rows[3], ["00", "01", "-", "-"]);
+    assert_eq!(rows[5], ["30", "31", "32", "33"]);
+
+    // HWP/HWPX 저장 뒤에도 같다.
+    for bytes in [
+        core.export_hwp_native().unwrap(),
+        core.export_hwpx_native().unwrap(),
+    ] {
+        let reopened = DocumentCore::from_bytes(&bytes).unwrap();
+        assert_eq!(grid(&reopened), rows);
+    }
+}
+
+/// 한컴 12.30: 덮어 쓰기는 블록 줄마다 셀을 차례로 대상 줄의 캐럿 칸부터 놓인 셀에 하나씩 덮어 쓴다.
+/// 병합한 블록·병합한 대상도 그대로 받는다(대상의 병합은 그대로). 끼워 넣기는 블록의 병합을 지킨다.
+#[test]
+fn cell_paste_handles_merged_blocks_and_targets_like_hancom() {
+    let mut core = paste_setup();
+    core.merge_table_cells_native(0, 1, 0, 0, 0, 0, 1).unwrap();
+    core.copy_table_cells_native(0, 1, 0, 0, 0, 1, 2).unwrap();
+    let mut right = paste_setup();
+    right.merge_table_cells_native(0, 1, 0, 0, 0, 0, 1).unwrap();
+    right.copy_table_cells_native(0, 1, 0, 0, 0, 1, 2).unwrap();
+
+    core.paste_table_cells_native(0, 1, 0, 2, 2, "overwrite")
+        .unwrap();
+    assert_eq!(grid(&core)[2], ["20", "21", "0001", "02"]);
+    assert_eq!(grid(&core)[3], ["30", "31", "10", "11"]);
+
+    right
+        .paste_table_cells_native(0, 1, 0, 2, 2, "right")
+        .unwrap();
+    assert_eq!(
+        grid(&right),
+        [
+            ["0001", "-", "02", "0001", "-", "02", "03"],
+            ["10", "11", "12", "10", "11", "12", "13"],
+            ["20", "21", "22", "-", "-", "-", "23"],
+            ["30", "31", "32", "-", "-", "-", "33"],
+        ]
+    );
+
+    // 병합한 대상: 캐럿 줄의 셀을 차례로 덮어 쓰고 병합은 그대로 둔다.
+    let mut target = paste_setup();
+    target.copy_table_cells_native(0, 1, 0, 2, 2, 3, 3).unwrap();
+    target
+        .merge_table_cells_native(0, 1, 0, 0, 0, 0, 1)
+        .unwrap();
+    target
+        .paste_table_cells_native(0, 1, 0, 0, 0, "overwrite")
+        .unwrap();
+    assert_eq!(grid(&target)[0], ["22", "-", "23", "03"]);
+    assert_eq!(grid(&target)[1], ["32", "33", "12", "13"]);
+}
+
+#[test]
+fn cell_paste_refuses_crossing_merges_and_unknown_modes() {
+    let mut core = paste_setup();
+    // 끼울 자리(칸 2 왼쪽)에 걸친 병합 셀
+    core.merge_table_cells_native(0, 1, 0, 2, 1, 2, 2).unwrap();
+    let before = format!("{:?}", table(&core, 1));
+    assert!(core
+        .paste_table_cells_native(0, 1, 0, 0, 2, "left")
+        .is_err());
+    assert!(core
+        .paste_table_cells_native(0, 1, 0, 0, 0, "sideways")
+        .is_err());
+    assert_eq!(format!("{:?}", table(&core, 1)), before);
+}

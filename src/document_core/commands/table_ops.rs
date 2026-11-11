@@ -1128,6 +1128,262 @@ impl DocumentCore {
         )))
     }
 
+    /// 내부 클립보드의 셀 블록(복사한 표)을 본문 표의 (`row`, `col`) 셀 자리에 붙인다(한컴 셀 붙이기).
+    ///
+    /// 한컴 12.30에서 확인한 동작이다.
+    /// - `left`·`right`·`up`·`down`: 캐럿 셀 왼쪽·오른쪽에 블록 칸 수만큼 칸을(위·아래면 줄 수만큼 줄을)
+    ///   끼우고, 블록을 끼운 칸의 맨 위(끼운 줄의 맨 왼쪽)부터 병합까지 그대로 모양째 놓는다. 블록 마지막
+    ///   줄(칸)에 닿는 셀이 표의 남은 줄(칸)까지 병합해 차지한다.
+    /// - `overwrite`(셀 모양과 내용)·`content`(내용만): 블록의 줄마다 셀을 차례로, 캐럿 줄부터 같은 줄의
+    ///   캐럿 칸부터 놓인 셀에 하나씩 덮어 쓴다. 병합은 대상의 것을 그대로 두고, 표 밖으로 넘치면 버린다.
+    ///
+    /// 반환값: JSON `{"ok":true,"rowCount":N,"colCount":N,"startRow":N,"startCol":N,"rows":N,"cols":N}`
+    /// — 붙인 뒤 표 크기와 블록이 놓인 자리.
+    pub fn paste_table_cells_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        control_idx: usize,
+        row: u16,
+        col: u16,
+        mode: &str,
+    ) -> Result<String, HwpError> {
+        use crate::model::table::{Cell, Table};
+        let err = |m: &str| HwpError::RenderError(m.to_string());
+        let mut block: Table = match self.clipboard.as_ref().map(|c| c.paragraphs.as_slice()) {
+            Some([para]) => match para.controls.as_slice() {
+                [Control::Table(table)] => (**table).clone(),
+                _ => return Err(err("붙일 셀 블록이 없습니다")),
+            },
+            _ => return Err(err("붙일 셀 블록이 없습니다")),
+        };
+        if block.row_count == 0 || block.col_count == 0 || block.cells.is_empty() {
+            return Err(err("붙일 셀 블록이 없습니다"));
+        }
+        block.rebuild_grid();
+        let (row_count, col_count, anchor) = {
+            let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+            table.rebuild_grid();
+            let anchor = table
+                .cell_at(row, col)
+                .map(|c| (c.row, c.col, c.row_span.max(1), c.col_span.max(1)))
+                .ok_or_else(|| err("붙일 셀을 찾을 수 없습니다"))?;
+            (table.row_count, table.col_count, anchor)
+        };
+        let (br, bc) = (block.row_count, block.col_count);
+        // 블록 셀 → 대상 셀: 내용(과 모양)을 옮긴다.
+        let fill = |target: &mut Cell, source: &Cell, shape: bool| {
+            target.paragraphs = source.paragraphs.clone();
+            if target.paragraphs.is_empty() {
+                target
+                    .paragraphs
+                    .push(crate::model::paragraph::Paragraph::new_empty());
+            }
+            if shape {
+                target.border_fill_id = source.border_fill_id;
+                target.padding = source.padding;
+                target.text_direction = source.text_direction;
+                target.line_wrap = source.line_wrap;
+                target.vertical_align = source.vertical_align;
+                target.apply_inner_margin = source.apply_inner_margin;
+            }
+        };
+        // 블록의 줄(칸)마다 셀을 칸(줄) 차례로 모은다.
+        let mut block_cells: Vec<&Cell> = block.cells.iter().collect();
+        block_cells.sort_by_key(|c| (c.row, c.col));
+        let (start_row, start_col, rows, cols) = match mode {
+            "overwrite" | "content" => {
+                let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+                let (first_row, first_col) = (anchor.0, anchor.1);
+                let mut changed = Vec::new();
+                let mut rows = 0;
+                let mut cols = 0;
+                for i in 0..br.min(row_count - first_row) {
+                    let target_row = first_row + i;
+                    let mut targets: Vec<usize> = (0..table.cells.len())
+                        .filter(|&index| {
+                            let c = &table.cells[index];
+                            c.row == target_row && c.col >= first_col
+                        })
+                        .collect();
+                    targets.sort_by_key(|&index| table.cells[index].col);
+                    let sources: Vec<&Cell> =
+                        block_cells.iter().copied().filter(|c| c.row == i).collect();
+                    let placed = targets.len().min(sources.len());
+                    for (&index, source) in targets.iter().zip(&sources) {
+                        fill(&mut table.cells[index], source, mode == "overwrite");
+                        changed.push((index, table.cells[index].paragraphs.len()));
+                    }
+                    if placed > 0 {
+                        rows = i + 1;
+                        cols = cols.max(placed as u16);
+                    }
+                }
+                self.document.sections[section_idx].raw_stream = None;
+                self.reflow_table_cell_paragraphs(
+                    section_idx,
+                    parent_para_idx,
+                    control_idx,
+                    &changed,
+                );
+                self.mark_section_dirty(section_idx);
+                (first_row, first_col, rows, cols)
+            }
+            "left" | "right" | "up" | "down" => {
+                let horizontal = matches!(mode, "left" | "right");
+                // 끼울 자리(칸 또는 줄 번호)와 끼울 수
+                let (at, count) = match mode {
+                    "left" => (anchor.1, bc),
+                    "right" => (anchor.1 + anchor.3, bc),
+                    "up" => (anchor.0, br),
+                    _ => (anchor.0 + anchor.2, br),
+                };
+                {
+                    let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+                    let crosses = table.cells.iter().any(|c| {
+                        let (from, span) = if horizontal {
+                            (c.col, c.col_span)
+                        } else {
+                            (c.row, c.row_span)
+                        };
+                        from < at && from + span > at
+                    });
+                    if crosses {
+                        return Err(err("병합한 셀이 끼워 넣을 자리에 걸쳐 있습니다"));
+                    }
+                }
+                for _ in 0..count {
+                    match mode {
+                        "left" => self.insert_table_column_native(
+                            section_idx,
+                            parent_para_idx,
+                            control_idx,
+                            at,
+                            false,
+                        )?,
+                        "right" => self.insert_table_column_native(
+                            section_idx,
+                            parent_para_idx,
+                            control_idx,
+                            at - 1,
+                            true,
+                        )?,
+                        "up" => self.insert_table_row_native(
+                            section_idx,
+                            parent_para_idx,
+                            control_idx,
+                            at,
+                            false,
+                        )?,
+                        _ => self.insert_table_row_native(
+                            section_idx,
+                            parent_para_idx,
+                            control_idx,
+                            at - 1,
+                            true,
+                        )?,
+                    };
+                }
+                // 끼운 줄·칸의 길이: 왼쪽·오른쪽은 표의 줄 수, 위·아래는 칸 수다.
+                let span_total = if horizontal { row_count } else { col_count };
+                let span_block = if horizontal { br } else { bc };
+                let widths = block.get_column_widths();
+                let heights = block.get_row_heights();
+                let mut merges = Vec::new();
+                {
+                    let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+                    table.rebuild_grid();
+                    // 끼운 칸(줄)의 너비(높이)를 블록 칸(줄)의 것으로 둔다.
+                    for k in 0..count {
+                        for other in 0..span_total {
+                            let (r, c) = if horizontal {
+                                (other, at + k)
+                            } else {
+                                (at + k, other)
+                            };
+                            if let Some(index) = table.cell_index_at(r, c) {
+                                if horizontal {
+                                    table.cells[index].width =
+                                        widths.get(k as usize).copied().unwrap_or(0);
+                                } else {
+                                    table.cells[index].height =
+                                        heights.get(k as usize).copied().unwrap_or(0);
+                                }
+                            }
+                        }
+                    }
+                    for source in &block_cells {
+                        // 블록 안 자리(끼운 방향의 위치 o, 그 직각 방향의 위치 a)
+                        let (o, o_span, a, a_span) = if horizontal {
+                            (
+                                source.row,
+                                source.row_span.max(1),
+                                source.col,
+                                source.col_span.max(1),
+                            )
+                        } else {
+                            (
+                                source.col,
+                                source.col_span.max(1),
+                                source.row,
+                                source.row_span.max(1),
+                            )
+                        };
+                        if o >= span_total {
+                            continue;
+                        }
+                        // 블록 마지막 줄(칸)에 닿는 셀은 표의 남은 줄(칸)까지 차지한다.
+                        let o_end = if o + o_span >= span_block {
+                            span_total
+                        } else {
+                            (o + o_span).min(span_total)
+                        };
+                        let (r0, c0, r1, c1) = if horizontal {
+                            (o, at + a, o_end - 1, at + a + a_span - 1)
+                        } else {
+                            (at + a, o, at + a + a_span - 1, o_end - 1)
+                        };
+                        if let Some(index) = table.cell_index_at(r0, c0) {
+                            fill(&mut table.cells[index], source, true);
+                        }
+                        if r1 > r0 || c1 > c0 {
+                            merges.push((r0, c0, r1, c1));
+                        }
+                    }
+                    table.update_ctrl_dimensions();
+                }
+                for (r0, c0, r1, c1) in merges {
+                    self.merge_table_cells_native(
+                        section_idx,
+                        parent_para_idx,
+                        control_idx,
+                        r0,
+                        c0,
+                        r1,
+                        c1,
+                    )?;
+                }
+                if horizontal {
+                    (0, at, br.min(row_count), bc)
+                } else {
+                    (at, 0, br, bc.min(col_count))
+                }
+            }
+            _ => return Err(err("셀 붙이기 방식을 확인해 주세요")),
+        };
+        self.document.sections[section_idx].raw_stream = None;
+        self.recompose_section(section_idx);
+        self.paginate_if_needed();
+        let (row_count, col_count) = {
+            let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+            (table.row_count, table.col_count)
+        };
+        Ok(super::super::helpers::json_ok_with(&format!(
+            "\"rowCount\":{},\"colCount\":{},\"startRow\":{},\"startCol\":{},\"rows\":{},\"cols\":{}",
+            row_count, col_count, start_row, start_col, rows, cols
+        )))
+    }
+
     /// 행/열 바꿈 복사 버퍼 보유 여부.
     pub fn has_table_transpose_clipboard_native(&self) -> bool {
         self.table_transpose_clipboard.is_some()

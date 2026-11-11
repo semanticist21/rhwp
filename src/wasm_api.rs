@@ -2976,6 +2976,31 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 내부 클립보드의 셀 블록을 본문 표의 (`row`, `col`) 셀 자리에 붙인다(한컴 셀 붙이기).
+    /// `mode`: `left`·`right`·`up`·`down`(끼워 넣기), `overwrite`(모양과 내용), `content`(내용만).
+    ///
+    /// 반환값: JSON `{"ok":true,"rowCount":N,"colCount":N,"startRow":N,"startCol":N,"rows":N,"cols":N}`
+    #[wasm_bindgen(js_name = pasteTableCells)]
+    pub fn paste_table_cells(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        control_idx: u32,
+        row: u32,
+        col: u32,
+        mode: &str,
+    ) -> Result<String, JsValue> {
+        self.paste_table_cells_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            control_idx as usize,
+            row as u16,
+            col as u16,
+            mode,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// 행/열 바꿈 복사 버퍼를 대상 시작 셀부터 붙여넣는다.
     ///
     /// 반환값: JSON `{"ok":true,"sourceRows":N,"sourceCols":N,"targetRows":N,"targetCols":N}`
