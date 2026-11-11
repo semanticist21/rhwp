@@ -1401,7 +1401,16 @@ impl Paragraph {
     /// 형광펜 표지를 모두 8유닛 당기고, 뒤 누름틀 범위의 컨트롤 번호도 하나씩 줄인다.
     /// 종전에는 경로마다 `char_offsets` 만 당겨 개체 뒤 글자모양 경계가 8유닛 뒤에 남았다.
     pub(crate) fn remove_control(&mut self, control_idx: usize) -> Control {
-        // serialize_para_text 와 같은 순서로 control_idx 번째 컨트롤의 자리를 찾는다.
+        // 저장기가 실제로 쓰는 자리를 먼저 쓴다. 갭만 세면 앞 필드의 끝 표지(FIELD_END)도
+        // 컨트롤로 세어, 필드가 글자 사이에서 끝날 때 뒤 각주·개체의 자리를 대신 걷어낸다.
+        if let Some(Some((start, _))) =
+            crate::serializer::body_text::control_stream_slots(self).get(control_idx)
+        {
+            let start = *start;
+            self.remove_stream_slot(start, true);
+            return self.remove_control_entry(control_idx);
+        }
+        // 저장기가 자리를 쓰지 않는 컨트롤: 종전처럼 갭을 센다.
         let text_chars: Vec<char> = self.text.chars().collect();
         let mut ci = 0usize;
         let mut prev_end: u32 = 0;
