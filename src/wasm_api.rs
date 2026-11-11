@@ -5637,6 +5637,18 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// `getControls` 주소(list·para·controlIndex)로 각주·미주 정보를 조회한다. 표 셀·글상자 안도 된다.
+    #[wasm_bindgen(js_name = getNoteInfoInList)]
+    pub fn get_note_info_in_list(
+        &self,
+        list_id: u32,
+        para_in_list: u32,
+        control_idx: u32,
+    ) -> Result<String, JsValue> {
+        self.get_note_info_in_list_native(list_id, para_in_list as usize, control_idx as usize)
+            .map_err(|e| e.into())
+    }
+
     /// 각주 정보를 조회한다.
     #[wasm_bindgen(js_name = getFootnoteInfo)]
     pub fn get_footnote_info(

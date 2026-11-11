@@ -462,44 +462,26 @@ impl DocumentCore {
         let ctrl = para.controls.get(control_idx).ok_or_else(|| {
             HwpError::RenderError(format!("컨트롤 인덱스 {} 범위 초과", control_idx))
         })?;
-        match ctrl {
-            Control::Footnote(f) => {
-                let para_count = f.paragraphs.len();
-                let texts: Vec<String> = f
-                    .paragraphs
-                    .iter()
-                    .map(|p| p.text.replace('\\', "\\\\").replace('"', "\\\""))
-                    .collect();
-                let total_len: usize = f.paragraphs.iter().map(|p| p.text.chars().count()).sum();
-                Ok(format!(
-                    "{{\"ok\":true,\"paraCount\":{},\"totalTextLen\":{},\"number\":{},\"texts\":[{}]}}",
-                    para_count,
-                    total_len,
-                    f.number,
-                    texts.iter().map(|t| format!("\"{}\"", t)).collect::<Vec<_>>().join(","),
-                ))
-            }
-            Control::Endnote(e) => {
-                let para_count = e.paragraphs.len();
-                let texts: Vec<String> = e
-                    .paragraphs
-                    .iter()
-                    .map(|p| p.text.replace('\\', "\\\\").replace('"', "\\\""))
-                    .collect();
-                let total_len: usize = e.paragraphs.iter().map(|p| p.text.chars().count()).sum();
-                Ok(format!(
-                    "{{\"ok\":true,\"paraCount\":{},\"totalTextLen\":{},\"number\":{},\"texts\":[{}]}}",
-                    para_count,
-                    total_len,
-                    e.number,
-                    texts.iter().map(|t| format!("\"{}\"", t)).collect::<Vec<_>>().join(","),
-                ))
-            }
-            _ => Err(HwpError::RenderError(format!(
-                "컨트롤 {}은 각주/미주가 아닙니다",
-                control_idx
-            ))),
-        }
+        note_info_json(ctrl, control_idx)
+    }
+
+    /// `getControls`의 주소(리스트·리스트 안 문단·컨트롤 번호)로 각주·미주 정보를 준다.
+    /// 본문 주소만 받는 `get_footnote_info_native`로는 표 셀·글상자 안 주석을 읽을 수 없다.
+    pub fn get_note_info_in_list_native(
+        &self,
+        list_id: u32,
+        para_in_list: usize,
+        control_idx: usize,
+    ) -> Result<String, HwpError> {
+        let para = self
+            .cursor_paragraph_ref(list_id, para_in_list)
+            .ok_or_else(|| {
+                HwpError::RenderError(format!("리스트 {} 문단 {} 없음", list_id, para_in_list))
+            })?;
+        let ctrl = para.controls.get(control_idx).ok_or_else(|| {
+            HwpError::RenderError(format!("컨트롤 인덱스 {} 범위 초과", control_idx))
+        })?;
+        note_info_json(ctrl, control_idx)
     }
 
     /// 각주 내 텍스트 삽입
@@ -731,6 +713,32 @@ impl DocumentCore {
             prev_idx, merge_offset, removed_meta
         )))
     }
+}
+
+/// 각주·미주 컨트롤의 정보 JSON(`getFootnoteInfo`·`getNoteInfoInList` 공용).
+pub(crate) fn note_info_json(ctrl: &Control, control_idx: usize) -> Result<String, HwpError> {
+    let (paragraphs, number) = match ctrl {
+        Control::Footnote(f) => (&f.paragraphs, f.number),
+        Control::Endnote(e) => (&e.paragraphs, e.number),
+        _ => {
+            return Err(HwpError::RenderError(format!(
+                "컨트롤 {}은 각주/미주가 아닙니다",
+                control_idx
+            )))
+        }
+    };
+    let texts: Vec<String> = paragraphs
+        .iter()
+        .map(|p| format!("\"{}\"", p.text.replace('\\', "\\\\").replace('"', "\\\"")))
+        .collect();
+    let total_len: usize = paragraphs.iter().map(|p| p.text.chars().count()).sum();
+    Ok(format!(
+        "{{\"ok\":true,\"paraCount\":{},\"totalTextLen\":{},\"number\":{},\"texts\":[{}]}}",
+        paragraphs.len(),
+        total_len,
+        number,
+        texts.join(","),
+    ))
 }
 
 #[cfg(test)]

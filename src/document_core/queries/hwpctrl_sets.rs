@@ -2449,7 +2449,11 @@ impl DocumentCore {
     }
 
     /// 커서 좌표가 가리키는 문단 — 리스트 표를 한 번만 만든다.
-    fn cursor_paragraph_ref(&self, list_id: u32, para_in_list: usize) -> Option<&Paragraph> {
+    pub(crate) fn cursor_paragraph_ref(
+        &self,
+        list_id: u32,
+        para_in_list: usize,
+    ) -> Option<&Paragraph> {
         if list_id == ROOT_LIST_ID {
             // 본문은 구역을 가로질러 이어진다 — `root_para_location` 주석 참고.
             let (sec, para) = root_para_location(self, para_in_list)?;
