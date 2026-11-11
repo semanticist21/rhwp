@@ -3295,6 +3295,9 @@ impl DocumentCore {
         let areas = PageAreas::from_page_def_for_page(page_def, page_content.page_number);
         let body_left = hwpunit_to_px(areas.body_area.left, self.dpi);
         let body_right = hwpunit_to_px(areas.body_area.right, self.dpi);
+        // 위로 넘기기 제본은 본문 위(홀수 쪽)·아래(짝수 쪽)에 제본 여백을 더한다.
+        let body_top = hwpunit_to_px(areas.body_area.top, self.dpi);
+        let body_bottom = hwpunit_to_px(areas.body_area.bottom, self.dpi);
         let header_x = hwpunit_to_px(areas.header_area.left, self.dpi);
         let header_y = hwpunit_to_px(areas.header_area.top, self.dpi);
         let header_width = hwpunit_to_px(areas.header_area.width(), self.dpi);
@@ -3331,7 +3334,7 @@ impl DocumentCore {
             \"marginHeader\":{:.1},\"marginFooter\":{:.1},\
             \"headerArea\":{{\"x\":{:.1},\"y\":{:.1},\"width\":{:.1},\"height\":{:.1}}},\
             \"footerArea\":{{\"x\":{:.1},\"y\":{:.1},\"width\":{:.1},\"height\":{:.1}}},\
-            \"bodyLeft\":{:.1},\"bodyRight\":{:.1},\"marginGutter\":{:.1},\
+            \"bodyLeft\":{:.1},\"bodyRight\":{:.1},\"bodyTop\":{:.1},\"bodyBottom\":{:.1},\"marginGutter\":{:.1},\
             \"bindingMirrored\":{},\
             \"pageBorderLeft\":{:.1},\"pageBorderRight\":{:.1},\"pageBorderTop\":{:.1},\"pageBorderBottom\":{:.1},\
             \"columns\":[{}]}}",
@@ -3358,6 +3361,8 @@ impl DocumentCore {
             footer_height,
             body_left,
             body_right,
+            body_top,
+            body_bottom,
             gutter,
             binding_mirrored,
             page_border_left,

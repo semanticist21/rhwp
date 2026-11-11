@@ -22,6 +22,16 @@ fn caret(core: &DocumentCore, para: usize) -> (u64, f64, f64) {
     )
 }
 
+/// 쪽 정보의 본문 위·아래 경계.
+fn body(core: &DocumentCore, page: u32) -> (f64, f64) {
+    let info: serde_json::Value =
+        serde_json::from_str(&core.get_page_info_native(page).unwrap()).unwrap();
+    (
+        info["bodyTop"].as_f64().unwrap(),
+        info["bodyBottom"].as_f64().unwrap(),
+    )
+}
+
 #[test]
 fn top_flip_puts_the_gutter_above_odd_pages_and_below_even_pages() {
     let mut core = DocumentCore::new_empty();
@@ -35,6 +45,7 @@ fn top_flip_puts_the_gutter_above_odd_pages_and_below_even_pages() {
         core.insert_text_native(0, para, 0, text).unwrap();
     }
     let single = [caret(&core, 0), caret(&core, 1)];
+    let plain = body(&core, 0);
     core.set_page_def_native(
         0,
         &format!(r#"{{"marginGutter":{},"binding":2}}"#, mm(20.0)),
@@ -57,6 +68,24 @@ fn top_flip_puts_the_gutter_above_odd_pages_and_below_even_pages() {
             single[1].2
         };
         assert!((y - expected).abs() < 0.1, "{page}쪽 y {y} != {expected}");
+    }
+    // 쪽 정보의 본문 경계도 제본 여백을 반영한다(본문 모서리 표시·격자가 쓴다).
+    for page in 0..3u32 {
+        let (top, bottom) = body(&core, page);
+        let (expected_top, expected_bottom) = if page % 2 == 0 {
+            (plain.0 + px(20.0), plain.1)
+        } else {
+            (plain.0, plain.1 - px(20.0))
+        };
+        assert!((top - expected_top).abs() < 0.1, "{page}쪽 본문 위 {top}");
+        assert!(
+            (bottom - expected_bottom).abs() < 0.1,
+            "{page}쪽 본문 아래 {bottom}"
+        );
+        assert!(
+            pages[page as usize].2 >= top,
+            "{page}쪽 첫 줄은 본문 위 경계 안"
+        );
     }
     for bytes in [
         core.export_hwp_native().unwrap(),
