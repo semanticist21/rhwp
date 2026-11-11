@@ -259,8 +259,9 @@ fn fill_fields_before_after_struct_change_is_localized() {
     let _ = std::fs::remove_file(&out);
 }
 
-/// ④ 카나리 — 동폭 치환(회사→기관 2자→2자)은 기하 변화가 정확히 0 이어야 한다.
-/// 편집·레이아웃 어느 쪽이든 잡음이 생기면 이 0.0 이 먼저 깨진다.
+/// ④ 카나리 — 동폭 치환(회사→기관 2자→2자)은 기하 변화가 탭 한 HWPUNIT 이하여야 한다.
+/// 편집·레이아웃 어느 쪽이든 잡음이 생기면 이 값이 먼저 깨진다. 편집한 자리 뒤 첫 탭은 한/글처럼
+/// 저장 폭 대신 탭 정의로 다시 재므로(한/글이 저장한 폭과 1HU = 1/75px 차이) 그만큼만 허용한다.
 ///
 /// red 주입 실증(변이 후 복원, 2026-08-08): --replace 를
 /// "주식회사법인등기부등본상호명"(14자)으로 바꾸면 OVER·maxDisp 279.0·exit 3.
@@ -292,9 +293,17 @@ fn same_width_replace_is_zero_disp_canary() {
     assert_eq!(code, 0, "{v}");
     assert_eq!(v["status"], "PASS", "{v}");
     assert_eq!(v["regression"], false, "{v}");
-    assert_eq!(v["maxDisp"].as_f64(), Some(0.0), "{v}");
+    let max_disp = v["maxDisp"].as_f64().unwrap();
+    assert!(max_disp <= 1.0 / 75.0 + 1e-9, "{v}");
     assert_page_count_stable(&v);
-    assert!(changed_pages(&v).is_empty(), "{v}");
+    assert!(
+        v["pages"]
+            .as_array()
+            .expect("pages")
+            .iter()
+            .all(|p| p["structureMismatch"] == false),
+        "{v}"
+    );
     let _ = std::fs::remove_file(&out);
 }
 
