@@ -1149,9 +1149,9 @@ fn create_edge_border_line_nodes(
     nodes
 }
 
-/// 글자·문단 테두리로 긋는 선인지 판정한다. 한/글 Mac 12.30 Print PDF는 입체선(14~17)으로
-/// 지정한 글자·문단 테두리를 긋지 않는다. 표 칸·쪽 테두리는 근거가 없어 이 판정을 쓰지 않는다.
-pub(crate) fn text_border_is_drawn(border: &BorderLine) -> bool {
+/// 글자·문단·표 칸·쪽 테두리로 긋는 선인지 판정한다. 한/글 Mac 12.30은 입체선(14~17)으로
+/// 지정한 글자·문단 테두리(Print PDF)도, 표 칸·쪽 테두리(화면, 2026-11-11)도 긋지 않는다.
+pub(crate) fn border_line_is_drawn(border: &BorderLine) -> bool {
     !matches!(
         border.line_type,
         BorderLineType::None
@@ -1184,6 +1184,9 @@ pub(crate) fn create_table_border_line_nodes(
     x2: f64,
     y2: f64,
 ) -> Vec<RenderNode> {
+    if !border_line_is_drawn(border) {
+        return vec![];
+    }
     if border.line_type == BorderLineType::Circle {
         let (diameter, pitch) = crate::renderer::stroke_pattern::table_border_circle(border.width);
         create_circle_dot_nodes(

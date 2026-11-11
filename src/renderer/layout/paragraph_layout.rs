@@ -14,7 +14,7 @@ use super::super::{
     format_number, hwpunit_to_px, px_to_hwpunit, AutoNumberCounter, NumberFormat as NumFmt,
     ShapeStyle, TabStop, TextStyle,
 };
-use super::border_rendering::{create_box_border_line_nodes, text_border_is_drawn};
+use super::border_rendering::{border_line_is_drawn, create_box_border_line_nodes};
 use super::terminal_tracking::terminal_tracking_for_alignment;
 use super::text_measurement::{
     compute_char_positions, estimate_text_width, estimate_text_width_exact,
@@ -10033,7 +10033,7 @@ impl LayoutEngine {
                             (bx, by + bh, bx + bw, by + bh, 3), // bottom
                         ];
                         for (lx1, ly1, lx2, ly2, bi) in border_pairs {
-                            if !text_border_is_drawn(&bs.borders[bi]) {
+                            if !border_line_is_drawn(&bs.borders[bi]) {
                                 continue;
                             }
                             let far_side = matches!(bi, 1 | 3);

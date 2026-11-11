@@ -11,7 +11,10 @@
 //! (`pdf/border_line_types/`)에는 3D, 3D 반전, 3D 가는선, 3D 가는선 반전 네 종류의
 //! 글자 테두리와 문단 테두리가 하나도 없다. 같은 문서의 실선·점선·원형 점선·물결선
 //! 테두리는 모두 그려져 있다. 수정 전 rhwp는 네 종류를 모두 실선으로 그렸다.
-//! 표 칸·쪽 테두리의 입체선은 대조 근거가 없어 그대로 둔다.
+//!
+//! 표 칸·쪽 테두리의 입체선도 긋지 않는다. `table_page_3d.hwp`(2×2 표의 칸 네 변이 두꺼운
+//! 3D·두꺼운 3D 반대·3D·3D 반대 0.7mm, 쪽 테두리 3D)를 한컴 12.30(Mac)에서 열면 표는 고를
+//! 때만 보이고 쪽 테두리도 없다(2026-11-11 화면). 수정 전 rhwp는 모두 실선으로 그렸다.
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::path::Path;
@@ -125,4 +128,24 @@ fn three_d_character_and_paragraph_borders_are_not_drawn() {
         strokes.iter().any(|s| owns_stroke(solid, band, s)),
         "실선 문단 테두리"
     );
+}
+
+#[test]
+fn three_d_table_cell_and_page_borders_are_not_drawn() {
+    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/border_line_types/table_page_3d.hwp");
+    let core = DocumentCore::from_bytes(&std::fs::read(path).expect("read sample")).expect("open");
+    let page = core.build_page_render_tree(0).expect("page 1 render tree");
+    let (mut lines, mut strokes) = (Vec::new(), Vec::new());
+    collect(&page.root, &mut lines, &mut strokes);
+    assert!(
+        lines.iter().any(|(text, _)| text.starts_with("3D")),
+        "표 앞 설명 글줄"
+    );
+    // 문서의 선은 표 칸 네 변과 쪽 테두리뿐이고 모두 입체선이다(종이 배경은 사각형이다).
+    fn line_nodes(node: &RenderNode) -> usize {
+        usize::from(matches!(node.node_type, RenderNodeType::Line(_)))
+            + node.children.iter().map(line_nodes).sum::<usize>()
+    }
+    assert_eq!(line_nodes(&page.root), 0, "입체선 테두리를 그렸다");
 }

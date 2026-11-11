@@ -5897,7 +5897,17 @@ impl LayoutEngine {
                         pbf.spacing_left, pbf.spacing_right, pbf.spacing_top, pbf.spacing_bottom,
                     );
                 }
-                let borders = &bs.borders;
+                // 한/글 12.30은 입체선(14~17) 쪽 테두리를 긋지 않는다(화면, 2026-11-11).
+                let borders = bs.borders.map(|border| {
+                    if border_rendering::border_line_is_drawn(&border) {
+                        border
+                    } else {
+                        crate::model::style::BorderLine {
+                            line_type: crate::model::style::BorderLineType::None,
+                            ..border
+                        }
+                    }
+                });
                 let rect = page_border_rect(pbf, layout, self.dpi);
                 let (bx, by, bw, bh) = (rect.x, rect.y, rect.width, rect.height);
 
@@ -7857,7 +7867,7 @@ impl LayoutEngine {
                          y1: f64,
                          x2: f64,
                          y2: f64| {
-                            if !super::layout::border_rendering::text_border_is_drawn(border) {
+                            if !super::layout::border_rendering::border_line_is_drawn(border) {
                                 return;
                             }
                             let nodes =
