@@ -162,17 +162,37 @@ impl DocumentCore {
         control_idx: usize,
     ) -> Result<String, HwpError> {
         let pic = self.resolve_picture_control_ref(section_idx, parent_para_idx, control_idx)?;
-        Self::format_picture_properties_json(pic)
+        let px = Self::picture_pixel_size(pic, &self.document.bin_data_content);
+        Self::format_picture_properties_json(pic, px)
     }
     /// 자르기 좌표(imgClip)의 전체 범위이자 자르기 양의 단위. 한컴 12.30은 넣을 때 줄인 그림
     /// (imgDim = 픽셀×75가 원래 크기보다 큼)도 자르기 양을 imgDim 단위로 보이고 적는다
     /// (3000px 그림 오른쪽 10mm → imgClip 끝 222166 = 225000 − 10mm, 틀 너비 42520 → 41984).
-    fn picture_crop_extent_hu(pic: &crate::model::image::Picture) -> (i32, i32) {
+    ///
+    /// imgDim이 없으면(HWPX에서 온 그림을 HWP로 저장하면 한컴처럼 0을 쓴다) 렌더러와 같은
+    /// 규칙으로 디코딩 픽셀 크기에서 잰다. 한컴도 이 그림을 자르지 않은 전체로 그린다.
+    fn picture_crop_extent_hu(
+        pic: &crate::model::image::Picture,
+        pixel_size: Option<(f64, f64)>,
+    ) -> (i32, i32) {
         if let Some((w, h)) = pic.crop_reference_size() {
             return (
                 i32::try_from(w).unwrap_or(i32::MAX),
                 i32::try_from(h).unwrap_or(i32::MAX),
             );
+        }
+        if let Some((w_px, h_px)) = pixel_size {
+            let c = &pic.crop;
+            let (sx, sy) = crate::renderer::svg::image_crop_hu_per_px(
+                (c.left, c.top, c.right, c.bottom),
+                None,
+                w_px,
+                h_px,
+            );
+            let (w, h) = ((w_px * sx).round(), (h_px * sy).round());
+            if w >= 1.0 && h >= 1.0 && w < f64::from(i32::MAX) && h < f64::from(i32::MAX) {
+                return (w as i32, h as i32);
+            }
         }
         let width = if pic.shape_attr.original_width > 0 {
             pic.shape_attr.original_width
@@ -189,8 +209,26 @@ impl DocumentCore {
             i32::try_from(height).unwrap_or(i32::MAX),
         )
     }
-    fn picture_crop_ui_amounts(pic: &crate::model::image::Picture) -> (i32, i32, i32, i32) {
-        let (extent_w, extent_h) = Self::picture_crop_extent_hu(pic);
+    /// imgDim이 없는 그림의 디코딩 픽셀 크기. imgDim이 있으면 바이트를 읽지 않는다.
+    pub(crate) fn picture_pixel_size(
+        pic: &crate::model::image::Picture,
+        bin_data_content: &[crate::model::bin_data::BinDataContent],
+    ) -> Option<(f64, f64)> {
+        if pic.crop_reference_size().is_some() {
+            return None;
+        }
+        let index =
+            crate::model::bin_data::content_index(bin_data_content, pic.image_attr.bin_data_id)?;
+        let bytes = bin_data_content[index]
+            .data
+            .load_limited_shared(crate::model::bin_data::MAX_BIN_DATA_BYTES)?;
+        crate::renderer::image_resolver::render_image_dimensions(&bytes)
+    }
+    fn picture_crop_ui_amounts(
+        pic: &crate::model::image::Picture,
+        pixel_size: Option<(f64, f64)>,
+    ) -> (i32, i32, i32, i32) {
+        let (extent_w, extent_h) = Self::picture_crop_extent_hu(pic, pixel_size);
         let left = pic.crop.left.max(0);
         let top = pic.crop.top.max(0);
         let right = if extent_w > 0 && pic.crop.right > left {
@@ -207,12 +245,13 @@ impl DocumentCore {
     }
     fn set_picture_crop_from_ui_amounts(
         pic: &mut crate::model::image::Picture,
+        pixel_size: Option<(f64, f64)>,
         left: i32,
         top: i32,
         right: i32,
         bottom: i32,
     ) {
-        let (extent_w, extent_h) = Self::picture_crop_extent_hu(pic);
+        let (extent_w, extent_h) = Self::picture_crop_extent_hu(pic, pixel_size);
         pic.crop.left = left.max(0);
         pic.crop.top = top.max(0);
         if extent_w > 0 {
@@ -375,10 +414,12 @@ impl DocumentCore {
                 ))
             }
         };
-        Self::format_picture_properties_json(pic)
+        let px = Self::picture_pixel_size(pic, &self.document.bin_data_content);
+        Self::format_picture_properties_json(pic, px)
     }
     pub(crate) fn format_picture_properties_json(
         pic: &crate::model::image::Picture,
+        pixel_size: Option<(f64, f64)>,
     ) -> Result<String, HwpError> {
         let c = &pic.common;
         let vert_rel = match c.vert_rel_to {
@@ -432,8 +473,9 @@ impl DocumentCore {
         };
 
         let sa = &pic.shape_attr;
-        let (crop_left, crop_top, crop_right, crop_bottom) = Self::picture_crop_ui_amounts(pic);
-        let (crop_extent_w, crop_extent_h) = Self::picture_crop_extent_hu(pic);
+        let (crop_left, crop_top, crop_right, crop_bottom) =
+            Self::picture_crop_ui_amounts(pic, pixel_size);
+        let (crop_extent_w, crop_extent_h) = Self::picture_crop_extent_hu(pic, pixel_size);
 
         Ok(format!(
             concat!(
@@ -536,12 +578,16 @@ impl DocumentCore {
             should_migrate_to_inline,
             should_migrate_to_floating,
         ) = {
+            let px = self
+                .resolve_picture_control_ref(section_idx, parent_para_idx, control_idx)
+                .ok()
+                .and_then(|pic| Self::picture_pixel_size(pic, &self.document.bin_data_content));
             let pic =
                 self.resolve_picture_control_mut(section_idx, parent_para_idx, control_idx)?;
             // [Task #1151 v2] tac false→true migration 검출용 snapshot.
             let was_tac = pic.common.treat_as_char;
             let had_caption = pic.caption.is_some();
-            let caption_created = Self::apply_picture_props_inner(pic, props_json);
+            let caption_created = Self::apply_picture_props_inner(pic, props_json, px);
             let now_tac = pic.common.treat_as_char;
             // tac 토글이 enum 에만 반영되고 packed attr 이 낡으면 직렬화가 옛 앵커를
             // 되살린다 — 여기서 즉시 동기화 (migrate 경로는 rel_to 갱신 후 재동기화).
@@ -786,7 +832,8 @@ impl DocumentCore {
             // 한다. 머리말/꼬리말 경로는 이 마이그레이션이 누락되어 있었음 — tac on 시
             // 그림 높이가 줄 높이에 반영되지 않아 렌더 시 그림이 겹치거나 잘림.
             let was_tac = pic.common.treat_as_char;
-            caption_created = Self::apply_picture_props_inner(pic, props_json);
+            let px = Self::picture_pixel_size(pic, &self.document.bin_data_content);
+            caption_created = Self::apply_picture_props_inner(pic, props_json, px);
             let now_tac = pic.common.treat_as_char;
             // 본문 setter 와 같은 이유로 여기서도 packed attr 을 동기화한다 —
             // 머리말/꼬리말 경로도 같은 tac 토글 마이그레이션을 수행한다 (Issue #3781).
@@ -979,6 +1026,7 @@ impl DocumentCore {
     pub(crate) fn apply_picture_props_inner(
         pic: &mut crate::model::image::Picture,
         props_json: &str,
+        pixel_size: Option<(f64, f64)>,
     ) -> bool {
         use crate::document_core::helpers::{json_bool, json_i16, json_i32, json_str, json_u32};
 
@@ -1171,7 +1219,8 @@ impl DocumentCore {
             || crop_right.is_some()
             || crop_bottom.is_some()
         {
-            let (mut left, mut top, mut right, mut bottom) = Self::picture_crop_ui_amounts(pic);
+            let (mut left, mut top, mut right, mut bottom) =
+                Self::picture_crop_ui_amounts(pic, pixel_size);
             if let Some(v) = crop_left {
                 left = v;
             }
@@ -1184,7 +1233,7 @@ impl DocumentCore {
             if let Some(v) = crop_bottom {
                 bottom = v;
             }
-            Self::set_picture_crop_from_ui_amounts(pic, left, top, right, bottom);
+            Self::set_picture_crop_from_ui_amounts(pic, pixel_size, left, top, right, bottom);
         }
 
         // 안쪽 여백 (그림 여백)

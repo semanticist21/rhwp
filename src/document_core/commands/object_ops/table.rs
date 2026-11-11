@@ -1692,7 +1692,8 @@ impl DocumentCore {
                 ))
             }
         };
-        Self::format_picture_properties_json(pic)
+        let px = Self::picture_pixel_size(pic, &self.document.bin_data_content);
+        Self::format_picture_properties_json(pic, px)
     }
     pub fn get_cell_shape_properties_by_path_native(
         &self,
@@ -1765,7 +1766,8 @@ impl DocumentCore {
                 }
             };
             let had_caption = pic.caption.is_some();
-            let caption_created = Self::apply_picture_props_inner(pic, props_json);
+            let px = Self::picture_pixel_size(pic, &self.document.bin_data_content);
+            let caption_created = Self::apply_picture_props_inner(pic, props_json, px);
             caption_created || (had_caption && pic.caption.is_none())
         };
         if caption_changed {

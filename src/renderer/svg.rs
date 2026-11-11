@@ -4512,6 +4512,46 @@ pub(crate) fn image_source_is_full(source: (f64, f64, f64, f64), width: f64, hei
     source == (0.0, 0.0, width, height)
 }
 
+/// 그림 crop 좌표(HWPUNIT)가 디코딩 픽셀 하나에 몇 HWPUNIT인지(가로, 세로).
+/// `compute_image_crop_src`와 그림 속성의 자르기 범위가 같은 규칙을 쓰도록 나눠 둔다.
+pub(crate) fn image_crop_hu_per_px(
+    crop_hu: (i32, i32, i32, i32),
+    crop_reference_size: Option<(u32, u32)>,
+    img_w_px: f64,
+    img_h_px: f64,
+) -> (f64, f64) {
+    let (cl, ct, cr, cb) = crop_hu;
+    const HU_PER_PX: f64 = 75.0;
+    crop_reference_size
+        .filter(|(w, h)| *w > 0 && *h > 0 && img_w_px > 0.0 && img_h_px > 0.0)
+        .map(|(w, h)| (w as f64 / img_w_px, h as f64 / img_h_px))
+        .filter(|(sx, sy)| sx.is_finite() && sy.is_finite() && *sx > 0.0 && *sy > 0.0)
+        .or_else(|| {
+            // A zero start does not establish that the opposite edge is the full
+            // image extent: right/bottom-only cropping also starts at zero.
+            // Without an explicit reference, HWPUNIT coordinates must retain one
+            // isotropic scale. Use the smallest common scale which fits the
+            // available zero-origin extents in the decoded image. Independent
+            // axis scales would expand a shortened edge back to the full image.
+            // Nonzero starts do not provide a full-extent candidate (#7015).
+            // If neither axis provides one, retain the standard 75 HU/px fallback.
+            let axis_scale = |crop_start: i32, crop_end: i32, img_px: f64| {
+                (crop_start == 0 && crop_end > 0 && img_px > 0.0)
+                    .then(|| crop_end as f64 / img_px)
+                    .filter(|scale| scale.is_finite() && *scale > 0.0)
+            };
+            match (axis_scale(cl, cr, img_w_px), axis_scale(ct, cb, img_h_px)) {
+                (Some(sx), Some(sy)) => {
+                    let scale = sx.max(sy);
+                    Some((scale, scale))
+                }
+                (Some(scale), None) | (None, Some(scale)) => Some((scale, scale)),
+                (None, None) => None,
+            }
+        })
+        .unwrap_or((HU_PER_PX, HU_PER_PX))
+}
+
 /// 이미지 데이터에서 픽셀 크기(width, height)를 파싱한다.
 /// HWP `pic.crop` 좌표로부터 SVG `viewBox` 에 쓸 원본 픽셀 단위
 /// source rect (x, y, w, h) 를 계산한다.
@@ -4547,35 +4587,7 @@ pub(crate) fn compute_image_crop_src(
             return (0.0, 0.0, img_w_px, img_h_px);
         }
     }
-    const HU_PER_PX: f64 = 75.0;
-    let (scale_x, scale_y) = crop_reference_size
-        .filter(|(w, h)| *w > 0 && *h > 0 && img_w_px > 0.0 && img_h_px > 0.0)
-        .map(|(w, h)| (w as f64 / img_w_px, h as f64 / img_h_px))
-        .filter(|(sx, sy)| sx.is_finite() && sy.is_finite() && *sx > 0.0 && *sy > 0.0)
-        .or_else(|| {
-            // A zero start does not establish that the opposite edge is the full
-            // image extent: right/bottom-only cropping also starts at zero.
-            // Without an explicit reference, HWPUNIT coordinates must retain one
-            // isotropic scale. Use the smallest common scale which fits the
-            // available zero-origin extents in the decoded image. Independent
-            // axis scales would expand a shortened edge back to the full image.
-            // Nonzero starts do not provide a full-extent candidate (#7015).
-            // If neither axis provides one, retain the standard 75 HU/px fallback.
-            let axis_scale = |crop_start: i32, crop_end: i32, img_px: f64| {
-                (crop_start == 0 && crop_end > 0 && img_px > 0.0)
-                    .then(|| crop_end as f64 / img_px)
-                    .filter(|scale| scale.is_finite() && *scale > 0.0)
-            };
-            match (axis_scale(cl, cr, img_w_px), axis_scale(ct, cb, img_h_px)) {
-                (Some(sx), Some(sy)) => {
-                    let scale = sx.max(sy);
-                    Some((scale, scale))
-                }
-                (Some(scale), None) | (None, Some(scale)) => Some((scale, scale)),
-                (None, None) => None,
-            }
-        })
-        .unwrap_or((HU_PER_PX, HU_PER_PX));
+    let (scale_x, scale_y) = image_crop_hu_per_px(crop_hu, crop_reference_size, img_w_px, img_h_px);
     let src_x = cl as f64 / scale_x;
     let src_y = ct as f64 / scale_y;
     let src_w = (cr - cl) as f64 / scale_x;

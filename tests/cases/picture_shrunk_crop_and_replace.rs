@@ -170,3 +170,44 @@ fn replacing_sole_picture_image_drops_old_bytes() {
     assert_eq!(r["replacedInPlace"], false);
     assert_ne!(r["binDataId"].as_u64().unwrap(), u64::from(shared));
 }
+
+/// HWPX에서 온 그림을 HWP로 저장하면 한컴처럼 imgDim 자리에 0을 쓴다. 다시 열면 자르기 범위를
+/// 원래 크기(orgSz)로 재지 않고 렌더러처럼 픽셀 크기에서 재야 한다. 한컴 12.30은 이 HWP의
+/// 그림을 자르지 않은 전체로, 왼쪽을 자른 그림은 오른쪽 반으로 그린다.
+#[test]
+fn crop_extent_without_img_dim_follows_decoded_pixels() {
+    // 16px × 75 = 1200 범위를 틀 20000으로 키워 넣는다. 저장은 앱(wasm exportHwp)과 같은 어댑터 경로다.
+    let (core, para, ctrl) = with_picture(20000);
+    let from_hwpx = |core: &DocumentCore| {
+        let hwpx = DocumentCore::from_bytes(&core.export_hwpx_native().unwrap()).unwrap();
+        DocumentCore::from_bytes(&hwpx.export_hwp_with_adapter_snapshot().unwrap()).unwrap()
+    };
+    let props = |core: &DocumentCore| -> serde_json::Value {
+        serde_json::from_str(&core.get_picture_properties_native(0, para, ctrl).unwrap()).unwrap()
+    };
+    let hwp = from_hwpx(&core);
+    assert_eq!(picture(&hwp).img_dim, (0, 0), "HWPX→HWP는 imgDim 0을 쓴다");
+    let v = props(&hwp);
+    assert_eq!(
+        (&v["cropExtentWidth"], &v["cropRight"], &v["cropBottom"]),
+        (
+            &serde_json::json!(1200),
+            &serde_json::json!(0),
+            &serde_json::json!(0)
+        )
+    );
+
+    let mut hwpx = DocumentCore::from_bytes(&core.export_hwpx_native().unwrap()).unwrap();
+    hwpx.set_picture_properties_native(0, para, ctrl, r#"{"cropLeft":600}"#)
+        .unwrap();
+    let hwp = DocumentCore::from_bytes(&hwpx.export_hwp_with_adapter_snapshot().unwrap()).unwrap();
+    let v = props(&hwp);
+    assert_eq!(
+        (&v["cropExtentWidth"], &v["cropLeft"], &v["cropRight"]),
+        (
+            &serde_json::json!(1200),
+            &serde_json::json!(600),
+            &serde_json::json!(0)
+        )
+    );
+}
