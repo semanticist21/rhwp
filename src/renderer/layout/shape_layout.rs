@@ -3847,6 +3847,10 @@ impl LayoutEngine {
             // 편집 후 reflow된 문단은 vertical_pos=0이므로 incremental para_y와 비교하여
             // 더 큰 값 사용 (원본 호환 + 편집 후 정상 배치 모두 지원)
             let para = &textbox_paragraphs[tb_para_idx];
+            // 개요·번호 문단은 표 셀처럼 문서 순서로 정한 번호(`assign_numbering_markers`)를
+            // 그린다. 한/글 12.30도 글상자 개요 문단에 본문과 이어지는 번호를 붙인다.
+            let numbered = self.apply_paragraph_numbering(Some(composed), para, styles, 0);
+            let composed = numbered.as_ref().unwrap_or(composed);
             if let Some(first_ls) = para.line_segs.first() {
                 let vpos_y = inner_area.y
                     + vert_offset
