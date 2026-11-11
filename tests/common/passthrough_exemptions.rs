@@ -979,4 +979,10 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         Exempt::DelegatesTo("set_picture_image"),
         "제자리 바꾸기로 그림 이미지 공통 함수에 위임한다. 공통 함수가 구역과 DocInfo의 raw_stream을 비운다.",
     ),
+    (
+        "hyperlink.rs",
+        "insert_hyperlink_mail_as_web_native",
+        Exempt::DelegatesTo("insert_hyperlink_command"),
+        "웹 꼴 메일 Command를 만든 뒤 하이퍼링크 넣기 공통 함수에 위임한다. 공통 함수가 구역의 raw_stream을 비운다.",
+    ),
 ];

@@ -9704,7 +9704,7 @@ impl HwpDocument {
     /// `setCharStyleRangeByPath` 와 같다.
     #[wasm_bindgen(js_name = getCharStyleAtByPath)]
     pub fn get_char_style_at_by_path_api(
-        &mut self,
+        &self,
         section_idx: u32,
         parent_para_idx: u32,
         path_json: &str,

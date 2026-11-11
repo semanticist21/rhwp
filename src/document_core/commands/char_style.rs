@@ -83,14 +83,22 @@ impl DocumentCore {
 
     /// 글자 `char_offset` 의 글자 스타일 번호. 없으면 -1.
     pub fn get_char_style_at_by_path(
-        &mut self,
+        &self,
         sec: usize,
         para: usize,
         path: &[(usize, usize, usize)],
         char_offset: usize,
     ) -> Result<i64, HwpError> {
-        Ok(self
-            .char_style_paragraph(sec, para, path)?
+        let paragraph = if path.is_empty() {
+            self.document
+                .sections
+                .get(sec)
+                .and_then(|s| s.paragraphs.get(para))
+                .ok_or_else(|| HwpError::RenderError(format!("문단 {sec}/{para} 범위 초과")))?
+        } else {
+            self.resolve_paragraph_by_path(sec, para, path)?
+        };
+        Ok(paragraph
             .char_style_id_at(char_offset)
             .map_or(-1, i64::from))
     }
