@@ -884,7 +884,10 @@ impl EmbeddedTextMeasurer {
                         x = tab_target.max(x);
                     }
                     (2, _) => {
-                        // RIGHT 인라인 탭 (no leader): 한컴 metrics 차이 흡수.
+                        // RIGHT 인라인 탭 (no leader): 한컴 metrics 차이 흡수. 측정
+                        // (`estimate_text_width_exact`)과 같이 그 탭의 오른쪽 정지에 맞춘다.
+                        // 본문 우측 끝으로 끌면 40mm·80mm 오른쪽 탭의 `가⇥ABC⇥DEF`에서 DEF가
+                        // 80mm 대신 본문 끝에 섰다(한컴 12.30 저장본).
                         let seg_start = {
                             let mut s = i + 1;
                             while s < chars.len() && chars[s] == ' ' && cluster_len[s] != 0 {
@@ -894,7 +897,7 @@ impl EmbeddedTextMeasurer {
                         };
                         let seg_w =
                             measure_segment_from(&chars, &cluster_len, seg_start, &char_width);
-                        x = (body_right_legacy - seg_w).max(x);
+                        x = inline_right_tab::text_start(style, x, tab_target, seg_w);
                     }
                     _ => {
                         x = tab_target.max(x);
