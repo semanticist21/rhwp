@@ -474,3 +474,50 @@ fn bookmark_add_keeps_following_body_field_active() {
     core.insert_text_native(0, 0, end, "이어 입력").unwrap();
     assert_eq!(fields(&core)[0]["value"], "기존이어 입력");
 }
+
+/// 글 없이 표만 든 문단의 책갈피(앞 글자가 없다)도 지운다. 종전에는 앞 글자 좌표를 읽다 멈췄다.
+#[test]
+fn bookmark_in_table_only_paragraph_is_deleted() {
+    let bytes = std::fs::read(
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/bookmarks/body-bookmarks.hwpx"),
+    )
+    .unwrap();
+    let mut core = DocumentCore::from_bytes(&bytes).unwrap();
+    let (para, ci) = core.document().sections[0]
+        .paragraphs
+        .iter()
+        .enumerate()
+        .find_map(|(para, p)| {
+            p.controls
+                .iter()
+                .position(|c| matches!(c, Control::Bookmark(b) if b.name == "표 바깥"))
+                .map(|ci| (para, ci))
+        })
+        .expect("표 바깥 책갈피");
+    let tables = |core: &DocumentCore| {
+        core.document().sections[0].paragraphs[para]
+            .controls
+            .iter()
+            .filter(|c| matches!(c, Control::Table(_)))
+            .count()
+    };
+    let before = tables(&core);
+    let r = core.delete_bookmark_native(0, para, ci).unwrap();
+    assert!(r.contains(r#""ok":true"#), "{r}");
+    assert_eq!(tables(&core), before);
+    for bytes in [
+        core.export_hwp_native().unwrap(),
+        core.export_hwpx_native().unwrap(),
+    ] {
+        let reopened = DocumentCore::from_bytes(&bytes).unwrap();
+        let listed: Value =
+            serde_json::from_str(&reopened.get_bookmarks_native().unwrap()).unwrap();
+        assert!(listed
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|b| b["name"] != "표 바깥"));
+        assert_eq!(tables(&reopened), before);
+    }
+}

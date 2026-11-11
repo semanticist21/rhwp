@@ -308,9 +308,11 @@ fn bookmark_raw_start(paragraph: &Paragraph, control_idx: usize) -> Result<u32, 
     };
     let start = gap_end.checked_sub(8).ok_or_else(invalid)?;
     // 슬롯은 앞 글자보다 뒤에 있어야 한다.
+    // 글 없는 문단(개체만 든 문단)은 앞 글자가 없다.
     if position
         .checked_sub(1)
-        .is_some_and(|previous| start <= paragraph.char_offsets[previous])
+        .and_then(|previous| paragraph.char_offsets.get(previous))
+        .is_some_and(|&previous| start <= previous)
     {
         return Err(invalid());
     }
