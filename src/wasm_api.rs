@@ -4092,6 +4092,14 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 그림 채우기에 쓸 그림을 문서에 넣고 BinData 번호를 돌려준다(셀 배경 그림 등).
+    /// `setCellProperties`의 `{"fillType":"image","imageBinDataId":N,…}`로 쓴다. 쓰지 않은 그림은 저장 때
+    /// 그대로 남는다.
+    #[wasm_bindgen(js_name = registerImageData)]
+    pub fn register_image_data(&mut self, image_data: &[u8], extension: &str) -> u32 {
+        u32::from(self.core.register_image_data_native(image_data, extension))
+    }
+
     /// 셀 속성을 수정한다.
     ///
     /// 반환: JSON `{"ok":true,"changes":[{cellIdx,beforeId,afterId}...],

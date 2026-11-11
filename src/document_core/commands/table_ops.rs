@@ -1,8 +1,8 @@
 //! 표/셀 CRUD + 속성 조회·수정 관련 native 메서드
 
 use super::super::helpers::{
-    border_line_type_to_u8_val, color_ref_to_css, fill_json_values, json_bool, json_u32,
-    navigate_path_to_table,
+    border_line_type_to_u8_val, color_ref_to_css, fill_detail_json, fill_json_values, json_bool,
+    json_u32, navigate_path_to_table,
 };
 use crate::document_core::{DocumentCore, TableTransposeClipboard};
 use crate::error::HwpError;
@@ -1514,7 +1514,7 @@ impl DocumentCore {
                     center_line = CenterLine::None;
                 }
                 format!(
-                    "\"borderFillId\":{},{},\"fillType\":\"{}\",\"fillColor\":\"{}\",\"patternColor\":\"{}\",\"patternType\":{},\"diagonalLine\":{},\"diagonalSlash\":{},\"diagonalBackSlash\":{},\"diagonalWidth\":{},\"diagonalColor\":\"{}\",\"centerLine\":\"{}\"",
+                    "\"borderFillId\":{},{},\"fillType\":\"{}\",\"fillColor\":\"{}\",\"patternColor\":\"{}\",\"patternType\":{},\"diagonalLine\":{},\"diagonalSlash\":{},\"diagonalBackSlash\":{},\"diagonalWidth\":{},\"diagonalColor\":\"{}\",\"centerLine\":\"{}\"{}",
                     bf_id,
                     borders_json.join(","),
                     fill_type_str, fill_color, pat_color, pat_type,
@@ -1524,6 +1524,7 @@ impl DocumentCore {
                     bf.diagonal.width,
                     color_ref_to_css(bf.diagonal.color),
                     center_line.as_hwpx(),
+                    fill_detail_json(&bf.fill),
                 )
             }
             None => {

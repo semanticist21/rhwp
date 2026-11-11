@@ -1527,6 +1527,13 @@ impl DocumentCore {
         )
     }
 
+    /// 그림 채우기(셀 배경 등)에 쓸 그림을 문서에 넣고 BinData 번호를 돌려준다.
+    pub fn register_image_data_native(&mut self, image_data: &[u8], extension: &str) -> u16 {
+        let id = self.register_embedded_bin_data(image_data, extension);
+        self.document.doc_info.raw_stream_dirty = true;
+        id
+    }
+
     /// [Task #2230] 기존 Picture 컨트롤에 이미지를 지정한다 — 그림 미지정
     /// placeholder(bin 참조 실패 + 외부 경로 없음)의 편집 뷰 그림 삽입.
     ///

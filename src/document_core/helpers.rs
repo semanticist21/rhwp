@@ -1088,6 +1088,72 @@ pub(crate) fn fill_json_values(
     }
 }
 
+/// 그러데이션·그림 채우기의 세부 값 JSON 조각(`,"gradient…"` 또는 `,"image…"`). 셀 테두리/배경 창이
+/// 지금 값을 보이고 그대로 다시 쓸 수 있게 [`fill_json_values`] 뒤에 붙인다. 단색·없음은 빈 문자열이다.
+pub(crate) fn fill_detail_json(fill: &crate::model::style::Fill) -> String {
+    use crate::model::style::FillType;
+    match (fill.fill_type, &fill.gradient, &fill.image) {
+        (FillType::Gradient, Some(g), _) => format!(
+            ",\"gradientType\":{},\"gradientAngle\":{},\"gradientCenterX\":{},\"gradientCenterY\":{},\"gradientBlur\":{},\"gradientStepCenter\":{},\"gradientStartColor\":\"{}\",\"gradientEndColor\":\"{}\"",
+            g.gradient_type,
+            g.angle,
+            g.center_x,
+            g.center_y,
+            g.blur,
+            g.step_center,
+            color_ref_to_css(g.colors.first().copied().unwrap_or(0xFFFFFF)),
+            color_ref_to_css(g.colors.last().copied().unwrap_or(0)),
+        ),
+        (FillType::Image, _, Some(image)) => {
+            let (bright, contrast) = image.display_brightness_contrast();
+            // HWPX TOTAL(크기에 맞추어)은 HWP의 크기에 맞추어와 같은 항목으로 알린다.
+            let fill_mode = match image.fill_mode {
+                crate::model::style::ImageFillMode::Total => {
+                    crate::model::style::ImageFillMode::FitToSize
+                }
+                mode => mode,
+            };
+            format!(
+                ",\"imageBinDataId\":{},\"imageFillMode\":\"{}\",\"imageEffect\":{},\"imageBrightness\":{},\"imageContrast\":{}",
+                image.bin_data_id,
+                IMAGE_FILL_MODES
+                    .iter()
+                    .find(|(_, mode)| *mode == fill_mode)
+                    .map_or("tileAll", |(name, _)| name),
+                image.effect,
+                bright,
+                contrast,
+            )
+        }
+        _ => String::new(),
+    }
+}
+
+/// 그림 채우기 유형 이름(채우기 JSON)과 모델 값.
+pub(crate) const IMAGE_FILL_MODES: [(&str, crate::model::style::ImageFillMode); 18] = {
+    use crate::model::style::ImageFillMode as M;
+    [
+        ("tileAll", M::TileAll),
+        ("tileHorzTop", M::TileHorzTop),
+        ("tileHorzBottom", M::TileHorzBottom),
+        ("tileVertLeft", M::TileVertLeft),
+        ("tileVertRight", M::TileVertRight),
+        ("fitToSize", M::FitToSize),
+        ("zoom", M::Zoom),
+        ("total", M::Total),
+        ("center", M::Center),
+        ("centerTop", M::CenterTop),
+        ("centerBottom", M::CenterBottom),
+        ("leftCenter", M::LeftCenter),
+        ("leftTop", M::LeftTop),
+        ("leftBottom", M::LeftBottom),
+        ("rightCenter", M::RightCenter),
+        ("rightTop", M::RightTop),
+        ("rightBottom", M::RightBottom),
+        ("none", M::None),
+    ]
+};
+
 // === HTML 파싱 유틸리티 함수 ===
 
 /// chars 배열에서 pos부터 target 문자를 찾아 인덱스를 반환한다.

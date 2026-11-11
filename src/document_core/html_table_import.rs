@@ -1252,7 +1252,66 @@ impl DocumentCore {
             }
         }
 
-        // 채우기 파싱 — 그러데이션·그림은 조회가 종류만 알려 주므로 기준 정의의 채우기를 둔다.
+        // 그러데이션·그림 채우기: 세부 값(`gradient…`·`imageBinDataId`)이 오면 새로 만든다. 종류만 오면
+        // (조회한 값을 그대로 다시 쓰는 호출) 기준 정의의 채우기를 둔다.
+        let created = match json_str(json, "fillType").as_deref() {
+            Some("gradient") if json.contains("\"gradientType\"") => {
+                use crate::model::style::GradientFill;
+                let colors = vec![
+                    json_color(json, "gradientStartColor").unwrap_or(0xFFFFFF),
+                    json_color(json, "gradientEndColor").unwrap_or(0),
+                ];
+                let value = |key: &str, default: i32| json_i32(json, key).unwrap_or(default);
+                Some(Fill {
+                    fill_type: FillType::Gradient,
+                    gradient: Some(GradientFill {
+                        gradient_type: value("gradientType", 1).clamp(1, 4) as i16,
+                        angle: value("gradientAngle", 0) as i16,
+                        center_x: value("gradientCenterX", 0).clamp(0, 100) as i16,
+                        center_y: value("gradientCenterY", 0).clamp(0, 100) as i16,
+                        blur: value("gradientBlur", 0).clamp(0, 255) as i16,
+                        step_center: value("gradientStepCenter", 50).clamp(0, 100) as u8,
+                        positions: Vec::new(),
+                        colors,
+                    }),
+                    ..Default::default()
+                })
+            }
+            Some("image") if json_u32(json, "imageBinDataId").is_some_and(|id| id > 0) => {
+                use crate::model::style::ImageFill;
+                let mode = json_str(json, "imageFillMode")
+                    .and_then(|name| {
+                        crate::document_core::helpers::IMAGE_FILL_MODES
+                            .iter()
+                            .find(|(n, _)| *n == name)
+                            .map(|(_, mode)| *mode)
+                    })
+                    .unwrap_or_default();
+                let byte = |key: &str| json_i32(json, key).unwrap_or(0).clamp(-100, 100) as i8;
+                // 이진 FILL_INFO 순서: 첫 바이트가 화면 대비, 둘째가 화면 밝기다.
+                Some(Fill {
+                    fill_type: FillType::Image,
+                    image: Some(ImageFill {
+                        fill_mode: mode,
+                        brightness: byte("imageContrast"),
+                        contrast: byte("imageBrightness"),
+                        effect: json_i32(json, "imageEffect").unwrap_or(0).clamp(0, 3) as u8,
+                        bin_data_id: json_u32(json, "imageBinDataId").unwrap_or(0) as u16,
+                    }),
+                    ..Default::default()
+                })
+            }
+            _ => None,
+        };
+        // 조회한 값을 그대로 다시 쓰면(조회는 처음·끝 색과 대표 값만 알린다) 기존 채우기를 둔다.
+        if let Some(fill) = created {
+            let same = bf.fill.fill_type == fill.fill_type
+                && crate::document_core::helpers::fill_detail_json(&bf.fill)
+                    == crate::document_core::helpers::fill_detail_json(&fill);
+            if !same {
+                bf.fill = fill;
+            }
+        }
         if let Some(fill_type_str) = json_str(json, "fillType")
             .filter(|fill_type| !matches!(fill_type.as_str(), "gradient" | "image"))
         {
