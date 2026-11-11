@@ -284,55 +284,37 @@ impl DocumentCore {
     }
 }
 
-/// 컨트롤 밖의 숨은 슬롯이 없는 구간에서만 책갈피 원시 위치를 확정한다.
+/// 책갈피 슬롯의 원시 시작 위치. 책갈피는 놓인 글자 앞 갭의 8유닛 슬롯 하나다.
+///
+/// 갭 안 슬롯(필드 끝·제목 차례 표시·번호·개체)의 차례는 원본이 남기지 않지만, 어느 슬롯을 빼도
+/// 갭 뒤 글자부터 8유닛씩 당겨지는 결과는 같다. 그래서 갭의 마지막 슬롯 자리를 쓴다. 갭은
+/// [`Paragraph::control_text_positions`]가 필드 끝·번호 자리표·제목 차례 표시를 세어 찾는다.
 fn bookmark_raw_start(paragraph: &Paragraph, control_idx: usize) -> Result<u32, HwpError> {
     let invalid = || HwpError::InvalidField("책갈피의 원시 슬롯 위치를 확인할 수 없습니다.".into());
-    if !paragraph.title_marks.is_empty()
-        || !paragraph.orphan_field_ends.is_empty()
-        || paragraph.text.contains('\u{fffc}')
-        || paragraph.controls[..control_idx].iter().any(|control| {
-            matches!(
-                control,
-                Control::Field(_)
-                    | Control::Hyperlink(_)
-                    | Control::AutoNumber(_)
-                    | Control::NewNumber(_)
-                    | Control::Ruby(_)
-                    | Control::CharOverlap(_)
-                    | Control::Unknown(_)
-            )
-        })
+    // HWP3 개체 표지와 글자 좌표가 없는 문단은 갭을 셀 수 없다.
+    if paragraph.text.contains('\u{fffc}')
         || paragraph.char_offsets.len() != paragraph.text.chars().count()
     {
         return Err(invalid());
     }
-    let checked_start = |start: u32| {
-        if start
-            .checked_add(8)
-            .is_none_or(|end| end >= paragraph.char_count)
-        {
-            Err(invalid())
-        } else {
-            Ok(start)
-        }
-    };
-    let mut remaining = u32::try_from(control_idx).map_err(|_| invalid())?;
-    let mut end = 0u32;
-    for (&offset, ch) in paragraph.char_offsets.iter().zip(paragraph.text.chars()) {
-        let gap = offset.checked_sub(end).ok_or_else(invalid)?;
-        if gap % 8 != 0 {
-            return Err(invalid());
-        }
-        if remaining < gap / 8 {
-            return checked_start(end + remaining * 8);
-        }
-        remaining -= gap / 8;
-        end = offset + if ch == '\t' { 8 } else { ch.len_utf16() as u32 };
-    }
-    let start = end
-        .checked_add(remaining.checked_mul(8).ok_or_else(invalid)?)
+    let position = *paragraph
+        .control_text_positions()
+        .get(control_idx)
         .ok_or_else(invalid)?;
-    checked_start(start)
+    // 문단 끝 갭은 문단 끝 표시(마지막 1유닛) 앞에서 끝난다.
+    let gap_end = match paragraph.char_offsets.get(position) {
+        Some(&offset) => offset,
+        None => paragraph.char_count.checked_sub(1).ok_or_else(invalid)?,
+    };
+    let start = gap_end.checked_sub(8).ok_or_else(invalid)?;
+    // 슬롯은 앞 글자보다 뒤에 있어야 한다.
+    if position
+        .checked_sub(1)
+        .is_some_and(|previous| start <= paragraph.char_offsets[previous])
+    {
+        return Err(invalid());
+    }
+    Ok(start)
 }
 
 /// 문단 목록에서 책갈피를 재귀적으로 수집 (표 셀, 글상자 등 중첩 구조 포함)

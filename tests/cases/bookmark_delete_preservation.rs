@@ -211,15 +211,71 @@ fn bookmark_delete_keeps_following_body_field_active() {
     assert_eq!(fields(&core)[0]["value"], "기존이어 입력");
 }
 
+/// 앞에 누름틀(필드 끝 슬롯)이나 같은 갭의 제목 차례 표시가 있어도 책갈피 슬롯만 뺀다.
+/// 한컴 입력 > 책갈피 > 지우기는 앞 조판 부호와 상관없이 지운다.
 #[test]
-fn ambiguous_marker_slots_reject_bookmark_delete_without_mutating_document() {
+fn bookmark_after_field_or_title_mark_is_deleted_keeping_neighbours() {
     for mut core in [
         fixture(Some(true), "기존", false, false),
         fixture(None, "", false, true),
     ] {
-        let before = format!("{:?}", core.document());
-        assert!(core.delete_bookmark_native(0, 0, bookmark(&core)).is_err());
-        assert_eq!(format!("{:?}", core.document()), before);
+        let original = core.document().sections[0].paragraphs[0].clone();
+        let original_fields = fields(&core);
+        let r = core.delete_bookmark_native(0, 0, bookmark(&core)).unwrap();
+        assert!(r.contains(r#""ok":true"#), "{r}");
+        let after = core.document().sections[0].paragraphs[0].clone();
+        assert_eq!(after.text, original.text);
+        assert_eq!(after.controls.len(), original.controls.len() - 1);
+        assert_eq!(after.char_count, original.char_count - 8);
+        assert_eq!(after.title_marks.len(), original.title_marks.len());
+        assert_eq!(fields(&core), original_fields);
+        for bytes in [
+            core.export_hwp_native().unwrap(),
+            core.export_hwpx_native().unwrap(),
+        ] {
+            let reopened = DocumentCore::from_bytes(&bytes).unwrap();
+            let p = &reopened.document().sections[0].paragraphs[0];
+            assert_eq!(p.text, original.text);
+            assert!(!p.controls.iter().any(|c| matches!(c, Control::Bookmark(_))));
+            assert_eq!(p.title_marks.len(), original.title_marks.len());
+            assert_eq!(fields(&reopened), original_fields);
+        }
+    }
+}
+
+/// 엔진 편집으로 넣은 누름틀·새 번호 지정 뒤의 책갈피도 지운다(실제 WASM 재현의 순서).
+#[test]
+fn bookmark_after_click_here_or_new_number_is_deleted() {
+    type Insert = fn(&mut DocumentCore);
+    let inserts: [Insert; 2] = [
+        |core| {
+            core.insert_click_here_field_at(0, 0, 1, "안내문", "메모", "앞 필드", true)
+                .unwrap();
+        },
+        |core| {
+            core.insert_new_number_native(0, 0, 1, 3).unwrap();
+        },
+    ];
+    for insert in inserts {
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().unwrap();
+        core.insert_text_native(0, 0, 0, "앞 뒤 끝").unwrap();
+        insert(&mut core);
+        let before = core.document().sections[0].paragraphs[0].clone();
+        let before_fields = fields(&core);
+        let r = core.add_bookmark_native(0, 0, 3, "지울 책갈피").unwrap();
+        assert!(r.contains(r#""ok":true"#), "{r}");
+        let r = core.delete_bookmark_native(0, 0, bookmark(&core)).unwrap();
+        assert!(r.contains(r#""ok":true"#), "{r}");
+        let after = &core.document().sections[0].paragraphs[0];
+        assert_eq!(after.text, before.text);
+        assert_eq!(after.char_count, before.char_count);
+        assert_eq!(after.char_offsets, before.char_offsets);
+        assert_eq!(
+            after.control_text_positions(),
+            before.control_text_positions()
+        );
+        assert_eq!(fields(&core), before_fields);
     }
 }
 
