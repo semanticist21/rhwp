@@ -2137,7 +2137,11 @@ impl Paragraph {
         // 나눈 자리 뒤의 탭은 확장 데이터와 함께 새 문단으로 간다
         let tab_split = Self::tab_count(&text_chars[..split_pos.min(text_chars.len())])
             .min(self.tab_extended.len());
-        let new_tab_extended = self.tab_extended.split_off(tab_split);
+        // 한컴은 나눈 두 문단의 탭을 다시 잰다. 앞 문단 마지막 탭(오른쪽·가운데·소수점)은 뒤 조각이,
+        // 새 문단의 탭은 줄 앞 글이 바뀌므로 저장 폭을 자리표로 되돌린다.
+        let new_tab_extended =
+            vec![TAB_EXT_PLACEHOLDER; self.tab_extended.split_off(tab_split).len()];
+        self.drop_stale_tab_widths(tab_split, tab_split);
         // 문단 끝 자동 번호 뒤에서 나누면 번호는 자리표 글자와 함께 앞 문단에 남는다.
         let kept_number = (split_pos == text_chars.len())
             .then(|| self.trailing_auto_number(&text_positions))
@@ -2612,15 +2616,13 @@ impl Paragraph {
             let missing_tabs = own_tabs - self.tab_extended.len();
             storage.reserve(&mut self.tab_extended, missing_tabs)?;
             self.tab_extended.resize(own_tabs, TAB_EXT_PLACEHOLDER);
+            // 한컴은 합친 문단의 탭을 다시 잰다. 앞 문단 마지막 탭(오른쪽·가운데·소수점)은 뒤
+            // 조각이, 붙는 문단의 탭은 줄 앞 글이 바뀌므로 저장 폭을 자리표로 둔다.
+            self.drop_stale_tab_widths(own_tabs, own_tabs);
             let other_tabs = other.text.chars().filter(|&ch| ch == '\t').count();
             storage.extend(
                 &mut self.tab_extended,
-                other
-                    .tab_extended
-                    .iter()
-                    .copied()
-                    .chain(std::iter::repeat(TAB_EXT_PLACEHOLDER))
-                    .take(other_tabs),
+                std::iter::repeat_n(TAB_EXT_PLACEHOLDER, other_tabs),
             )?;
         }
 

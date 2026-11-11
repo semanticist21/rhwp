@@ -12,6 +12,8 @@
 //! 전진폭)이 다른 탭으로 옮겨 가 한/글에서 탭 자리가 틀어진다. 새로 생긴 탭은 자리표
 //! (`TAB_EXT_PLACEHOLDER`)여서 조판이 `TabDef` 로 다시 잰다. 편집 뒤 첫 탭과 편집 앞의 오른쪽·가운데·
 //! 소수점 탭도 폭이 바뀌어 자리표로 되돌리고(한/글은 편집한 줄의 탭을 다시 잰다), 그 밖의 탭은 짝을 지킨다.
+//! 문단을 나누거나 합치면 줄 앞 글이 바뀐 문단(새 문단·붙는 문단)의 탭과 앞 문단 마지막 오른쪽·가운데·
+//! 소수점 탭을 자리표로 되돌린다. 한/글은 HWP 저장 폭을 그대로 써서, 낡은 폭이 남으면 탭 뒤 글이 어긋난다.
 //! HWP 저장은 자리표 탭에 조판한 폭을 적는다(`hwp_saved_tab_widths`).
 
 use rhwp::model::paragraph::{Paragraph, TAB_EXT_PLACEHOLDER};
@@ -81,12 +83,22 @@ fn deleted_tab_drops_its_width() {
 }
 
 #[test]
-fn split_moves_later_tab_widths_to_new_paragraph() {
+fn split_remeasures_tabs_of_new_paragraph() {
     let mut para = para_with_tabs();
     let next = para.split_at(3);
     assert_eq!((para.text.as_str(), next.text.as_str()), ("A\tB", "\tC"));
+    // 앞 문단의 왼쪽 탭은 그대로, 새 문단의 탭은 줄 앞 글이 바뀌어 다시 잰다.
     assert_eq!(para.tab_extended, vec![W1]);
-    assert_eq!(next.tab_extended, vec![W2]);
+    assert_eq!(next.tab_extended, vec![TAB_EXT_PLACEHOLDER]);
+
+    // 앞 문단의 마지막 탭이 오른쪽 탭이면 뒤 조각이 바뀌어 다시 잰다.
+    let right = [2500, 0, 0x0200, 0, 0, 0, 9];
+    let mut para = Paragraph {
+        tab_extended: vec![right, W2],
+        ..para_with_tabs()
+    };
+    para.split_at(3);
+    assert_eq!(para.tab_extended, vec![TAB_EXT_PLACEHOLDER]);
 }
 
 #[test]
@@ -103,7 +115,9 @@ fn merge_joins_tab_widths_in_order() {
     };
     first.merge_from(&second);
     assert_eq!(first.text, "A\tB\tCD\tE");
-    assert_eq!(first.tab_extended, vec![W1, W2, w3]);
+    // 붙는 문단의 탭은 줄 앞 글이 바뀌어 다시 잰다. 앞 문단의 왼쪽 탭은 그대로다.
+    assert_eq!(first.tab_extended, vec![W1, W2, TAB_EXT_PLACEHOLDER]);
+    assert_ne!(w3, TAB_EXT_PLACEHOLDER);
 }
 
 #[test]
@@ -147,7 +161,9 @@ fn document_core_edits_keep_serialized_tab_ownership() {
     let separated = rhwp::parse_document(&core.export_hwp_with_adapter().unwrap()).unwrap();
     let paragraphs = &separated.sections[0].paragraphs;
     assert_eq!(paragraphs[2].tab_extended.len(), 1);
-    assert_eq!(paragraphs[3].tab_extended, original.tab_extended[1..]);
+    // 새 문단의 탭은 다시 잰 폭으로 저장된다.
+    assert_eq!(paragraphs[3].tab_extended.len(), 1);
+    assert!(paragraphs[3].tab_extended[0][..2] != [0, 0]);
     assert_eq!(
         format!("{}{}", paragraphs[2].text, paragraphs[3].text),
         original.text
@@ -158,5 +174,6 @@ fn document_core_edits_keep_serialized_tab_ownership() {
     assert_eq!(restored.sections[0].paragraphs[2].text, original.text);
     let restored_tabs = &restored.sections[0].paragraphs[2].tab_extended;
     assert_eq!(restored_tabs.len(), original.tab_extended.len());
-    assert_eq!(restored_tabs[1..], original.tab_extended[1..]);
+    // 합친 문단의 탭은 다시 잰 폭으로 저장된다(폭 0 자리표가 아니다).
+    assert!(restored_tabs.iter().all(|ext| ext[0] > 0 || ext[1] > 0));
 }

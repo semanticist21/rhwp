@@ -640,7 +640,13 @@ fn test_merge_from_basic() {
                 } else {
                     assert!(result.is_ok());
                     assert_eq!(left.tab_extended.len(), 128);
-                    assert_eq!(left.tab_extended[0], [1200, 0, 0x0100, 0, 0, 0, 9]);
+                    // 붙는 문단의 탭은 줄 앞 글이 바뀌어 다시 잰다(자리표). 앞 문단의 왼쪽 탭은 그대로다.
+                    let first = if incoming {
+                        TAB_EXT_PLACEHOLDER
+                    } else {
+                        [1200, 0, 0x0100, 0, 0, 0, 9]
+                    };
+                    assert_eq!(left.tab_extended[0], first);
                     assert!(left.tab_extended[1..]
                         .iter()
                         .all(|tab| *tab == TAB_EXT_PLACEHOLDER));
