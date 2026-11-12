@@ -214,3 +214,157 @@ fn cell_style_by_path_reaches_inner_cell_only() {
         }
     }
 }
+
+fn cell_text(
+    core: &DocumentCore,
+    para: usize,
+    path: &[(usize, usize, usize)],
+    row: u16,
+    col: u16,
+) -> String {
+    let t = table_at(core, para, path);
+    let cell = t
+        .cells
+        .iter()
+        .find(|c| c.row == row && c.col == col)
+        .unwrap();
+    cell.paragraphs.iter().map(|p| p.text.as_str()).collect()
+}
+
+fn fill_2x2(core: &mut DocumentCore, para: usize, path: &Path) {
+    for (i, text) in ["가", "나", "다", "라"].iter().enumerate() {
+        let mut p = path.clone();
+        p.last_mut().unwrap().1 = i;
+        core.insert_text_in_cell_by_path(0, para, &p, 0, text)
+            .unwrap();
+    }
+}
+
+/// 표/셀 속성 창의 표 값(안 여백·바깥 여백)을 칸 안 표·머리말 표에 쓴다. 바깥 표는 그대로다.
+#[test]
+fn table_properties_by_path_reach_inner_and_header_tables() {
+    for (core, para, path) in [nested(), header()] {
+        let mut core = core;
+        let outer_padding = (path.len() > 1
+            && matches!(
+                core.document().sections[0].paragraphs[para].controls[path[0].0],
+                Control::Table(_)
+            ))
+        .then(|| table_at(&core, para, &path[..1]).padding.left);
+        let read: serde_json::Value = serde_json::from_str(
+            &core
+                .get_table_properties_by_path_native(0, para, &path)
+                .unwrap(),
+        )
+        .unwrap();
+        assert!(read["cellZones"].is_array(), "{read}");
+        core.set_table_properties_by_path_native(
+            0,
+            para,
+            &path,
+            r#"{"paddingLeft":777,"outerLeft":321}"#,
+        )
+        .unwrap();
+        let t = table_at(&core, para, &path);
+        assert_eq!((t.padding.left, t.outer_margin_left), (777, 321));
+        if let Some(before) = outer_padding {
+            assert_eq!(
+                table_at(&core, para, &path[..1]).padding.left,
+                before,
+                "바깥 표"
+            );
+        }
+        for (name, doc) in reopened(&core) {
+            let t = table_at(&doc, para, &path);
+            assert_eq!((t.padding.left, t.outer_margin_left), (777, 321), "{name}");
+        }
+    }
+}
+
+/// 셀 블록 복사·붙이기, 행/열 바꾸기, 셀 너비를 같게를 칸 안 표에 한다.
+#[test]
+fn cell_block_commands_by_path_reach_inner_table() {
+    let (mut core, para, path) = nested();
+    fill_2x2(&mut core, para, &path);
+    let outer_before = shape(&core, para, &path[..1]);
+
+    let copied = core
+        .copy_table_cells_by_path(0, para, &path, (0, 0, 0, 1))
+        .unwrap();
+    assert!(copied.contains(r#""text":"가\t나""#), "{copied}");
+    let html = core
+        .export_table_cells_html_by_path(0, para, &path, (0, 0, 0, 1))
+        .unwrap();
+    assert!(html.contains('가') && html.contains('나') && !html.contains('다'));
+    core.paste_table_cells_by_path(0, para, &path, 1, 0, "overwrite")
+        .unwrap();
+    assert_eq!(cell_text(&core, para, &path, 1, 0), "가");
+    assert_eq!(cell_text(&core, para, &path, 1, 1), "나");
+
+    core.copy_table_cells_transposed_by_path(0, para, &path, (0, 0, 0, 1))
+        .unwrap();
+    core.paste_table_cells_transposed_by_path(0, para, &path, 0, 1)
+        .unwrap();
+    assert_eq!(
+        cell_text(&core, para, &path, 0, 1),
+        "가",
+        "가·나 줄이 칸으로"
+    );
+    core.transpose_table_cells_in_place_by_path(0, para, &path)
+        .unwrap();
+    assert_eq!(shape(&core, para, &path), (2, 2, 4));
+
+    // 첫 칸을 넓힌 뒤 두 칸 너비를 같게 맞춘다.
+    core.resize_table_cells_by_cell_path_native(
+        0,
+        para,
+        &path,
+        r#"[{"cellIdx":0,"widthDelta":1500},{"cellIdx":2,"widthDelta":1500}]"#,
+    )
+    .unwrap();
+    let widths = |core: &DocumentCore| {
+        let t = table_at(core, para, &path);
+        let w = |col| {
+            t.cells
+                .iter()
+                .find(|c| c.row == 0 && c.col == col)
+                .unwrap()
+                .width
+        };
+        (w(0), w(1))
+    };
+    let (w0, w1) = widths(&core);
+    assert!(w0 > w1 + 1000, "{w0} {w1}");
+    core.equalize_table_cell_sizes_by_path(
+        0,
+        para,
+        &path,
+        (0, 0, 1, 1),
+        rhwp::model::table::CellSizeAxis::Width,
+    )
+    .unwrap();
+    let (e0, e1) = widths(&core);
+    assert!((e0 as i64 - e1 as i64).abs() <= 1, "{e0} {e1}");
+    core.equalize_table_cell_sizes_by_path(
+        0,
+        para,
+        &path,
+        (0, 0, 1, 1),
+        rhwp::model::table::CellSizeAxis::Height,
+    )
+    .unwrap();
+
+    assert_eq!(
+        shape(&core, para, &path[..1]),
+        outer_before,
+        "바깥 표는 그대로"
+    );
+    for (name, doc) in reopened(&core) {
+        assert_eq!(widths(&doc), (e0, e1), "{name}");
+        assert_eq!(
+            cell_text(&doc, para, &path, 1, 0),
+            cell_text(&core, para, &path, 1, 0),
+            "{name}"
+        );
+    }
+}

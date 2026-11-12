@@ -4,7 +4,7 @@ use super::super::helpers::{
     border_line_type_to_u8_val, color_ref_to_css, fill_detail_json, fill_json_values, json_bool,
     json_u32, navigate_path_to_table,
 };
-use crate::document_core::{DocumentCore, TableTransposeClipboard};
+use crate::document_core::DocumentCore;
 use crate::error::HwpError;
 use crate::model::control::Control;
 use crate::model::event::DocumentEvent;
@@ -888,36 +888,12 @@ impl DocumentCore {
         end_row: u16,
         end_col: u16,
     ) -> Result<String, HwpError> {
-        let block = self.table_cell_block(
+        self.copy_table_cells_by_path(
             section_idx,
             parent_para_idx,
-            control_idx,
+            &[(control_idx, 0, 0)],
             (start_row, start_col, end_row, end_col),
-        )?;
-        let mut cells: Vec<_> = block.cells.iter().collect();
-        cells.sort_by_key(|cell| (cell.row, cell.col));
-        let mut text = String::new();
-        for (index, cell) in cells.iter().enumerate() {
-            if index > 0 {
-                text.push(if cells[index - 1].row == cell.row {
-                    '\t'
-                } else {
-                    '\n'
-                });
-            }
-            let paragraphs: Vec<&str> = cell.paragraphs.iter().map(|p| p.text.as_str()).collect();
-            text.push_str(&paragraphs.join(" "));
-        }
-        // 클립보드 문단(글자 모양·문단 모양·컨트롤 자료)은 표 복사와 같게 만들고 표만 블록으로 바꾼다.
-        self.copy_control_native(section_idx, parent_para_idx, &[], control_idx)?;
-        if let Some(clipboard) = self.clipboard.as_mut() {
-            clipboard.paragraphs[0].controls[0] = Control::Table(Box::new(block));
-            clipboard.plain_text = text.clone();
-        }
-        Ok(super::super::helpers::json_ok_with(&format!(
-            "\"text\":\"{}\"",
-            super::super::helpers::json_escape(&text)
-        )))
+        )
     }
 
     /// 본문 표의 셀 블록을 블록만 남긴 표의 HTML로 내보낸다(다른 앱에 붙일 클립보드 HTML).
@@ -931,41 +907,12 @@ impl DocumentCore {
         end_row: u16,
         end_col: u16,
     ) -> Result<String, HwpError> {
-        let block = Control::Table(Box::new(self.table_cell_block(
+        self.export_table_cells_html_by_path(
             section_idx,
             parent_para_idx,
-            control_idx,
+            &[(control_idx, 0, 0)],
             (start_row, start_col, end_row, end_col),
-        )?));
-        let mut html = String::from("<html><body>\n<!--StartFragment-->\n");
-        html.push_str(&self.control_to_html(&block, 0));
-        html.push_str("<!--EndFragment-->\n</body></html>");
-        crate::document_core::html_table_import::validate_html_common(&html)?;
-        Ok(html)
-    }
-
-    /// 본문 표에서 (시작 줄, 시작 칸, 끝 줄, 끝 칸) 블록만 남긴 표를 만든다.
-    fn table_cell_block(
-        &self,
-        section_idx: usize,
-        parent_para_idx: usize,
-        control_idx: usize,
-        (start_row, start_col, end_row, end_col): (u16, u16, u16, u16),
-    ) -> Result<crate::model::table::Table, HwpError> {
-        match self
-            .document
-            .sections
-            .get(section_idx)
-            .and_then(|section| section.paragraphs.get(parent_para_idx))
-            .and_then(|para| para.controls.get(control_idx))
-        {
-            Some(Control::Table(table)) => table
-                .cell_block(start_row, start_col, end_row, end_col)
-                .map_err(HwpError::RenderError),
-            _ => Err(HwpError::RenderError(
-                "지정된 컨트롤이 표가 아닙니다".to_string(),
-            )),
-        }
+        )
     }
 
     /// 선택된 셀 범위를 행/열 바꿈 복사용 내부 버퍼에 저장한다.
@@ -979,20 +926,12 @@ impl DocumentCore {
         end_row: u16,
         end_col: u16,
     ) -> Result<String, HwpError> {
-        let data = {
-            let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
-            table
-                .copy_transpose_range(start_row, start_col, end_row, end_col)
-                .map_err(HwpError::RenderError)?
-        };
-        let source_rows = data.source_rows;
-        let source_cols = data.source_cols;
-        self.table_transpose_clipboard = Some(TableTransposeClipboard { data });
-
-        Ok(super::super::helpers::json_ok_with(&format!(
-            "\"sourceRows\":{},\"sourceCols\":{},\"targetRows\":{},\"targetCols\":{}",
-            source_rows, source_cols, source_cols, source_rows
-        )))
+        self.copy_table_cells_transposed_by_path(
+            section_idx,
+            parent_para_idx,
+            &[(control_idx, 0, 0)],
+            (start_row, start_col, end_row, end_col),
+        )
     }
 
     /// 행/열 바꿈 복사 버퍼를 대상 시작 셀부터 정적 붙여넣기한다.
@@ -1157,7 +1096,29 @@ impl DocumentCore {
         col: u16,
         mode: &str,
     ) -> Result<String, HwpError> {
+        self.paste_table_cells_by_path(
+            section_idx,
+            parent_para_idx,
+            &[(control_idx, 0, 0)],
+            row,
+            col,
+            mode,
+        )
+    }
+
+    /// 셀 경로의 표(칸 안의 표·머리말/꼬리말 표)에 셀 블록을 붙인다(`pasteTableCells`의 경로판).
+    /// 경로의 마지막 마디가 그 표의 칸이다.
+    pub fn paste_table_cells_by_path(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        row: u16,
+        col: u16,
+        mode: &str,
+    ) -> Result<String, HwpError> {
         use crate::model::table::{Cell, Table};
+        let nested = path.len() > 1;
         let err = |m: &str| HwpError::RenderError(m.to_string());
         let mut block: Table = match self.clipboard.as_ref().map(|c| c.paragraphs.as_slice()) {
             Some([para]) => match para.controls.as_slice() {
@@ -1171,7 +1132,7 @@ impl DocumentCore {
         }
         block.rebuild_grid();
         let (row_count, col_count, anchor) = {
-            let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+            let table = self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path)?;
             table.rebuild_grid();
             let anchor = table
                 .cell_at(row, col)
@@ -1202,7 +1163,8 @@ impl DocumentCore {
         block_cells.sort_by_key(|c| (c.row, c.col));
         let (start_row, start_col, rows, cols) = match mode {
             "overwrite" | "content" => {
-                let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+                let table =
+                    self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path)?;
                 let (first_row, first_col) = (anchor.0, anchor.1);
                 let mut changed = Vec::new();
                 let mut rows = 0;
@@ -1229,12 +1191,16 @@ impl DocumentCore {
                     }
                 }
                 self.document.sections[section_idx].raw_stream = None;
-                self.reflow_table_cell_paragraphs(
-                    section_idx,
-                    parent_para_idx,
-                    control_idx,
-                    &changed,
-                );
+                if nested {
+                    self.relayout_table_cells_by_path(section_idx, parent_para_idx, path, &changed);
+                } else {
+                    self.reflow_table_cell_paragraphs(
+                        section_idx,
+                        parent_para_idx,
+                        path[0].0,
+                        &changed,
+                    );
+                }
                 self.mark_section_dirty(section_idx);
                 (first_row, first_col, rows, cols)
             }
@@ -1248,7 +1214,8 @@ impl DocumentCore {
                     _ => (anchor.0 + anchor.2, br),
                 };
                 {
-                    let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+                    let table =
+                        self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path)?;
                     let crosses = table.cells.iter().any(|c| {
                         let (from, span) = if horizontal {
                             (c.col, c.col_span)
@@ -1262,36 +1229,19 @@ impl DocumentCore {
                     }
                 }
                 for _ in 0..count {
-                    match mode {
-                        "left" => self.insert_table_column_native(
-                            section_idx,
-                            parent_para_idx,
-                            control_idx,
-                            at,
-                            false,
-                        )?,
-                        "right" => self.insert_table_column_native(
-                            section_idx,
-                            parent_para_idx,
-                            control_idx,
-                            at - 1,
-                            true,
-                        )?,
-                        "up" => self.insert_table_row_native(
-                            section_idx,
-                            parent_para_idx,
-                            control_idx,
-                            at,
-                            false,
-                        )?,
-                        _ => self.insert_table_row_native(
-                            section_idx,
-                            parent_para_idx,
-                            control_idx,
-                            at - 1,
-                            true,
-                        )?,
+                    let (index, after) = match mode {
+                        "left" | "up" => (at, false),
+                        _ => (at - 1, true),
                     };
+                    self.edit_table_lines_by_path(
+                        section_idx,
+                        parent_para_idx,
+                        path,
+                        !horizontal,
+                        false,
+                        index,
+                        after,
+                    )?;
                 }
                 // 끼운 줄·칸의 길이: 왼쪽·오른쪽은 표의 줄 수, 위·아래는 칸 수다.
                 let span_total = if horizontal { row_count } else { col_count };
@@ -1300,7 +1250,8 @@ impl DocumentCore {
                 let heights = block.get_row_heights();
                 let mut merges = Vec::new();
                 {
-                    let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+                    let table =
+                        self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path)?;
                     table.rebuild_grid();
                     // 끼운 칸(줄)의 너비(높이)를 블록 칸(줄)의 것으로 둔다.
                     for k in 0..count {
@@ -1362,10 +1313,10 @@ impl DocumentCore {
                     table.update_ctrl_dimensions();
                 }
                 for (r0, c0, r1, c1) in merges {
-                    self.merge_table_cells_native(
+                    self.merge_table_cells_by_path(
                         section_idx,
                         parent_para_idx,
-                        control_idx,
+                        path,
                         r0,
                         c0,
                         r1,
@@ -1384,7 +1335,7 @@ impl DocumentCore {
         self.recompose_section(section_idx);
         self.paginate_if_needed();
         let (row_count, col_count) = {
-            let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+            let table = self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path)?;
             (table.row_count, table.col_count)
         };
         Ok(super::super::helpers::json_ok_with(&format!(
@@ -3450,15 +3401,27 @@ impl DocumentCore {
                 HwpError::RenderError(format!("문단 인덱스 {} 범위 초과", parent_para_idx))
             })?;
 
-        let table = match para.controls.get(control_idx) {
-            Some(Control::Table(t)) => t,
-            _ => {
-                return Err(HwpError::RenderError(
-                    "지정된 컨트롤이 표가 아닙니다".to_string(),
-                ))
-            }
-        };
+        match para.controls.get(control_idx) {
+            Some(Control::Table(t)) => Ok(self.table_properties_json(t)),
+            _ => Err(HwpError::RenderError(
+                "지정된 컨트롤이 표가 아닙니다".to_string(),
+            )),
+        }
+    }
 
+    /// 셀 경로의 표(칸 안의 표·머리말/꼬리말 표) 속성을 조회한다. 경로의 마지막 마디가 그 표의
+    /// 칸이다(`resizeTableCellsByPath`와 같다). 깊이 1이면 `getTableProperties`와 같다.
+    pub fn get_table_properties_by_path_native(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+    ) -> Result<String, HwpError> {
+        let table = self.resolve_table_by_path(section_idx, parent_para_idx, path)?;
+        Ok(self.table_properties_json(table))
+    }
+
+    fn table_properties_json(&self, table: &crate::model::table::Table) -> String {
         let pb = match table.page_break {
             crate::model::table::TablePageBreak::None => 0,
             crate::model::table::TablePageBreak::CellBreak => 1,
@@ -3550,8 +3513,29 @@ impl DocumentCore {
             .to_string()
         });
 
-        Ok(format!(
-            "{{\"cellSpacing\":{},\"paddingLeft\":{},\"paddingRight\":{},\"paddingTop\":{},\"paddingBottom\":{},\"pageBreak\":{},\"repeatHeader\":{},{},\"tableWidth\":{},\"tableHeight\":{},\"outerLeft\":{},\"outerRight\":{},\"outerTop\":{},\"outerBottom\":{}{},\"treatAsChar\":{},\"textWrap\":\"{}\",\"vertRelTo\":\"{}\",\"vertAlign\":\"{}\",\"horzRelTo\":\"{}\",\"horzAlign\":\"{}\",\"vertOffset\":{},\"horzOffset\":{},\"restrictInPage\":{},\"allowOverlap\":{},\"keepWithAnchor\":{},\"sizeProtect\":{},\"label\":{}}}",
+        // 하나의 셀처럼 적용한 범위. ID 0인 범위도 원래 주소 그대로 준다(겹침 확인용).
+        let border_fills = &self.document.doc_info.border_fills;
+        let zones_json = serde_json::Value::Array(
+            table
+                .zones
+                .iter()
+                .map(|zone| {
+                    serde_json::json!({
+                        "startRow": zone.start_row,
+                        "startCol": zone.start_col,
+                        "endRow": zone.end_row,
+                        "endCol": zone.end_col,
+                        "borderFillId": zone.border_fill_id,
+                        "borderFillFlags": zone.border_fill_id.checked_sub(1)
+                            .and_then(|index| border_fills.get(index as usize))
+                            .map(|fill| u32::from(fill.attr)),
+                    })
+                })
+                .collect(),
+        )
+        .to_string();
+        format!(
+            "{{\"cellSpacing\":{},\"paddingLeft\":{},\"paddingRight\":{},\"paddingTop\":{},\"paddingBottom\":{},\"pageBreak\":{},\"repeatHeader\":{},{},\"tableWidth\":{},\"tableHeight\":{},\"outerLeft\":{},\"outerRight\":{},\"outerTop\":{},\"outerBottom\":{}{},\"treatAsChar\":{},\"textWrap\":\"{}\",\"vertRelTo\":\"{}\",\"vertAlign\":\"{}\",\"horzRelTo\":\"{}\",\"horzAlign\":\"{}\",\"vertOffset\":{},\"horzOffset\":{},\"restrictInPage\":{},\"allowOverlap\":{},\"keepWithAnchor\":{},\"sizeProtect\":{},\"label\":{},\"cellZones\":{}}}",
             table.cell_spacing,
             table.padding.left, table.padding.right, table.padding.top, table.padding.bottom,
             pb, table.repeat_header,
@@ -3564,7 +3548,8 @@ impl DocumentCore {
             vert_offset, horz_offset,
             restrict_in_page, allow_overlap, keep_with_anchor, common.size_protect,
             label_json,
-        ))
+            zones_json,
+        )
     }
 
     /// 표 속성을 수정한다 (네이티브).
@@ -3575,7 +3560,28 @@ impl DocumentCore {
         control_idx: usize,
         json: &str,
     ) -> Result<String, HwpError> {
+        self.set_table_properties_by_path_native(
+            section_idx,
+            parent_para_idx,
+            &[(control_idx, 0, 0)],
+            json,
+        )
+    }
+
+    /// 셀 경로의 표(칸 안의 표·머리말/꼬리말 표) 속성을 수정한다. 경로의 마지막 마디가 그 표의
+    /// 칸이다. 깊이 1이면 본문 표(`setTableProperties`)다. 칸 안 표는 바뀐 크기·여백을 표를 담은
+    /// 칸 문단의 줄 높이와 뒤 문단 위치에도 반영한다.
+    pub fn set_table_properties_by_path_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        json: &str,
+    ) -> Result<String, HwpError> {
         use super::super::helpers::{json_bool, json_i16, json_i32, json_str, json_u32, json_u8};
+        let Some(&(control_idx, _, _)) = path.last() else {
+            return Err(HwpError::RenderError("경로가 비어있습니다".to_string()));
+        };
 
         let caption_style = self
             .document
@@ -3588,7 +3594,7 @@ impl DocumentCore {
             .map(|(idx, s)| (idx as u8, s.para_shape_id, s.char_shape_id as u32))
             .unwrap_or((0, 0, 0));
 
-        let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+        let table = self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path)?;
 
         if let Some(v) = json_i16(json, "cellSpacing") {
             table.cell_spacing = v;
@@ -3978,7 +3984,7 @@ impl DocumentCore {
             || json.contains("\"centerLine\"");
         if has_border_fill_change {
             let new_bf_id = self.create_border_fill_from_json(json);
-            let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+            let table = self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path)?;
             table.border_fill_id = new_bf_id;
             for cell in &mut table.cells {
                 cell.border_fill_id = new_bf_id;
@@ -3989,10 +3995,9 @@ impl DocumentCore {
         // 번호 종류를 가진 표는 캡션을 지워도 개체 순번을 계속 소유한다.
         if caption_created || caption_changed {
             crate::parser::assign_auto_numbers(&mut self.document);
-            if let Some(crate::model::control::Control::Table(ref mut tbl)) =
-                self.document.sections[section_idx].paragraphs[parent_para_idx]
-                    .controls
-                    .get_mut(control_idx)
+            let dpi = self.dpi;
+            let styles = self.styles.clone();
+            if let Ok(tbl) = self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path)
             {
                 if let Some(ref mut cap) = tbl.caption {
                     let available_width_hu = if matches!(
@@ -4005,22 +4010,36 @@ impl DocumentCore {
                         cap.max_width
                     };
                     let available_width_px =
-                        crate::renderer::hwpunit_to_px(available_width_hu as i32, self.dpi);
+                        crate::renderer::hwpunit_to_px(available_width_hu as i32, dpi);
                     // 표 캡션 상자 — 캡션은 자기 열이 없으므로 미스냅.
                     crate::renderer::composer::reflow_line_segs(
                         &mut cap.paragraphs[0],
                         crate::renderer::composer::ParagraphBox::content_width_px(
                             available_width_px,
-                            self.dpi,
+                            dpi,
                         ),
-                        &self.styles,
-                        self.dpi,
+                        &styles,
+                        dpi,
                     );
                 }
             }
         }
 
-        if (caption_created || caption_changed)
+        if path.len() > 1 {
+            // 칸 안 표: 표를 담은 칸 문단의 줄 높이와 뒤 문단 위치가 표 크기를 따른다.
+            let depth = path.len() - 1;
+            let container = &path[..depth];
+            let host = container[depth - 1].2;
+            self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, container, host);
+            self.recalculate_cell_paragraph_vpos_by_path(
+                section_idx,
+                parent_para_idx,
+                container,
+                host,
+                None,
+            );
+            self.mark_cell_control_dirty(section_idx, parent_para_idx, path[0].0);
+        } else if (caption_created || caption_changed)
             && self
                 .get_table_mut(section_idx, parent_para_idx, control_idx)?
                 .common
@@ -4049,7 +4068,8 @@ impl DocumentCore {
 
         if caption_created {
             let char_offset = {
-                let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+                let table =
+                    self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path)?;
                 table.caption.as_ref().map_or(0, |c| {
                     c.paragraphs.first().map_or(0, |p| p.text.chars().count())
                 })

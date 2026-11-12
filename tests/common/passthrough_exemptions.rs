@@ -5,6 +5,48 @@
 /// 파일 경로는 [`SCAN_ROOT`] 기준 상대 경로다. 병합 `devel` 기준 46건(2026-08-30 동결).
 const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     (
+        "commands/table_ops.rs",
+        "set_table_properties_native",
+        Exempt::DelegatesTo("set_table_properties_by_path_native"),
+        "본문 표는 깊이 1 경로로 경로판에 맡긴다. 경로판이 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_ops.rs",
+        "paste_table_cells_native",
+        Exempt::DelegatesTo("paste_table_cells_by_path"),
+        "본문 표는 깊이 1 경로로 경로판에 맡긴다. 경로판이 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "equalize_table_cell_sizes_by_path",
+        Exempt::DelegatesTo("edit_table_by_path"),
+        "깊이 1은 평면 API에, 칸 안·머리말 표는 경로 표 편집 helper에 맡긴다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "copy_table_cells_by_path",
+        Exempt::SessionState,
+        "셀 블록을 내부 클립보드에 담을 뿐 문서를 바꾸지 않는다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "copy_table_cells_transposed_by_path",
+        Exempt::SessionState,
+        "행/열 바꿈 버퍼에 담을 뿐 문서를 바꾸지 않는다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "paste_table_cells_transposed_by_path",
+        Exempt::DelegatesTo("relayout_table_cells_by_path"),
+        "깊이 1은 평면 API에, 칸 안·머리말 표는 다시 짜는 helper에 맡긴다. helper가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "transpose_table_cells_in_place_by_path",
+        Exempt::DelegatesTo("relayout_table_cells_by_path"),
+        "깊이 1은 평면 API에, 칸 안·머리말 표는 다시 짜는 helper에 맡긴다. helper가 구역의 raw_stream을 비운다.",
+    ),
+    (
         "commands/table_path_ops.rs",
         "edit_table_lines_by_path",
         Exempt::DelegatesTo("edit_table_by_path"),

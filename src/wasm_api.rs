@@ -3091,6 +3091,174 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 셀 경로의 표(칸 안의 표·머리말/꼬리말 표) 셀 블록을 복사한다. 경로의 마지막 마디가 그
+    /// 표의 칸이다. 반환은 `copyTableCells`와 같다.
+    #[wasm_bindgen(js_name = copyTableCellsByPath)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn copy_table_cells_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        start_row: u16,
+        start_col: u16,
+        end_row: u16,
+        end_col: u16,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.core
+            .copy_table_cells_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+                (start_row, start_col, end_row, end_col),
+            )
+            .map_err(|e| e.into())
+    }
+
+    /// 셀 경로 표의 셀 블록 HTML(`exportTableCellsHtml`의 경로판).
+    #[wasm_bindgen(js_name = exportTableCellsHtmlByPath)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn export_table_cells_html_by_path(
+        &self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        start_row: u16,
+        start_col: u16,
+        end_row: u16,
+        end_col: u16,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.core
+            .export_table_cells_html_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+                (start_row, start_col, end_row, end_col),
+            )
+            .map_err(|e| e.into())
+    }
+
+    /// 셀 경로 표의 칸 범위를 행/열 바꿈 복사 버퍼에 담는다(`copyTableCellsTransposed`의 경로판).
+    #[wasm_bindgen(js_name = copyTableCellsTransposedByPath)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn copy_table_cells_transposed_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        start_row: u16,
+        start_col: u16,
+        end_row: u16,
+        end_col: u16,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.core
+            .copy_table_cells_transposed_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+                (start_row, start_col, end_row, end_col),
+            )
+            .map_err(|e| e.into())
+    }
+
+    /// 셀 블록을 셀 경로 표의 (`row`, `col`) 자리에 붙인다(`pasteTableCells`의 경로판).
+    #[wasm_bindgen(js_name = pasteTableCellsByPath)]
+    pub fn paste_table_cells_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        row: u16,
+        col: u16,
+        mode: &str,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.core
+            .paste_table_cells_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+                row,
+                col,
+                mode,
+            )
+            .map_err(|e| e.into())
+    }
+
+    /// 행/열 바꿈 복사 버퍼를 셀 경로 표에 붙인다(`pasteTableCellsTransposed`의 경로판).
+    #[wasm_bindgen(js_name = pasteTableCellsTransposedByPath)]
+    pub fn paste_table_cells_transposed_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        start_row: u16,
+        start_col: u16,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.core
+            .paste_table_cells_transposed_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+                start_row,
+                start_col,
+            )
+            .map_err(|e| e.into())
+    }
+
+    /// 셀 경로 표 전체의 행과 열을 바꾼다(`transposeTableCellsInPlace`의 경로판).
+    #[wasm_bindgen(js_name = transposeTableCellsInPlaceByPath)]
+    pub fn transpose_table_cells_in_place_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.core
+            .transpose_table_cells_in_place_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+            )
+            .map_err(|e| e.into())
+    }
+
+    /// 셀 경로 표의 칸 블록 너비·높이를 같게 맞춘다(`equalizeTableCellSizes`의 경로판).
+    #[wasm_bindgen(js_name = equalizeTableCellSizesByPath)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn equalize_table_cell_sizes_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        start_row: u16,
+        start_col: u16,
+        end_row: u16,
+        end_col: u16,
+        axis: &str,
+    ) -> Result<String, JsValue> {
+        let axis = match axis {
+            "width" => crate::model::table::CellSizeAxis::Width,
+            "height" => crate::model::table::CellSizeAxis::Height,
+            _ => return Err(JsValue::from_str("axis는 width 또는 height입니다")),
+        };
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.core
+            .equalize_table_cell_sizes_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+                (start_row, start_col, end_row, end_col),
+                axis,
+            )
+            .map_err(|e| e.into())
+    }
+
     /// 행/열 바꿈 복사 버퍼 보유 여부를 반환한다.
     #[wasm_bindgen(js_name = hasTableTransposeClipboard)]
     pub fn has_table_transpose_clipboard(&self) -> bool {
@@ -4542,6 +4710,43 @@ impl HwpDocument {
             section_idx as usize,
             parent_para_idx as usize,
             control_idx as usize,
+            json,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 셀 경로의 표(칸 안의 표·머리말/꼬리말 표) 속성을 조회한다. 경로의 마지막 마디가 그 표의
+    /// 칸이다(`resizeTableCellsByPath`와 같다). 반환은 `getTableProperties`와 같다.
+    #[wasm_bindgen(js_name = getTablePropertiesByPath)]
+    pub fn get_table_properties_by_path(
+        &self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.get_table_properties_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 셀 경로의 표 속성을 수정한다. 키는 `setTableProperties`와 같다.
+    #[wasm_bindgen(js_name = setTablePropertiesByPath)]
+    pub fn set_table_properties_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        json: &str,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.set_table_properties_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
             json,
         )
         .map_err(|e| e.into())
