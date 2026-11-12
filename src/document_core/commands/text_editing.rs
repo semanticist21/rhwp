@@ -1651,6 +1651,55 @@ impl DocumentCore {
         after_inline_control: bool,
         text: &str,
     ) -> Result<String, HwpError> {
+        self.insert_text_at_slot_native(
+            section_idx,
+            para_idx,
+            char_offset,
+            after_inline_control,
+            0,
+            text,
+        )
+    }
+
+    /// 한 글자 자리에 맞붙은 논리 개체 가운데 앞 `objects_before`개 뒤에 글을 넣는다.
+    pub(crate) fn insert_text_between_objects_native(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        char_offset: usize,
+        objects_before: usize,
+        text: &str,
+    ) -> Result<String, HwpError> {
+        let para = self
+            .document
+            .sections
+            .get(section_idx)
+            .and_then(|section| section.paragraphs.get(para_idx))
+            .ok_or_else(|| HwpError::RenderError("문단 인덱스 범위 초과".into()))?;
+        if has_clickhere_field_range(para) {
+            return Err(HwpError::RenderError(
+                "누름틀이 있는 문단에서는 맞붙은 개체 사이에 입력할 수 없습니다".into(),
+            ));
+        }
+        self.insert_text_at_slot_native(
+            section_idx,
+            para_idx,
+            char_offset,
+            false,
+            objects_before,
+            text,
+        )
+    }
+
+    fn insert_text_at_slot_native(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        char_offset: usize,
+        after_inline_control: bool,
+        objects_before: usize,
+        text: &str,
+    ) -> Result<String, HwpError> {
         let normalized = normalize_text_newlines(text);
         let text = normalized.as_ref();
         // 인덱스 범위 검증
@@ -1674,7 +1723,11 @@ impl DocumentCore {
         let new_chars_count = text.chars().count();
         let active = active_field_control(self.active_field.as_ref(), section_idx, para_idx, None);
         let apply_insert = |para: &mut Paragraph| {
-            replace_paragraph_text(para, char_offset, 0, text, active, after_inline_control);
+            if objects_before > 0 {
+                para.insert_text_between_objects(char_offset, text, objects_before);
+            } else {
+                replace_paragraph_text(para, char_offset, 0, text, active, after_inline_control);
+            }
         };
         let picture_band_applied =
             self.apply_body_edit_through_picture_band(section_idx, para_idx, &apply_insert)?;

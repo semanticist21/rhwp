@@ -33,9 +33,18 @@ pub(crate) fn navigable_text_len(para: &Paragraph) -> usize {
 /// 논리적 오프셋: 텍스트 문자 + 인라인 컨트롤을 각각 1로 세는 위치.
 /// 반환: (텍스트 char_offset, 컨트롤 직후 여부)
 pub(crate) fn logical_to_text_offset(para: &Paragraph, logical_offset: usize) -> (usize, bool) {
+    let (text_offset, objects_before) = logical_to_text_slot(para, logical_offset);
+    (text_offset, objects_before > 0)
+}
+
+/// 논리적 오프셋 → (텍스트 char_offset, 그 글자 자리에서 지나온 논리 개체 수).
+///
+/// 한 글자 자리에 개체가 여럿 맞붙으면 그 사이 논리 자리들은 같은 글자 자리를 갖는다.
+/// 지나온 개체 수로 사이 자리를 가린다.
+pub(crate) fn logical_to_text_slot(para: &Paragraph, logical_offset: usize) -> (usize, usize) {
     let ctrl_positions = find_control_text_positions(para);
     if ctrl_positions.is_empty() {
-        return (logical_offset, false);
+        return (logical_offset, 0);
     }
 
     // 논리적 위치에서 컨트롤 슬롯을 구성
@@ -55,6 +64,7 @@ pub(crate) fn logical_to_text_offset(para: &Paragraph, logical_offset: usize) ->
     let mut text_idx = 0usize;
     let mut logical_idx = 0usize;
     let mut ctrl_cursor = 0usize; // sorted_ctrls 내 현재 위치
+    let mut passed_here = 0usize; // 지금 글자 자리에서 지나온 개체 수
 
     while logical_idx < logical_offset {
         // 현재 text_idx 위치에 컨트롤이 있는지 확인
@@ -62,8 +72,9 @@ pub(crate) fn logical_to_text_offset(para: &Paragraph, logical_offset: usize) ->
             // 컨트롤 슬롯
             logical_idx += 1;
             ctrl_cursor += 1;
+            passed_here += 1;
             if logical_idx == logical_offset {
-                return (text_idx, true);
+                return (text_idx, passed_here);
             }
             // 같은 자리의 다음 개체 칸도 글자보다 먼저 센다.
             continue;
@@ -72,11 +83,22 @@ pub(crate) fn logical_to_text_offset(para: &Paragraph, logical_offset: usize) ->
         if text_idx < text_len {
             text_idx += 1;
             logical_idx += 1;
+            passed_here = 0;
         } else {
             break;
         }
     }
-    (text_idx, false)
+    (text_idx, 0)
+}
+
+/// 문단의 그 글자 자리에 놓인 논리 개체 수.
+pub(crate) fn logical_objects_at(para: &Paragraph, text_offset: usize) -> usize {
+    let ctrl_positions = find_control_text_positions(para);
+    para.controls
+        .iter()
+        .zip(ctrl_positions.iter())
+        .filter(|(ctrl, &pos)| pos == text_offset && is_logical_inline_control(ctrl))
+        .count()
 }
 
 /// 텍스트 오프셋 → 논리적 오프셋 변환.

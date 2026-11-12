@@ -1845,11 +1845,17 @@ impl HwpDocument {
         {
             return Err(JsValue::from_str("인덱스 범위 초과"));
         }
-        let (text_offset, after_control) = crate::document_core::helpers::logical_to_text_offset(
-            &self.document.sections[sec].paragraphs[pi],
-            logical_offset as usize,
-        );
-        self.insert_text_at_caret_native(sec, pi, text_offset, after_control, text)?;
+        let para = &self.document.sections[sec].paragraphs[pi];
+        let (text_offset, objects_before) =
+            crate::document_core::helpers::logical_to_text_slot(para, logical_offset as usize);
+        // 맞붙은 개체 사이면 그 사이에, 아니면 개체 앞·뒤 소속으로 넣는다.
+        if objects_before > 0
+            && objects_before < crate::document_core::helpers::logical_objects_at(para, text_offset)
+        {
+            self.insert_text_between_objects_native(sec, pi, text_offset, objects_before, text)?;
+        } else {
+            self.insert_text_at_caret_native(sec, pi, text_offset, objects_before > 0, text)?;
+        }
         // 삽입 후 논리적 오프셋 반환
         let new_text_offset = text_offset + text.chars().count();
         let new_logical = crate::document_core::helpers::text_to_logical_offset(

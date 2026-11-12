@@ -1637,6 +1637,28 @@ impl Paragraph {
         new_text: &str,
         after_inline_control: bool,
     ) -> usize {
+        self.insert_text_at_slot(char_offset, new_text, after_inline_control, 0)
+    }
+
+    /// 한 글자 자리에 맞붙은 논리 개체(각주·미주·글자처럼 취급한 개체·글자 겹침·덧말) 가운데
+    /// 앞 `objects_before`개 뒤, 다음 개체 앞에 넣는다. 한/글처럼 두 개체 사이에 친 글이
+    /// 그 사이에 남는다.
+    pub(crate) fn insert_text_between_objects(
+        &mut self,
+        char_offset: usize,
+        new_text: &str,
+        objects_before: usize,
+    ) -> usize {
+        self.insert_text_at_slot(char_offset, new_text, false, objects_before)
+    }
+
+    fn insert_text_at_slot(
+        &mut self,
+        char_offset: usize,
+        new_text: &str,
+        after_inline_control: bool,
+        objects_before: usize,
+    ) -> usize {
         if new_text.is_empty() {
             return char_offset.min(self.text.chars().count());
         }
@@ -1680,10 +1702,20 @@ impl Paragraph {
         // 갭 슬롯 앞)에 넣는다. 그래야 필드 끝에 친 글자가 필드 서식을 잇는다.
         let before_trailing_number = trailing_number
             .is_some_and(|ci| control_positions.get(ci) == Some(&effective_char_offset));
-        let controls_before_object = same_position
-            .clone()
-            .position(|(_, (ctrl, _))| is_inline_object(ctrl))
-            .or_else(|| before_trailing_number.then(|| same_position.count()));
+        let controls_before_object = if objects_before > 0 {
+            // 맞붙은 논리 개체 사이: 앞 개체들 다음, 그다음 논리 개체 바로 앞.
+            same_position
+                .clone()
+                .enumerate()
+                .filter(|(_, (_, (ctrl, _)))| ctrl.is_logical_inline())
+                .nth(objects_before)
+                .map(|(index, _)| index)
+        } else {
+            same_position
+                .clone()
+                .position(|(_, (ctrl, _))| is_inline_object(ctrl))
+                .or_else(|| before_trailing_number.then(|| same_position.count()))
+        };
         let inserts_before_inline_control =
             !after_inline_control && char_offset <= text_len && controls_before_object.is_some();
 
