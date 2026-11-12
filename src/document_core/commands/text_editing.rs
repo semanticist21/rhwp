@@ -99,13 +99,14 @@ fn boundary_controls_to_delete(
                         | Control::Footnote(_)
                         | Control::Endnote(_)
                         | Control::Form(_)
-                ) || (!Paragraph::occupies_split_slot(&para.controls[index])
-                    && para.controls.iter().enumerate().any(|(other, control)| {
-                        // 캐럿 칸이 없는 떠 있는 개체는 같은 자리 개체와 앞뒤를 가를 수 없다.
-                        other != index
-                            && Paragraph::is_split_movable_control(control)
-                            && positions.get(other) == positions.get(index)
-                    }))
+                ) || para.controls.iter().enumerate().any(|(other, control)| {
+                    // 캐럿 칸이 없는 떠 있는 개체는 같은 자리 개체와 앞뒤를 가를 수 없다.
+                    other != index
+                        && Paragraph::is_split_movable_control(control)
+                        && positions.get(other) == positions.get(index)
+                        && !(Paragraph::occupies_split_slot(control)
+                            && Paragraph::occupies_split_slot(&para.controls[index]))
+                })
             }))
     {
         return Err(HwpError::RenderError(
