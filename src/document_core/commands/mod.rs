@@ -39,6 +39,8 @@ mod table_formula;
 // 구역 나누기·합치기 — 한/글 [쪽-구역 나누기]와 구역 경계 지우기.
 mod section_ops;
 mod table_ops;
+// 칸 안 표·머리말/꼬리말 표의 셀 경로 구조 편집.
+mod table_path_ops;
 mod text_editing;
 // [#5769] Stage 4 — 구역 raw 저널. SectionRawCapture 타입이 DocumentCore 필드로
 // 쓰이므로 pub(crate).

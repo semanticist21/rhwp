@@ -5,6 +5,24 @@
 /// 파일 경로는 [`SCAN_ROOT`] 기준 상대 경로다. 병합 `devel` 기준 46건(2026-08-30 동결).
 const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     (
+        "commands/table_path_ops.rs",
+        "edit_table_lines_by_path",
+        Exempt::DelegatesTo("edit_table_by_path"),
+        "깊이 1은 평면 표 편집에, 칸 안·머리말 표는 경로 표 편집 helper에 위임한다. helper가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "merge_table_cells_by_path",
+        Exempt::DelegatesTo("edit_table_by_path"),
+        "깊이 1은 평면 표 편집에, 칸 안·머리말 표는 경로 표 편집 helper에 위임한다. helper가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "split_table_cells_by_path",
+        Exempt::DelegatesTo("edit_table_by_path"),
+        "깊이 1은 평면 표 편집에, 칸 안·머리말 표는 경로 표 편집 helper에 위임한다. helper가 구역의 raw_stream을 비운다.",
+    ),
+    (
         "commands/object_ops/common.rs",
         "insert_new_number_native",
         Exempt::DelegatesTo("insert_new_number_of_kind_native"),

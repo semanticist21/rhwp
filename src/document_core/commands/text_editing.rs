@@ -3599,6 +3599,28 @@ impl DocumentCore {
         );
     }
 
+    /// `rebuild_table_cell_vpos_ladder_native`의 셀 경로판. 경로의 마지막 칸 문단 사다리를
+    /// 처음부터 다시 쌓는다(칸 안 표·머리말/꼬리말 표의 칸 합치기·나누기 뒤).
+    pub(crate) fn rebuild_cell_vpos_ladder_by_path(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+    ) {
+        let styles = self.resolve_render_styles();
+        let dpi = self.dpi;
+        let is_hwp3_variant = self.document.layout_profile().hwp3_layout();
+        let Ok(paras) = self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)
+        else {
+            return;
+        };
+        let stop_para = paras.len();
+        for para in paras.iter_mut() {
+            para.cell_vpos_reset = Some(false);
+        }
+        apply_cell_vpos_ladder(paras, 0, stop_para, &styles, dpi, is_hwp3_variant);
+    }
+
     /// [#2755] 컨트롤+cell_idx 로부터 셀 폭·좌우 패딩(HWPUNIT)을 해석한다.
     ///
     /// `reflow_cell_paragraph`(flat)와 `reflow_cell_paragraph_by_path`(중첩)가 공유한다.

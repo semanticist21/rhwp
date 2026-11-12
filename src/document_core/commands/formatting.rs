@@ -2222,7 +2222,11 @@ impl DocumentCore {
     ///
     /// 번호가 있는 문단의 스타일을 변경할 때 numbering_id를 보존하여
     /// 후속 문단의 번호 연속성을 유지한다.
-    fn resolve_style_para_shape_id(&mut self, style_id: usize, current_psid: u16) -> u16 {
+    pub(crate) fn resolve_style_para_shape_id(
+        &mut self,
+        style_id: usize,
+        current_psid: u16,
+    ) -> u16 {
         use crate::model::style::HeadType;
 
         let current_ps = self

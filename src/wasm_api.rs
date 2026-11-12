@@ -4332,6 +4332,160 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 셀 경로의 표(칸 안의 표·머리말/꼬리말 표)에 줄을 넣는다. 경로의 마지막 마디가 그 표의
+    /// 칸이다(`resizeTableCellsByPath`와 같다). 깊이 1이면 `insertTableRow`와 같다.
+    /// 반환: `{"ok":true,"rowCount":..,"colCount":..}`
+    #[wasm_bindgen(js_name = insertTableRowByPath)]
+    pub fn insert_table_row_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        row_idx: u16,
+        below: bool,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.edit_table_lines_by_path(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            true,
+            false,
+            row_idx,
+            below,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 셀 경로의 표에 칸을 넣는다. 깊이 1이면 `insertTableColumn`과 같다.
+    #[wasm_bindgen(js_name = insertTableColumnByPath)]
+    pub fn insert_table_column_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        col_idx: u16,
+        right: bool,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.edit_table_lines_by_path(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            false,
+            false,
+            col_idx,
+            right,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 셀 경로의 표에서 줄을 지운다. 깊이 1이면 `deleteTableRow`와 같다.
+    #[wasm_bindgen(js_name = deleteTableRowByPath)]
+    pub fn delete_table_row_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        row_idx: u16,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.edit_table_lines_by_path(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            true,
+            true,
+            row_idx,
+            false,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 셀 경로의 표에서 칸을 지운다. 깊이 1이면 `deleteTableColumn`과 같다.
+    #[wasm_bindgen(js_name = deleteTableColumnByPath)]
+    pub fn delete_table_column_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        col_idx: u16,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.edit_table_lines_by_path(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            false,
+            true,
+            col_idx,
+            false,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 셀 경로의 표에서 칸 범위를 합친다. 깊이 1이면 `mergeTableCells`와 같다.
+    /// 반환: `{"ok":true,"cellCount":..}`
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(js_name = mergeTableCellsByPath)]
+    pub fn merge_table_cells_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        start_row: u16,
+        start_col: u16,
+        end_row: u16,
+        end_col: u16,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.core
+            .merge_table_cells_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+                start_row,
+                start_col,
+                end_row,
+                end_col,
+            )
+            .map_err(|e| e.into())
+    }
+
+    /// 셀 경로의 표에서 칸 하나나 칸 범위를 `n_rows`줄 × `m_cols`칸으로 나눈다. 한 칸이면
+    /// `splitTableCellInto`, 범위면 `splitTableCellsInRange`와 같다.
+    /// 반환: `{"ok":true,"cellCount":..}`
+    #[allow(clippy::too_many_arguments)]
+    #[wasm_bindgen(js_name = splitTableCellsByPath)]
+    pub fn split_table_cells_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        start_row: u16,
+        start_col: u16,
+        end_row: u16,
+        end_col: u16,
+        n_rows: u16,
+        m_cols: u16,
+        equal_row_height: bool,
+        merge_first: bool,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.core
+            .split_table_cells_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+                (start_row, start_col, end_row, end_col),
+                n_rows,
+                m_cols,
+                equal_row_height,
+                merge_first,
+            )
+            .map_err(|e| e.into())
+    }
+
     /// 표의 위치 오프셋(vertical_offset, horizontal_offset)을 이동한다.
     ///
     /// delta_h, delta_v: HWPUNIT 단위 이동량 (양수=오른쪽/아래, 음수=왼쪽/위)
@@ -9449,6 +9603,54 @@ impl HwpDocument {
             .map(|s| s.local_name.as_str())
             .unwrap_or("");
         format!("{{\"id\":{},\"name\":\"{}\"}}", style_id, json_escape(name))
+    }
+
+    /// 셀 경로(칸 안의 표·머리말/꼬리말 표의 칸, 머리말·꼬리말 문단)의 문단 스타일을 조회한다.
+    #[wasm_bindgen(js_name = getCellStyleAtByPath)]
+    pub fn get_cell_style_at_by_path(
+        &self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(path_json)?;
+        let style_id = self
+            .core
+            .get_cell_style_at_by_path(section_idx as usize, parent_para_idx as usize, &path)
+            .map_err(JsValue::from)?;
+        let name = self
+            .core
+            .document
+            .doc_info
+            .styles
+            .get(style_id)
+            .map(|s| s.local_name.as_str())
+            .unwrap_or("");
+        Ok(format!(
+            "{{\"id\":{},\"name\":\"{}\"}}",
+            style_id,
+            json_escape(name)
+        ))
+    }
+
+    /// 스타일을 적용한다 (셀 경로의 문단). 깊이 1 표 칸이면 `applyCellStyle`과 같다.
+    #[wasm_bindgen(js_name = applyCellStyleByPath)]
+    pub fn apply_cell_style_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+        style_id: u32,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(path_json)?;
+        self.core
+            .apply_cell_style_by_path(
+                section_idx as usize,
+                parent_para_idx as usize,
+                &path,
+                style_id as usize,
+            )
+            .map_err(|e| e.into())
     }
 
     /// 스타일을 적용한다 (본문 문단).

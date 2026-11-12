@@ -4526,8 +4526,44 @@ impl DocumentCore {
 
         let mut cells = Vec::new();
         let total_pages = self.page_count() as usize;
+        // 머리말·꼬리말 표: 그 머리말·꼬리말이 걸린 쪽마다 머리말·꼬리말 영역에서 찾는다. 그 안의
+        // 글줄은 머리말·꼬리말 문단 번호와 머리말·꼬리말 아래 경로를 단다
+        // (`layout_header_footer_paragraphs`의 `table_meta`).
+        if path.len() >= 2 && self.is_header_footer_control(section_idx, parent_para_idx, path[0].0)
+        {
+            let is_header = matches!(
+                self.document.sections[section_idx].paragraphs[parent_para_idx].controls[path[0].0],
+                Control::Header(_)
+            );
+            // ponytail: 쪽마다 쪽 트리를 짠다(캐시 재사용). 머리말 표 편집에만 쓰인다.
+            for page_num in 0..total_pages {
+                let (si, local) = self.find_section_for_page(page_num as u32);
+                let Some(page) = self.pagination.get(si).and_then(|pr| pr.pages.get(local)) else {
+                    continue;
+                };
+                let active = if is_header {
+                    &page.active_header
+                } else {
+                    &page.active_footer
+                };
+                if !active.as_ref().is_some_and(|r| {
+                    r.source_section_index == section_idx
+                        && r.para_index == parent_para_idx
+                        && r.control_index == path[0].0
+                        && r.table_path.is_empty()
+                }) {
+                    continue;
+                }
+                let tree = self.build_page_tree_cached(page_num as u32)?;
+                if let Some(area) = header_footer_node(&tree.root, is_header) {
+                    find_nested_table_cells(area, path[0].2, &path[1..], page_num, &mut cells);
+                }
+            }
+        }
+        // 머리말·꼬리말에서 찾았으면 본문 쪽은 훑지 않는다.
+        let body_pages = if cells.is_empty() { total_pages } else { 0 };
         let mut found = false;
-        for page_num in 0..total_pages {
+        for page_num in 0..body_pages {
             // Studio에서 보이거나 prefetch된 페이지는 이미 cache에 있다. 객체 선택
             // 때마다 같은 페이지를 다시 조판하면 keydown을 수백 ms 막으므로, 문서
             // mutation 시 함께 무효화되는 표준 page-tree cache를 재사용한다 (#4252).
