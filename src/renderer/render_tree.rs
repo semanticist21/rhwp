@@ -826,17 +826,22 @@ impl FormObjectNode {
         if form.form_type != crate::model::control::FormType::Edit {
             return None;
         }
-        // 한컴 Print는 저장된 LF 뒤 문자열을 한 줄 입력 상자에 이어 그리지 않는다.
-        // MultiLine=0/1인 동일 입력의 독립 Print 모두 첫 줄만 표시한다. 원문은 보존한다.
-        let first_line = form.text.split(['\r', '\n']).next().unwrap_or_default();
+        // 한/글 12.30 Mac은 입력 상자를 MultiLine=0/1 모두 한 줄로 그리고, 저장된 CR·LF를
+        // 빼고 줄들을 이어 그린다(화면·PDF 같음). 한/글 2022 Windows Print는 첫 줄만 보였다
+        // (#7589 자료). 원문은 보존한다.
+        let joined: String = form
+            .text
+            .chars()
+            .filter(|ch| !matches!(ch, '\r' | '\n'))
+            .collect();
         if let Some(mask) = form
             .properties
             .get("PasswordChar")
             .and_then(|value| value.chars().next())
         {
-            Some(mask.to_string().repeat(first_line.chars().count()))
+            Some(mask.to_string().repeat(joined.chars().count()))
         } else {
-            (first_line.len() != form.text.len()).then(|| first_line.to_owned())
+            (joined.len() != form.text.len()).then_some(joined)
         }
     }
 
