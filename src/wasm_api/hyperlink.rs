@@ -81,6 +81,13 @@ impl HwpDocument {
         .to_string())
     }
 
+    /// 링크가 든 모든 문단 주소(본문·표 셀·글상자·캡션·머리말·꼬리말·각주·미주)의 JSON 배열.
+    /// 각 주소는 `getHyperlinkContext`가 받는 꼴이다.
+    #[wasm_bindgen(js_name = getHyperlinkTargets)]
+    pub fn get_hyperlink_targets(&self) -> String {
+        serde_json::to_string(&self.core.hyperlink_targets_native()).unwrap_or_else(|_| "[]".into())
+    }
+
     #[wasm_bindgen(js_name = insertHyperlinkEx)]
     pub fn insert_hyperlink_ex(&mut self, options_json: &str) -> Result<u32, JsValue> {
         let o: InsertOptions = parse(options_json)?;

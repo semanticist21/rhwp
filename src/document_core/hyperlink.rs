@@ -503,24 +503,27 @@ impl DocumentCore {
             let p = paragraphs
                 .get(para_idx)
                 .ok_or_else(|| invalid("상위 문단 인덱스 초과"))?;
-            paragraphs = match p.controls.get(ctrl_idx) {
-                Some(Control::Table(table)) => {
-                    &table
-                        .cells
-                        .get(cell_idx)
-                        .ok_or_else(|| invalid("셀 인덱스 초과"))?
-                        .paragraphs
-                }
-                Some(Control::Shape(shape)) => {
-                    &super::helpers::get_textbox_at(shape, cell_idx)
-                        .ok_or_else(|| invalid("글상자가 없는 도형"))?
-                        .paragraphs
-                }
-                _ => return Err(invalid("지원하지 않는 셀/글상자 경로")),
-            };
+            paragraphs = p
+                .controls
+                .get(ctrl_idx)
+                .and_then(|control| path_paragraphs(control, cell_idx))
+                .ok_or_else(|| invalid("지원하지 않는 셀/글상자 경로"))?;
             para_idx = child_para;
         }
         Ok((paragraphs, para_idx))
+    }
+
+    /// 문서의 모든 링크 문단 주소. 본문·표 셀·글상자·캡션·머리말·꼬리말·각주·미주를
+    /// 문서 순서로 훑어 하이퍼링크 필드가 범위로 든 문단만 돌려준다(한컴 하이퍼링크
+    /// 글자 모양의 문서 전체 적용 대상). 주소는 [`Self::hyperlinks_native`]가 받는 꼴이다.
+    pub fn hyperlink_targets_native(&self) -> Vec<HyperlinkTarget> {
+        let mut out = Vec::new();
+        for (section, sec) in self.document.sections.iter().enumerate() {
+            for (para, p) in sec.paragraphs.iter().enumerate() {
+                collect_hyperlink_targets(p, section, para, &mut Vec::new(), &mut out);
+            }
+        }
+        out
     }
 
     fn validate_hyperlink_paragraph(&self, target: &HyperlinkTarget) -> Result<(), HwpError> {
@@ -622,6 +625,64 @@ impl DocumentCore {
             field_id,
         });
         Ok(())
+    }
+}
+
+/// 경로 항목 (컨트롤, 셀) 이 가리키는 문단 목록. 셀 65534는 표·도형 캡션, 그림 캡션·
+/// 머리말·꼬리말·각주·미주는 셀 0이다(`get_cell_paragraphs_mut_by_path`와 같은 꼴).
+fn path_paragraphs(control: &Control, cell_idx: usize) -> Option<&[Paragraph]> {
+    match control {
+        Control::Table(table) if cell_idx == 65534 => Some(&table.caption.as_ref()?.paragraphs),
+        Control::Table(table) => Some(&table.cells.get(cell_idx)?.paragraphs),
+        Control::Shape(shape) if cell_idx == 65534 => {
+            Some(&DocumentCore::shape_caption_ref(shape)?.paragraphs)
+        }
+        Control::Shape(shape) => Some(&super::helpers::get_textbox_at(shape, cell_idx)?.paragraphs),
+        Control::Picture(picture) if cell_idx == 0 => Some(&picture.caption.as_ref()?.paragraphs),
+        Control::Footnote(note) if cell_idx == 0 => Some(&note.paragraphs),
+        Control::Endnote(note) if cell_idx == 0 => Some(&note.paragraphs),
+        _ if cell_idx == 0 => control.header_footer_paragraphs().map(Vec::as_slice),
+        _ => None,
+    }
+}
+
+/// 문단 `p`에 링크가 있으면 그 주소를 더하고, 컨트롤 안 문단 목록으로 내려간다.
+fn collect_hyperlink_targets(
+    p: &Paragraph,
+    section: usize,
+    para: usize,
+    path: &mut Vec<(usize, usize, usize)>,
+    out: &mut Vec<HyperlinkTarget>,
+) {
+    if p.field_ranges.iter().any(|r| {
+        matches!(
+            p.controls.get(r.control_idx),
+            Some(Control::Field(field)) if field.field_type == FieldType::Hyperlink
+        )
+    }) {
+        out.push(HyperlinkTarget {
+            section,
+            para,
+            cell_path: path.clone(),
+        });
+    }
+    for (ctrl_idx, control) in p.controls.iter().enumerate() {
+        let cells: Vec<usize> = match control {
+            Control::Table(table) => (0..table.cells.len()).chain([65534]).collect(),
+            Control::Shape(shape) => (0..shape.textbox_shape_count()).chain([65534]).collect(),
+            _ => vec![0],
+        };
+        for cell_idx in cells {
+            let Some(paragraphs) = path_paragraphs(control, cell_idx) else {
+                continue;
+            };
+            // 경로 마지막 항목의 문단 번호가 지금 문단 `p`다. 그 컨트롤 안으로 한 겹 더 간다.
+            for (child, inner) in paragraphs.iter().enumerate() {
+                path.push((ctrl_idx, cell_idx, child));
+                collect_hyperlink_targets(inner, section, para, path, out);
+                path.pop();
+            }
+        }
     }
 }
 

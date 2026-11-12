@@ -1508,7 +1508,12 @@ impl DocumentCore {
         // [#2755] 깊이 1 셀은 flat 형제가 셀 폭 리플로우(paint-only 게이팅 포함)를 담당한다.
         // `apply_char_format_in_cell_native`(:1103)는 char_shape_mods_affect_text_flow 로
         // 게이팅한 뒤에만 reflow_cell_paragraph 를 호출하므로 밑줄/색 변경은 리플로우하지 않는다.
-        if path.len() == 1 {
+        // 머리말·꼬리말·각주·미주는 셀 번호 API가 받지 않으므로 아래 경로 갈래로 간다.
+        if path.len() == 1
+            && self
+                .get_cell_paragraph_ref(sec_idx, parent_para_idx, path[0].0, path[0].1, path[0].2)
+                .is_some()
+        {
             let (control_idx, cell_idx, cell_para_idx) = path[0];
             return self.apply_char_format_in_cell_native(
                 sec_idx,

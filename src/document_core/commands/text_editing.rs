@@ -3703,6 +3703,19 @@ impl DocumentCore {
                         - page_def.margin_right as i32;
                     return (cell_idx == 0).then_some((width, 0, 0));
                 }
+                if matches!(control, Control::Footnote(_) | Control::Endnote(_)) {
+                    // 각주·미주 영역 폭 = 쪽 글 영역 폭(`reflow_footnote_paragraph`와 같다).
+                    let page_def = &self
+                        .document
+                        .sections
+                        .get(section_idx)?
+                        .section_def
+                        .page_def;
+                    let width = page_def.width as i32
+                        - page_def.margin_left as i32
+                        - page_def.margin_right as i32;
+                    return (cell_idx == 0).then_some((width, 0, 0));
+                }
                 return Self::cell_metrics_for_control(control, cell_idx);
             }
             para = match control {
@@ -3714,6 +3727,8 @@ impl DocumentCore {
                 Control::Header(_) | Control::Footer(_) if cell_idx == 0 => {
                     control.header_footer_paragraphs()?.get(cell_para_idx)?
                 }
+                Control::Footnote(note) if cell_idx == 0 => note.paragraphs.get(cell_para_idx)?,
+                Control::Endnote(note) if cell_idx == 0 => note.paragraphs.get(cell_para_idx)?,
                 _ => return None,
             };
         }
@@ -6547,21 +6562,63 @@ impl DocumentCore {
         for (i, &(ctrl_idx, cell_idx, cell_para_idx)) in path.iter().enumerate() {
             let is_last = i == path.len() - 1;
             let paragraphs = match para.controls.get_mut(ctrl_idx) {
+                // 셀 65534는 rhwp 셀 번호 API처럼 표·도형 캡션이다.
                 Some(Control::Table(t)) => {
-                    let cell = t.cells.get_mut(cell_idx).ok_or_else(|| {
-                        HwpError::RenderError(format!("경로[{}]: 셀 {} 범위 초과", i, cell_idx))
-                    })?;
-                    &mut cell.paragraphs
+                    if cell_idx == 65534 {
+                        &mut t
+                            .caption
+                            .as_mut()
+                            .ok_or_else(|| {
+                                HwpError::RenderError(format!("경로[{}]: 표에 캡션이 없습니다", i))
+                            })?
+                            .paragraphs
+                    } else {
+                        let cell = t.cells.get_mut(cell_idx).ok_or_else(|| {
+                            HwpError::RenderError(format!("경로[{}]: 셀 {} 범위 초과", i, cell_idx))
+                        })?;
+                        &mut cell.paragraphs
+                    }
                 }
                 Some(Control::Shape(shape)) => {
-                    let text_box = super::super::helpers::get_textbox_at_mut(shape, cell_idx)
-                        .ok_or_else(|| {
+                    if cell_idx == 65534 {
+                        &mut Self::shape_caption_mut(shape)
+                            .as_mut()
+                            .ok_or_else(|| {
+                                HwpError::RenderError(format!(
+                                    "경로[{}]: 도형에 캡션이 없습니다",
+                                    i
+                                ))
+                            })?
+                            .paragraphs
+                    } else {
+                        let text_box = super::super::helpers::get_textbox_at_mut(shape, cell_idx)
+                            .ok_or_else(|| {
                             HwpError::RenderError(format!(
                                 "경로[{}]: controls[{}]가 텍스트 글상자가 아닙니다",
                                 i, ctrl_idx
                             ))
                         })?;
-                    &mut text_box.paragraphs
+                        &mut text_box.paragraphs
+                    }
+                }
+                // 각주·미주는 셀 0이다(머리말·꼬리말과 같은 꼴).
+                Some(Control::Footnote(note)) => {
+                    if cell_idx != 0 {
+                        return Err(HwpError::RenderError(format!(
+                            "경로[{}]: 각주의 cell_index는 0이어야 합니다 ({})",
+                            i, cell_idx
+                        )));
+                    }
+                    &mut note.paragraphs
+                }
+                Some(Control::Endnote(note)) => {
+                    if cell_idx != 0 {
+                        return Err(HwpError::RenderError(format!(
+                            "경로[{}]: 미주의 cell_index는 0이어야 합니다 ({})",
+                            i, cell_idx
+                        )));
+                    }
+                    &mut note.paragraphs
                 }
                 Some(Control::Picture(pic)) => {
                     if cell_idx != 0 {
