@@ -1167,7 +1167,7 @@ fn test_transpose_full_table_in_place_4x2_to_2x4() {
         }
     }
 
-    let changed = table.transpose_unmerged_table_in_place().unwrap();
+    let changed = table.transpose_table_in_place().unwrap();
 
     assert_eq!(table.row_count, 2);
     assert_eq!(table.col_count, 4);
@@ -1197,17 +1197,92 @@ fn test_transpose_paste_out_of_bounds_fails() {
 }
 
 #[test]
-fn test_transpose_rejects_merged_cells() {
+fn test_transpose_rejects_merged_cells_across_range() {
+    // 범위 경계에 걸친 병합 셀은 복사하지 않는다.
     let mut table = make_table(3, 3);
     table.merge_cells(0, 0, 0, 1).unwrap();
-    assert!(table.copy_transpose_range(0, 0, 1, 1).is_err());
+    assert!(table.copy_transpose_range(0, 0, 1, 0).is_err());
 
+    // 대상에 다른 모양으로 병합한 셀이 있으면 붙이지 않는다.
     let mut target_table = make_table(3, 3);
     set_cell_text(&mut target_table, 0, 0, "a");
     set_cell_text(&mut target_table, 1, 0, "b");
     let data = target_table.copy_transpose_range(0, 0, 1, 0).unwrap();
-    target_table.merge_cells(0, 1, 0, 2).unwrap();
+    target_table.merge_cells(0, 1, 1, 1).unwrap();
     assert!(target_table.paste_transposed_cells(0, 1, &data).is_err());
+}
+
+#[test]
+fn test_transpose_copy_paste_keeps_merged_cells() {
+    // 원본 3×2 범위의 첫 줄 두 칸을 합친 셀은 대상 2×3에서 첫 칸 두 줄을 합친 셀이 된다.
+    let mut table = make_table(3, 6);
+    table.merge_cells(0, 0, 0, 1).unwrap();
+    set_cell_text(&mut table, 0, 0, "m");
+    set_cell_text(&mut table, 1, 0, "s10");
+    set_cell_text(&mut table, 1, 1, "s11");
+    set_cell_text(&mut table, 2, 0, "s20");
+    set_cell_text(&mut table, 2, 1, "s21");
+    set_cell_text(&mut table, 0, 3, "old");
+
+    let data = table.copy_transpose_range(0, 0, 2, 1).unwrap();
+    assert_eq!(data.merges, vec![(0, 0, 1, 2)]);
+    table.paste_transposed_cells(0, 3, &data).unwrap();
+
+    let merged = table.cell_at(0, 3).unwrap();
+    assert_eq!((merged.row_span, merged.col_span), (2, 1));
+    assert_eq!(cell_text(&table, 0, 3), "m");
+    assert_eq!(cell_text(&table, 0, 4), "s10");
+    assert_eq!(cell_text(&table, 1, 4), "s11");
+    assert_eq!(cell_text(&table, 0, 5), "s20");
+    assert_eq!(cell_text(&table, 1, 5), "s21");
+
+    // 같은 모양으로 이미 합친 대상에는 다시 붙일 수 있다.
+    table.paste_transposed_cells(0, 3, &data).unwrap();
+    assert_eq!(cell_text(&table, 0, 3), "m");
+}
+
+#[test]
+fn test_transpose_full_table_in_place_keeps_merges_and_zones() {
+    let mut table = make_table(2, 3);
+    table.merge_cells(0, 1, 0, 2).unwrap();
+    set_cell_text(&mut table, 0, 0, "a");
+    set_cell_text(&mut table, 0, 1, "wide");
+    set_cell_text(&mut table, 1, 2, "z");
+    table.zones.push(TableZone {
+        start_row: 1,
+        start_col: 0,
+        end_row: 1,
+        end_col: 2,
+        border_fill_id: 5,
+    });
+
+    table.transpose_table_in_place().unwrap();
+
+    assert_eq!((table.row_count, table.col_count), (3, 2));
+    let tall = table.cell_at(1, 0).unwrap();
+    assert_eq!(
+        (tall.row, tall.col, tall.row_span, tall.col_span),
+        (1, 0, 2, 1)
+    );
+    assert_eq!(cell_text(&table, 1, 0), "wide");
+    assert_eq!(cell_text(&table, 0, 0), "a");
+    assert_eq!(cell_text(&table, 2, 1), "z");
+    assert_eq!(table.cells.len(), 5);
+    assert_eq!(table.row_sizes, vec![2, 2, 1]);
+    let zone = &table.zones[0];
+    assert_eq!(
+        (
+            zone.start_row,
+            zone.start_col,
+            zone.end_row,
+            zone.end_col,
+            zone.border_fill_id
+        ),
+        (0, 1, 2, 1, 5)
+    );
+    let widths: u32 = table.get_column_widths().iter().sum();
+    assert_eq!(tall.width, widths / 2);
+    assert_eq!(tall.height, 2 * table.cell_at(0, 0).unwrap().height);
 }
 
 // [Task #1716] leading_header_rows: 상단 연속 제목행 블록만 반환하는지 검증

@@ -1054,7 +1054,7 @@ impl DocumentCore {
             let source_rows = table.row_count;
             let source_cols = table.col_count;
             let changed_cells = table
-                .transpose_unmerged_table_in_place()
+                .transpose_table_in_place()
                 .map_err(HwpError::RenderError)?;
             (source_rows, source_cols, changed_cells)
         };

@@ -281,6 +281,18 @@ pub struct TableTransposeData {
     pub source_rows: u16,
     pub source_cols: u16,
     pub cells: Vec<Vec<Vec<Paragraph>>>,
+    /// 범위 안 병합 셀의 (줄, 칸, 줄 수, 칸 수). 줄·칸은 범위 왼쪽 위 기준이고, 병합 셀이 가린 자리의
+    /// `cells` 문단은 비어 있다.
+    pub merges: Vec<(u16, u16, u16, u16)>,
+}
+
+impl TableTransposeData {
+    /// 병합 셀이 가린(왼쪽 위가 아닌) 원본 자리인지.
+    fn covered(&self, row: u16, col: u16) -> bool {
+        self.merges.iter().any(|&(r, c, rs, cs)| {
+            row >= r && row < r + rs && col >= c && col < c + cs && (row, col) != (r, c)
+        })
+    }
 }
 
 fn distribute_hwp_units(total: HwpUnit, count: u16) -> Vec<HwpUnit> {
@@ -1311,41 +1323,6 @@ impl Table {
         self.cells.get_mut(cell_idx)
     }
 
-    fn validate_unmerged_rect(
-        &self,
-        start_row: u16,
-        start_col: u16,
-        end_row: u16,
-        end_col: u16,
-    ) -> Result<(), String> {
-        if start_row > end_row || start_col > end_col {
-            return Err("셀 범위가 유효하지 않습니다".to_string());
-        }
-        if end_row >= self.row_count || end_col >= self.col_count {
-            return Err(format!(
-                "셀 범위 ({},{})~({},{})가 표 크기 {}×{}를 초과합니다",
-                start_row, start_col, end_row, end_col, self.row_count, self.col_count
-            ));
-        }
-
-        for row in start_row..=end_row {
-            for col in start_col..=end_col {
-                let cell_idx = self
-                    .cell_index_at(row, col)
-                    .ok_or_else(|| format!("셀 ({},{})을 찾을 수 없습니다", row, col))?;
-                let cell = &self.cells[cell_idx];
-                if cell.row != row || cell.col != col || cell.row_span != 1 || cell.col_span != 1 {
-                    return Err(format!(
-                        "병합 셀 ({},{})은 행/열 바꿈 범위에 포함할 수 없습니다",
-                        cell.row, cell.col
-                    ));
-                }
-            }
-        }
-
-        Ok(())
-    }
-
     /// 셀 블록(병합 셀을 온전히 품는 사각형)만 남긴 표를 만든다. 한컴 12.30의 셀 블록 복사처럼
     /// 블록 밖 줄·칸을 지워 칸 너비·병합·셀 모양을 지키고, 셀 범위 서식은 블록과 겹치는 부분만 블록
     /// 좌표로 옮긴다. 캡션은 블록에 속하지 않아 빼고, 바깥 여백은 한컴이 붙인 블록 표처럼 네 방향
@@ -1434,7 +1411,46 @@ impl Table {
         Ok(block)
     }
 
-    /// 직사각형 범위의 셀 문단을 행/열 바꿈 복사용 데이터로 복사한다.
+    /// 범위와 겹치는 병합 셀이 범위 안에 다 드는지 본다(셀 블록처럼 경계에 걸친 병합 셀은 거절).
+    fn validate_whole_cells_rect(
+        &self,
+        start_row: u16,
+        start_col: u16,
+        end_row: u16,
+        end_col: u16,
+    ) -> Result<(), String> {
+        if start_row > end_row || start_col > end_col {
+            return Err("셀 범위가 유효하지 않습니다".to_string());
+        }
+        if end_row >= self.row_count || end_col >= self.col_count {
+            return Err(format!(
+                "셀 범위 ({},{})~({},{})가 표 크기 {}×{}를 초과합니다",
+                start_row, start_col, end_row, end_col, self.row_count, self.col_count
+            ));
+        }
+        for cell in &self.cells {
+            let last_row = cell.row.saturating_add(cell.row_span.max(1) - 1);
+            let last_col = cell.col.saturating_add(cell.col_span.max(1) - 1);
+            let touches = cell.row <= end_row
+                && last_row >= start_row
+                && cell.col <= end_col
+                && last_col >= start_col;
+            let inside = cell.row >= start_row
+                && last_row <= end_row
+                && cell.col >= start_col
+                && last_col <= end_col;
+            if touches && !inside {
+                return Err(format!(
+                    "병합 셀 ({},{})이 행/열 바꿈 범위 경계에 걸쳐 있습니다",
+                    cell.row, cell.col
+                ));
+            }
+        }
+        Ok(())
+    }
+
+    /// 직사각형 범위의 셀 문단을 행/열 바꿈 복사용 데이터로 복사한다. 범위 안 병합 셀은 병합 모양과
+    /// 함께 담는다.
     pub fn copy_transpose_range(
         &self,
         start_row: u16,
@@ -1442,31 +1458,42 @@ impl Table {
         end_row: u16,
         end_col: u16,
     ) -> Result<TableTransposeData, String> {
-        self.validate_unmerged_rect(start_row, start_col, end_row, end_col)?;
+        self.validate_whole_cells_rect(start_row, start_col, end_row, end_col)?;
 
         let source_rows = end_row - start_row + 1;
         let source_cols = end_col - start_col + 1;
-        let mut cells = Vec::with_capacity(source_rows as usize);
-
-        for row in start_row..=end_row {
-            let mut row_cells = Vec::with_capacity(source_cols as usize);
-            for col in start_col..=end_col {
-                let cell_idx = self
-                    .cell_index_at(row, col)
-                    .ok_or_else(|| format!("셀 ({},{})을 찾을 수 없습니다", row, col))?;
-                row_cells.push(self.cells[cell_idx].paragraphs.clone());
+        let mut cells = vec![vec![Vec::new(); source_cols as usize]; source_rows as usize];
+        let mut merges = Vec::new();
+        for cell in &self.cells {
+            if cell.row < start_row
+                || cell.row > end_row
+                || cell.col < start_col
+                || cell.col > end_col
+            {
+                continue;
             }
-            cells.push(row_cells);
+            let (row, col) = (cell.row - start_row, cell.col - start_col);
+            let mut paragraphs = cell.paragraphs.clone();
+            if paragraphs.is_empty() {
+                paragraphs.push(Paragraph::new_empty());
+            }
+            cells[row as usize][col as usize] = paragraphs;
+            let (rs, cs) = (cell.row_span.max(1), cell.col_span.max(1));
+            if rs > 1 || cs > 1 {
+                merges.push((row, col, rs, cs));
+            }
         }
 
         Ok(TableTransposeData {
             source_rows,
             source_cols,
             cells,
+            merges,
         })
     }
 
-    /// 행/열 바꿈 복사 데이터를 대상 시작 셀부터 붙여넣는다.
+    /// 행/열 바꿈 복사 데이터를 대상 시작 셀부터 붙여넣는다. 병합 셀은 행/열을 바꾼 모양으로 대상
+    /// 셀을 합쳐 놓는다. 대상에 이미 있는 병합 셀은 그 모양과 같을 때만 받는다.
     ///
     /// 반환값은 내용이 교체된 `(cell_idx, paragraph_count)` 목록이다.
     pub fn paste_transposed_cells(
@@ -1495,11 +1522,43 @@ impl Table {
         let end_col = start_col
             .checked_add(target_cols - 1)
             .ok_or_else(|| "대상 열 범위가 너무 큽니다".to_string())?;
-        self.validate_unmerged_rect(start_row, start_col, end_row, end_col)?;
+        self.validate_whole_cells_rect(start_row, start_col, end_row, end_col)?;
+
+        // 원본 병합 (줄, 칸, 줄 수, 칸 수)는 대상에서 (칸, 줄, 칸 수, 줄 수)가 된다.
+        let merges: Vec<(u16, u16, u16, u16)> = data
+            .merges
+            .iter()
+            .map(|&(r, c, rs, cs)| (start_row + c, start_col + r, cs, rs))
+            .collect();
+        for cell in &self.cells {
+            let inside = cell.row >= start_row
+                && cell.row <= end_row
+                && cell.col >= start_col
+                && cell.col <= end_col;
+            let span = (cell.row_span.max(1), cell.col_span.max(1));
+            if inside && span != (1, 1) && !merges.contains(&(cell.row, cell.col, span.0, span.1)) {
+                return Err(format!(
+                    "병합 모양이 다른 셀 ({},{})에는 행/열을 바꿔 붙일 수 없습니다",
+                    cell.row, cell.col
+                ));
+            }
+        }
+        for &(row, col, rs, cs) in &merges {
+            let already = self.cell_at(row, col).is_some_and(|cell| {
+                (cell.row, cell.col, cell.row_span, cell.col_span) == (row, col, rs, cs)
+            });
+            if !already {
+                self.merge_cells(row, col, row + rs - 1, col + cs - 1)?;
+            }
+        }
+        self.rebuild_grid();
 
         let mut changed = Vec::with_capacity((target_rows as usize) * (target_cols as usize));
         for source_row in 0..data.source_rows {
             for source_col in 0..data.source_cols {
+                if data.covered(source_row, source_col) {
+                    continue;
+                }
                 let target_row = start_row + source_col;
                 let target_col = start_col + source_row;
                 let cell_idx = self.cell_index_at(target_row, target_col).ok_or_else(|| {
@@ -1518,28 +1577,16 @@ impl Table {
         Ok(changed)
     }
 
-    /// 병합 없는 전체 표를 제자리에서 전치한다.
-    pub fn transpose_unmerged_table_in_place(&mut self) -> Result<Vec<(usize, usize)>, String> {
+    /// 전체 표를 제자리에서 전치한다. 병합 셀은 줄 수·칸 수를 맞바꾸고, 셀 범위 서식(cellzone)도
+    /// 같은 자리로 옮긴다. 칸 너비는 표 너비를 고르게 나누고 줄 높이는 가장 높은 줄에 맞춘다.
+    pub fn transpose_table_in_place(&mut self) -> Result<Vec<(usize, usize)>, String> {
         if self.row_count == 0 || self.col_count == 0 {
             return Err("행/열을 바꿀 표가 비어 있습니다".to_string());
         }
-        self.validate_unmerged_rect(0, 0, self.row_count - 1, self.col_count - 1)?;
+        self.validate_whole_cells_rect(0, 0, self.row_count - 1, self.col_count - 1)?;
 
         let source_rows = self.row_count;
         let source_cols = self.col_count;
-        let source_cells = (0..source_rows)
-            .map(|row| {
-                (0..source_cols)
-                    .map(|col| {
-                        let cell_idx = self
-                            .cell_index_at(row, col)
-                            .ok_or_else(|| format!("셀 ({},{})을 찾을 수 없습니다", row, col))?;
-                        Ok(self.cells[cell_idx].clone())
-                    })
-                    .collect::<Result<Vec<_>, String>>()
-            })
-            .collect::<Result<Vec<_>, String>>()?;
-
         let target_rows = source_cols;
         let target_cols = source_rows;
         let total_width: HwpUnit = self.get_column_widths().iter().sum();
@@ -1551,28 +1598,40 @@ impl Table {
             .unwrap_or(400)
             .max(400);
 
-        let mut cells = Vec::with_capacity((target_rows as usize) * (target_cols as usize));
-        for target_row in 0..target_rows {
-            for target_col in 0..target_cols {
-                let mut cell = source_cells[target_col as usize][target_row as usize].clone();
-                cell.row = target_row;
-                cell.col = target_col;
-                cell.row_span = 1;
-                cell.col_span = 1;
-                cell.width = target_widths[target_col as usize];
-                cell.height = row_height;
-                if cell.paragraphs.is_empty() {
-                    cell.paragraphs.push(Paragraph::new_empty());
+        for cell in &mut self.cells {
+            let (rs, cs) = (cell.row_span.max(1), cell.col_span.max(1));
+            (cell.row, cell.col) = (cell.col, cell.row);
+            (cell.row_span, cell.col_span) = (cs, rs);
+            let width: HwpUnit = target_widths
+                [cell.col as usize..(cell.col + cell.col_span) as usize]
+                .iter()
+                .sum();
+            // 셀 LIST_HEADER 확장 바이트의 앞 4바이트는 셀 너비를 따른다(병합과 같다).
+            if cell.raw_list_extra.len() >= 4 {
+                let old_ref = u32::from_le_bytes(cell.raw_list_extra[0..4].try_into().unwrap());
+                if old_ref == cell.width {
+                    cell.raw_list_extra[0..4].copy_from_slice(&width.to_le_bytes());
                 }
-                cells.push(cell);
+            }
+            cell.width = width;
+            cell.height = row_height * HwpUnit::from(cell.row_span);
+            if cell.paragraphs.is_empty() {
+                cell.paragraphs.push(Paragraph::new_empty());
             }
         }
+        for zone in &mut self.zones {
+            (zone.start_row, zone.start_col) = (zone.start_col, zone.start_row);
+            (zone.end_row, zone.end_col) = (zone.end_col, zone.end_row);
+        }
+        self.cells.sort_by_key(|cell| (cell.row, cell.col));
 
         self.row_count = target_rows;
         self.col_count = target_cols;
-        self.row_sizes = vec![target_cols as i16; target_rows as usize];
-        self.cells = cells;
-        self.zones.clear();
+        let mut row_sizes = vec![0i16; target_rows as usize];
+        for cell in &self.cells {
+            row_sizes[cell.row as usize] += 1;
+        }
+        self.row_sizes = row_sizes;
         self.update_ctrl_dimensions();
         self.rebuild_grid();
 
