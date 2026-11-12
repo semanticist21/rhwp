@@ -3302,6 +3302,18 @@ pub fn split_into_clusters(text: &str) -> Vec<(usize, String)> {
     clusters
 }
 
+/// 세로쓰기 글상자에서 한 글자가 열 아래로 나아가는 길이(px). 회전하는 글자와 한글·영숫자가
+/// 아닌 구두점·기호는 반 칸, 나머지는 글자 크기다. 그리기와 열 나누기가 함께 쓴다.
+/// `text_direction`: 1=영문 눕힘, 2=영문 세움.
+pub(crate) fn vertical_char_advance(c: char, font_size: f64, text_direction: u8) -> f64 {
+    let rotated = is_vertical_rotate_char(c) || (text_direction == 1 && !is_cjk_char(c));
+    if rotated || (!is_cjk_char(c) && !c.is_ascii_alphanumeric()) {
+        font_size * 0.5
+    } else {
+        font_size
+    }
+}
+
 /// 세로쓰기에서 CW 90° 회전해야 하는 문자 판별
 ///
 /// text_direction과 무관하게 항상 회전되는 문자:

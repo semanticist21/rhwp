@@ -124,3 +124,111 @@ fn vertical_all_is_kept_in_hwpx() {
         2
     );
 }
+
+/// 30mm 세로 글상자(8504 HU, 위·아래 안 여백 283)를 만들고 `text`를 넣는다.
+fn vertical_box(text: &str) -> (HwpDocument, usize, usize) {
+    let mut doc = HwpDocument::create_empty();
+    doc.create_blank_document_native().unwrap();
+    let result: serde_json::Value = serde_json::from_str(
+        &doc.create_shape_control_native(
+            0,
+            0,
+            0,
+            8504,
+            8504,
+            8000,
+            8000,
+            false,
+            "InFrontOfText",
+            "textbox",
+            false,
+            false,
+            &[],
+        )
+        .unwrap(),
+    )
+    .unwrap();
+    let para = result["paraIdx"].as_u64().unwrap() as usize;
+    let control = result["controlIdx"].as_u64().unwrap() as usize;
+    doc.set_shape_properties_native(
+        0,
+        para,
+        control,
+        r#"{"tbTextDirection":"Vertical","tbMarginTop":283,"tbMarginBottom":283}"#,
+    )
+    .unwrap();
+    if !text.is_empty() {
+        doc.insert_text_in_cell_native(0, para, control, 0, 0, 0, text)
+            .unwrap();
+    }
+    (doc, para, control)
+}
+
+fn rect(doc: &HwpDocument, para: usize, control: usize, offset: usize) -> serde_json::Value {
+    serde_json::from_str(
+        &doc.get_cursor_rect_in_cell_native(0, para, control, 0, 0, offset)
+            .unwrap_or_else(|e| panic!("세로 글상자 {offset} 자리 캐럿: {e}")),
+    )
+    .unwrap()
+}
+
+/// 한/글 12.30은 30mm 세로 글상자(안 길이 7938 HU)의 10pt 한 열에 한글 7자를 둔다(1em씩
+/// 내려 8자는 7938을 넘는다). 종전 rhwp는 가로 글자 폭으로 열을 나눠 8자를 두고, 그리기가
+/// 열을 넘는 8번째 글자를 그리지 않았다.
+#[test]
+fn vertical_textbox_column_holds_seven_hangul_and_draws_all() {
+    let text = "가나다라마바사아자차카타";
+    let (doc, para, control) = vertical_box(text);
+    let lines = &text_box(&doc, para, control).paragraphs[0].line_segs;
+    assert_eq!(
+        lines.iter().map(|l| l.text_start).collect::<Vec<_>>(),
+        vec![0, 7],
+        "열마다 한글 7자"
+    );
+    assert!(lines[1].vertical_pos > lines[0].vertical_pos);
+    let svg = doc.render_page_svg_native(0).unwrap();
+    let drawn = text
+        .chars()
+        .filter(|ch| svg.contains(&format!(">{ch}<")))
+        .count();
+    assert_eq!(drawn, text.chars().count(), "모든 글자를 그린다");
+}
+
+/// 세로 글상자의 캐럿은 열을 따라 위에서 아래로 나아가는 가로 막대다. 빈 상자에도 자리가
+/// 있다. 종전 rhwp는 빈 상자에서 오류를, 글 끝에서 가로로 옮긴 자리를 줬다.
+#[test]
+fn vertical_textbox_caret_runs_down_the_column() {
+    let (empty, para, control) = vertical_box("");
+    let r = rect(&empty, para, control, 0);
+    assert_eq!(r["vertical"], true, "{r}");
+
+    let (doc, para, control) = vertical_box("가나");
+    let rs: Vec<_> = (0..3).map(|o| rect(&doc, para, control, o)).collect();
+    let num = |r: &serde_json::Value, k: &str| r[k].as_f64().unwrap();
+    for r in &rs {
+        assert_eq!(r["vertical"], true, "{r}");
+        assert!(
+            (num(r, "x") - num(&rs[0], "x")).abs() < 0.2,
+            "한 열: {rs:?}"
+        );
+        assert!(num(r, "width") > 10.0);
+    }
+    assert!((num(&rs[1], "y") - num(&rs[0], "y") - num(&rs[0], "height")).abs() < 0.2);
+    assert!((num(&rs[2], "y") - num(&rs[1], "y") - num(&rs[1], "height")).abs() < 0.2);
+
+    // 글자 위쪽 반을 누르면 그 글자 앞, 아래쪽 반은 뒤 자리다.
+    let (x, y, w, h) = (
+        num(&rs[0], "x"),
+        num(&rs[0], "y"),
+        num(&rs[0], "width"),
+        num(&rs[0], "height"),
+    );
+    let offset = |px: f64, py: f64| -> u64 {
+        let hit: serde_json::Value =
+            serde_json::from_str(&doc.hit_test_native(0, px, py).unwrap()).unwrap();
+        assert_eq!(hit["isTextBox"], true, "{hit}");
+        hit["charOffset"].as_u64().unwrap()
+    };
+    assert_eq!(offset(x + w * 0.7, y + h * 0.25), 0);
+    assert_eq!(offset(x + w * 0.3, y + h * 0.75), 1);
+}

@@ -6062,6 +6062,61 @@ pub(crate) fn merge_soft_wrapped_line_segs(para: &mut Paragraph) {
     para.line_segs = merged;
 }
 
+/// 세로쓰기 글상자 문단의 줄(열)을 세로 전진으로 다시 나눈다.
+///
+/// 일반 조판은 가로 글자 폭으로 줄을 나눠, 한컴 12.30이 10pt 한글 7자를 두는 30mm 세로
+/// 글상자 열(안 길이 7938HU)에 8자를 둔다. 그리기(`layout_vertical_textbox_text_with_paras`)는
+/// 한글을 1em씩 내려 8번째 글자가 열을 넘어 사라졌다. 여기서는 그리기와 같은 전진
+/// (`vertical_char_advance`)과 같은 허용치(0.5px)로 열을 나누고, 강제 줄 나눔 뒤에서도 연다.
+/// 줄 높이·간격은 앞서 짠 줄을 본뜨고 `vertical_pos`만 다시 쌓는다.
+/// ponytail: 줄머리 금칙은 보지 않는다. 세로 금칙이 필요하면 `is_line_start_forbidden`을 더한다.
+pub(crate) fn rebreak_vertical_line_segs(
+    para: &mut Paragraph,
+    styles: &ResolvedStyleSet,
+    extent_px: f64,
+    text_direction: u8,
+) {
+    let Some(first) = para.line_segs.first().cloned() else {
+        return;
+    };
+    let composed = super::compose_paragraph_in_context(para, styles);
+    let mut starts = Vec::new();
+    let (mut index, mut filled, mut forced) = (0usize, 0.0f64, false);
+    for run in composed.lines.iter().flat_map(|line| &line.runs) {
+        let font_size = run.text_style(styles).font_size;
+        for ch in run.text.chars() {
+            if ch == '\n' || ch == '\r' {
+                index += 1;
+                forced = true;
+                continue;
+            }
+            let advance =
+                crate::renderer::layout::vertical_char_advance(ch, font_size, text_direction);
+            if forced || (filled > 0.0 && filled + advance > extent_px + 0.5) {
+                starts.push(index);
+                filled = 0.0;
+                forced = false;
+            }
+            filled += advance;
+            index += 1;
+        }
+    }
+    let template = std::mem::take(&mut para.line_segs);
+    let mut segs = vec![first];
+    for (i, start) in starts.into_iter().enumerate() {
+        let prev = &segs[i];
+        let mut seg = template[(i + 1).min(template.len() - 1)].clone();
+        seg.text_start = para
+            .char_offsets
+            .get(start)
+            .copied()
+            .unwrap_or(start as u32);
+        seg.vertical_pos = prev.vertical_pos + prev.line_height + prev.line_spacing;
+        segs.push(seg);
+    }
+    para.line_segs = segs;
+}
+
 /// 셀 분할로 저장 폭이 stale해진 문단을 다시 조판한다.
 ///
 /// 한컴은 좁아진 셀에서만 본문 뒤의 inline control을 별도 source line으로 저장한다.

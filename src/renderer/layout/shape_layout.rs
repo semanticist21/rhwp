@@ -26,7 +26,7 @@ use super::paragraph_layout::{
 };
 use super::text_measurement::{
     estimate_text_width, is_cjk_char, is_vertical_rotate_char, resolved_to_text_style,
-    vertical_substitute_char,
+    vertical_char_advance, vertical_substitute_char,
 };
 use super::utils::{
     drawing_to_line_style, drawing_to_shape_style, extract_shape_transform, find_bin_data,
@@ -4738,6 +4738,8 @@ impl LayoutEngine {
             cell_para_index: usize,
             char_offset: usize,
             is_para_end: bool,
+            // 빈 문단의 캐럿 자리. 글자 없이 열 머리에 빈 런을 둔다.
+            anchor: bool,
         }
 
         struct ColumnInfo {
@@ -4748,6 +4750,7 @@ impl LayoutEngine {
             total_height: f64,
             alignment: Alignment,
             absorbed_spacing: f64, // 흡수된 line_spacing (px) — 마지막 칼럼 후처리용
+            cell_para_index: usize,
         }
 
         let composed_paras: Vec<_> = paragraphs
@@ -4765,6 +4768,21 @@ impl LayoutEngine {
 
         let mut chars: Vec<CharInfo> = Vec::new();
         let mut columns: Vec<ColumnInfo> = Vec::new();
+        // 글자 없는 줄(빈 문단)의 캐럿 자리. 열 머리에 빈 런을 둔다.
+        let empty_anchor =
+            |para: &Paragraph, para_style_id: u16, cell_para_index: usize, char_offset: usize| {
+                let char_style_id = para.char_shapes.first().map_or(0, |c| c.char_shape_id);
+                CharInfo {
+                    ch: ' ',
+                    style: resolved_to_text_style(styles, char_style_id, 0),
+                    char_style_id,
+                    para_style_id,
+                    cell_para_index,
+                    char_offset,
+                    is_para_end: true,
+                    anchor: true,
+                }
+            };
 
         for (cp_idx, composed) in composed_paras.iter().enumerate() {
             let para = &paragraphs[cp_idx];
@@ -4777,8 +4795,10 @@ impl LayoutEngine {
                 let spacing = ls
                     .map(|l| hwpunit_to_px(l.line_spacing, self.dpi))
                     .unwrap_or(0.0);
+                let start_idx = chars.len();
+                chars.push(empty_anchor(para, composed.para_style_id, cp_idx, 0));
                 columns.push(ColumnInfo {
-                    start_idx: chars.len(),
+                    start_idx,
                     end_idx: chars.len(),
                     col_width: ls
                         .map(|l| {
@@ -4789,6 +4809,7 @@ impl LayoutEngine {
                     total_height: 0.0,
                     alignment,
                     absorbed_spacing: spacing,
+                    cell_para_index: cp_idx,
                 });
                 continue;
             }
@@ -4815,16 +4836,8 @@ impl LayoutEngine {
                             char_offset += 1;
                             continue;
                         }
-                        let is_rotate = is_vertical_rotate_char(ch);
-                        let needs_rotation = is_rotate || (text_direction == 1 && !is_cjk_char(ch));
-                        // 세로쓰기에서 구두점/기호만 반칸 advance (영문/숫자는 캐릭터 높이)
-                        let half_advance =
-                            needs_rotation || (!is_cjk_char(ch) && !ch.is_ascii_alphanumeric());
-                        let advance = if half_advance {
-                            text_style.font_size * 0.5
-                        } else {
-                            text_style.font_size
-                        };
+                        let advance =
+                            vertical_char_advance(ch, text_style.font_size, text_direction);
                         chars.push(CharInfo {
                             ch,
                             style: text_style.clone(),
@@ -4833,10 +4846,20 @@ impl LayoutEngine {
                             cell_para_index: cp_idx,
                             char_offset,
                             is_para_end: false,
+                            anchor: false,
                         });
                         col_height += advance;
                         char_offset += 1;
                     }
+                }
+
+                if chars.len() == col_start {
+                    chars.push(empty_anchor(
+                        para,
+                        composed.para_style_id,
+                        cp_idx,
+                        char_offset,
+                    ));
                 }
 
                 if line_idx == composed.lines.len() - 1 {
@@ -4855,11 +4878,12 @@ impl LayoutEngine {
                     total_height: col_height,
                     alignment,
                     absorbed_spacing,
+                    cell_para_index: cp_idx,
                 });
             }
         }
 
-        if chars.is_empty() && columns.iter().all(|c| c.start_idx == c.end_idx) {
+        if columns.is_empty() {
             return;
         }
 
@@ -4910,14 +4934,12 @@ impl LayoutEngine {
             for i in col.start_idx..col.end_idx {
                 let ci = &chars[i];
                 let is_rotate = is_vertical_rotate_char(ci.ch);
-                let needs_rotation = is_rotate || (text_direction == 1 && !is_cjk_char(ci.ch));
-                // 세로쓰기에서 구두점/기호만 반칸 advance (영문/숫자는 캐릭터 높이)
-                let half_advance =
-                    needs_rotation || (!is_cjk_char(ci.ch) && !ci.ch.is_ascii_alphanumeric());
-                let advance = if half_advance {
-                    ci.style.font_size * 0.5
-                } else {
+                let needs_rotation =
+                    !ci.anchor && (is_rotate || (text_direction == 1 && !is_cjk_char(ci.ch)));
+                let advance = if ci.anchor {
                     ci.style.font_size
+                } else {
+                    vertical_char_advance(ci.ch, ci.style.font_size, text_direction)
                 };
 
                 // 열 높이 초과 시 렌더링 중단
@@ -4925,7 +4947,7 @@ impl LayoutEngine {
                     break;
                 }
 
-                let char_width = if is_cjk_char(ci.ch) || is_rotate {
+                let char_width = if ci.anchor || is_cjk_char(ci.ch) || is_rotate {
                     ci.style.font_size
                 } else if needs_rotation {
                     ci.style.font_size
@@ -4971,7 +4993,11 @@ impl LayoutEngine {
                 let run_node = RenderNode::new(
                     run_id,
                     RenderNodeType::TextRun(TextRunNode {
-                        text: render_ch.to_string(),
+                        text: if ci.anchor {
+                            String::new()
+                        } else {
+                            render_ch.to_string()
+                        },
                         style: ci.style.clone(),
                         char_shape_id: Some(ci.char_style_id),
                         para_shape_id: Some(ci.para_style_id),

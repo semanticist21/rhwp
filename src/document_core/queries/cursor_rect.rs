@@ -282,6 +282,56 @@ fn find_cursor_in_cell_node(
     end_fallback
 }
 
+/// 세로쓰기 글상자의 캐럿 자리. 세로 그리기는 글자마다 런 하나를 두므로(빈 문단은 빈 런)
+/// 캐럿 자리 글자의 칸 상자를, 문단·열 끝이면 앞 글자 바로 아래 칸을 준다. 캐럿은 그 칸
+/// 위 변의 가로 막대다(`vertical`, `width`). `height`는 그 칸의 세로 길이다.
+fn vertical_textbox_cursor(
+    root: &crate::renderer::render_tree::RenderNode,
+    parent_para: usize,
+    (ctrl_idx, cell_idx, cp_idx): (usize, usize, usize),
+    offset: usize,
+    page_index: u32,
+) -> Option<String> {
+    use crate::renderer::render_tree::{BoundingBox, RenderNode, RenderNodeType};
+    fn walk(
+        node: &RenderNode,
+        key: (usize, usize, usize, usize),
+        out: &mut Vec<(usize, bool, BoundingBox)>,
+    ) {
+        if let RenderNodeType::TextRun(run) = &node.node_type {
+            let (parent, ctrl, cell, para) = key;
+            let owned = run.is_vertical
+                && run.cell_context.as_ref().is_some_and(|ctx| {
+                    ctx.parent_para_index == parent
+                        && ctx.path.len() == 1
+                        && ctx.path[0].control_index == ctrl
+                        && ctx.path[0].cell_index == cell
+                        && ctx.path[0].cell_para_index == para
+                });
+            if let (true, Some(start)) = (owned, run.char_start) {
+                out.push((start, run.text.is_empty(), node.bbox));
+            }
+        }
+        for child in &node.children {
+            walk(child, key, out);
+        }
+    }
+    let mut runs = Vec::new();
+    walk(root, (parent_para, ctrl_idx, cell_idx, cp_idx), &mut runs);
+    let (x, y, w, h) = runs
+        .iter()
+        .find(|(start, _, _)| *start == offset)
+        .map(|(_, _, b)| (b.x, b.y, b.width, b.height))
+        .or_else(|| {
+            runs.iter()
+                .find(|(start, empty, _)| !empty && start + 1 == offset)
+                .map(|(_, _, b)| (b.x, b.y + b.height, b.width, b.height))
+        })?;
+    Some(format!(
+        "{{\"pageIndex\":{page_index},\"x\":{x:.1},\"y\":{y:.1},\"height\":{h:.1},\"width\":{w:.1},\"vertical\":true}}"
+    ))
+}
+
 fn format_cursor_rect_json(
     page_index: u32,
     x: f64,
@@ -1709,6 +1759,8 @@ impl DocumentCore {
             char_start: usize,
             char_count: usize,
             char_positions: Vec<f64>,
+            // 세로쓰기 글상자 글자(런 하나에 글자 하나). 위·아래 반으로 앞·뒤 자리를 고른다.
+            vertical: bool,
             bbox_x: f64,
             bbox_y: f64,
             bbox_w: f64,
@@ -1984,7 +2036,9 @@ impl DocumentCore {
                         /* 머리말·각주 마커 런과 셀 clip에 가려진 런은 건너뛴다 */
                     } else if let Some(cs) = text_run.char_start {
                         let ecc = effective_char_count(text_run);
-                        let positions = if text_run.char_overlap.is_some() && ecc == 1 {
+                        let positions = if (text_run.char_overlap.is_some() || text_run.is_vertical)
+                            && ecc == 1
+                        {
                             vec![0.0, node.bbox.width]
                         } else {
                             text_run.replay_positions_for(&text_run.text).into_owned()
@@ -1995,6 +2049,7 @@ impl DocumentCore {
                             char_start: cs,
                             char_count: ecc,
                             char_positions: positions,
+                            vertical: text_run.is_vertical,
                             bbox_x: node.bbox.x,
                             bbox_y: node.bbox.y,
                             // 오른쪽이 잘린 런은 보이는 데까지만 누를 수 있다. 글자 위치는
@@ -2742,7 +2797,12 @@ impl DocumentCore {
                 && y >= run.bbox_y
                 && y <= run.bbox_y + run.bbox_h
             {
-                let local_x = x - run.bbox_x;
+                // 세로 글자는 누른 높이를 글자 폭 비율로 옮겨 앞·뒤 반을 고른다.
+                let local_x = if run.vertical && run.bbox_h > 0.0 {
+                    (y - run.bbox_y) / run.bbox_h * run.bbox_w
+                } else {
+                    x - run.bbox_x
+                };
                 let char_offset = find_char_at_x(&run.char_positions, local_x);
                 if run.cell_context.is_some() {
                     let area = (run.bbox_w.max(0.0) * run.bbox_h.max(0.0) * 1000.0) as i64;
@@ -3196,6 +3256,15 @@ impl DocumentCore {
 
         for &page_num in &pages {
             let tree = self.build_page_tree(page_num)?;
+            if let Some(hit) = vertical_textbox_cursor(
+                &tree.root,
+                parent_para_idx,
+                (control_idx, cell_idx, cell_para_idx),
+                char_offset,
+                page_num,
+            ) {
+                return Ok(hit);
+            }
             if let Some(hit) = super::transformed_text::cursor(
                 &tree.root,
                 section_idx,

@@ -3432,8 +3432,17 @@ impl DocumentCore {
             }
             Some(Control::Shape(shape)) => {
                 if let Some(tb) = super::super::helpers::get_textbox_at_mut(shape, cell_idx) {
+                    let direction = (tb.list_attr & 0x07) as u8;
                     if let Some(cell_para) = tb.paragraphs.get_mut(cell_para_idx) {
                         reflow_line_segs(cell_para, paragraph_box.clone(), &styles, self.dpi);
+                        if direction != 0 {
+                            crate::renderer::composer::rebreak_vertical_line_segs(
+                                cell_para,
+                                &styles,
+                                available_width,
+                                direction,
+                            );
+                        }
                     }
                 }
             }
@@ -3796,6 +3805,7 @@ impl DocumentCore {
             return;
         };
         let squeeze = self.innermost_cell_squeezes(section_idx, parent_para_idx, path);
+        let vertical = self.innermost_textbox_direction(section_idx, parent_para_idx, path);
         let styles = self.resolve_render_styles();
         let dpi = self.dpi;
         let cell_width_px = hwpunit_to_px(cell_width, dpi);
@@ -3841,6 +3851,42 @@ impl DocumentCore {
         }
         if squeeze {
             crate::renderer::composer::merge_soft_wrapped_line_segs(cell_para);
+        }
+        if vertical != 0 {
+            crate::renderer::composer::rebreak_vertical_line_segs(
+                cell_para,
+                &styles,
+                available_width,
+                vertical,
+            );
+        }
+    }
+
+    /// path의 가장 안쪽 컨트롤이 세로쓰기 글상자면 그 글 방향(1·2), 아니면 0.
+    fn innermost_textbox_direction(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+    ) -> u8 {
+        let Some((&(ctrl_idx, cell_idx, _), outer)) = path.split_last() else {
+            return 0;
+        };
+        let control = if outer.is_empty() {
+            self.document
+                .sections
+                .get(section_idx)
+                .and_then(|section| section.paragraphs.get(parent_para_idx))
+                .and_then(|para| para.controls.get(ctrl_idx))
+        } else {
+            self.resolve_paragraph_by_path(section_idx, parent_para_idx, outer)
+                .ok()
+                .and_then(|para| para.controls.get(ctrl_idx))
+        };
+        match control {
+            Some(Control::Shape(shape)) => super::super::helpers::get_textbox_at(shape, cell_idx)
+                .map_or(0, |tb| (tb.list_attr & 0x07) as u8),
+            _ => 0,
         }
     }
 
