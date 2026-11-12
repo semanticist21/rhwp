@@ -4952,6 +4952,40 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 채우기 그림의 BinData를 `path` 파일 연결로 바꾸거나(비어 있지 않으면) 문서에 넣는다(비어 있으면).
+    /// 한컴 셀·도형 배경 그림의 '문서에 포함' 끄기·켜기다.
+    ///
+    /// 반환: `{"ok":true,"changed":bool}`
+    #[wasm_bindgen(js_name = setImageDataLink)]
+    pub fn set_image_data_link(&mut self, bin_data_id: u32, path: &str) -> Result<String, JsValue> {
+        let id = u16::try_from(bin_data_id)
+            .map_err(|_| JsValue::from_str("그림 데이터 번호가 너무 큽니다"))?;
+        self.set_image_data_link_native(id, path)
+            .map_err(|e| e.into())
+    }
+
+    /// 채우기 그림(`imageBinDataId`) 순번의 그림 바이트. 읽지 않은 연결 그림은 비어 있다.
+    #[wasm_bindgen(js_name = getImageData)]
+    pub fn get_image_data(&self, bin_data_id: u32) -> Result<Vec<u8>, JsValue> {
+        let id = u16::try_from(bin_data_id)
+            .map_err(|_| JsValue::from_str("그림 데이터 번호가 너무 큽니다"))?;
+        let contents = &self.document().bin_data_content;
+        let index = crate::model::bin_data::content_index(contents, id)
+            .ok_or_else(|| JsValue::from_str("그림 데이터가 없습니다"))?;
+        Ok(contents[index].data.load_shared().to_vec())
+    }
+
+    /// 채우기 그림 순번의 확장자(`png`·`jpg` 따위).
+    #[wasm_bindgen(js_name = getImageDataExtension)]
+    pub fn get_image_data_extension(&self, bin_data_id: u32) -> Result<String, JsValue> {
+        let id = u16::try_from(bin_data_id)
+            .map_err(|_| JsValue::from_str("그림 데이터 번호가 너무 큽니다"))?;
+        let contents = &self.document().bin_data_content;
+        let index = crate::model::bin_data::content_index(contents, id)
+            .ok_or_else(|| JsValue::from_str("그림 데이터가 없습니다"))?;
+        Ok(contents[index].extension.clone())
+    }
+
     /// [Task #1142] 외부 file path 그림 reference 목록을 구조화된 JSON 배열로 반환한다.
     ///
     /// 반환: JSON 배열 `[{ key, binDataId, originalPath, basename, extension, loaded }, ...]`

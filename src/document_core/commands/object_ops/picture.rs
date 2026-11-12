@@ -1804,6 +1804,61 @@ impl DocumentCore {
         Ok(format!("{{\"ok\":true,\"binDataId\":{position}}}"))
     }
 
+    /// 채우기 그림(셀·도형 배경)의 BinData를 `path` 파일 연결로 바꾸거나(`path`가 비어 있지 않으면),
+    /// 읽어 둔 연결 바이트로 문서에 넣는다(비어 있으면). 한컴 배경 그림의 '문서에 포함' 끄기·켜기다.
+    /// 순번은 그대로라 그 그림을 쓰는 채우기가 모두 함께 바뀐다. 읽어 둔 연결 바이트는 저장하지 않는다.
+    ///
+    /// 반환: `{"ok":true,"changed":bool}`
+    pub fn set_image_data_link_native(
+        &mut self,
+        bin_data_id: u16,
+        path: &str,
+    ) -> Result<String, HwpError> {
+        use crate::model::bin_data::{BinData, BinDataStatus, BinDataType};
+        let (content, record) = self
+            .picture_bin_slots(bin_data_id)
+            .ok_or_else(|| HwpError::RenderError("그림 데이터가 없습니다".to_string()))?;
+        let linked = self.document.doc_info.bin_data_list[record].data_type == BinDataType::Link;
+        if linked == !path.is_empty() {
+            return Ok("{\"ok\":true,\"changed\":false}".to_string());
+        }
+        if self.document.bin_data_content[content].data.is_empty() {
+            return Err(HwpError::RenderError(
+                "연결 파일을 아직 읽지 못했습니다".to_string(),
+            ));
+        }
+        let sid = match self.document.bin_data_content[content].id {
+            0 => self.document.next_bin_data_storage_id(),
+            sid => sid,
+        };
+        let c = &mut self.document.bin_data_content[content];
+        c.id = sid;
+        let extension = Some(c.extension.clone());
+        self.document.doc_info.bin_data_list[record] = if path.is_empty() {
+            // attr: bits 0-3=1(Embedding), bits 8-9=1(Success) — register_embedded_bin_data와 같다.
+            BinData {
+                attr: 0x0101,
+                data_type: BinDataType::Embedding,
+                status: BinDataStatus::Success,
+                storage_id: sid,
+                extension,
+                ..Default::default()
+            }
+        } else {
+            BinData {
+                data_type: BinDataType::Link,
+                abs_path: Some(path.to_string()),
+                rel_path: Some(crate::model::image::external_picture_basename(path).to_string()),
+                storage_id: sid,
+                extension,
+                ..Default::default()
+            }
+        };
+        self.document.doc_info.raw_stream = None;
+        self.document.doc_info.raw_stream_dirty = true;
+        Ok("{\"ok\":true,\"changed\":true}".to_string())
+    }
+
     /// 그림 BinData 순번의 (콘텐츠, DocInfo 레코드) 자리. HWP 연결 레코드는 storage id가 없어 같은 순번을 쓴다.
     fn picture_bin_slots(&self, bin_data_id: u16) -> Option<(usize, usize)> {
         let contents = &self.document.bin_data_content;
