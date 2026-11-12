@@ -1021,14 +1021,7 @@ impl DocumentCore {
         };
 
         self.document.sections[section_idx].raw_stream = None;
-        self.reflow_table_cell_paragraphs(
-            section_idx,
-            parent_para_idx,
-            control_idx,
-            &changed_cells,
-        );
-        self.mark_section_dirty(section_idx);
-        self.paginate_if_needed();
+        self.relayout_transposed_cells(section_idx, parent_para_idx, control_idx, &changed_cells);
 
         self.event_log.push(DocumentEvent::TableCellsTransposed {
             section: section_idx,
@@ -1040,6 +1033,29 @@ impl DocumentCore {
             "\"sourceRows\":{},\"sourceCols\":{},\"targetRows\":{},\"targetCols\":{}",
             source_rows, source_cols, source_cols, source_rows
         )))
+    }
+
+    /// 행/열을 바꾼 셀 문단을 새 폭으로 다시 짜고 셀마다 줄 위치를 처음부터 쌓은 뒤 구역을 다시 조판한다.
+    /// 다른 칸·병합에서 온 문단은 옛 줄 위치를 지니므로 폭만 다시 짜면 겹치고, 열어 둔 문서는 쪽 나눔만
+    /// 표시하면 옛 줄 높이로 그린다.
+    fn relayout_transposed_cells(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        control_idx: usize,
+        changed_cells: &[(usize, usize)],
+    ) {
+        self.reflow_table_cell_paragraphs(section_idx, parent_para_idx, control_idx, changed_cells);
+        for &(cell_idx, _) in changed_cells {
+            self.rebuild_table_cell_vpos_ladder_native(
+                section_idx,
+                parent_para_idx,
+                control_idx,
+                cell_idx,
+            );
+        }
+        self.recompose_section(section_idx);
+        self.paginate_if_needed();
     }
 
     /// 선택된 전체 표의 행/열을 제자리에서 바꾼다.
@@ -1060,14 +1076,7 @@ impl DocumentCore {
         };
 
         self.document.sections[section_idx].raw_stream = None;
-        self.reflow_table_cell_paragraphs(
-            section_idx,
-            parent_para_idx,
-            control_idx,
-            &changed_cells,
-        );
-        self.mark_section_dirty(section_idx);
-        self.paginate_if_needed();
+        self.relayout_transposed_cells(section_idx, parent_para_idx, control_idx, &changed_cells);
 
         self.event_log.push(DocumentEvent::TableCellsTransposed {
             section: section_idx,
