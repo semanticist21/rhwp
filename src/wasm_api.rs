@@ -4384,6 +4384,32 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 셀 경로의 표(칸 안의 표·머리말/꼬리말 표)에 하나의 셀처럼 적용한다. 경로의 마지막 마디가
+    /// 그 표의 칸이다. 반환은 `setCellZoneProperties`와 같다.
+    #[wasm_bindgen(js_name = setCellZonePropertiesByPath)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn set_cell_zone_properties_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        start_row: u16,
+        start_col: u16,
+        end_row: u16,
+        end_col: u16,
+        json: &str,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.set_cell_zone_properties_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            (start_row, start_col, end_row, end_col),
+            json,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// [#5959] 셀/zone border_fill_id 직접 대입 (undo·redo 전용).
     ///
     /// 스타일 테이블을 건드리지 않고 execute 의 변경 기록을 되돌린다.

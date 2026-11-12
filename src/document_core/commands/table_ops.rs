@@ -2276,12 +2276,31 @@ impl DocumentCore {
         end_col: u16,
         json: &str,
     ) -> Result<String, HwpError> {
+        self.set_cell_zone_properties_by_path_native(
+            section_idx,
+            parent_para_idx,
+            &[(control_idx, 0, 0)],
+            (start_row, start_col, end_row, end_col),
+            json,
+        )
+    }
+
+    /// 셀 경로의 표(칸 안의 표·머리말/꼬리말 표)에 하나의 셀처럼 적용(cellzone)한다. 경로의
+    /// 마지막 마디가 그 표의 칸이다. 깊이 1이면 본문 표다. 반환은 `setCellZoneProperties`와 같다.
+    pub fn set_cell_zone_properties_by_path_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        (start_row, start_col, end_row, end_col): (u16, u16, u16, u16),
+        json: &str,
+    ) -> Result<String, HwpError> {
         // [#5959] 역연산 기록 기준선 — 생성 전 스타일 테이블 길이·dirty 플래그와
         // 매칭 zone 의 이전 id(None 이면 신설)를 응답으로 돌려 undo 가 쓴다.
         let border_fill_len_before = self.document.doc_info.border_fills.len();
         let doc_info_dirty_before = self.document.doc_info.raw_stream_dirty;
         let (zone_before_id, sr, er, sc, ec) = {
-            let t = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+            let t = self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path)?;
             if t.row_count == 0 || t.col_count == 0 {
                 return Err(HwpError::RenderError(
                     "빈 표에는 cellzone을 적용할 수 없습니다".to_string(),
@@ -2308,7 +2327,7 @@ impl DocumentCore {
 
         let cellzone_json = self.keep_center_line_for_cellzone_json(json);
         let new_bf_id = self.create_border_fill_from_json(&cellzone_json);
-        let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
+        let table = self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path)?;
 
         if let Some(zone) = table.zones.iter_mut().find(|zone| {
             zone.start_row == sr && zone.end_row == er && zone.start_col == sc && zone.end_col == ec
@@ -2324,6 +2343,9 @@ impl DocumentCore {
             });
         }
 
+        if path.len() > 1 {
+            self.mark_cell_control_dirty(section_idx, parent_para_idx, path[0].0);
+        }
         self.document.sections[section_idx].raw_stream = None;
         self.recompose_section(section_idx);
         self.paginate_if_needed();

@@ -368,3 +368,42 @@ fn cell_block_commands_by_path_reach_inner_table() {
         );
     }
 }
+
+/// 하나의 셀처럼 적용(cellzone)을 칸 안 표·머리말 표에 한다. 바깥 표에는 범위가 생기지 않는다.
+#[test]
+fn cell_zone_by_path_reaches_inner_and_header_tables() {
+    for (mut core, para, path) in [nested(), header()] {
+        let outer_zones = (path.len() > 1
+            && matches!(
+                core.document().sections[0].paragraphs[para].controls[path[0].0],
+                Control::Table(_)
+            ))
+        .then(|| table_at(&core, para, &path[..1]).zones.len());
+        let r = core
+            .set_cell_zone_properties_by_path_native(
+                0,
+                para,
+                &path,
+                (0, 0, 1, 1),
+                r##"{"fillType":"solid","fillColor":"#ff0000","patternType":-1}"##,
+            )
+            .unwrap();
+        assert!(r.contains("\"ok\":true"), "{r}");
+        let zones = &table_at(&core, para, &path).zones;
+        assert_eq!(zones.len(), 1);
+        assert_eq!(
+            (zones[0].start_row, zones[0].end_row, zones[0].end_col),
+            (0, 1, 1)
+        );
+        if let Some(before) = outer_zones {
+            assert_eq!(
+                table_at(&core, para, &path[..1]).zones.len(),
+                before,
+                "바깥 표"
+            );
+        }
+        for (name, doc) in reopened(&core) {
+            assert_eq!(table_at(&doc, para, &path).zones.len(), 1, "{name}");
+        }
+    }
+}
