@@ -100,12 +100,16 @@ fn boundary_controls_to_delete(
                         | Control::Endnote(_)
                         | Control::Form(_)
                 ) || para.controls.iter().enumerate().any(|(other, control)| {
-                    // 캐럿 칸이 없는 떠 있는 개체는 같은 자리 개체와 앞뒤를 가를 수 없다.
+                    // 캐럿 칸이 없는 떠 있는 개체는 같은 자리 개체와 앞뒤를 가를 수 없고, 양식 줄은
+                    // 양식끼리만 나눈다. 같은 자리의 각주·미주·글자처럼 취급한 개체는 그 사이에서 지운다.
+                    let selected = &para.controls[index];
                     other != index
                         && Paragraph::is_split_movable_control(control)
                         && positions.get(other) == positions.get(index)
-                        && !(Paragraph::occupies_split_slot(control)
-                            && Paragraph::occupies_split_slot(&para.controls[index]))
+                        && (!Paragraph::occupies_split_slot(control)
+                            || !Paragraph::occupies_split_slot(selected)
+                            || matches!(control, Control::Form(_))
+                                != matches!(selected, Control::Form(_)))
                 })
             }))
     {
