@@ -34,11 +34,27 @@ pub(crate) fn page_border_rect(
             width: layout.page_width - left - right,
             height: layout.page_height - top - bottom,
         },
-        PageBorderBasis::BodyBased => LayoutRect {
-            x: layout.body_area.x - left,
-            y: layout.body_area.y - top,
-            width: layout.body_area.width + left + right,
-            height: layout.body_area.height + top + bottom,
-        },
+        PageBorderBasis::BodyBased => {
+            // 머리말·꼬리말 포함(attr bit 1·2)은 테두리를 머리말 위·꼬리말 아래까지 넓힌다
+            // (한/글 12.30 PDF로 저장하기: 위·아래로 머리말·꼬리말 높이만큼, 2026-11-12).
+            let body_top = layout.body_area.y;
+            let body_bottom = layout.body_area.y + layout.body_area.height;
+            let area_top = if pbf.attr & 0x02 != 0 {
+                layout.header_area.y.min(body_top)
+            } else {
+                body_top
+            };
+            let area_bottom = if pbf.attr & 0x04 != 0 {
+                (layout.footer_area.y + layout.footer_area.height).max(body_bottom)
+            } else {
+                body_bottom
+            };
+            LayoutRect {
+                x: layout.body_area.x - left,
+                y: area_top - top,
+                width: layout.body_area.width + left + right,
+                height: area_bottom - area_top + top + bottom,
+            }
+        }
     }
 }

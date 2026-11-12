@@ -1875,7 +1875,8 @@ fn parse_visibility(e: &quick_xml::events::BytesStart, sec_def: &mut SectionDef)
             }
             b"border" => {
                 let v = attr_str(&attr);
-                sec_def.hide_border = v == "HIDE_ALL";
+                // 한/글 12.30은 HIDE_FIRST를 구역 첫 쪽에서만 감춘다. 옛 rhwp 저장값 HIDE_ALL도 같게 읽는다.
+                sec_def.hide_border = v == "HIDE_FIRST" || v == "HIDE_ALL";
                 if sec_def.hide_border {
                     sec_def.flags |= 0x0008;
                 } else {
@@ -1891,7 +1892,8 @@ fn parse_visibility(e: &quick_xml::events::BytesStart, sec_def: &mut SectionDef)
             }
             b"fill" => {
                 let v = attr_str(&attr);
-                sec_def.hide_fill = v == "HIDE_ALL";
+                // 한/글 12.30은 HIDE_FIRST를 구역 첫 쪽에서만 감춘다. 옛 rhwp 저장값 HIDE_ALL도 같게 읽는다.
+                sec_def.hide_fill = v == "HIDE_FIRST" || v == "HIDE_ALL";
                 if sec_def.hide_fill {
                     sec_def.flags |= 0x0010;
                 } else {

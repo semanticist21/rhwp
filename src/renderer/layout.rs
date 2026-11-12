@@ -3687,6 +3687,8 @@ pub struct LayoutEngine {
     /// HWPX visibility SHOW_FIRST). (border, fill) 순. 기본 (false, false) =
     /// 제한 없음 — 전 쪽 적용(한글 실측: 156494214 테두리 3/3쪽).
     page_border_fill_first_page_only: std::cell::Cell<(bool, bool)>,
+    /// 구역 첫 쪽의 테두리/배경 감추기 (HWP5 flags bit 3/4, HWPX visibility `HIDE_FIRST`).
+    page_border_fill_hide_first: std::cell::Cell<(bool, bool)>,
     /// 파일 이름 (머리말/꼬리말 필드 치환용)
     file_name: std::cell::RefCell<String>,
     /// 문단 테두리/배경 범위 수집
@@ -4009,6 +4011,7 @@ impl LayoutEngine {
             current_page_number: std::cell::Cell::new(0),
             current_page_is_section_first: std::cell::Cell::new(true),
             page_border_fill_first_page_only: std::cell::Cell::new((false, false)),
+            page_border_fill_hide_first: std::cell::Cell::new((false, false)),
             file_name: std::cell::RefCell::new(String::new()),
             para_border_ranges: std::cell::RefCell::new(Vec::new()),
             paragraph_spacing_consumed: std::cell::RefCell::new(std::collections::HashMap::new()),
@@ -4866,6 +4869,12 @@ impl LayoutEngine {
     /// `current_page_is_section_first` 가 아닐 때 해당 쪽 테두리/배경을 그리지 않는다.
     pub fn set_page_border_fill_first_page_only(&self, border: bool, fill: bool) {
         self.page_border_fill_first_page_only.set((border, fill));
+    }
+
+    /// 구역정의 "첫 쪽 제외"(HWP5 flags bit 3/4, HWPX visibility `HIDE_FIRST`) 플래그를
+    /// 설정한다. 한/글 12.30은 켜진 축의 테두리/배경을 구역 첫 쪽에만 그리지 않는다.
+    pub fn set_page_border_fill_hide_first(&self, border: bool, fill: bool) {
+        self.page_border_fill_hide_first.set((border, fill));
     }
 
     /// 파일 이름을 설정한다 (머리말/꼬리말 필드 치환용).
@@ -5727,9 +5736,10 @@ impl LayoutEngine {
         // [#5717] 구역정의 bit9(첫 쪽에만 배경)가 켜진 구역에서는 첫 쪽이 아니면
         // 커스텀 채우기 전체를 hide_fill 과 동일하게 억제한다(흰 종이 바탕 유지).
         // 성북구 실측: 한글은 남색 배경을 1쪽에만 칠한다 — rhwp 는 172쪽 전부였다.
+        let first = self.current_page_is_section_first.get();
         let hide_fill = hide_fill
-            || (self.page_border_fill_first_page_only.get().1
-                && !self.current_page_is_section_first.get());
+            || (self.page_border_fill_first_page_only.get().1 && !first)
+            || (self.page_border_fill_hide_first.get().1 && first);
         let (page_bg_color, page_bg_gradient, page_bg_image) = if hide_fill {
             (Some(0x00FFFFFF), None, None)
         } else if let Some(pbf) = page_border_fill {
@@ -5773,13 +5783,18 @@ impl LayoutEngine {
                 .map(|pbf| (pbf.attr >> 3) & 0x03)
                 .unwrap_or(0)
         };
-        let bg_bbox = match fill_area {
-            1 => BoundingBox::new(
+        let bg_bbox = match (fill_area, page_border_fill) {
+            (1, _) => BoundingBox::new(
                 layout.body_area.x,
                 layout.body_area.y,
                 layout.body_area.width,
                 layout.body_area.height,
             ),
+            // 한/글 12.30은 "테두리" 영역을 쪽 테두리 선 안쪽만 칠한다(PDF로 저장하기).
+            (2, Some(pbf)) => {
+                let rect = page_border_rect(pbf, layout, self.dpi);
+                BoundingBox::new(rect.x, rect.y, rect.width, rect.height)
+            }
             _ => BoundingBox::new(0.0, 0.0, layout.page_width, layout.page_height),
         };
 
@@ -5899,8 +5914,9 @@ impl LayoutEngine {
         // [#5717] 구역정의 bit8(첫 쪽에만 테두리)가 켜진 구역에서는 첫 쪽이 아니면
         // 쪽 테두리를 그리지 않는다. 꺼진 문서(코퍼스 [X,1,1] 테두리 11건)는 한글도
         // 전 쪽에 그리므로 현행 유지.
-        if self.page_border_fill_first_page_only.get().0
-            && !self.current_page_is_section_first.get()
+        let first = self.current_page_is_section_first.get();
+        if (self.page_border_fill_first_page_only.get().0 && !first)
+            || (self.page_border_fill_hide_first.get().0 && first)
         {
             return;
         }

@@ -116,7 +116,8 @@ where
     // 한글 2022 가 같은 문서를 HWPX 로 저장할 때 쓰는 어휘 그대로다(성북구 실측).
     let bf = |hide: bool, first: bool| {
         if hide {
-            "HIDE_ALL"
+            // 첫 쪽 제외(flags bit 3/4). 한/글 12.30이 읽는 어휘다.
+            "HIDE_FIRST"
         } else if first {
             "SHOW_FIRST"
         } else {

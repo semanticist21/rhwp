@@ -3600,18 +3600,48 @@ impl DocumentCore {
     }
 
     /// 구역의 쪽 테두리/배경 설정을 JSON으로 반환한다.
+    ///
+    /// 맨 위 값은 양쪽 항목이고 `even`·`odd`는 짝수·홀수 쪽 항목이다(없으면 양쪽과 같다).
+    /// `borderPages`·`fillPages`는 `all`·`exceptFirst`(첫 쪽 제외)·`firstOnly`(첫 쪽만)다.
     pub fn get_page_border_fill_native(&self, section_idx: usize) -> Result<String, HwpError> {
-        use crate::document_core::helpers::{
-            border_line_type_to_u8_val, color_ref_to_css, fill_json_values,
-        };
-        use crate::model::page::PageBorderUiBasis;
-
         let section = self
             .document
             .sections
             .get(section_idx)
             .ok_or_else(|| HwpError::RenderError(format!("구역 {} 범위 초과", section_idx)))?;
-        let pbf = &section.section_def.page_border_fill;
+        let sd = &section.section_def;
+        let pages = |hide_first: bool, first_only: bool| match (hide_first, first_only) {
+            (_, true) => "firstOnly",
+            (true, false) => "exceptFirst",
+            _ => "all",
+        };
+        let entry = |idx: usize| {
+            self.page_border_fill_entry_json(
+                sd.extra_page_border_fills
+                    .get(idx)
+                    .unwrap_or(&sd.page_border_fill),
+            )
+        };
+        Ok(format!(
+            "{{{},\"hideBorder\":{},\"hideFill\":{},\"borderPages\":\"{}\",\"fillPages\":\"{}\",\
+            \"even\":{{{}}},\"odd\":{{{}}} }}",
+            self.page_border_fill_entry_json(&sd.page_border_fill),
+            sd.hide_border,
+            sd.hide_fill,
+            pages(sd.hide_border, sd.first_page_border),
+            pages(sd.hide_fill, sd.first_page_fill),
+            entry(0),
+            entry(1),
+        ))
+    }
+
+    /// 쪽 테두리/배경 항목 하나의 JSON 필드(중괄호 없이).
+    fn page_border_fill_entry_json(&self, pbf: &crate::model::page::PageBorderFill) -> String {
+        use crate::document_core::helpers::{
+            border_line_type_to_u8_val, color_ref_to_css, fill_json_values,
+        };
+        use crate::model::page::PageBorderUiBasis;
+
         let basis = match pbf.ui_basis {
             PageBorderUiBasis::Paper => "paper",
             PageBorderUiBasis::Page => "page",
@@ -3662,10 +3692,9 @@ impl DocumentCore {
             }
         }
 
-        Ok(format!(
-            "{{\"attr\":{},\"basis\":\"{}\",\"spacingLeft\":{},\"spacingRight\":{},\"spacingTop\":{},\"spacingBottom\":{},\
-            \"borderFillId\":{},\"headerInside\":{},\"footerInside\":{},\"fillArea\":\"{}\",\
-            \"hideBorder\":{},\"hideFill\":{},{} }}",
+        format!(
+            "\"attr\":{},\"basis\":\"{}\",\"spacingLeft\":{},\"spacingRight\":{},\"spacingTop\":{},\"spacingBottom\":{},\
+            \"borderFillId\":{},\"headerInside\":{},\"footerInside\":{},\"fillArea\":\"{}\",{}",
             pbf.attr,
             basis,
             pbf.spacing_left,
@@ -3676,10 +3705,8 @@ impl DocumentCore {
             (pbf.attr & 0x02) != 0,
             (pbf.attr & 0x04) != 0,
             fill_area,
-            section.section_def.hide_border,
-            section.section_def.hide_fill,
             border_json,
-        ))
+        )
     }
 
     /// 구역의 쪽 테두리/배경 설정을 JSON에서 업데이트하고 재조판한다.
@@ -3698,7 +3725,19 @@ impl DocumentCore {
             .get_mut(section_idx)
             .ok_or_else(|| HwpError::RenderError(format!("구역 {} 범위 초과", section_idx)))?;
         let sd = &mut section.section_def;
-        let pbf = &mut sd.page_border_fill;
+        // 한/글처럼 양쪽·짝수 쪽·홀수 쪽 항목을 따로 둔다. 짝수·홀수 항목이 없으면 양쪽을
+        // 복제해 만들어 다른 쪽의 모양은 그대로 둔다.
+        let page_type = json_str(json, "pageType").unwrap_or_else(|| "both".to_string());
+        let old_both = sd.page_border_fill.clone();
+        let pbf = match page_type.as_str() {
+            "even" | "odd" => {
+                while sd.extra_page_border_fills.len() < 2 {
+                    sd.extra_page_border_fills.push(old_both.clone());
+                }
+                &mut sd.extra_page_border_fills[usize::from(page_type == "odd")]
+            }
+            _ => &mut sd.page_border_fill,
+        };
 
         if let Some(v) = json_i16(json, "spacingLeft") {
             pbf.spacing_left = v;
@@ -3750,18 +3789,24 @@ impl DocumentCore {
         pbf.attr = attr;
         pbf.border_fill_id = border_fill_id;
 
+        // 첫 쪽 조건: `borderPages`·`fillPages` = all | exceptFirst | firstOnly.
+        // 첫 쪽 제외는 flags bit 3/4(HWPX HIDE_FIRST), 첫 쪽만은 bit 8/9(SHOW_FIRST)다.
         let apply_page = json_str(json, "applyPage").unwrap_or_else(|| "all".to_string());
         let hide_first = apply_page == "exceptFirst";
-        if let Some(v) = json_bool(json, "hideBorder") {
-            sd.hide_border = v;
-        } else {
-            sd.hide_border = hide_first;
-        }
-        if let Some(v) = json_bool(json, "hideFill") {
-            sd.hide_fill = v;
-        } else {
-            sd.hide_fill = hide_first;
-        }
+        let pages = |key: &str, legacy: &str| match json_str(json, key).as_deref() {
+            Some("exceptFirst") => Some((true, false)),
+            Some("firstOnly") => Some((false, true)),
+            Some(_) => Some((false, false)),
+            None => json_bool(json, legacy).map(|v| (v, false)),
+        };
+        let (hide_border, first_border) = pages("borderPages", "hideBorder")
+            .unwrap_or((hide_first, sd.first_page_border && !hide_first));
+        let (hide_fill, first_fill) = pages("fillPages", "hideFill")
+            .unwrap_or((hide_first, sd.first_page_fill && !hide_first));
+        sd.hide_border = hide_border;
+        sd.hide_fill = hide_fill;
+        sd.first_page_border = first_border;
+        sd.first_page_fill = first_fill;
 
         let flags = &mut sd.flags;
         if pbf.ui_basis == PageBorderUiBasis::Page {
@@ -3779,8 +3824,26 @@ impl DocumentCore {
         } else {
             *flags &= !0x0010;
         }
+        for (on, bit) in [(sd.first_page_border, 0x0100), (sd.first_page_fill, 0x0200)] {
+            if on {
+                *flags |= bit;
+            } else {
+                *flags &= !bit;
+            }
+        }
         if let Some(raw) = json_u32(json, "attr") {
             pbf.attr = (pbf.attr & 0x0000_001f) | (raw & !0x0000_001f);
+        }
+
+        // 양쪽을 바꿀 때 양쪽을 복제해 둔 짝수·홀수 항목(한/글 HWP는 보통 세 항목이 같다)도
+        // 함께 바꾼다. 따로 고친 항목은 그대로 둔다.
+        if page_type != "even" && page_type != "odd" {
+            let new_both = sd.page_border_fill.clone();
+            for extra in &mut sd.extra_page_border_fills {
+                if same_page_border_fill(extra, &old_both) {
+                    *extra = new_both.clone();
+                }
+            }
         }
 
         let updated_sd = sd.clone();
@@ -3788,8 +3851,11 @@ impl DocumentCore {
             for ctrl in &mut para.controls {
                 if let Control::SectionDef(ref mut ctrl_sd) = ctrl {
                     ctrl_sd.page_border_fill = updated_sd.page_border_fill.clone();
+                    ctrl_sd.extra_page_border_fills = updated_sd.extra_page_border_fills.clone();
                     ctrl_sd.hide_border = updated_sd.hide_border;
                     ctrl_sd.hide_fill = updated_sd.hide_fill;
+                    ctrl_sd.first_page_border = updated_sd.first_page_border;
+                    ctrl_sd.first_page_fill = updated_sd.first_page_fill;
                     ctrl_sd.flags = updated_sd.flags;
                     break;
                 }
@@ -8517,7 +8583,13 @@ impl DocumentCore {
             .document
             .sections
             .get(page_content.section_index)
-            .map(|s| &s.section_def.page_border_fill);
+            .map(|s| {
+                page_border_fill_for_page(
+                    &s.section_def,
+                    &self.document.doc_info.border_fills,
+                    page_content.page_number,
+                )
+            });
         let outline_num_id = self
             .document
             .sections
@@ -8637,6 +8709,14 @@ impl DocumentCore {
             .unwrap_or((false, false));
         self.layout_engine
             .set_page_border_fill_first_page_only(first_page_border, first_page_fill);
+        let (hide_first_border, hide_first_fill) = self
+            .document
+            .sections
+            .get(page_content.section_index)
+            .map(|s| (s.section_def.hide_border, s.section_def.hide_fill))
+            .unwrap_or((false, false));
+        self.layout_engine
+            .set_page_border_fill_hide_first(hide_first_border, hide_first_fill);
 
         let wrap_around_paras = self
             .pagination
@@ -9561,6 +9641,64 @@ fn format_line_seg_brief(para: Option<&Paragraph>) -> String {
             last.segment_width
         )
     }
+}
+
+/// 두 쪽 테두리/배경 항목이 같은 모양인지 본다.
+fn same_page_border_fill(
+    a: &crate::model::page::PageBorderFill,
+    b: &crate::model::page::PageBorderFill,
+) -> bool {
+    a.border_fill_id == b.border_fill_id
+        && a.attr == b.attr
+        && a.basis == b.basis
+        && a.ui_basis == b.ui_basis
+        && (
+            a.spacing_left,
+            a.spacing_right,
+            a.spacing_top,
+            a.spacing_bottom,
+        ) == (
+            b.spacing_left,
+            b.spacing_right,
+            b.spacing_top,
+            b.spacing_bottom,
+        )
+}
+
+/// 쪽 번호의 홀짝에 맞는 쪽 테두리/배경을 고른다.
+///
+/// 한/글 12.30은 짝수·홀수 쪽 항목(`extra_page_border_fills` 0·1)에 선이나 채우기가 있으면
+/// 그 쪽에 그것을 그리고, 없으면 양쪽 항목을 그린다(HWPX 세 항목을 바꿔 연 문서를
+/// PDF로 저장해 확인, 2026-11-12).
+fn page_border_fill_for_page<'a>(
+    section_def: &'a crate::model::document::SectionDef,
+    border_fills: &[crate::model::style::BorderFill],
+    page_number: u32,
+) -> &'a crate::model::page::PageBorderFill {
+    let parity = if page_number.is_multiple_of(2) {
+        section_def.extra_page_border_fills.first()
+    } else {
+        section_def.extra_page_border_fills.get(1)
+    };
+    parity
+        .filter(|pbf| border_fill_is_visible(border_fills, pbf.border_fill_id))
+        .unwrap_or(&section_def.page_border_fill)
+}
+
+/// 테두리/배경이 네 변 중 하나라도 선을 긋거나 채우기를 가지면 참이다.
+pub(crate) fn border_fill_is_visible(
+    border_fills: &[crate::model::style::BorderFill],
+    id: u16,
+) -> bool {
+    use crate::model::style::{BorderLineType, FillType};
+    id > 0
+        && border_fills.get(id as usize - 1).is_some_and(|bf| {
+            bf.fill.fill_type != FillType::None
+                || bf
+                    .borders
+                    .iter()
+                    .any(|line| line.line_type != BorderLineType::None)
+        })
 }
 
 #[cfg(test)]
