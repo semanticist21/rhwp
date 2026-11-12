@@ -251,8 +251,10 @@ fn issue_1633_sample5_keeps_cellzone_and_cell_borderfills_separate() {
     }
 }
 
+/// 한컴 12.30(Mac)은 대각선샘플4의 전체 범위 X와 함께, 범위가 시작하는 첫 셀 자신의 X도 그린다
+/// (맥미니 한컴 화면, 2026-11-13). 첫 셀의 대각선을 숨기지 않는다.
 #[test]
-fn issue_1633_sample4_renders_cellzone_diagonal_without_cell_overlay() {
+fn issue_1633_sample4_renders_cellzone_diagonal_with_origin_cell_diagonal() {
     for sample in ["samples/대각선샘플4.hwpx", "samples/대각선샘플4.hwp"] {
         let core = DocumentCore::from_bytes(&read_sample(sample))
             .unwrap_or_else(|err| panic!("{sample}: {err}"));
@@ -276,9 +278,10 @@ fn issue_1633_sample4_renders_cellzone_diagonal_without_cell_overlay() {
                 (40.0..80.0).contains(&dx) && (10.0..25.0).contains(&dy)
             })
             .collect();
-        assert!(
-            short_cell_diagonals.is_empty(),
-            "{sample}: cellzone 대각선 위에 셀 고유 대각선이 중복 렌더됨: {short_cell_diagonals:?}"
+        assert_eq!(
+            short_cell_diagonals.len(),
+            2,
+            "{sample}: 범위 첫 셀 자신의 X 대각선 두 개만 그려야 함: {short_cell_diagonals:?}"
         );
     }
 }
@@ -777,11 +780,17 @@ fn issue_1633_cellzone_origin_cell_diagonal_renders_after_each_cell_apply() {
 
     let table = first_table(doc.document());
     assert!(
-        table.zones.iter().any(|zone| {
+        !table.zones.iter().any(|zone| {
             (zone.start_row, zone.start_col, zone.end_row, zone.end_col) == (0, 0, 0, 0)
         }),
-        "cellzone 시작 셀에 명시적으로 적용한 대각선은 1x1 override zone으로 분리되어야 함"
+        "한컴 12.30처럼 시작 셀의 대각선은 1x1 cellzone이 아니라 셀 자신의 BF에 두어야 함"
     );
+    let own_props = doc
+        .get_cell_own_properties(0, ppi, ci, 0)
+        .expect("고유 셀 속성 조회");
+    let own_props: Value = serde_json::from_str(&own_props).expect("own props JSON");
+    assert_eq!(own_props["diagonalSlash"].as_u64(), Some(2));
+    assert_eq!(own_props["diagonalBackSlash"].as_u64(), Some(2));
 
     let svg = doc.render_page_svg_native(0).expect("SVG 렌더");
     let lines = rendered_lines(&svg);

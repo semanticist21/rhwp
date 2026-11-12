@@ -1353,6 +1353,12 @@ impl DocumentCore {
             let mut slash_bits = slash_bits_json.unwrap_or(((bf.attr >> 2) & 0x07) as u16);
             let mut backslash_bits = backslash_bits_json.unwrap_or(((bf.attr >> 5) & 0x07) as u16);
             let explicit_diagonal_bits = slash_bits_json.is_some() || backslash_bits_json.is_some();
+            // 중심선이 없던 정의의 비트 8~12는 대각선의 꺾은선·180도 돌림이다. 그 방향 모양이 그대로면 둔다.
+            let old_attr = bf.attr;
+            let old_has_center = bf.center_line != CenterLine::None
+                || CenterLine::from_hwp_attr(old_attr) != CenterLine::None;
+            let old_slash_bits = (old_attr >> 2) & 0x07;
+            let old_backslash_bits = (old_attr >> 5) & 0x07;
             if let Some(center_line) = center_line_json {
                 bf.center_line = center_line;
             }
@@ -1381,6 +1387,14 @@ impl DocumentCore {
             bf.attr |= (slash_bits & 0x07) << 2;
             bf.attr |= (backslash_bits & 0x07) << 5;
             bf.attr |= bf.center_line.hwp_attr_bits();
+            if bf.center_line == CenterLine::None && !old_has_center {
+                if slash_bits != 0 && slash_bits == old_slash_bits {
+                    bf.attr |= old_attr & ((0x03 << 8) | (1 << 11));
+                }
+                if backslash_bits != 0 && backslash_bits == old_backslash_bits {
+                    bf.attr |= old_attr & ((1 << 10) | (1 << 12));
+                }
+            }
         }
 
         // 기존 BorderFill에서 동일한 항목 검색

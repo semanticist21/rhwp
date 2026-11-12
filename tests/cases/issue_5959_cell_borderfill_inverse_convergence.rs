@@ -339,7 +339,7 @@ fn foreign_tail_is_not_truncated_by_earlier_apply_undo() {
 }
 
 /// [#5959] origin 대각선 cellzone override 의 zone 전이도 기록·복원돼야 한다 —
-/// 셀 id 복원만으로는 sync 가 만들거나 지운 1×1 zone 이 유령·소실로 남는다.
+/// 셀 id 복원만으로는 셀 명령이 지운 1×1 zone 이 소실로 남는다.
 #[test]
 fn cell_apply_sync_zone_override_undo_restores_zone_state() {
     let (_original, mut doc, grid) = load_with_body_table();
@@ -360,28 +360,23 @@ fn cell_apply_sync_zone_override_undo_restores_zone_state() {
     .expect("대각선 zone 적용이 성공해야 함");
     let zones_baseline = snapshot_zones(&doc, &grid);
 
-    // 2. origin 셀에 개별 대각선 — 1×1 override 가 생긴다(sync push).
-    let resp_push: serde_json::Value = serde_json::from_str(
-        &doc.set_cell_properties(
-            grid.section as u32,
-            grid.paragraph as u32,
-            grid.control as u32,
-            0,
-            &border_bg_json()
-                .replace("\"diagonalLine\":0", "\"diagonalLine\":2")
-                .replace("\"diagonalSlash\":false", "\"diagonalSlash\":true")
-                .replace("#000000\"}", "#00CC44\"}"),
-        )
-        .expect("개별 대각선 적용이 성공해야 함"),
+    // 2. 예전 엔진이 시작 셀 대각선을 1×1 범위로 덮어 저장한 문서. 지금 엔진은 한컴 12.30처럼 셀 자신의
+    //    모양에 대각선을 두고 이런 범위를 만들지 않으므로, 그 범위를 직접 둔다.
+    let zone_id = zones_baseline
+        .iter()
+        .find(|z| (z.0, z.1, z.2, z.3) == (0, 0, 1, 1))
+        .expect("2×2 범위")
+        .4;
+    doc.apply_cell_border_fill_ids(
+        grid.section as u32,
+        grid.paragraph as u32,
+        grid.control as u32,
+        &serde_json::json!({
+            "zones": [{ "startRow": 0, "startCol": 0, "endRow": 0, "endCol": 0, "id": zone_id }],
+        })
+        .to_string(),
     )
-    .expect("응답 JSON");
-    let push_zones = resp_push["zones"].as_array().cloned().unwrap_or_default();
-    assert!(
-        push_zones
-            .iter()
-            .any(|z| z["beforeId"].is_null() && z["afterId"].is_u64()),
-        "override 신설 전이가 기록돼야 한다 — got {push_zones:?}"
-    );
+    .expect("1×1 범위를 둘 수 있어야 함");
     assert_eq!(
         snapshot_zones(&doc, &grid).len(),
         zones_baseline.len() + 1,

@@ -2021,12 +2021,6 @@ impl DocumentCore {
         if has_border_fill_change {
             let border_fill_json = cell_border_fill_json.as_deref().unwrap_or(json);
             let new_bf_id = self.create_border_fill_from_json(border_fill_json);
-            let new_bf_has_cell_diagonal = self
-                .document
-                .doc_info
-                .border_fills
-                .get((new_bf_id as usize).saturating_sub(1))
-                .is_some_and(Self::border_fill_has_cell_diagonal);
             let cell_diagonal_bf_ids: Vec<u16> = self
                 .document
                 .doc_info
@@ -2072,12 +2066,10 @@ impl DocumentCore {
                         .map(|zone| zone.border_fill_id)
                 };
                 let override_before = origin_override_id(table);
-                Self::sync_cellzone_origin_cell_diagonal_override(
+                Self::drop_cellzone_origin_cell_diagonal_override(
                     table,
                     row,
                     col,
-                    new_bf_id,
-                    new_bf_has_cell_diagonal,
                     &cell_diagonal_bf_ids,
                 );
                 let override_after = origin_override_id(table);
@@ -2168,12 +2160,12 @@ impl DocumentCore {
         bf.diagonal.diagonal_type != 0 && (slash != 0 || backslash != 0)
     }
 
-    fn sync_cellzone_origin_cell_diagonal_override(
+    /// 큰 대각선 범위가 시작하는 셀의 1칸 대각선 범위(예전 셀 대각선 덮어쓰기)를 지운다. 한컴 12.30은
+    /// 그 셀의 대각선을 셀 자신의 테두리/배경에 두고 범위 대각선과 함께 그린다.
+    fn drop_cellzone_origin_cell_diagonal_override(
         table: &mut crate::model::table::Table,
         row: u16,
         col: u16,
-        new_bf_id: u16,
-        new_bf_has_cell_diagonal: bool,
         cell_diagonal_bf_ids: &[u16],
     ) {
         let has_large_origin_diagonal_zone = table.zones.iter().any(|zone| {
@@ -2185,33 +2177,13 @@ impl DocumentCore {
         if !has_large_origin_diagonal_zone {
             return;
         }
-
-        if new_bf_has_cell_diagonal {
-            if let Some(zone) = table.zones.iter_mut().find(|zone| {
-                zone.start_row == row
-                    && zone.start_col == col
-                    && zone.end_row == row
-                    && zone.end_col == col
-            }) {
-                zone.border_fill_id = new_bf_id;
-            } else {
-                table.zones.push(crate::model::table::TableZone {
-                    start_col: col,
-                    start_row: row,
-                    end_col: col,
-                    end_row: row,
-                    border_fill_id: new_bf_id,
-                });
-            }
-        } else {
-            table.zones.retain(|zone| {
-                !(zone.start_row == row
-                    && zone.start_col == col
-                    && zone.end_row == row
-                    && zone.end_col == col
-                    && cell_diagonal_bf_ids.contains(&zone.border_fill_id))
-            });
-        }
+        table.zones.retain(|zone| {
+            !(zone.start_row == row
+                && zone.start_col == col
+                && zone.end_row == row
+                && zone.end_col == col
+                && cell_diagonal_bf_ids.contains(&zone.border_fill_id))
+        });
     }
 
     fn normalize_cell_border_fill_json_for_edit(
@@ -2374,7 +2346,7 @@ impl DocumentCore {
             (before, sr, er, sc, ec)
         };
 
-        let cellzone_json = Self::strip_center_line_for_cellzone_json(json);
+        let cellzone_json = self.keep_center_line_for_cellzone_json(json);
         let new_bf_id = self.create_border_fill_from_json(&cellzone_json);
         let table = self.get_table_mut(section_idx, parent_para_idx, control_idx)?;
 
@@ -2688,16 +2660,33 @@ impl DocumentCore {
         }
     }
 
-    fn strip_center_line_for_cellzone_json(json: &str) -> String {
+    /// 하나의 셀처럼 적용은 중심선을 새로 주지 않는다(#1633). 기준 정의(`borderFillId`)에 있던
+    /// 중심선은 그대로 두고, 중심선 키가 없으면 대각선 비트를 건드리지 않게 키를 더하지 않는다.
+    fn keep_center_line_for_cellzone_json(&self, json: &str) -> String {
         let Ok(mut value) = serde_json::from_str::<serde_json::Value>(json) else {
             return json.to_string();
         };
         let Some(obj) = value.as_object_mut() else {
             return json.to_string();
         };
+        if !obj.contains_key("centerLine") {
+            return json.to_string();
+        }
+        let base = obj
+            .get("borderFillId")
+            .and_then(|v| v.as_u64())
+            .filter(|id| *id > 0)
+            .and_then(|id| self.document.doc_info.border_fills.get(id as usize - 1));
+        let center_line = base.map_or(crate::model::style::CenterLine::None, |bf| {
+            if bf.center_line != crate::model::style::CenterLine::None {
+                bf.center_line
+            } else {
+                crate::model::style::CenterLine::from_hwp_attr(bf.attr)
+            }
+        });
         obj.insert(
             "centerLine".to_string(),
-            serde_json::Value::String("NONE".to_string()),
+            serde_json::Value::String(center_line.as_hwpx().to_string()),
         );
         serde_json::to_string(&value).unwrap_or_else(|_| json.to_string())
     }

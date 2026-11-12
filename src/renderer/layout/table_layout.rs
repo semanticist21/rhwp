@@ -1745,50 +1745,6 @@ pub(crate) fn border_style_has_diagonal(bs: &ResolvedBorderStyle) -> bool {
         && bs.diagonal.diagonal_type != 0
 }
 
-fn border_style_has_center_line_only(bs: &ResolvedBorderStyle) -> bool {
-    let slash_bits = (bs.diagonal_attr >> 2) & 0x07;
-    let backslash_bits = (bs.diagonal_attr >> 5) & 0x07;
-    bs.diagonal.diagonal_type != 0
-        && bs.center_line != CenterLine::None
-        && slash_bits == 0
-        && backslash_bits == 0
-}
-
-/// cellzone 대각선은 영역 전체에 한 번 그리고, 원본 중복 BF가 붙는 시작 셀만 숨긴다.
-fn mark_cellzone_diagonal_origin_coverage(
-    covered: &mut [Vec<bool>],
-    start_row: usize,
-    start_col: usize,
-) {
-    if let Some(row) = covered.get_mut(start_row) {
-        if let Some(cell) = row.get_mut(start_col) {
-            *cell = true;
-        }
-    }
-}
-
-fn cell_span_has_cellzone_diagonal(
-    covered: &[Vec<bool>],
-    row: usize,
-    col: usize,
-    row_span: usize,
-    col_span: usize,
-    row_count: usize,
-    col_count: usize,
-) -> bool {
-    let end_row = (row + row_span).min(row_count);
-    let end_col = (col + col_span).min(col_count);
-    (row..end_row).any(|rr| {
-        (col..end_col).any(|cc| {
-            covered
-                .get(rr)
-                .and_then(|cells| cells.get(cc))
-                .copied()
-                .unwrap_or(false)
-        })
-    })
-}
-
 fn border_style_has_center_line(bs: &ResolvedBorderStyle) -> bool {
     bs.center_line != CenterLine::None && bs.diagonal.diagonal_type != 0
 }
@@ -4625,7 +4581,6 @@ impl LayoutEngine {
 
         // ── 4-2. cellzone 배경 렌더링 (zone 전체 영역에 한 번) ──
         let mut cellzone_diagonal_nodes = Vec::new();
-        let mut cellzone_diagonal_origin_covered = vec![vec![false; col_count]; row_count];
         for zone in &table.zones {
             if zone.border_fill_id == 0 {
                 continue;
@@ -4716,11 +4671,6 @@ impl LayoutEngine {
                             zone.border_fill_id,
                         )
                     {
-                        mark_cellzone_diagonal_origin_coverage(
-                            &mut cellzone_diagonal_origin_covered,
-                            sr,
-                            sc,
-                        );
                         cellzone_diagonal_nodes.extend(render_cell_diagonal(
                             tree, zone_bs, zone_x, zone_y, zone_w, zone_h,
                         ));
@@ -4797,7 +4747,6 @@ impl LayoutEngine {
                     col_node.node_type,
                     RenderNodeType::Header | RenderNodeType::Footer | RenderNodeType::MasterPage
                 ),
-            &cellzone_diagonal_origin_covered,
         );
 
         if !cellzone_diagonal_nodes.is_empty() {
@@ -10611,7 +10560,6 @@ impl LayoutEngine {
         header_or_master_cell: bool,
         inline_table_flow_y_shift: f64,
         nested_non_tac_cell_margin_compat: bool,
-        cellzone_diagonal_origin_covered: &[Vec<bool>],
     ) {
         let mut independent_border_nodes: Vec<RenderNode> = Vec::new();
         for (cell_idx, cell) in table.cells.iter().enumerate() {
@@ -11561,22 +11509,12 @@ impl LayoutEngine {
 
             table_node.children.push(cell_node);
 
-            // (c) 셀 대각선 렌더링 (셀 콘텐츠 위에 그림)
-            let suppress_cell_diagonal = cell_span_has_cellzone_diagonal(
-                cellzone_diagonal_origin_covered,
-                r,
-                c,
-                cell.row_span as usize,
-                cell.col_span as usize,
-                row_count,
-                col_count,
-            );
+            // (c) 셀 대각선 렌더링 (셀 콘텐츠 위에 그림). 한컴 12.30처럼 범위 대각선이 시작하는 셀도
+            // 제 대각선을 그린다.
             if let Some(bs) = border_style {
-                if !suppress_cell_diagonal || border_style_has_center_line_only(bs) {
-                    table_node.children.extend(render_cell_diagonal(
-                        tree, bs, cell_x, cell_y, cell_w, cell_h,
-                    ));
-                }
+                table_node.children.extend(render_cell_diagonal(
+                    tree, bs, cell_x, cell_y, cell_w, cell_h,
+                ));
             }
         }
         if !independent_border_nodes.is_empty() {
