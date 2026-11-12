@@ -3496,7 +3496,7 @@ impl HwpDocument {
         Ok(para.text.chars().count() as u32)
     }
 
-    /// 표 셀의 텍스트 방향을 반환한다 (0=가로, 1=세로/영문눕힘, 2=세로/영문세움).
+    /// 표 셀·글상자의 텍스트 방향을 반환한다 (0=가로, 1=세로/영문눕힘, 2=세로/영문세움).
     #[wasm_bindgen(js_name = getCellTextDirection)]
     pub fn get_cell_text_direction(
         &self,
@@ -3521,7 +3521,16 @@ impl HwpDocument {
                     .ok_or_else(|| JsValue::from_str("셀 인덱스 범위 초과"))?;
                 Ok(cell.text_direction as u32)
             }
-            _ => Ok(0), // 글상자 등은 가로쓰기
+            // 글상자는 list_attr bit 0~2(HWPX VERTICALALL은 영문 세움 2로 알린다).
+            Some(Control::Shape(shape)) => Ok(crate::document_core::helpers::get_textbox_at(
+                shape,
+                cell_idx as usize,
+            )
+            .map_or(0, |tb| match tb.list_attr & 0x07 {
+                1 if tb.vertical_all => 2,
+                code => code,
+            })),
+            _ => Ok(0),
         }
     }
 

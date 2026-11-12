@@ -12,7 +12,7 @@ use crate::model::paragraph::Paragraph;
 use crate::model::shape::{Caption, CaptionDirection, CaptionVertAlign, ShapeObject};
 
 impl DocumentCore {
-    fn shape_caption_ref(shape: &ShapeObject) -> Option<&Caption> {
+    pub(crate) fn shape_caption_ref(shape: &ShapeObject) -> Option<&Caption> {
         match shape {
             ShapeObject::Line(s) => s.drawing.caption.as_ref(),
             ShapeObject::Rectangle(s) => s.drawing.caption.as_ref(),
@@ -27,7 +27,7 @@ impl DocumentCore {
         }
     }
 
-    fn shape_caption_mut(shape: &mut ShapeObject) -> &mut Option<Caption> {
+    pub(crate) fn shape_caption_mut(shape: &mut ShapeObject) -> &mut Option<Caption> {
         match shape {
             ShapeObject::Line(s) => &mut s.drawing.caption,
             ShapeObject::Rectangle(s) => &mut s.drawing.caption,
@@ -247,6 +247,25 @@ impl DocumentCore {
             )),
         }
     }
+    /// 글 방향을 바꾼 글상자의 문단을 새 줄 길이로 다시 나눈다. 세로쓰기는 상자 높이가
+    /// 줄 길이다(`cell_metrics_for_control`). `path` 마지막 항목은 (도형, 0, _)이다.
+    pub(crate) fn reflow_textbox_after_direction_change(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+    ) {
+        let count = self
+            .get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)
+            .map_or(0, |paras| paras.len());
+        let mut inner = path.to_vec();
+        let last = inner.len() - 1;
+        for i in 0..count {
+            inner[last].2 = i;
+            self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, &inner, i);
+        }
+        self.recalculate_cell_paragraph_vpos_by_path(section_idx, parent_para_idx, path, 0, None);
+    }
     /// 글상자(Shape) 속성 조회 (네이티브).
     pub fn get_shape_properties_native(
         &self,
@@ -267,8 +286,9 @@ impl DocumentCore {
                 crate::model::table::VerticalAlign::Bottom => "Bottom",
             };
             format!(
-                ",\"tbMarginLeft\":{},\"tbMarginRight\":{},\"tbMarginTop\":{},\"tbMarginBottom\":{},\"tbVerticalAlign\":\"{}\"",
-                tb.margin_left, tb.margin_right, tb.margin_top, tb.margin_bottom, va
+                ",\"tbMarginLeft\":{},\"tbMarginRight\":{},\"tbMarginTop\":{},\"tbMarginBottom\":{},\"tbVerticalAlign\":\"{}\",\"tbTextDirection\":\"{}\"",
+                tb.margin_left, tb.margin_right, tb.margin_top, tb.margin_bottom, va,
+                textbox_direction_name(tb)
             )
         } else {
             String::new()
@@ -382,6 +402,7 @@ impl DocumentCore {
         use crate::document_core::helpers::{json_bool, json_i32, json_str};
 
         let shape = self.resolve_shape_control_mut(section_idx, parent_para_idx, control_idx)?;
+        let mut direction_changed = false;
 
         // [#8399] 어울림 배제 밴드 지문 — 그림 속성 편집(#6204)과 같은 재투영 판정.
         let band_geometry_before = super::picture::picture_band_geometry(shape.common());
@@ -591,6 +612,7 @@ impl DocumentCore {
                         _ => tb.vertical_align,
                     };
                 }
+                direction_changed |= apply_textbox_direction(tb, props_json);
             }
         }
 
@@ -639,6 +661,14 @@ impl DocumentCore {
             crate::parser::assign_auto_numbers(&mut self.document);
         }
 
+        if direction_changed {
+            self.reflow_textbox_after_direction_change(
+                section_idx,
+                parent_para_idx,
+                &[(control_idx, 0, 0)],
+            );
+        }
+
         // 리플로우 + 렌더 트리 캐시 무효화
         let section = &mut self.document.sections[section_idx];
         section.raw_stream = None;
@@ -678,8 +708,9 @@ impl DocumentCore {
                 crate::model::table::VerticalAlign::Bottom => "Bottom",
             };
             format!(
-                ",\"tbMarginLeft\":{},\"tbMarginRight\":{},\"tbMarginTop\":{},\"tbMarginBottom\":{},\"tbVerticalAlign\":\"{}\"",
-                tb.margin_left, tb.margin_right, tb.margin_top, tb.margin_bottom, va
+                ",\"tbMarginLeft\":{},\"tbMarginRight\":{},\"tbMarginTop\":{},\"tbMarginBottom\":{},\"tbVerticalAlign\":\"{}\",\"tbTextDirection\":\"{}\"",
+                tb.margin_left, tb.margin_right, tb.margin_top, tb.margin_bottom, va,
+                textbox_direction_name(tb)
             )
         } else {
             String::new()
@@ -778,17 +809,20 @@ impl DocumentCore {
     /// [Task #1138] Shape 속성 JSON 적용 (mutation only). 후처리 (recompose /
     /// paginate / cache invalidate / event log) 는 호출자 책임.
     /// set_shape_properties_native + set_cell_shape_properties_by_path_native 공유.
-    /// 반환: caption_changed (true면 호출자가 AutoNumber 후처리 필요).
+    /// 반환: (caption_changed, direction_changed). caption이면 호출자가 AutoNumber 후처리,
+    /// 글 방향이면 글상자 문단 재조판을 맡는다.
     pub(crate) fn apply_shape_props_inner(
         shape: &mut crate::model::shape::ShapeObject,
         props_json: &str,
-    ) -> bool {
+    ) -> (bool, bool) {
         use crate::document_core::helpers::{json_bool, json_i32, json_str};
 
         // [#6740] 변환 파생 상태 무효화 판정용 — 어떤 대입보다 먼저 잰다.
         let transform_before =
             super::common::shape_transform_fingerprint(shape.common(), shape.shape_attr());
 
+        // 글 방향은 호출자가 글상자 문단을 다시 나눌지 정하는 데만 쓴다.
+        let mut direction_changed = false;
         let c = shape.common_mut();
         // [#6806] 클램프는 퇴화값 0(리사이즈 핸들을 반대편으로 넘긴 경우)에만 건다.
         // 한컴 문서의 가로선은 높이 3·4 로 저장되어 있어(corpus 도형 894 중 95건이 200 미만)
@@ -963,6 +997,7 @@ impl DocumentCore {
                         _ => tb.vertical_align,
                     };
                 }
+                direction_changed |= apply_textbox_direction(tb, props_json);
             }
         }
 
@@ -994,7 +1029,7 @@ impl DocumentCore {
             }
         }
         super::common::update_changed_polygon_geometry(shape, transform_before);
-        caption_changed
+        (caption_changed, direction_changed)
     }
     /// 글상자(Shape) 삭제 (네이티브).
     ///
@@ -2898,6 +2933,33 @@ impl DocumentCore {
 
         Ok(crate::document_core::helpers::json_ok())
     }
+}
+
+/// 글상자 글 방향 이름. list_attr bit 0~2(1=세로)와 HWPX VERTICALALL 표지를 함께 읽는다.
+fn textbox_direction_name(tb: &crate::model::shape::TextBox) -> &'static str {
+    match tb.list_attr & 0x07 {
+        0 => "Horizontal",
+        1 if !tb.vertical_all => "Vertical",
+        _ => "VerticalAll",
+    }
+}
+
+/// `tbTextDirection`("Horizontal"|"Vertical"|"VerticalAll")을 적는다. HWPX 파서와 같이
+/// 세로쓰기는 bit 0~2 = 1이고 VERTICALALL은 `vertical_all`로 가른다. 바뀌면 true.
+fn apply_textbox_direction(tb: &mut crate::model::shape::TextBox, props_json: &str) -> bool {
+    let Some(v) = crate::document_core::helpers::json_str(props_json, "tbTextDirection") else {
+        return false;
+    };
+    let (code, all) = match v.as_str() {
+        "Horizontal" => (0, false),
+        "Vertical" => (1, false),
+        "VerticalAll" => (1, true),
+        _ => return false,
+    };
+    let changed = tb.list_attr & 0x07 != code || tb.vertical_all != all;
+    tb.list_attr = (tb.list_attr & !0x07) | code;
+    tb.vertical_all = all;
+    changed
 }
 
 #[cfg(test)]

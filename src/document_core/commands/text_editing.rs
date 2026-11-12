@@ -3643,16 +3643,29 @@ impl DocumentCore {
             Control::Shape(shape) => {
                 let tb = super::super::helpers::get_textbox_at(shape, cell_idx)?;
                 let owner = shape.textbox_shape_at(cell_idx)?;
+                // 세로쓰기 글상자는 글이 위에서 아래로 나아가므로 줄 길이는 상자 높이와
+                // 위·아래 여백이다(세로 셀의 `inline_extent_px`와 같은 축).
+                let vertical = tb.list_attr & 0x07 != 0;
                 // 묶음 자식은 독립 개체 common.sz가 없으며 orgSz와 합성 변환이 물리 프레임을 정한다.
                 // layout_group_child와 같은 원본 폭을 쓰고, 바깥 Group의 폭으로 재래핑하지 않는다.
-                let width = if matches!(shape.as_ref(), crate::model::shape::ShapeObject::Group(_))
+                let extent = if matches!(shape.as_ref(), crate::model::shape::ShapeObject::Group(_))
                 {
                     let attr = owner.shape_attr();
-                    (attr.original_width as f64 * attr.render_sx.abs()) as i32
+                    if vertical {
+                        (attr.original_height as f64 * attr.render_sy.abs()) as i32
+                    } else {
+                        (attr.original_width as f64 * attr.render_sx.abs()) as i32
+                    }
+                } else if vertical {
+                    owner.common().height as i32
                 } else {
                     owner.common().width as i32
                 };
-                Some((width, tb.margin_left, tb.margin_right))
+                if vertical {
+                    Some((extent, tb.margin_top, tb.margin_bottom))
+                } else {
+                    Some((extent, tb.margin_left, tb.margin_right))
+                }
             }
             Control::Picture(pic) => Some((pic.common.width as i32, 0, 0)),
             _ => None,

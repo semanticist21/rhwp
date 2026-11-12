@@ -1931,7 +1931,7 @@ impl DocumentCore {
         props_json: &str,
     ) -> Result<String, HwpError> {
         let path = Self::parse_cell_path_json(cell_path_json)?;
-        let caption_changed = {
+        let (caption_changed, direction_changed) = {
             let section = self.document.sections.get_mut(section_idx).ok_or_else(|| {
                 HwpError::RenderError(format!("구역 인덱스 {} 범위 초과", section_idx))
             })?;
@@ -1952,6 +1952,11 @@ impl DocumentCore {
             };
             Self::apply_shape_props_inner(shape, props_json)
         };
+        if direction_changed {
+            let mut textbox_path = path.clone();
+            textbox_path.push((inner_control_idx, 0, 0));
+            self.reflow_textbox_after_direction_change(section_idx, parent_para_idx, &textbox_path);
+        }
         if caption_changed {
             crate::parser::assign_auto_numbers(&mut self.document);
         }
