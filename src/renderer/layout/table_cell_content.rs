@@ -986,7 +986,8 @@ impl LayoutEngine {
                     row_span: cell.row_span,
                     border_fill_id: cell.border_fill_id,
                     text_direction: cell.text_direction,
-                    clip: false,
+                    // 크기 고정 표는 넘친 글을 칸 밖으로 그리지 않는다(한/글 12.30 라벨 문서).
+                    clip: table.common.size_protect,
                     closed_reflow_frame: false,
                     page_fragment: false,
                     model_cell_index: Some(cell_enum_idx as u32),
