@@ -1678,11 +1678,11 @@ impl DocumentCore {
         let bf_json = self.build_border_fill_json_by_id(border_fill_id);
 
         Ok(format!(
-            "{{\"width\":{},\"height\":{},\"paddingLeft\":{},\"paddingRight\":{},\"paddingTop\":{},\"paddingBottom\":{},\"applyInnerMargin\":{},\"verticalAlign\":{},\"textDirection\":{},\"isHeader\":{},\"cellProtect\":{},\"fieldName\":{},\"editableInForm\":{},{}}}",
+            "{{\"width\":{},\"height\":{},\"paddingLeft\":{},\"paddingRight\":{},\"paddingTop\":{},\"paddingBottom\":{},\"applyInnerMargin\":{},\"verticalAlign\":{},\"textDirection\":{},\"lineWrap\":{},\"isHeader\":{},\"cellProtect\":{},\"fieldName\":{},\"editableInForm\":{},{}}}",
             cell.width, cell.height,
             cell.padding.left, cell.padding.right, cell.padding.top, cell.padding.bottom,
             cell.apply_inner_margin,
-            va, cell.text_direction, cell.is_header, cell.cell_protect(),
+            va, cell.text_direction, cell.line_wrap, cell.is_header, cell.cell_protect(),
             json_escape(cell.field_name.as_deref().unwrap_or("")),
             cell.editable_in_form(),
             bf_json,
@@ -1950,6 +1950,11 @@ impl DocumentCore {
                 cell.text_direction = v;
                 changed
             });
+            // 줄바꿈 방식(0 일반, 1 한 줄로 입력, 2 유지). 바뀌면 칸 문단을 다시 짠다.
+            if let Some(v) = top_u8("lineWrap").filter(|v| *v <= 2) {
+                needs_reflow |= cell.line_wrap != v;
+                cell.line_wrap = v;
+            }
             if let Some(v) = top_bool("isHeader") {
                 cell.set_header(v);
             }

@@ -3267,6 +3267,10 @@ impl DocumentCore {
             .get_mut(control_idx)
         {
             Some(Control::Table(table)) => {
+                let squeeze = cell_idx != 65534
+                    && table.cells.get(cell_idx).is_some_and(|cell| {
+                        cell.line_wrap == crate::model::table::CELL_LINE_WRAP_SQUEEZE
+                    });
                 let cell_para = if cell_idx == 65534 {
                     table
                         .caption
@@ -3353,6 +3357,9 @@ impl DocumentCore {
                         } else {
                             reflow_line_segs(cell_para, paragraph_box.clone(), &styles, self.dpi);
                         }
+                    }
+                    if squeeze {
+                        crate::renderer::composer::merge_soft_wrapped_line_segs(cell_para);
                     }
                 }
             }
@@ -3671,6 +3678,7 @@ impl DocumentCore {
         else {
             return;
         };
+        let squeeze = self.innermost_cell_squeezes(section_idx, parent_para_idx, path);
         let styles = self.resolve_render_styles();
         let dpi = self.dpi;
         let cell_width_px = hwpunit_to_px(cell_width, dpi);
@@ -3714,6 +3722,58 @@ impl DocumentCore {
             }
             None => reflow_line_segs(cell_para, paragraph_box, &styles, dpi),
         }
+        if squeeze {
+            crate::renderer::composer::merge_soft_wrapped_line_segs(cell_para);
+        }
+    }
+
+    /// path의 가장 안쪽 칸이 "한 줄로 입력"(`lineWrap=SQUEEZE`) 표 칸인지 본다.
+    fn innermost_cell_squeezes(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+    ) -> bool {
+        let Some(mut para) = self
+            .document
+            .sections
+            .get(section_idx)
+            .and_then(|section| section.paragraphs.get(parent_para_idx))
+        else {
+            return false;
+        };
+        for (i, &(ctrl_idx, cell_idx, cell_para_idx)) in path.iter().enumerate() {
+            let next = match para.controls.get(ctrl_idx) {
+                Some(Control::Table(table)) => {
+                    let Some(cell) = table.cells.get(cell_idx) else {
+                        return false;
+                    };
+                    if i + 1 == path.len() {
+                        return cell.line_wrap == crate::model::table::CELL_LINE_WRAP_SQUEEZE;
+                    }
+                    cell.paragraphs.get(cell_para_idx)
+                }
+                Some(Control::Shape(shape)) => {
+                    super::super::helpers::get_textbox_at(shape, cell_idx)
+                        .and_then(|textbox| textbox.paragraphs.get(cell_para_idx))
+                }
+                Some(Control::Picture(picture)) => picture
+                    .caption
+                    .as_ref()
+                    .and_then(|caption| caption.paragraphs.get(cell_para_idx)),
+                Some(control @ (Control::Header(_) | Control::Footer(_))) if cell_idx == 0 => {
+                    control
+                        .header_footer_paragraphs()
+                        .and_then(|paras| paras.get(cell_para_idx))
+                }
+                _ => None,
+            };
+            let Some(next) = next else {
+                return false;
+            };
+            para = next;
+        }
+        false
     }
 
     /// [#2755] path 기반 셀 문단 vpos 재계산 (깊이 ≥ 2 중첩 표 지원).

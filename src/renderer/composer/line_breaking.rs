@@ -6024,6 +6024,44 @@ pub(crate) fn reflow_line_segs(
     super::equation_line_metrics::publish_regenerated_rows(para, styles);
 }
 
+/// "한 줄로 입력"(`lineWrap=SQUEEZE`) 칸의 문단은 강제 줄 나눔에서만 줄을 나눈다.
+///
+/// 한컴 12.30은 이 칸에서 넘치는 글을 다음 줄로 보내지 않고 한 줄에 둔 채 글자 사이를
+/// 좁혀 그리며, 저장 줄은 칸 폭 한 줄(`horzsize` = 칸 안 폭)이다. 조판기가 폭으로 나눈
+/// 줄을 앞 줄에 합치고 합친 줄의 높이는 가장 큰 값으로 둔다. 그리기는 저장 한 줄의
+/// 넘침을 줄이는 기존 경로가 맡는다.
+pub(crate) fn merge_soft_wrapped_line_segs(para: &mut Paragraph) {
+    if para.line_segs.len() < 2 {
+        return;
+    }
+    // 강제 줄 나눔 바로 뒤의 저장 위치에서 시작하는 줄만 남긴다.
+    let hard_starts: Vec<u32> = para
+        .text
+        .chars()
+        .enumerate()
+        .filter(|(_, ch)| *ch == '\n')
+        .map(|(idx, _)| para.char_offsets.get(idx).map_or(idx as u32, |pos| *pos) + 1)
+        .collect();
+    let mut merged: Vec<LineSeg> = Vec::with_capacity(para.line_segs.len());
+    for mut seg in std::mem::take(&mut para.line_segs) {
+        match merged.last_mut() {
+            Some(last) if !hard_starts.contains(&seg.text_start) => {
+                last.line_height = last.line_height.max(seg.line_height);
+                last.text_height = last.text_height.max(seg.text_height);
+                last.baseline_distance = last.baseline_distance.max(seg.baseline_distance);
+                last.line_spacing = last.line_spacing.max(seg.line_spacing);
+            }
+            _ => {
+                if let Some(last) = merged.last() {
+                    seg.vertical_pos = last.vertical_pos + last.line_height + last.line_spacing;
+                }
+                merged.push(seg);
+            }
+        }
+    }
+    para.line_segs = merged;
+}
+
 /// 셀 분할로 저장 폭이 stale해진 문단을 다시 조판한다.
 ///
 /// 한컴은 좁아진 셀에서만 본문 뒤의 inline control을 별도 source line으로 저장한다.
