@@ -425,6 +425,32 @@ fn collect_external_image_references(document: &Document) -> Vec<ExternalImageRe
         }
     }
 
+    // 표 셀·머리말 안 그림이 쓰는 연결도 열거한다. 그림의 순번은 연결 레코드 순번이다.
+    for (index, bd) in document.doc_info.bin_data_list.iter().enumerate() {
+        let Ok(bin_data_id) = u16::try_from(index + 1) else {
+            break;
+        };
+        let path = bd
+            .abs_path
+            .as_deref()
+            .filter(|p| !p.is_empty())
+            .or_else(|| bd.rel_path.as_deref().filter(|p| !p.is_empty()));
+        let (crate::model::bin_data::BinDataType::Link, Some(path)) = (bd.data_type, path) else {
+            continue;
+        };
+        references.entry(bin_data_id).or_insert_with(|| {
+            let basename = external_path_basename(path).to_string();
+            ExternalImageReference {
+                key: format!("binData:{bin_data_id}"),
+                bin_data_id,
+                extension: external_path_extension(&basename),
+                basename,
+                original_path: path.to_string(),
+                loaded: document.external_image_loaded(bin_data_id),
+            }
+        });
+    }
+
     references.into_values().collect()
 }
 
@@ -4851,6 +4877,72 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 그림의 그림자·네온·반사·옅은 테두리를 지운다(한컴 원본 그림으로). 머리말/꼬리말 그림은
+    /// `cell_path_json`의 머리말 단계(`{"controlIndex":머리말,"cellIndex":0,"cellParaIndex":문단}`)로 가리킨다.
+    ///
+    /// 반환: `{"ok":true,"changed":bool}`
+    #[wasm_bindgen(js_name = clearPictureEffects)]
+    pub fn clear_picture_effects(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        control_idx: u32,
+    ) -> Result<String, JsValue> {
+        let cell_path = parse_cell_path_arg(cell_path_json)?;
+        self.clear_picture_effects_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &cell_path,
+            control_idx as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 문서에 포함한 그림을 `path` 파일에 연결한다(한컴 삽입 그림 저장하기·문서에 포함 끄기).
+    ///
+    /// 반환: `{"ok":true,"binDataId":<N>}`
+    #[wasm_bindgen(js_name = linkPictureImage)]
+    pub fn link_picture_image(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        control_idx: u32,
+        path: &str,
+    ) -> Result<String, JsValue> {
+        let cell_path = parse_cell_path_arg(cell_path_json)?;
+        self.link_picture_image_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &cell_path,
+            control_idx as usize,
+            path,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 읽어 둔 연결 그림을 문서에 넣는다(한컴 문서에 포함 켜기). 자르기·imgDim은 그대로다.
+    ///
+    /// 반환: `{"ok":true,"binDataId":<N>}`
+    #[wasm_bindgen(js_name = embedPictureImage)]
+    pub fn embed_picture_image(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        control_idx: u32,
+    ) -> Result<String, JsValue> {
+        let cell_path = parse_cell_path_arg(cell_path_json)?;
+        self.embed_picture_image_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &cell_path,
+            control_idx as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// [Task #1142] 외부 file path 그림 reference 목록을 구조화된 JSON 배열로 반환한다.
     ///
     /// 반환: JSON 배열 `[{ key, binDataId, originalPath, basename, extension, loaded }, ...]`
@@ -4967,6 +5059,46 @@ impl HwpDocument {
             self.invalidate_page_tree_cache();
         }
         injected
+    }
+
+    /// 이미 읽은 연결 그림을 다시 읽은 바이트로 바꾼다(한컴 연결 그림 새로 고침). 틀·자르기는 그대로다.
+    /// 아직 읽지 않은 연결도 받는다. 잘못된 key나 연결이 아닌 그림은 0을 반환한다.
+    #[wasm_bindgen(js_name = reloadExternalImageByKey)]
+    pub fn reload_external_image_by_key(
+        &mut self,
+        key: &str,
+        data: &[u8],
+        display_path: &str,
+    ) -> u32 {
+        let Some(bin_data_id) = parse_external_image_key(key) else {
+            return 0;
+        };
+        let loaded = self.document().external_image_loaded(bin_data_id);
+        if loaded {
+            // 같은 순번의 바이트를 바꾸므로 그림 캐시 키를 새로 매긴다.
+            let Some(index) = crate::model::bin_data::content_index(
+                &self.document().bin_data_content,
+                bin_data_id,
+            ) else {
+                return 0;
+            };
+            if collect_external_image_references(self.document())
+                .iter()
+                .all(|r| r.bin_data_id != bin_data_id)
+            {
+                return 0;
+            }
+            self.document_mut().bin_data_content[index].data =
+                crate::model::bin_data::BinDataBytes::from_shared(data.to_vec());
+            if !display_path.is_empty() {
+                self.document_mut()
+                    .update_external_image_display_path(bin_data_id, display_path);
+            }
+            self.bump_bin_data_epoch();
+            self.invalidate_page_tree_cache();
+            return 1;
+        }
+        self.inject_external_image_by_key(key, data, display_path)
     }
 
     /// 그림 컨트롤의 속성을 조회한다.

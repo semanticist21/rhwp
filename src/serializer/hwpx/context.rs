@@ -330,8 +330,7 @@ impl SerializeContext {
         for (index, bd) in doc.bin_data_content.iter().enumerate() {
             // HWP5 연결 레코드 자리 항목은 BinData 가 아니다 — 아래 bin_data_list 루프가
             // 외부 참조로 처리한다.
-            if crate::model::bin_data::is_hwp5_link_slot(bd, doc.doc_info.bin_data_list.get(index))
-            {
+            if crate::model::bin_data::is_link_content(bd, index, &doc.doc_info.bin_data_list) {
                 continue;
             }
             // [#3546] OOXML 차트 파트(HWPX 파서가 60000+N 으로 주입)는 BinData 가

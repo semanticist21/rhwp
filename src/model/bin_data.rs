@@ -369,15 +369,20 @@ pub(crate) fn hwp5_link_slot() -> BinDataContent {
     }
 }
 
-/// `record`(같은 위치의 BIN_DATA 레코드) 자리를 지키는 `hwp5_link_slot` 인가.
+/// 연결(Link) 레코드에 딸린 콘텐츠인가. 읽어 둔 연결 파일 바이트는 화면용이라 저장 스트림·ZIP 항목으로 쓰지 않는다.
 ///
-/// HWP5 연결 레코드는 저장 id 가 없어 0 이다(HWP3·HWPX 연결 레코드는 0 이 아니다).
-/// 외부 그림이 채워져 id 가 바뀐 항목은 해당하지 않는다.
-pub(crate) fn is_hwp5_link_slot(content: &BinDataContent, record: Option<&BinData>) -> bool {
-    content.id == 0
-        && content.extension.is_empty()
-        && matches!(&content.data, BinDataBytes::Loaded(v) if v.is_empty())
-        && record.is_some_and(|bd| bd.data_type == BinDataType::Link && bd.storage_id == 0)
+/// HWP5 연결 레코드는 저장 id가 없어 같은 순번 자리를, 다른 연결 레코드는 저장 id로 콘텐츠를 가리킨다.
+pub(crate) fn is_link_content(content: &BinDataContent, index: usize, list: &[BinData]) -> bool {
+    let same_slot = list.get(index).is_some_and(|bd| {
+        bd.data_type == BinDataType::Link
+            && bd.storage_id == 0
+            && (content.id == 0 || usize::from(content.id) == index + 1)
+    });
+    same_slot
+        || (content.id != 0
+            && list
+                .iter()
+                .any(|bd| bd.data_type == BinDataType::Link && bd.storage_id == content.id))
 }
 
 /// Resolve the document-record index first, with sparse storage IDs only as a fallback.

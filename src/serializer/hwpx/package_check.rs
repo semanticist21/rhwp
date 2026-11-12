@@ -192,7 +192,7 @@ pub fn check_package(hwpx_bytes: &[u8], doc: &Document) -> PackageCheckReport {
         .iter()
         .enumerate()
         .filter(|(i, b)| {
-            !crate::model::bin_data::is_hwp5_link_slot(b, doc.doc_info.bin_data_list.get(*i))
+            !crate::model::bin_data::is_link_content(b, *i, &doc.doc_info.bin_data_list)
         })
         .map(|(_, b)| b)
         .partition(|b| b.extension == "ooxml_chart");

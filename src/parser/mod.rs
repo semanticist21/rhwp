@@ -1269,40 +1269,27 @@ fn load_bin_data_content_lenient(
 /// HWP 파일 디렉토리에서 basename 매칭으로 실제 image 로드.
 pub(crate) fn populate_link_image_paths(doc: &mut Document) {
     use crate::model::bin_data::BinDataType;
-    use crate::model::control::Control;
-    use crate::model::shape::ShapeObject;
 
     let bin_data = doc.doc_info.bin_data_list.clone();
-    for section in &mut doc.sections {
-        for para in &mut section.paragraphs {
-            for ctrl in &mut para.controls {
-                let pic = match ctrl {
-                    Control::Picture(p) => p,
-                    Control::Shape(s) => match s.as_mut() {
-                        ShapeObject::Picture(p) => p,
-                        _ => continue,
-                    },
-                    _ => continue,
-                };
-                if pic.image_attr.external_path.is_some() {
-                    continue;
-                }
-                let bin_idx = (pic.image_attr.bin_data_id as usize).saturating_sub(1);
-                if let Some(bd) = bin_data.get(bin_idx) {
-                    if matches!(bd.data_type, BinDataType::Link) {
-                        let path = bd
-                            .abs_path
-                            .clone()
-                            .filter(|p| !p.is_empty())
-                            .or_else(|| bd.rel_path.clone().filter(|p| !p.is_empty()));
-                        if let Some(p) = path {
-                            pic.image_attr.external_path = Some(p);
-                        }
-                    }
+    // 표 셀·머리말·글상자 안 연결 그림도 경로를 받는다(한컴 문서에 포함 끄기는 어디서나 된다).
+    crate::document_core::visit_pictures(doc, &mut |pic| {
+        if pic.image_attr.external_path.is_some() {
+            return;
+        }
+        let bin_idx = (pic.image_attr.bin_data_id as usize).saturating_sub(1);
+        if let Some(bd) = bin_data.get(bin_idx) {
+            if matches!(bd.data_type, BinDataType::Link) {
+                let path = bd
+                    .abs_path
+                    .clone()
+                    .filter(|p| !p.is_empty())
+                    .or_else(|| bd.rel_path.clone().filter(|p| !p.is_empty()));
+                if let Some(p) = path {
+                    pic.image_attr.external_path = Some(p);
                 }
             }
         }
-    }
+    });
 }
 
 // ---------------------------------------------------------------------------

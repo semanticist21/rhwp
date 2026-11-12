@@ -634,25 +634,11 @@ impl Document {
         bin_data_id: u16,
         display_path: &str,
     ) {
-        for section in &mut self.sections {
-            for para in &mut section.paragraphs {
-                for ctrl in &mut para.controls {
-                    let pic = match ctrl {
-                        crate::model::control::Control::Picture(p) => p,
-                        crate::model::control::Control::Shape(s) => match s.as_mut() {
-                            crate::model::shape::ShapeObject::Picture(p) => p,
-                            _ => continue,
-                        },
-                        _ => continue,
-                    };
-                    if pic.image_attr.bin_data_id == bin_data_id
-                        && pic.image_attr.external_path.is_some()
-                    {
-                        pic.image_attr.external_path = Some(display_path.to_string());
-                    }
-                }
+        crate::document_core::visit_pictures(self, &mut |pic| {
+            if pic.image_attr.bin_data_id == bin_data_id && pic.image_attr.external_path.is_some() {
+                pic.image_attr.external_path = Some(display_path.to_string());
             }
-        }
+        });
     }
 
     /// 배포용(읽기전용) 문서를 편집 가능한 일반 문서로 변환한다.

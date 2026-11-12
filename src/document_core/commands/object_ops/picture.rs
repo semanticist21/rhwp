@@ -465,9 +465,11 @@ impl DocumentCore {
         let desc_escaped = crate::document_core::helpers::json_escape(&c.description);
         // [Task #741 후속] 외부 file path (HWP3 외부 그림) 영역 영역 dialog 표시 영역
         let external_path_field = match &pic.image_attr.external_path {
+            // 연결 그림은 `getExternalImageReferences`의 key(`binData:<순번>`)와 짝지을 순번도 준다.
             Some(p) => format!(
-                ",\"externalPath\":\"{}\"",
-                crate::document_core::helpers::json_escape(p)
+                ",\"externalPath\":\"{}\",\"binDataId\":{}",
+                crate::document_core::helpers::json_escape(p),
+                pic.image_attr.bin_data_id
             ),
             None => String::new(),
         };
@@ -1659,6 +1661,189 @@ impl DocumentCore {
             uses += usize::from(*id == bin_data_id);
         });
         (embedded && uses == 1).then_some(index)
+    }
+
+    /// 그림의 그림자·네온·반사·옅은 테두리를 지운다(한컴 그림 ▾ 원본 그림으로).
+    /// 본문·표 셀·글상자·머리말/꼬리말 그림을 경로로 받는다. 되돌리기는 스냅샷이 맡는다.
+    ///
+    /// 반환: `{"ok":true,"changed":bool}`
+    pub fn clear_picture_effects_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        cell_path: &[(usize, usize, usize)],
+        control_idx: usize,
+    ) -> Result<String, HwpError> {
+        let changed = self
+            .picture_image_target_mut(section_idx, parent_para_idx, cell_path, control_idx)?
+            .clear_effects();
+        if changed {
+            self.document.sections[section_idx].raw_stream = None;
+            self.after_picture_image_edit(section_idx, parent_para_idx, control_idx);
+        }
+        Ok(format!("{{\"ok\":true,\"changed\":{changed}}}"))
+    }
+
+    /// 그림을 `path` 파일에 연결한다(한컴 삽입 그림 저장하기 뒤, 문서에 포함 끄기).
+    /// 보이는 이미지·자르기·imgDim은 그대로 두고 저장본에는 경로만 남는다(HWP BinData Link,
+    /// HWPX `isEmbeded="0"`). 그 이미지를 이 그림만 쓰면 BinData를 제자리에서 연결로 바꾼다.
+    pub fn link_picture_image_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        cell_path: &[(usize, usize, usize)],
+        control_idx: usize,
+        path: &str,
+    ) -> Result<String, HwpError> {
+        let basename = crate::model::image::external_picture_basename(path).to_string();
+        if basename.is_empty() {
+            return Err(HwpError::RenderError(
+                "연결할 파일 경로가 비어 있습니다".to_string(),
+            ));
+        }
+        let pic =
+            self.picture_image_target_mut(section_idx, parent_para_idx, cell_path, control_idx)?;
+        if pic.image_attr.external_path.is_some() {
+            return Err(HwpError::RenderError("이미 연결한 그림입니다".to_string()));
+        }
+        let id = pic.image_attr.bin_data_id;
+        let (content, record) = self
+            .picture_bin_slots(id)
+            .ok_or_else(|| HwpError::RenderError("그림 데이터가 없습니다".to_string()))?;
+        let link = |storage_id: u16, extension: String| crate::model::bin_data::BinData {
+            data_type: crate::model::bin_data::BinDataType::Link,
+            abs_path: Some(path.to_string()),
+            rel_path: Some(basename.clone()),
+            storage_id,
+            extension: Some(extension),
+            ..Default::default()
+        };
+        let position = if self.bin_data_uses(id) == 1 {
+            let next = self.document.next_bin_data_storage_id();
+            let c = &mut self.document.bin_data_content[content];
+            if c.id == 0 {
+                c.id = next;
+            }
+            let (sid, ext) = (c.id, c.extension.clone());
+            self.document.doc_info.bin_data_list[record] = link(sid, ext);
+            id
+        } else {
+            let c = &self.document.bin_data_content[content];
+            let (data, ext) = (c.data.clone(), c.extension.clone());
+            let sid = self.document.next_bin_data_storage_id();
+            self.document
+                .bin_data_content
+                .push(crate::model::bin_data::BinDataContent {
+                    id: sid,
+                    data,
+                    extension: ext.clone(),
+                });
+            self.document.doc_info.bin_data_list.push(link(sid, ext));
+            self.document.bin_data_content.len() as u16
+        };
+        let pic =
+            self.picture_image_target_mut(section_idx, parent_para_idx, cell_path, control_idx)?;
+        pic.image_attr.bin_data_id = position;
+        pic.image_attr.external_path = Some(path.to_string());
+        self.document.doc_info.raw_stream = None;
+        self.after_picture_image_edit(section_idx, parent_para_idx, control_idx);
+        Ok(format!("{{\"ok\":true,\"binDataId\":{position}}}"))
+    }
+
+    /// 연결 그림을 문서에 넣는다(한컴 개체 속성 문서에 포함 켜기). 읽어 둔 연결 파일 바이트를 쓰며
+    /// 자르기·imgDim은 그대로 둔다. 그 연결을 이 그림만 쓰면 BinData를 제자리에서 포함으로 바꾼다.
+    pub fn embed_picture_image_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        cell_path: &[(usize, usize, usize)],
+        control_idx: usize,
+    ) -> Result<String, HwpError> {
+        let pic =
+            self.picture_image_target_mut(section_idx, parent_para_idx, cell_path, control_idx)?;
+        if pic.image_attr.external_path.is_none() {
+            return Err(HwpError::RenderError(
+                "이미 문서에 포함한 그림입니다".to_string(),
+            ));
+        }
+        let id = pic.image_attr.bin_data_id;
+        let not_loaded = || HwpError::RenderError("연결 파일을 아직 읽지 못했습니다".to_string());
+        let (content, record) = self.picture_bin_slots(id).ok_or_else(not_loaded)?;
+        if self.document.bin_data_content[content].data.is_empty() {
+            return Err(not_loaded());
+        }
+        let position = if self.bin_data_uses(id) == 1 {
+            let sid = match self.document.bin_data_content[content].id {
+                0 => self.document.next_bin_data_storage_id(),
+                sid => sid,
+            };
+            let c = &mut self.document.bin_data_content[content];
+            c.id = sid;
+            let ext = c.extension.clone();
+            // attr: bits 0-3=1(Embedding), bits 8-9=1(Success) — register_embedded_bin_data와 같다.
+            self.document.doc_info.bin_data_list[record] = crate::model::bin_data::BinData {
+                attr: 0x0101,
+                data_type: crate::model::bin_data::BinDataType::Embedding,
+                status: crate::model::bin_data::BinDataStatus::Success,
+                storage_id: sid,
+                extension: Some(ext),
+                ..Default::default()
+            };
+            id
+        } else {
+            let c = &self.document.bin_data_content[content];
+            let (data, ext) = (c.data.load_shared(), c.extension.clone());
+            crate::model::bin_data::register_embedded_bin_data(&mut self.document, data, &ext)
+        };
+        let pic =
+            self.picture_image_target_mut(section_idx, parent_para_idx, cell_path, control_idx)?;
+        pic.image_attr.bin_data_id = position;
+        pic.image_attr.external_path = None;
+        self.document.doc_info.raw_stream = None;
+        self.after_picture_image_edit(section_idx, parent_para_idx, control_idx);
+        Ok(format!("{{\"ok\":true,\"binDataId\":{position}}}"))
+    }
+
+    /// 그림 BinData 순번의 (콘텐츠, DocInfo 레코드) 자리. HWP 연결 레코드는 storage id가 없어 같은 순번을 쓴다.
+    fn picture_bin_slots(&self, bin_data_id: u16) -> Option<(usize, usize)> {
+        let contents = &self.document.bin_data_content;
+        let list = &self.document.doc_info.bin_data_list;
+        let content = crate::model::bin_data::content_index(contents, bin_data_id)?;
+        let sid = contents[content].id;
+        let record = list
+            .get(content)
+            .filter(|bd| {
+                (bd.storage_id != 0 && bd.storage_id == sid)
+                    || (bd.storage_id == 0
+                        && bd.data_type == crate::model::bin_data::BinDataType::Link)
+            })
+            .map(|_| content)
+            .or_else(|| {
+                list.iter()
+                    .position(|bd| bd.storage_id != 0 && bd.storage_id == sid)
+            })?;
+        Some((content, record))
+    }
+
+    /// 문서에서 이 BinData 순번을 쓰는 곳의 수.
+    fn bin_data_uses(&mut self, bin_data_id: u16) -> usize {
+        let mut uses = 0usize;
+        super::super::bin_data_prune::visit_bin_data_refs(&mut self.document, &mut |id| {
+            uses += usize::from(*id == bin_data_id);
+        });
+        uses
+    }
+
+    fn after_picture_image_edit(&mut self, section_idx: usize, para: usize, ctrl: usize) {
+        self.document.sections[section_idx].raw_stream = None;
+        self.recompose_section(section_idx);
+        self.paginate_if_needed();
+        self.invalidate_page_tree_cache();
+        self.event_log.push(DocumentEvent::PictureResized {
+            section: section_idx,
+            para,
+            ctrl,
+        });
     }
 
     #[allow(clippy::too_many_arguments)]

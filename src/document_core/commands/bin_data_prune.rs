@@ -55,6 +55,7 @@ use std::collections::BTreeSet;
 
 use crate::model::control::Control;
 use crate::model::document::Document;
+use crate::model::image::Picture;
 use crate::model::shape::{DrawingObjAttr, ShapeObject};
 
 /// 정리 결과 요약.
@@ -81,9 +82,31 @@ impl BinDataPruneReport {
 /// `f` 가 값을 바꾸면 그대로 반영된다 — 모으기와 옮기기가 **같은 순회**를 쓰므로 두
 /// 단계가 서로 다른 자리를 볼 수 없다.
 pub(crate) fn visit_bin_data_refs(doc: &mut Document, f: &mut dyn FnMut(&mut u16)) {
-    fn visit_drawing(drawing: &mut DrawingObjAttr, f: &mut dyn FnMut(&mut u16)) {
+    walk(doc, &mut |r| match r {
+        BinRef::Picture(pic) => f(&mut pic.image_attr.bin_data_id),
+        BinRef::Id(id) => f(id),
+    });
+}
+
+/// 문서 안의 모든 그림(본문·표 셀·글상자·묶음·머리말/꼬리말·주석·바탕쪽)을 방문한다.
+pub(crate) fn visit_pictures(doc: &mut Document, f: &mut dyn FnMut(&mut Picture)) {
+    walk(doc, &mut |r| {
+        if let BinRef::Picture(pic) = r {
+            f(pic)
+        }
+    });
+}
+
+/// 순회가 만나는 BinData 참조. 그림은 참조 번호 말고 다른 값도 고칠 수 있게 통째로 준다.
+enum BinRef<'a> {
+    Picture(&'a mut Picture),
+    Id(&'a mut u16),
+}
+
+fn walk(doc: &mut Document, f: &mut dyn FnMut(BinRef<'_>)) {
+    fn visit_drawing(drawing: &mut DrawingObjAttr, f: &mut dyn FnMut(BinRef<'_>)) {
         if let Some(image) = drawing.fill.image.as_mut() {
-            f(&mut image.bin_data_id);
+            f(BinRef::Id(&mut image.bin_data_id));
         }
         if let Some(text_box) = drawing.text_box.as_mut() {
             visit_paragraphs(&mut text_box.paragraphs, f);
@@ -93,11 +116,11 @@ pub(crate) fn visit_bin_data_refs(doc: &mut Document, f: &mut dyn FnMut(&mut u16
         }
     }
 
-    fn visit_shape(shape: &mut ShapeObject, f: &mut dyn FnMut(&mut u16)) {
+    fn visit_shape(shape: &mut ShapeObject, f: &mut dyn FnMut(BinRef<'_>)) {
         match shape {
             // `drawing_mut()` 이 `None` 을 주는 두 변형은 각자 캡션을 갖는다.
             ShapeObject::Picture(pic) => {
-                f(&mut pic.image_attr.bin_data_id);
+                f(BinRef::Picture(pic));
                 if let Some(caption) = pic.caption.as_mut() {
                     visit_paragraphs(&mut caption.paragraphs, f);
                 }
@@ -124,7 +147,7 @@ pub(crate) fn visit_bin_data_refs(doc: &mut Document, f: &mut dyn FnMut(&mut u16
                 // OLE 의 참조는 `u32` 다. `u16` 범위 밖이면 순번 의미가 아니므로
                 // 손대지 않는다 — 모으는 쪽도 같은 조건으로 건너뛴다.
                 if let Ok(mut id) = u16::try_from(ole.bin_data_id) {
-                    f(&mut id);
+                    f(BinRef::Id(&mut id));
                     ole.bin_data_id = u32::from(id);
                 }
             }
@@ -136,11 +159,11 @@ pub(crate) fn visit_bin_data_refs(doc: &mut Document, f: &mut dyn FnMut(&mut u16
         }
     }
 
-    fn visit_controls(controls: &mut [Control], f: &mut dyn FnMut(&mut u16)) {
+    fn visit_controls(controls: &mut [Control], f: &mut dyn FnMut(BinRef<'_>)) {
         for control in controls {
             match control {
                 Control::Picture(pic) => {
-                    f(&mut pic.image_attr.bin_data_id);
+                    f(BinRef::Picture(pic));
                     if let Some(caption) = pic.caption.as_mut() {
                         visit_paragraphs(&mut caption.paragraphs, f);
                     }
@@ -172,7 +195,7 @@ pub(crate) fn visit_bin_data_refs(doc: &mut Document, f: &mut dyn FnMut(&mut u16
 
     fn visit_paragraphs(
         paragraphs: &mut [crate::model::paragraph::Paragraph],
-        f: &mut dyn FnMut(&mut u16),
+        f: &mut dyn FnMut(BinRef<'_>),
     ) {
         for para in paragraphs {
             visit_controls(&mut para.controls, f);
@@ -185,7 +208,7 @@ pub(crate) fn visit_bin_data_refs(doc: &mut Document, f: &mut dyn FnMut(&mut u16
     // DocInfo 의 테두리/배경 이미지 채우기는 문단과 무관하게 살아 있는 참조다.
     for border_fill in &mut doc.doc_info.border_fills {
         if let Some(image) = border_fill.fill.image.as_mut() {
-            f(&mut image.bin_data_id);
+            f(BinRef::Id(&mut image.bin_data_id));
         }
     }
 }

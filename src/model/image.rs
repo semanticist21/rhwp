@@ -113,6 +113,47 @@ impl Picture {
         }
     }
 
+    /// 그림자·네온·반사·옅은 테두리를 모두 지운다(한컴 원본 그림으로). 바뀐 것이 있으면 true.
+    ///
+    /// HWP 꼬리의 효과 정보는 효과마다 길이가 달라 그 뒤의 원본 크기·투명도는 꼬리 끝에서 읽는다.
+    /// 한컴 12.30은 효과를 지우면 [테두리 투명도][인스턴스 id][효과 0][원본 크기][투명도]만 남긴다.
+    pub(crate) fn clear_effects(&mut self) -> bool {
+        let model = self.effects.shadow.is_some() || self.effects.soft_edge_radius.is_some();
+        self.effects = PictureEffects::default();
+        let extra = self.raw_picture_extra.clone();
+        let flags = extra
+            .get(5..9)
+            .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
+        if flags.unwrap_or(0) == 0 {
+            return model;
+        }
+        let layout = picture_extra_layout(&extra);
+        let (dim, alpha) = if flags == Some(PICTURE_EFFECT_SOFT_EDGE) && layout.dim_offset.is_some()
+        {
+            (layout.dim_offset, layout.alpha_offset)
+        } else if extra.len() >= 18 {
+            // 그림자·네온·반사는 색 정보가 가변이라 끝의 9바이트(원본 크기 8 + 투명도 1)를 쓴다.
+            (Some(extra.len() - 9), Some(extra.len() - 1))
+        } else {
+            (None, None)
+        };
+        let mut tail = extra[..5].to_vec();
+        tail.extend_from_slice(&0u32.to_le_bytes());
+        if let Some(at) = dim {
+            let d = &extra[at..at + 8];
+            tail.extend_from_slice(d);
+            self.img_dim = (
+                u32::from_le_bytes([d[0], d[1], d[2], d[3]]),
+                u32::from_le_bytes([d[4], d[5], d[6], d[7]]),
+            );
+            if let Some(a) = alpha {
+                tail.push(extra[a]);
+            }
+        }
+        self.raw_picture_extra = tail;
+        true
+    }
+
     /// 저장된 자르기 폭이 있으면 높이가 비어 있어도 그 선택을 보존한다.
     /// 빈 선택을 자르기 없음으로 바꾸면 한컴이 그리지 않는 원본 전체가 나타난다.
     pub fn render_crop_rect(&self) -> Option<(i32, i32, i32, i32)> {
