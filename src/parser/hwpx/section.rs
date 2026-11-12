@@ -2650,6 +2650,15 @@ fn parse_table(
                             }
                         }
                     }
+                    b"label" => {
+                        // 라벨 표 정보는 해석하지 않고 속성을 받은 차례대로 보존한다.
+                        table.label = Some(
+                            ce.attributes()
+                                .flatten()
+                                .map(|attr| (attr.key.as_ref().to_string(), attr_str(&attr)))
+                                .collect(),
+                        );
+                    }
                     b"cellzone" => {
                         let mut zone = crate::model::table::TableZone::default();
                         for attr in ce.attributes().flatten() {

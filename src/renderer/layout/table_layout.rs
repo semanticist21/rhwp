@@ -4215,6 +4215,8 @@ impl LayoutEngine {
             .filter(|rows| nested_split.is_none() && rows.len() == row_count)
             .cloned()
             .unwrap_or(row_heights);
+        let mut row_heights = row_heights;
+        self.clamp_size_protected_rows(table, &mut row_heights);
         if std::env::var("RHWP_DIAG_TAC").is_ok() {
             let decl: Vec<f64> = table
                 .cells
@@ -5220,6 +5222,29 @@ impl LayoutEngine {
         )
     }
 
+    /// 크기 고정 표(`hp:sz protect`, attr bit 20)는 내용이 넘쳐도 행을 선언 높이 안에 둔다.
+    /// 한/글 12.30 라벨 문서의 이름표 칸은 크기를 지키고 넘친 글을 감춘다.
+    pub(crate) fn clamp_size_protected_rows(
+        &self,
+        table: &crate::model::table::Table,
+        rows: &mut [f64],
+    ) {
+        if !table.common.size_protect {
+            return;
+        }
+        for (row, height) in rows.iter_mut().enumerate() {
+            let declared = table
+                .cells
+                .iter()
+                .filter(|cell| cell.row as usize == row && cell.row_span == 1)
+                .map(|cell| hwpunit_to_px(cell.height as i32, self.dpi))
+                .fold(0.0f64, f64::max);
+            if declared > 0.0 {
+                *height = height.min(declared);
+            }
+        }
+    }
+
     /// [#3386] `allow_declared_trust=false` 면 선언 높이 신뢰(합 가드 완화)를 끈다.
     ///
     /// **조각(fragment) 렌더 경로 전용**이다. 조각은 자식 내용을 감싸려고 노드를
@@ -5250,6 +5275,8 @@ impl LayoutEngine {
             false,
         );
         self.declared_trust_allowed.set(true);
+        let mut out = out;
+        self.clamp_size_protected_rows(table, &mut out);
         // 재귀 측정은 자체 paint 높이를 반환하되, 스캔이 명시적으로 게시한
         // 앞 행의 물리 원점까지 다른 계획으로 덮어쓰지 않는다.
         self.seed_stored_frame_rows(table, &out);

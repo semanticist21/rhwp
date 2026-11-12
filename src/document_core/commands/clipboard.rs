@@ -3,7 +3,7 @@
 use super::super::helpers::{
     border_line_type_to_u8_val, clipboard_color_to_css, clipboard_escape_html,
     detect_clipboard_image_mime, get_textbox_from_shape, logical_paragraph_length,
-    logical_to_text_offset, utf16_pos_to_char_idx,
+    logical_to_text_offset, logical_to_text_slot, utf16_pos_to_char_idx,
 };
 use crate::document_core::{ClipboardData, DocumentCore};
 use crate::error::HwpError;
@@ -191,6 +191,27 @@ pub(super) fn text_to_split_logical_offset(
     text_offset: usize,
     after_control: bool,
 ) -> usize {
+    text_to_split_logical_slot(para, text_offset, passed_objects(after_control))
+}
+
+/// 캐럿 경계의 "그 글자 자리에서 지나온 개체 수". 글자 자리 경계(`false`)는 0, 그 자리 개체
+/// 모두 뒤(`true`)는 [`ALL_OBJECTS`]다. 맞붙은 개체 사이는 그 사이 수다.
+pub(crate) const ALL_OBJECTS: usize = usize::MAX;
+
+pub(crate) fn passed_objects(after_control: bool) -> usize {
+    if after_control {
+        ALL_OBJECTS
+    } else {
+        0
+    }
+}
+
+/// 글자 자리 `text_offset`에서 그 자리 개체 `passed`개를 지난 split 논리 자리.
+pub(super) fn text_to_split_logical_slot(
+    para: &Paragraph,
+    text_offset: usize,
+    passed: usize,
+) -> usize {
     let control_positions = para.control_text_positions();
     if control_positions.is_empty() {
         return text_offset;
@@ -199,15 +220,26 @@ pub(super) fn text_to_split_logical_offset(
     // 클립보드 range trimming 은 곧바로 Paragraph::split_at()을 호출한다.
     // 따라서 split_at()이 한 칸으로 세는 컨트롤과 같은 기준으로 변환해야
     // 앞에 놓인 개체 때문에 범위가 한 글자씩 밀리지 않는다.
-    let before_count = para
-        .controls
-        .iter()
-        .enumerate()
-        .filter(|(_, ctrl)| Paragraph::occupies_split_slot(ctrl))
-        .filter_map(|(ci, _)| control_positions.get(ci))
-        .filter(|&&pos| pos < text_offset || (after_control && pos == text_offset))
-        .count();
-    text_offset + before_count
+    let slot_positions = || {
+        para.controls
+            .iter()
+            .enumerate()
+            .filter(|(_, ctrl)| Paragraph::occupies_split_slot(ctrl))
+            .filter_map(|(ci, _)| control_positions.get(ci).copied())
+    };
+    let before_count = slot_positions().filter(|&pos| pos < text_offset).count();
+    let here = slot_positions().filter(|&pos| pos == text_offset).count();
+    text_offset + before_count + passed.min(here)
+}
+
+/// 컨트롤 `index`가 같은 글자 자리의 split 개체 가운데 몇 번째인가(0부터).
+pub(super) fn split_slot_rank(para: &Paragraph, positions: &[usize], index: usize) -> usize {
+    (0..index)
+        .filter(|&other| {
+            positions.get(other) == positions.get(index)
+                && Paragraph::occupies_split_slot(&para.controls[other])
+        })
+        .count()
 }
 
 /// 글자 `end` 뒤에 있으면서 문단을 나눌 때 따라가지 않는 컨트롤(머리말·꼬리말·책갈피 따위)을
@@ -262,25 +294,27 @@ pub(super) fn clip_paragraph_text_range_for_clipboard(
     let end_after_control = end_char_offset >= source.text.chars().count();
     clip_paragraph_caret_range_for_clipboard(
         source,
-        (start_char_offset, false),
-        (end_char_offset, end_after_control),
+        (start_char_offset, 0),
+        (end_char_offset, passed_objects(end_after_control)),
     )
 }
 
-/// [#7444] 캐럿 경계 `(글자 위치, 그 자리 개체 뒤인가)` 로 문단을 자른다.
-/// 시작이 개체 뒤면 그 개체를 빼고, 끝이 개체 뒤면 그 개체를 담는다.
+/// [#7444] 캐럿 경계 `(글자 위치, 그 자리에서 지나온 개체 수)` 로 문단을 자른다.
+/// 시작 앞에 지나온 개체는 빼고, 끝 앞에 지나온 개체는 담는다. 맞붙은 개체 사이 경계도
+/// 그 사이에서 자른다(한/글 12.30: 두 각주 사이에서 시작한 선택은 뒤 각주만 담는다).
 fn clip_paragraph_caret_range_for_clipboard(
     source: &Paragraph,
-    (start_char_offset, start_after_control): (usize, bool),
-    (end_char_offset, end_after_control): (usize, bool),
+    (start_char_offset, start_passed): (usize, usize),
+    (end_char_offset, end_passed): (usize, usize),
 ) -> Paragraph {
+    let start_after_control = start_passed > 0;
     let text_len = source.text.chars().count();
     let start = start_char_offset.min(text_len);
     let end = end_char_offset.min(text_len).max(start);
 
     let mut clipped = source.clone();
     drop_fixed_controls_after(&mut clipped, end);
-    let end_logical = text_to_split_logical_offset(&clipped, end, end_after_control);
+    let end_logical = text_to_split_logical_slot(&clipped, end, end_passed);
     // 문단 끝 개체까지 담는 끝이면 자를 것이 없다.
     if end_logical < text_to_split_logical_offset(&clipped, text_len, true) {
         let _ = clipped.split_at(end_logical);
@@ -290,11 +324,14 @@ fn clip_paragraph_caret_range_for_clipboard(
     }
 
     let control_positions = clipped.control_text_positions();
+    let slot_ranks: Vec<usize> = (0..clipped.controls.len())
+        .map(|idx| split_slot_rank(&clipped, &control_positions, idx))
+        .collect();
     let old_controls = clipped.controls.clone();
     let old_records = clipped.ctrl_data_records.clone();
     let old_ranges = clipped.field_ranges.clone();
 
-    let start_logical = text_to_split_logical_offset(&clipped, start, start_after_control);
+    let start_logical = text_to_split_logical_slot(&clipped, start, start_passed);
     let mut suffix = clipped.split_at(start_logical);
     let mut keep_control = vec![false; old_controls.len()];
 
@@ -315,7 +352,13 @@ fn clip_paragraph_caret_range_for_clipboard(
             continue;
         }
         let pos = control_positions.get(idx).copied().unwrap_or(text_len);
-        let after_start = pos > start || (pos == start && !start_after_control);
+        // 시작 자리의 개체는 지나온 수 뒤의 것만 담는다. 칸이 없는 컨트롤은 글자 자리 경계에서만.
+        let at_start = if Paragraph::occupies_split_slot(ctrl) {
+            slot_ranks[idx] >= start_passed
+        } else {
+            !start_after_control
+        };
+        let after_start = pos > start || (pos == start && at_start);
         if after_start && pos <= end {
             keep_control[idx] = true;
         }
@@ -425,9 +468,9 @@ impl DocumentCore {
         self.copy_selection_range(
             section_idx,
             start_para_idx,
-            (start_char_offset, false),
+            (start_char_offset, 0),
             end_para_idx,
-            (end_char_offset, end_after_control),
+            (end_char_offset, passed_objects(end_after_control)),
         )
     }
 
@@ -494,9 +537,11 @@ impl DocumentCore {
                     }
                     selected.push(fragment);
                 } else {
-                    let start = logical_to_text_offset(paragraph, from);
-                    let mut end = logical_to_text_offset(paragraph, to);
-                    end.1 |= to == logical_paragraph_length(paragraph);
+                    let start = logical_to_text_slot(paragraph, from);
+                    let mut end = logical_to_text_slot(paragraph, to);
+                    if to == logical_paragraph_length(paragraph) {
+                        end.1 = ALL_OBJECTS;
+                    }
                     selected.push(clip_paragraph_caret_range_for_clipboard(
                         paragraph, start, end,
                     ));
@@ -504,15 +549,16 @@ impl DocumentCore {
             }
             return Ok(self.store_clipboard(selected));
         }
-        let start = para(start_para_idx).map_or((start_logical, false), |p| {
-            logical_to_text_offset(p, start_logical)
+        let start = para(start_para_idx).map_or((start_logical, 0), |p| {
+            logical_to_text_slot(p, start_logical)
         });
-        let mut end = para(end_para_idx).map_or((end_logical, false), |p| {
-            logical_to_text_offset(p, end_logical)
-        });
+        let mut end =
+            para(end_para_idx).map_or((end_logical, 0), |p| logical_to_text_slot(p, end_logical));
         // 문단 논리 끝에서 끝나면 copySelection 처럼 문단 끝에 붙은 개체(글자처럼 취급하지
         // 않는 도형·그림·표 등)도 담는다. 이 개체들은 논리 오프셋에 칸이 없다.
-        end.1 |= para(end_para_idx).is_some_and(|p| end_logical >= logical_paragraph_length(p));
+        if para(end_para_idx).is_some_and(|p| end_logical >= logical_paragraph_length(p)) {
+            end.1 = ALL_OBJECTS;
+        }
         self.copy_selection_range(section_idx, start_para_idx, start, end_para_idx, end)
     }
 
@@ -520,9 +566,9 @@ impl DocumentCore {
         &mut self,
         section_idx: usize,
         start_para_idx: usize,
-        start: (usize, bool),
+        start: (usize, usize),
         end_para_idx: usize,
-        end: (usize, bool),
+        end: (usize, usize),
     ) -> Result<String, HwpError> {
         // 인덱스 범위 검증
         if section_idx >= self.document.sections.len() {
@@ -562,7 +608,7 @@ impl DocumentCore {
             clip_paragraphs.push(clip_paragraph_caret_range_for_clipboard(
                 &section.paragraphs[start_para_idx],
                 start,
-                (first_text_len, true),
+                (first_text_len, ALL_OBJECTS),
             ));
 
             // 중간 문단: 전체 복사
@@ -573,7 +619,7 @@ impl DocumentCore {
             // 마지막 문단: 처음부터 end_offset까지
             clip_paragraphs.push(clip_paragraph_caret_range_for_clipboard(
                 &section.paragraphs[end_para_idx],
-                (0, false),
+                (0, 0),
                 end,
             ));
         }
@@ -1033,6 +1079,17 @@ impl DocumentCore {
             self.insert_composed_paragraph(section_idx, i);
         }
         self.paginate_if_needed();
+        // 붙인 각주·미주는 한/글처럼 문서 차례로 번호를 다시 매긴다.
+        if clip_paras.iter().any(|para| {
+            para.controls
+                .iter()
+                .any(|ctrl| matches!(ctrl, Control::Footnote(_) | Control::Endnote(_)))
+        }) {
+            // 번호만 다시 매긴다. 주석마다 고친 번호 모양·장식 문자는 그대로 둔다.
+            self.number_notes_by_section(crate::model::control::AutoNumberType::Footnote, None);
+            self.number_notes_by_section(crate::model::control::AutoNumberType::Endnote, None);
+            self.paginate_if_needed();
+        }
 
         self.event_log.push(DocumentEvent::ContentPasted {
             section: section_idx,

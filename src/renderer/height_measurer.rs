@@ -6118,7 +6118,7 @@ let mut tables=p.controls.iter().filter_map(|c| match c{Control::Table(t)=>Some(
             }
         }
 
-        let row_frame_heights = self.reflow_cell_frame_rows_with_storage(
+        let mut row_frame_heights = self.reflow_cell_frame_rows_with_storage(
             table,
             styles,
             depth,
@@ -6133,6 +6133,25 @@ let mut tables=p.controls.iter().filter_map(|c| match c{Control::Table(t)=>Some(
                 total_height += growth;
                 for end in &mut cumulative_heights[row + 1..] {
                     *end += growth;
+                }
+            }
+        }
+        // 크기 고정 표는 내용이 넘쳐도 행이 선언 높이보다 자라지 않는다(한/글 12.30 라벨
+        // 문서: 이름표 칸은 크기를 지키고 넘친 글을 감춘다).
+        if table.common.size_protect {
+            for row in 0..row_heights.len() {
+                let declared = declared_row_height_px(table, row, self.dpi);
+                let excess = row_heights[row] - declared;
+                if declared <= 0.0 || excess <= 0.0 {
+                    continue;
+                }
+                row_heights[row] = declared;
+                total_height -= excess;
+                for end in &mut cumulative_heights[row + 1..] {
+                    *end -= excess;
+                }
+                if let Some(frame) = row_frame_heights.as_mut().and_then(|f| f.get_mut(row)) {
+                    *frame = frame.min(declared);
                 }
             }
         }

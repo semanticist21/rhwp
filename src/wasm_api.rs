@@ -3785,6 +3785,28 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 머리말/꼬리말 문단에 번호 모양(표 134 코드)을 가진 쪽 번호 자동 번호를 넣는다.
+    #[wasm_bindgen(js_name = insertPageNumberInHf)]
+    pub fn insert_page_number_in_hf(
+        &mut self,
+        section_idx: usize,
+        is_header: bool,
+        apply_to: u8,
+        hf_para_idx: usize,
+        char_offset: usize,
+        number_format: u8,
+    ) -> Result<String, JsValue> {
+        self.insert_page_number_in_hf_native(
+            section_idx,
+            is_header,
+            apply_to,
+            hf_para_idx,
+            char_offset,
+            number_format,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// 머리말/꼬리말 마당(템플릿)을 적용한다.
     #[wasm_bindgen(js_name = applyHfTemplate)]
     pub fn apply_hf_template(
@@ -5722,6 +5744,32 @@ impl HwpDocument {
             section_idx as usize,
             para_idx as usize,
             char_offset as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 각주·미주를 바꾼다. `mode`: `toEndnotes`·`toFootnotes`·`swap`.
+    /// 반환: `{"ok":true,"toEndnotes":N,"toFootnotes":M}`.
+    #[wasm_bindgen(js_name = convertNotes)]
+    pub fn convert_notes(&mut self, mode: &str) -> Result<String, JsValue> {
+        self.convert_notes_native(mode).map_err(|e| e.into())
+    }
+
+    /// 방금 넣은 인라인 컨트롤을 같은 글자 자리의 논리 개체 앞 `objects_before`개 뒤로 옮긴다.
+    /// 반환: `{"ok":true,"controlIdx":N}`.
+    #[wasm_bindgen(js_name = placeControlInSlot)]
+    pub fn place_control_in_slot(
+        &mut self,
+        section_idx: u32,
+        para_idx: u32,
+        control_idx: u32,
+        objects_before: u32,
+    ) -> Result<String, JsValue> {
+        self.place_control_in_slot_native(
+            section_idx as usize,
+            para_idx as usize,
+            control_idx as usize,
+            objects_before as usize,
         )
         .map_err(|e| e.into())
     }

@@ -274,6 +274,21 @@ pub(crate) fn try_serialize_control<S: crate::storage::Storage>(
     storage: &S,
 ) -> Result<(), S::Error> {
     let insert_pos = records.len();
+    // 라벨 표는 라벨 정보를 CTRL_DATA로 싣는다. 원본의 라벨 정보 레코드는 지금 값으로 바꾼다.
+    let label_ctrl_data = match ctrl {
+        Control::Table(table) => table.label.as_ref().and_then(|label| {
+            let stored = ctrl_data_record.map(crate::model::table::parse_label_ctrl_data);
+            match stored {
+                None => Some(crate::model::table::label_ctrl_data(label)),
+                Some(Some(stored)) if stored != *label => {
+                    Some(crate::model::table::label_ctrl_data(label))
+                }
+                _ => None,
+            }
+        }),
+        _ => None,
+    };
+    let ctrl_data_record = label_ctrl_data.as_deref().or(ctrl_data_record);
     match ctrl {
         Control::Table(table) => try_serialize_table(table, level, records, storage)?,
         Control::Picture(picture) => {
@@ -2661,7 +2676,8 @@ const COMMON_ATTR_SEMANTIC_MASK: u32 = 0x01            // treat_as_char
     | (0x07 << 21)                                      // text_wrap
     | (0x03 << 24)                                      // text_flow
     | crate::model::shape::ObjectNumberingType::HWP5_ATTR_MASK // numbering_type (bit 26-27)
-    | (1 << 28); // hwp5_gen_shape_attr_bit28
+    | (1 << 28) // hwp5_gen_shape_attr_bit28
+    | (1 << 30); // locked
 
 fn serialize_common_obj_attr(common: &CommonObjAttr) -> Vec<u8> {
     plain_control_payload(ControlPayload::Common(common))
@@ -2795,6 +2811,10 @@ pub(crate) fn pack_common_attr_bits(common: &CommonObjAttr) -> u32 {
     a |= common.numbering_type.hwp5_attr_bits();
     if common.hwp5_gen_shape_attr_bit28 {
         a |= 1 << 28;
+    }
+    // 개체 보호 — 파서가 읽는 비트 30(한글 `Lock`). HWPX에서 연 잠긴 표도 HWP에 남는다.
+    if common.locked {
+        a |= 1 << 30;
     }
     a
 }

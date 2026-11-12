@@ -1309,6 +1309,86 @@ impl DocumentCore {
         )))
     }
 
+    /// 머리말/꼬리말 문단에 번호 모양을 가진 쪽 번호(자동 번호 `atno`)를 넣는다.
+    ///
+    /// 한/글 12.30 Mac 머리말/꼬리말 도구 상자의 쪽 번호 넣기 ▾는 고른 모양(1,2,3·①,②,③·
+    /// I,II,III …)을 `autoNumFormat`에 적은 쪽 번호 자동 번호를 넣는다. 마커 글자(U+0015)는
+    /// 모양을 실을 수 없어 자동 번호 컨트롤을 바로 넣는다. `number_format`은 표 134 코드다.
+    pub fn insert_page_number_in_hf_native(
+        &mut self,
+        section_idx: usize,
+        is_header: bool,
+        apply_to: u8,
+        hf_para_idx: usize,
+        char_offset: usize,
+        number_format: u8,
+    ) -> Result<String, HwpError> {
+        if !crate::renderer::note_marker::supported_format(number_format) || number_format == 0x81 {
+            return Err(HwpError::RenderError(format!(
+                "알 수 없는 쪽 번호 모양: {}",
+                number_format
+            )));
+        }
+        let hf_para = self.get_hf_paragraph_mut(section_idx, is_header, apply_to, hf_para_idx)?;
+        // 새로 만든 머리말 문단(`Paragraph::default()`)은 문단 끝 1칸 없이 센다. 저장기는 char_count
+        // 에서 컨트롤 슬롯 수를 추정하므로 저장 사본의 표식 낮추기처럼 그 칸을 채운다.
+        let text_end = hf_para
+            .char_offsets
+            .last()
+            .zip(hf_para.text.chars().last())
+            .map_or(0, |(offset, ch)| offset + Paragraph::char_stream_len(ch));
+        if hf_para.char_count.saturating_sub(text_end) % 8 == 0 {
+            hf_para.char_count += 1;
+        }
+        let char_idx = char_offset.min(hf_para.text.chars().count());
+        // 컨트롤은 글자 차례대로 놓인다 — 캐럿 앞 컨트롤 수가 끼울 자리다.
+        let control_index = hf_para
+            .control_text_positions()
+            .iter()
+            .filter(|position| **position < char_idx)
+            .count();
+        // 파서가 `0x0012`에 남기는 자리표 한 글자와 컨트롤 몫 일곱 칸(합 8칸) — 저장 사본의
+        // 마커 낮추기와 같은 꼴이다.
+        let inserted_at = hf_para.insert_text_at(char_idx, "\u{0015}");
+        insert_auto_number_placeholder(hf_para, inserted_at);
+        hf_para.align_ctrl_data_records();
+        hf_para.controls.insert(
+            control_index,
+            Control::AutoNumber(crate::model::control::AutoNumber {
+                number_type: crate::model::control::AutoNumberType::Page,
+                format: number_format,
+                number: 1,
+                assigned_number: 1,
+                ..Default::default()
+            }),
+        );
+        hf_para.ctrl_data_records.insert(control_index, None);
+
+        self.reflow_hf_paragraph(section_idx, is_header, apply_to, hf_para_idx);
+        self.sync_master_page_edit(section_idx, apply_to);
+        self.document.sections[section_idx].raw_stream = None;
+        self.mark_section_dirty(section_idx);
+        self.paginate_if_needed();
+
+        let new_offset = inserted_at + 1;
+        self.event_log
+            .push(DocumentEvent::HeaderFooterTextReplaced {
+                section: section_idx,
+                is_header,
+                apply_to,
+                start_para: hf_para_idx,
+                start_offset: inserted_at,
+                end_para: hf_para_idx,
+                end_offset: inserted_at,
+                inserted_end_para: hf_para_idx,
+                inserted_end_offset: new_offset,
+            });
+        Ok(super::super::helpers::json_ok_with(&format!(
+            "\"charOffset\":{},\"insertedAt\":{},\"insertedLength\":1",
+            new_offset, inserted_at
+        )))
+    }
+
     /// 머리말/꼬리말 마당(템플릿)을 적용한다.
     ///
     /// template_id:

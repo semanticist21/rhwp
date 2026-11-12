@@ -1,10 +1,10 @@
 //! 텍스트 삽입/삭제/문단 분리·병합/범위 삭제/문단 쿼리 관련 native 메서드
 
 use super::super::helpers::{
-    get_textbox_from_shape, logical_paragraph_length, logical_to_text_offset,
+    get_textbox_from_shape, logical_paragraph_length, logical_to_text_slot,
 };
 use super::super::queries::rendering::FocusedPageTreePatch;
-use super::clipboard::text_to_split_logical_offset;
+use super::clipboard::{passed_objects, split_slot_rank, text_to_split_logical_slot, ALL_OBJECTS};
 use super::formatting::restore_para_meta;
 use crate::document_core::{
     ActiveFieldInfo, DeferredPaginationDescriptor, DeferredPaginationTargetStatus, DocumentCore,
@@ -59,8 +59,8 @@ fn validate_form_boundary_metadata(
 /// 복사와 같은 경계로 지울 개체를 먼저 검증하여 실패 시 원문을 지킨다.
 fn boundary_controls_to_delete(
     para: &Paragraph,
-    start: (usize, bool),
-    end: (usize, bool),
+    start: (usize, usize),
+    end: (usize, usize),
 ) -> Result<Vec<usize>, HwpError> {
     let positions = para.control_text_positions();
     let selected: Vec<usize> = para
@@ -69,9 +69,16 @@ fn boundary_controls_to_delete(
         .enumerate()
         .filter_map(|(index, control)| {
             let at = positions.get(index).copied()?;
+            // 같은 자리 개체는 경계가 지나온 수로 가른다. 칸이 없는 개체는 글자 자리 경계만 본다.
+            let (after_start, before_end) = if Paragraph::occupies_split_slot(control) {
+                let rank = split_slot_rank(para, &positions, index);
+                (rank >= start.1, rank < end.1)
+            } else {
+                (start.1 == 0, end.1 > 0)
+            };
             (Paragraph::is_split_movable_control(control)
-                && (at > start.0 || (at == start.0 && !start.1))
-                && (at < end.0 || (at == end.0 && end.1)))
+                && (at > start.0 || (at == start.0 && after_start))
+                && (at < end.0 || (at == end.0 && before_end)))
                 .then_some(index)
         })
         .collect();
@@ -92,15 +99,11 @@ fn boundary_controls_to_delete(
                         | Control::Footnote(_)
                         | Control::Endnote(_)
                         | Control::Form(_)
-                ) || para.controls.iter().enumerate().any(|(other, control)| {
-                    other != index
-                        && Paragraph::is_split_movable_control(control)
-                        && positions.get(other) == positions.get(index)
-                })
+                )
             }))
     {
         return Err(HwpError::RenderError(
-            "필드나 같은 자리의 여러 개체를 포함한 경계 삭제는 아직 지원하지 않습니다".into(),
+            "필드를 포함한 경계 삭제는 아직 지원하지 않습니다".into(),
         ));
     }
     Ok(selected)
@@ -3894,9 +3897,9 @@ impl DocumentCore {
         self.delete_range_with_boundaries(
             section_idx,
             start_para,
-            (start_offset, false),
+            (start_offset, 0),
             end_para,
-            (end_offset, end_after),
+            (end_offset, passed_objects(end_after)),
             cell_ctx,
             None,
         )
@@ -3969,37 +3972,16 @@ impl DocumentCore {
                 start_para, start_logical
             )));
         }
-        for (index, logical) in [(start_para, start_logical), (end_para, end_logical)] {
-            if let Some(p) = para(index) {
-                if super::clipboard::has_only_inline_forms(p) {
-                    continue;
-                }
-                let positions = p.control_text_positions();
-                if logical < logical_paragraph_length(p)
-                    && p.controls.iter().enumerate().any(|(ci, control)| {
-                        Paragraph::is_split_movable_control(control)
-                            && logical > text_to_split_logical_offset(p, positions[ci], false)
-                            && logical < text_to_split_logical_offset(p, positions[ci], true)
-                            && p.controls.iter().enumerate().any(|(other, control)| {
-                                other != ci
-                                    && Paragraph::is_split_movable_control(control)
-                                    && positions[other] == positions[ci]
-                            })
-                    })
-                {
-                    return Err(HwpError::RenderError(
-                        "같은 자리의 여러 개체 사이 경계는 아직 지원하지 않습니다".into(),
-                    ));
-                }
-            }
+        // 맞붙은 개체 사이 경계는 그 사이에서 자른다(한/글 12.30: 두 각주 사이에서 시작한
+        // 선택을 오려 두면 뒤 각주만 빠진다).
+        let start = para(start_para).map_or((start_logical, 0), |p| {
+            logical_to_text_slot(p, start_logical)
+        });
+        let mut end =
+            para(end_para).map_or((end_logical, 0), |p| logical_to_text_slot(p, end_logical));
+        if para(end_para).is_some_and(|p| end_logical >= logical_paragraph_length(p)) {
+            end.1 = ALL_OBJECTS;
         }
-        let start = para(start_para).map_or((start_logical, false), |p| {
-            logical_to_text_offset(p, start_logical)
-        });
-        let mut end = para(end_para).map_or((end_logical, false), |p| {
-            logical_to_text_offset(p, end_logical)
-        });
-        end.1 |= para(end_para).is_some_and(|p| end_logical >= logical_paragraph_length(p));
         self.delete_range_with_boundaries(
             section_idx,
             start_para,
@@ -4037,8 +4019,8 @@ impl DocumentCore {
         &mut self,
         section_idx: usize,
         para_idx: usize,
-        start: (usize, bool),
-        end: (usize, bool),
+        start: (usize, usize),
+        end: (usize, usize),
         selected: &[usize],
         form_logical_range: Option<(usize, usize)>,
     ) -> Result<(), HwpError> {
@@ -4060,10 +4042,11 @@ impl DocumentCore {
         let reflowed = self.text_reflowed_table_control_indices_at(section_idx, para_idx);
         self.forget_text_reflowed_tables_in_paragraph_at(section_idx, para_idx);
         let para = &mut self.document.sections[section_idx].paragraphs[para_idx];
-        let from = text_to_split_logical_offset(para, start.0, start.1);
-        let to = text_to_split_logical_offset(para, end.0, end.1);
+        let from = text_to_split_logical_slot(para, start.0, start.1);
+        let to = text_to_split_logical_slot(para, end.0, end.1);
         // 문단 끝의 떠 있는 개체는 캐럿 칸이 없으므로 뒤 조각으로 남기지 않는다.
-        let suffix = (!(end.1 && end.0 >= para.text.chars().count())).then(|| para.split_at(to));
+        let suffix = (!(end.1 == ALL_OBJECTS && end.0 >= para.text.chars().count()))
+            .then(|| para.split_at(to));
         let _ = para.split_at(from);
         if let Some(suffix) = suffix {
             para.merge_from(&suffix);
@@ -4080,9 +4063,9 @@ impl DocumentCore {
         &mut self,
         section_idx: usize,
         start_para: usize,
-        start: (usize, bool),
+        start: (usize, usize),
         end_para: usize,
-        end: (usize, bool),
+        end: (usize, usize),
         cell_ctx: Option<(usize, usize, usize)>,
         form_logical_offsets: Option<(usize, usize)>,
     ) -> Result<String, HwpError> {
@@ -4144,7 +4127,7 @@ impl DocumentCore {
             let first_end = if start_para == end_para {
                 end
             } else {
-                (paragraphs[start_para].text.chars().count(), true)
+                (paragraphs[start_para].text.chars().count(), ALL_OBJECTS)
             };
             if first_form_range.is_none() {
                 first_controls =
@@ -4153,7 +4136,7 @@ impl DocumentCore {
             if start_para != end_para {
                 if last_form_range.is_none() {
                     last_controls =
-                        boundary_controls_to_delete(&paragraphs[end_para], (0, false), end)?;
+                        boundary_controls_to_delete(&paragraphs[end_para], (0, 0), end)?;
                 }
             }
         }
@@ -4199,6 +4182,22 @@ impl DocumentCore {
         } else {
             // 셀 경로 검증 실패는 원시 저장 스트림에도 영향을 주지 않는다.
             self.document.sections[section_idx].raw_stream = None;
+            // 지울 범위에 각주·미주가 있으면 지운 뒤 한/글처럼 번호를 다시 매긴다.
+            let removes_notes = {
+                let paragraphs = &self.document.sections[section_idx].paragraphs;
+                let is_note = |ctrl: Option<&Control>| {
+                    matches!(ctrl, Some(Control::Footnote(_) | Control::Endnote(_)))
+                };
+                first_controls
+                    .iter()
+                    .any(|&idx| is_note(paragraphs[start_para].controls.get(idx)))
+                    || last_controls
+                        .iter()
+                        .any(|&idx| is_note(paragraphs[end_para].controls.get(idx)))
+                    || paragraphs[(start_para + 1).min(end_para)..end_para]
+                        .iter()
+                        .any(|para| para.controls.iter().any(|ctrl| is_note(Some(ctrl))))
+            };
             // ─── 본문 deleteRange ───
             if start_para == end_para {
                 // 같은 문단 내 삭제
@@ -4224,7 +4223,7 @@ impl DocumentCore {
                 self.delete_body_paragraph_range(
                     section_idx,
                     end_para,
-                    (0, false),
+                    (0, 0),
                     end,
                     &last_controls,
                     last_form_range,
@@ -4247,7 +4246,7 @@ impl DocumentCore {
                         section_idx,
                         start_para,
                         start,
-                        (para_len, true),
+                        (para_len, ALL_OBJECTS),
                         &first_controls,
                         first_form_range,
                     )?;
@@ -4279,6 +4278,12 @@ impl DocumentCore {
 
             // 재페이지네이션
             self.paginate_if_needed();
+            if removes_notes {
+                // 번호만 다시 매긴다. 주석마다 고친 번호 모양·장식 문자는 그대로 둔다.
+                self.number_notes_by_section(crate::model::control::AutoNumberType::Footnote, None);
+                self.number_notes_by_section(crate::model::control::AutoNumberType::Endnote, None);
+                self.paginate_if_needed();
+            }
 
             // 캐럿 위치 갱신
             self.document.doc_properties.caret_list_id = section_idx as u32;

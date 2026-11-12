@@ -561,6 +561,13 @@ pub fn parse_paragraph(records: &[Record]) -> Result<Paragraph, BodyTextError> {
                     }
                 }
 
+                // CTRL_DATA의 라벨 표 정보 → Table.label (HWPX `hp:label`과 같은 속성)
+                if let Control::Table(ref mut table) = control {
+                    if let Some(ref cd) = ctrl_data {
+                        table.label = crate::model::table::parse_label_ctrl_data(cd);
+                    }
+                }
+
                 para.controls.push(control);
                 para.ctrl_data_records.push(ctrl_data);
                 continue; // i는 이미 전진됨

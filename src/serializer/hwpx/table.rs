@@ -159,6 +159,14 @@ where
         end_tag_with_storage(w, "hp:tr", storage)?;
     }
 
+    // 라벨 표 정보는 한/글처럼 행 뒤 마지막 자식으로 둔다.
+    if let Some(label) = &table.label {
+        let attrs: Vec<(&str, &str)> = label
+            .iter()
+            .map(|(key, value)| (key.as_str(), value.as_str()))
+            .collect();
+        empty_tag_with_storage(w, "hp:label", &attrs, storage)?;
+    }
     end_tag_with_storage(w, "hp:tbl", storage)?;
     Ok(())
 }

@@ -1005,6 +1005,7 @@ impl DocumentCore {
             raw_table_record_attr: tbl_rec_attr,
             raw_table_record_extra: vec![0u8; 2], // 표준 추가 2바이트
             layout_page_break_cache: Default::default(),
+            label: None,
         };
         // 새 표의 공개 배치 값과 HWP 헤더 비트를 맞춰 두 형식에서 같은 값을 읽는다.
         let flags = crate::serializer::control::pack_common_attr_bits(&table.common);

@@ -3541,9 +3541,19 @@ impl DocumentCore {
         let restrict_in_page = (table.attr >> 13) & 0x01 != 0;
         let allow_overlap = (table.attr >> 14) & 0x01 != 0;
         let keep_with_anchor = common.prevent_page_break != 0;
+        // 라벨 표 정보(HWPX `hp:label`) — 속성 이름과 글 값의 객체, 없으면 null.
+        let label_json = table.label.as_ref().map_or("null".to_string(), |label| {
+            serde_json::Value::Object(
+                label
+                    .iter()
+                    .map(|(key, value)| (key.clone(), serde_json::Value::String(value.clone())))
+                    .collect(),
+            )
+            .to_string()
+        });
 
         Ok(format!(
-            "{{\"cellSpacing\":{},\"paddingLeft\":{},\"paddingRight\":{},\"paddingTop\":{},\"paddingBottom\":{},\"pageBreak\":{},\"repeatHeader\":{},{},\"tableWidth\":{},\"tableHeight\":{},\"outerLeft\":{},\"outerRight\":{},\"outerTop\":{},\"outerBottom\":{}{},\"treatAsChar\":{},\"textWrap\":\"{}\",\"vertRelTo\":\"{}\",\"vertAlign\":\"{}\",\"horzRelTo\":\"{}\",\"horzAlign\":\"{}\",\"vertOffset\":{},\"horzOffset\":{},\"restrictInPage\":{},\"allowOverlap\":{},\"keepWithAnchor\":{}}}",
+            "{{\"cellSpacing\":{},\"paddingLeft\":{},\"paddingRight\":{},\"paddingTop\":{},\"paddingBottom\":{},\"pageBreak\":{},\"repeatHeader\":{},{},\"tableWidth\":{},\"tableHeight\":{},\"outerLeft\":{},\"outerRight\":{},\"outerTop\":{},\"outerBottom\":{}{},\"treatAsChar\":{},\"textWrap\":\"{}\",\"vertRelTo\":\"{}\",\"vertAlign\":\"{}\",\"horzRelTo\":\"{}\",\"horzAlign\":\"{}\",\"vertOffset\":{},\"horzOffset\":{},\"restrictInPage\":{},\"allowOverlap\":{},\"keepWithAnchor\":{},\"sizeProtect\":{},\"label\":{}}}",
             table.cell_spacing,
             table.padding.left, table.padding.right, table.padding.top, table.padding.bottom,
             pb, table.repeat_header,
@@ -3554,7 +3564,8 @@ impl DocumentCore {
             treat_as_char,
             text_wrap, vert_rel_to, vert_align, horz_rel_to, horz_align,
             vert_offset, horz_offset,
-            restrict_in_page, allow_overlap, keep_with_anchor,
+            restrict_in_page, allow_overlap, keep_with_anchor, common.size_protect,
+            label_json,
         ))
     }
 
@@ -3749,6 +3760,59 @@ impl DocumentCore {
             }
             table.common.attr = table.attr;
             touched_attr |= 1 << 14;
+        }
+        // label: 라벨 표 정보 객체(속성 이름 → 값). null이면 지운다.
+        if let Some(label) = serde_json::from_str::<serde_json::Value>(json)
+            .ok()
+            .and_then(|value| value.get("label").cloned())
+        {
+            // 한/글 12.30 저장본의 속성 차례.
+            const ORDER: [&str; 11] = [
+                "topmargin",
+                "leftmargin",
+                "boxwidth",
+                "boxlength",
+                "boxmarginhor",
+                "boxmarginver",
+                "labelcols",
+                "labelrows",
+                "landscape",
+                "pagewidth",
+                "pageheight",
+            ];
+            table.label = match label {
+                serde_json::Value::Object(map) => {
+                    let mut attrs: Vec<(String, String)> = map
+                        .into_iter()
+                        .map(|(key, value)| {
+                            let value = match value {
+                                serde_json::Value::String(text) => text,
+                                other => other.to_string(),
+                            };
+                            (key, value)
+                        })
+                        .collect();
+                    attrs.sort_by_key(|(key, _)| {
+                        ORDER
+                            .iter()
+                            .position(|known| known == key)
+                            .unwrap_or(ORDER.len())
+                    });
+                    Some(attrs)
+                }
+                _ => None,
+            };
+        }
+        // sizeProtect(크기 고정) → attr bit 20. 크기 고정 표는 내용이 넘쳐도 행이 자라지 않는다.
+        if let Some(v) = json_bool(json, "sizeProtect") {
+            if v {
+                table.attr |= 1 << 20;
+            } else {
+                table.attr &= !(1 << 20);
+            }
+            table.common.size_protect = v;
+            table.common.attr = table.attr;
+            touched_attr |= 1 << 20;
         }
         // attr 비트 변경을 raw_ctrl_data FLAGS(0..4)에도 반영. HWP5 직렬화기
         // (serialize_table)는 raw_ctrl_data 가 있으면 그대로 기록하므로, 여기

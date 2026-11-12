@@ -750,6 +750,285 @@ impl DocumentCore {
     }
 }
 
+/// 주석의 종류를 바꿔 다른 종류로 옮긴다. 문단·글자·문단 모양·본문 자리는 그대로 두고 주석
+/// 번호의 종류와 '각주'·'미주' 문단 스타일만 바꾼다. 바꾼 (각주→미주, 미주→각주) 수를 센다.
+fn convert_note_controls(
+    paragraphs: &mut [crate::model::paragraph::Paragraph],
+    to_endnotes: bool,
+    to_footnotes: bool,
+    styles: (Option<u8>, Option<u8>),
+    counts: &mut (usize, usize),
+) {
+    use crate::model::control::AutoNumberType;
+    use crate::model::footnote::{Endnote, Footnote};
+
+    let retarget = |note_paragraphs: &mut [crate::model::paragraph::Paragraph],
+                    from: (AutoNumberType, Option<u8>),
+                    to: (AutoNumberType, Option<u8>)| {
+        for para in note_paragraphs {
+            if from.1.is_some() && Some(para.style_id) == from.1 {
+                if let Some(style) = to.1 {
+                    para.style_id = style;
+                }
+            }
+            for ctrl in &mut para.controls {
+                if let Control::AutoNumber(number) = ctrl {
+                    if number.number_type == from.0 {
+                        number.number_type = to.0;
+                    }
+                }
+            }
+        }
+    };
+    for para in paragraphs {
+        for ctrl in &mut para.controls {
+            match ctrl {
+                Control::Footnote(note) if to_endnotes => {
+                    let Footnote {
+                        number,
+                        mut paragraphs,
+                        before_decoration_letter,
+                        after_decoration_letter,
+                        number_shape,
+                        instance_id,
+                        list_header_property,
+                        decoration_is_user_char,
+                    } = std::mem::take(note.as_mut());
+                    retarget(
+                        &mut paragraphs,
+                        (AutoNumberType::Footnote, styles.0),
+                        (AutoNumberType::Endnote, styles.1),
+                    );
+                    *ctrl = Control::Endnote(Box::new(Endnote {
+                        number,
+                        paragraphs,
+                        before_decoration_letter,
+                        after_decoration_letter,
+                        number_shape,
+                        instance_id,
+                        list_header_property,
+                        decoration_is_user_char,
+                    }));
+                    counts.0 += 1;
+                }
+                Control::Endnote(note) if to_footnotes => {
+                    let Endnote {
+                        number,
+                        mut paragraphs,
+                        before_decoration_letter,
+                        after_decoration_letter,
+                        number_shape,
+                        instance_id,
+                        list_header_property,
+                        decoration_is_user_char,
+                    } = std::mem::take(note.as_mut());
+                    retarget(
+                        &mut paragraphs,
+                        (AutoNumberType::Endnote, styles.1),
+                        (AutoNumberType::Footnote, styles.0),
+                    );
+                    *ctrl = Control::Footnote(Box::new(Footnote {
+                        number,
+                        paragraphs,
+                        before_decoration_letter,
+                        after_decoration_letter,
+                        number_shape,
+                        instance_id,
+                        list_header_property,
+                        decoration_is_user_char,
+                    }));
+                    counts.1 += 1;
+                }
+                Control::Table(table) => {
+                    for cell in &mut table.cells {
+                        convert_note_controls(
+                            &mut cell.paragraphs,
+                            to_endnotes,
+                            to_footnotes,
+                            styles,
+                            counts,
+                        );
+                    }
+                }
+                Control::Shape(shape) => {
+                    if let Some(text_box) = shape.drawing_mut().and_then(|d| d.text_box.as_mut()) {
+                        convert_note_controls(
+                            &mut text_box.paragraphs,
+                            to_endnotes,
+                            to_footnotes,
+                            styles,
+                            counts,
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+}
+
+impl DocumentCore {
+    /// 각주·미주 변환 — 한/글 12.30 입력 > 주석 > 각주⟷미주... 의 세 방법.
+    ///
+    /// `mode`: `toEndnotes`(모든 각주를 미주로)·`toFootnotes`(모든 미주를 각주로)·`swap`(서로
+    /// 바꾸기). 본문·표 셀·글상자의 주석을 모두 바꾼다. 한컴 저장본처럼 주석 내용·글자·문단 모양과
+    /// 본문 자리는 그대로이고, 문단 스타일 '각주'↔'미주'와 번호 종류가 바뀌며 번호는 새 종류에서
+    /// 문서 차례대로 다시 매긴다. 번호 모양·장식 문자는 구역의 새 종류 주석 모양을 따른다.
+    /// 반환: `{"ok":true,"toEndnotes":N,"toFootnotes":M}`(바꾼 수).
+    pub fn convert_notes_native(&mut self, mode: &str) -> Result<String, HwpError> {
+        let (to_endnotes, to_footnotes) = match mode {
+            "toEndnotes" => (true, false),
+            "toFootnotes" => (false, true),
+            "swap" => (true, true),
+            _ => {
+                return Err(HwpError::RenderError(format!(
+                    "알 수 없는 각주·미주 변환 방법: {}",
+                    mode
+                )))
+            }
+        };
+        let styles = (
+            self.note_style("각주", "Footnote").map(|(idx, _)| idx),
+            self.note_style("미주", "Endnote").map(|(idx, _)| idx),
+        );
+        let mut counts = (0, 0);
+        for section in &mut self.document.sections {
+            let before = counts;
+            convert_note_controls(
+                &mut section.paragraphs,
+                to_endnotes,
+                to_footnotes,
+                styles,
+                &mut counts,
+            );
+            if counts != before {
+                section.raw_stream = None;
+            }
+        }
+        if counts != (0, 0) {
+            for section_idx in 0..self.document.sections.len() {
+                let shape = self.document.sections[section_idx]
+                    .section_def
+                    .endnote_shape
+                    .clone();
+                let suffix = if shape.suffix_char == '\0' {
+                    ')'
+                } else {
+                    shape.suffix_char
+                };
+                Self::sync_paragraph_endnotes_with_shape(
+                    &mut self.document.sections[section_idx].paragraphs,
+                    Self::footnote_shape_number_format_code(shape.number_format),
+                    shape.prefix_char,
+                    suffix,
+                );
+            }
+            for section_idx in 0..self.document.sections.len() {
+                self.refresh_footnote_numbers(section_idx);
+            }
+            self.number_notes_by_section(crate::model::control::AutoNumberType::Endnote, None);
+            for section_idx in 0..self.document.sections.len() {
+                self.recompose_section(section_idx);
+            }
+            self.paginate();
+            self.invalidate_page_tree_cache();
+        }
+        Ok(format!(
+            "{{\"ok\":true,\"toEndnotes\":{},\"toFootnotes\":{}}}",
+            counts.0, counts.1
+        ))
+    }
+
+    /// 방금 넣은 인라인 컨트롤을 같은 글자 자리에 맞붙은 논리 개체(각주·미주·글자처럼 취급한
+    /// 개체 …) 가운데 앞 `objects_before`개 뒤, 다음 개체 앞으로 옮긴다.
+    ///
+    /// 글자 자리를 받는 넣기 API는 그 자리의 부호 모두 뒤에 넣는다. 한/글 12.30은 부호 바로 앞
+    /// 캐럿에서 넣은 각주·수식을 그 부호 앞에, 부호 사이 캐럿에서는 그 사이에 둔다. 캐럿의 논리
+    /// 자리에서 `objects_before = 논리 자리 − textToLogicalOffset(logicalToTextOffset(논리 자리))`
+    /// 를 구해 넣은 뒤 이 API로 옮긴다. 컨트롤 차례만 바뀌고 글자 자리·스트림 칸은 그대로다.
+    /// 반환: `{"ok":true,"controlIdx":N}`(옮긴 뒤 차례).
+    pub fn place_control_in_slot_native(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        control_idx: usize,
+        objects_before: usize,
+    ) -> Result<String, HwpError> {
+        let para = self
+            .document
+            .sections
+            .get_mut(section_idx)
+            .and_then(|section| section.paragraphs.get_mut(para_idx))
+            .ok_or_else(|| HwpError::RenderError("문단 범위 초과".to_string()))?;
+        if control_idx >= para.controls.len() {
+            return Err(HwpError::RenderError(format!(
+                "컨트롤 인덱스 {} 범위 초과",
+                control_idx
+            )));
+        }
+        // 떠 있는 개체는 캐럿 칸을 차지하지 않아 자리를 가리지 않는다.
+        if !para.controls[control_idx].is_logical_inline() {
+            return Ok(format!("{{\"ok\":true,\"controlIdx\":{}}}", control_idx));
+        }
+        let positions = crate::document_core::helpers::find_control_text_positions(para);
+        let slot = positions.get(control_idx).copied();
+        // 같은 자리의 다른 논리 개체 — 빼낸 뒤의 차례로 센다.
+        let others: Vec<usize> = (0..para.controls.len())
+            .filter(|&index| {
+                index != control_idx
+                    && positions.get(index).copied() == slot
+                    && para.controls[index].is_logical_inline()
+            })
+            .map(|index| {
+                if index > control_idx {
+                    index - 1
+                } else {
+                    index
+                }
+            })
+            .collect();
+        let target = match (others.get(objects_before), others.last()) {
+            (Some(&next), _) => next,
+            (None, Some(&last)) => last + 1,
+            (None, None) => control_idx,
+        };
+        if target != control_idx {
+            let remap = |index: usize| {
+                if index == control_idx {
+                    return target;
+                }
+                let index = if index > control_idx {
+                    index - 1
+                } else {
+                    index
+                };
+                if index >= target {
+                    index + 1
+                } else {
+                    index
+                }
+            };
+            para.align_ctrl_data_records();
+            let control = para.controls.remove(control_idx);
+            para.controls.insert(target, control);
+            let record = para.ctrl_data_records.remove(control_idx);
+            para.ctrl_data_records.insert(target, record);
+            for range in &mut para.field_ranges {
+                range.control_idx = remap(range.control_idx);
+            }
+            self.document.sections[section_idx].raw_stream = None;
+            // 번호만 다시 매긴다. 주석마다 고친 번호 모양·장식 문자는 그대로 둔다.
+            self.number_notes_by_section(crate::model::control::AutoNumberType::Footnote, None);
+            self.number_notes_by_section(crate::model::control::AutoNumberType::Endnote, None);
+            self.reflow_paragraph(section_idx, para_idx);
+            self.recompose_section(section_idx);
+            self.paginate_if_needed();
+            self.invalidate_page_tree_cache();
+        }
+        Ok(format!("{{\"ok\":true,\"controlIdx\":{}}}", target))
+    }
+}
+
 #[cfg(test)]
 mod char_shape_inherit_tests {
     use crate::document_core::DocumentCore;

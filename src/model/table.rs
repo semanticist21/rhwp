@@ -39,6 +39,91 @@ std::thread_local! {
     };
 }
 
+/// 라벨 표 정보의 항목 차례(HWPX `hp:label` 속성 이름). HWP는 CTRL_DATA ParameterSet 0x021b 안
+/// 집합 0x0242에 이 차례대로 항목 0x4000~0x400a(I4)를 싣는다(한/글 12.30 HWP 저장본).
+pub const TABLE_LABEL_KEYS: [&str; 11] = [
+    "topmargin",
+    "leftmargin",
+    "boxwidth",
+    "boxlength",
+    "boxmarginhor",
+    "boxmarginver",
+    "labelcols",
+    "labelrows",
+    "landscape",
+    "pagewidth",
+    "pageheight",
+];
+
+/// 라벨 표 정보 CTRL_DATA(ParameterSet 0x021b > 집합 0x0242 > I4 항목 0x4000~0x400a)를
+/// `hp:label` 속성으로 읽는다. 한/글 12.30 HWP 저장본은 항목을 0x400a부터 거꾸로 싣는다.
+/// 집합 0x0242의 열한 항목이 다 있을 때만 라벨 정보로 본다.
+pub fn parse_label_ctrl_data(data: &[u8]) -> Option<Vec<(String, String)>> {
+    let word = |at: usize| Some(u16::from_le_bytes(data.get(at..at + 2)?.try_into().ok()?));
+    if word(0)? != 0x021b || word(6)? != 0x0242 || word(8)? != 0x8000 || word(10)? != 0x0242 {
+        return None;
+    }
+    let count = usize::from(word(12)?);
+    let mut values = [None; 11];
+    let mut at = 16;
+    for _ in 0..count {
+        let (id, kind) = (word(at)?, word(at + 2)?);
+        if kind != 4 {
+            return None;
+        }
+        let value = u32::from_le_bytes(data.get(at + 4..at + 8)?.try_into().ok()?);
+        *values.get_mut(usize::from(id.checked_sub(0x4000)?))? = Some(value);
+        at += 8;
+    }
+    TABLE_LABEL_KEYS
+        .iter()
+        .zip(values)
+        .map(|(key, value)| {
+            let value = value?;
+            // 한컴 저장본의 0은 HWPX `landscape="WIDELY"`다(다른 값은 숫자로 둔다).
+            let text = if *key == "landscape" && value == 0 {
+                "WIDELY".to_string()
+            } else {
+                value.to_string()
+            };
+            Some((key.to_string(), text))
+        })
+        .collect()
+}
+
+/// 라벨 표 정보(HWPX `hp:label`)의 HWP CTRL_DATA. 한/글 12.30 HWP 저장본처럼 항목을 0x400a부터
+/// 거꾸로 싣는다. `landscape="WIDELY"`는 0이다.
+pub fn label_ctrl_data(label: &[(String, String)]) -> Vec<u8> {
+    let value = |key: &str| {
+        label
+            .iter()
+            .find(|(name, _)| name == key)
+            .map_or(0, |(_, text)| match text.as_str() {
+                "WIDELY" => 0,
+                text => text.parse::<i64>().unwrap_or(0) as u32,
+            })
+    };
+    let mut data = Vec::with_capacity(16 + TABLE_LABEL_KEYS.len() * 8);
+    for word in [
+        0x021b,
+        1,
+        0,
+        0x0242,
+        0x8000,
+        0x0242,
+        TABLE_LABEL_KEYS.len() as u16,
+        0,
+    ] {
+        data.extend_from_slice(&u16::to_le_bytes(word));
+    }
+    for (index, key) in TABLE_LABEL_KEYS.iter().enumerate().rev() {
+        data.extend_from_slice(&(0x4000 + index as u16).to_le_bytes());
+        data.extend_from_slice(&4u16.to_le_bytes());
+        data.extend_from_slice(&value(key).to_le_bytes());
+    }
+    data
+}
+
 /// 표 개체 (HWPTAG_TABLE)
 #[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct Table {
@@ -88,6 +173,9 @@ pub struct Table {
     pub raw_table_record_attr: u32,
     /// HWPTAG_TABLE 레코드의 border_fill_id 이후 추가 바이트 (라운드트립 보존용)
     pub raw_table_record_extra: Vec<u8>,
+    /// 라벨 문서의 라벨 표 정보 (HWPX `<hp:label>` 속성, 받은 차례). 한/글 12.30은 이 정보로
+    /// 라벨 새 쪽 추가하기를 한다(없으면 "현재 문서에 라벨표가 없습니다.").
+    pub label: Option<Vec<(String, String)>>,
     /// [#8470] [`Table::layout_page_break`] 의 세로쓰기 칸 판정 캐시. 저장되지 않는다.
     /// 셀 구성·글 방향을 바꾸면 [`Table::invalidate_layout_page_break`] 로 비운다.
     #[serde(skip)]
