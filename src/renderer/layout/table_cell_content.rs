@@ -995,6 +995,13 @@ impl LayoutEngine {
                 }),
                 BoundingBox::new(cell_x, cell_y, cell_w, cell_h),
             );
+            if table.common.size_protect {
+                // 크기 고정 칸의 자름은 문서가 정한 것이라 잘림 보기(clipEnabled)를 꺼도 지킨다.
+                // 한/글 12.30 Mac에는 잘림 보기가 없고 라벨 칸은 화면에서도 넘친 글을 늘 감춘다.
+                cell_node.paint_clip = Some(vec![crate::model::text_clip::TextClipPath::rect(
+                    cell_x, cell_y, cell_w, cell_h,
+                )]);
+            }
 
             // 셀 BorderFill
             let border_style = if cell.border_fill_id > 0 {

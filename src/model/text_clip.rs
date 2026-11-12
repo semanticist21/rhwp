@@ -27,6 +27,21 @@ pub struct TextClipPath {
     pub even_odd: bool,
 }
 impl TextClipPath {
+    /// 쪽 좌표 사각형 하나의 자름(크기 고정 표 칸).
+    pub fn rect(x: f64, y: f64, width: f64, height: f64) -> Self {
+        let (right, bottom) = (x + width, y + height);
+        Self {
+            commands: vec![
+                ClipCommand::Move(x, y),
+                ClipCommand::Line(right, y),
+                ClipCommand::Line(right, bottom),
+                ClipCommand::Line(x, bottom),
+                ClipCommand::Close,
+            ],
+            even_odd: false,
+        }
+    }
+
     pub fn map(&self, mut f: impl FnMut(f64, f64) -> (f64, f64)) -> Self {
         Self {
             even_odd: self.even_odd,

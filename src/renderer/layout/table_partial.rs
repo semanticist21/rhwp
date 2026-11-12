@@ -1321,6 +1321,12 @@ impl LayoutEngine {
                 },
                 BoundingBox::new(cell_x, cell_y, cell_w, cell_h),
             );
+            if parent_owned && table.common.size_protect {
+                // 크기 고정 칸은 잘림 보기(clipEnabled)를 꺼도 넘친 글을 자른다(table_cell_content와 같다).
+                cell_node.paint_clip = Some(vec![crate::model::text_clip::TextClipPath::rect(
+                    cell_x, cell_y, cell_w, cell_h,
+                )]);
+            }
 
             // 셀 BorderFill 조회
             let border_style = if parent_owned && cell.border_fill_id > 0 {
