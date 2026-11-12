@@ -5267,6 +5267,50 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 그림 효과를 `{"shadow","glow","softEdge","reflection"}` JSON으로 돌려준다(없으면 null).
+    /// 머리말/꼬리말 그림은 `clearPictureEffects`처럼 셀 경로의 머리말 단계로 가리킨다.
+    #[wasm_bindgen(js_name = getPictureEffects)]
+    pub fn get_picture_effects(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        control_idx: u32,
+    ) -> Result<String, JsValue> {
+        let cell_path = parse_cell_path_arg(cell_path_json)?;
+        self.get_picture_effects_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &cell_path,
+            control_idx as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 그림 효과를 바꾼다(한컴 그림 도구 상자 견본). 준 키만 바꾸고 null은 그 효과를 지운다.
+    /// 값의 단위는 HWPX와 같다(반경·거리 HWPUNIT, 방향 도, 투명도·배율 0~1, 색 `#RRGGBB`).
+    ///
+    /// 반환: `{"ok":true}`
+    #[wasm_bindgen(js_name = setPictureEffects)]
+    pub fn set_picture_effects(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        control_idx: u32,
+        effects_json: &str,
+    ) -> Result<String, JsValue> {
+        let cell_path = parse_cell_path_arg(cell_path_json)?;
+        self.set_picture_effects_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &cell_path,
+            control_idx as usize,
+            effects_json,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// 문서에 포함한 그림을 `path` 파일에 연결한다(한컴 삽입 그림 저장하기·문서에 포함 끄기).
     ///
     /// 반환: `{"ok":true,"binDataId":<N>}`

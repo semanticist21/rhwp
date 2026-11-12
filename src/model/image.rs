@@ -115,43 +115,46 @@ impl Picture {
 
     /// 그림자·네온·반사·옅은 테두리를 모두 지운다(한컴 원본 그림으로). 바뀐 것이 있으면 true.
     ///
-    /// HWP 꼬리의 효과 정보는 효과마다 길이가 달라 그 뒤의 원본 크기·투명도는 꼬리 끝에서 읽는다.
     /// 한컴 12.30은 효과를 지우면 [테두리 투명도][인스턴스 id][효과 0][원본 크기][투명도]만 남긴다.
     pub(crate) fn clear_effects(&mut self) -> bool {
-        let model = self.effects.shadow.is_some() || self.effects.soft_edge_radius.is_some();
-        self.effects = PictureEffects::default();
-        let extra = self.raw_picture_extra.clone();
-        let flags = extra
+        let flags = self
+            .raw_picture_extra
             .get(5..9)
             .map(|b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]));
-        if flags.unwrap_or(0) == 0 {
-            return model;
+        let changed = !self.effects.is_empty() || flags.unwrap_or(0) != 0;
+        if changed {
+            self.set_effects(PictureEffects::default());
         }
-        let layout = picture_extra_layout(&extra);
-        let (dim, alpha) = if flags == Some(PICTURE_EFFECT_SOFT_EDGE) && layout.dim_offset.is_some()
-        {
-            (layout.dim_offset, layout.alpha_offset)
-        } else if extra.len() >= 18 {
-            // 그림자·네온·반사는 색 정보가 가변이라 끝의 9바이트(원본 크기 8 + 투명도 1)를 쓴다.
-            (Some(extra.len() - 9), Some(extra.len() - 1))
-        } else {
-            (None, None)
+        changed
+    }
+
+    /// 그림 효과를 바꾼다. HWPX는 모델을 쓰고, HWP 원문 꼬리가 있으면 효과 정보만 새로 쓰고
+    /// 뒤의 원본 크기·투명도는 그대로 둔다(꼬리가 없으면 직렬화기가 모델에서 쓴다).
+    pub(crate) fn set_effects(&mut self, effects: PictureEffects) {
+        let encoded = super::picture_effects::encode_hwp_picture_effects(&effects);
+        self.effects = effects;
+        let extra = &self.raw_picture_extra;
+        if extra.len() < 9 {
+            return;
+        }
+        let flags = u32::from_le_bytes([extra[5], extra[6], extra[7], extra[8]]);
+        // 효과 정보의 끝. 읽지 못하는 복합 효과는 끝의 9바이트(원본 크기 8 + 투명도 1)를 남긴다.
+        let end = match super::picture_effects::decode_hwp_picture_effects(extra) {
+            Some((_, end)) => end,
+            None if flags == 0 => 9,
+            None if extra.len() >= 18 => extra.len() - 9,
+            None => extra.len(),
         };
         let mut tail = extra[..5].to_vec();
-        tail.extend_from_slice(&0u32.to_le_bytes());
-        if let Some(at) = dim {
-            let d = &extra[at..at + 8];
-            tail.extend_from_slice(d);
+        tail.extend_from_slice(&encoded);
+        tail.extend_from_slice(&extra[end..]);
+        if let Some(d) = extra.get(end..end + 8) {
             self.img_dim = (
                 u32::from_le_bytes([d[0], d[1], d[2], d[3]]),
                 u32::from_le_bytes([d[4], d[5], d[6], d[7]]),
             );
-            if let Some(a) = alpha {
-                tail.push(extra[a]);
-            }
         }
         self.raw_picture_extra = tail;
-        true
     }
 
     /// 저장된 자르기 폭이 있으면 높이가 비어 있어도 그 선택을 보존한다.
@@ -225,10 +228,57 @@ pub struct ImageAttr {
 #[derive(Debug, Clone, Default, serde::Serialize)]
 pub struct PictureEffects {
     pub shadow: Option<PictureShadow>,
+    /// HWP5 표 110 / HWPX `hp:glow` 네온.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub glow: Option<PictureGlow>,
     /// HWP5 표 111 / HWPX hp:softEdge의 반경(HWPUNIT).
     /// 이미지 크기·crop과 별개인 그림 효과이며 원본 좌표에 더하지 않는다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub soft_edge_radius: Option<f64>,
+    /// HWP5 표 112 / HWPX `hp:reflection` 반사.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reflection: Option<PictureReflection>,
+}
+
+impl PictureEffects {
+    pub fn is_empty(&self) -> bool {
+        self.shadow.is_none()
+            && self.glow.is_none()
+            && self.soft_edge_radius.is_none()
+            && self.reflection.is_none()
+    }
+}
+
+/// HWPX 그림 네온 효과 (`hp:glow`).
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct PictureGlow {
+    pub alpha: Option<String>,
+    pub radius: Option<String>,
+    pub color: Option<EffectColor>,
+}
+
+/// HWPX 그림 반사 효과 (`hp:reflection`).
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct PictureReflection {
+    pub align_style: Option<String>,
+    pub radius: Option<String>,
+    pub direction: Option<String>,
+    pub distance: Option<String>,
+    pub rotation_style: Option<String>,
+    pub fade_direction: Option<String>,
+    pub skew: Option<EffectPoint>,
+    pub scale: Option<EffectPoint>,
+    /// `hp:alpha` 시작·끝 투명도.
+    pub alpha: Option<EffectRange>,
+    /// `hp:pos` 시작·끝 위치.
+    pub pos: Option<EffectRange>,
+}
+
+/// HWPX 반사의 시작·끝 값 (`hp:alpha`, `hp:pos`).
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct EffectRange {
+    pub start: Option<String>,
+    pub end: Option<String>,
 }
 
 /// 단독 부드러운 가장자리 꼬리는 반경 뒤 원본 크기·alpha가 생략될 수도 있다.
@@ -273,6 +323,16 @@ pub struct EffectColor {
     pub system_idx: Option<String>,
     pub preset_idx: Option<String>,
     pub rgb: Option<EffectRgb>,
+    /// `hp:effect` 색 효과 (`type`, `value`). 한컴 네온 견본은 `SAT_MOD` 1.75를 둔다.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub effects: Vec<ColorEffect>,
+}
+
+/// HWPX 색 효과 (`<hp:effect type="SAT_MOD" value="1.75"/>`).
+#[derive(Debug, Clone, Default, serde::Serialize)]
+pub struct ColorEffect {
+    pub kind: String,
+    pub value: String,
 }
 
 /// HWPX 효과 RGB 색상 (`hp:rgb`).
@@ -348,9 +408,9 @@ const PICTURE_EFFECT_SOFT_EDGE: u32 = 0x4;
 /// 고정된다. 부드러운 가장자리(플래그 4)는 반경 f32 4바이트를 더 둔다(표 111). 고정
 /// 위치 9..17 로 읽으면 반경이 dimwidth 로 읽혀 자르기 영역이 원본의 극히 일부가 된다.
 ///
-/// 효과별 정보 길이를 아는 경우(부드러운 가장자리만)에, 그 길이가 꼬리 길이와 정확히
-/// 맞을 때만 건너뛴다. 그림자·네온·반사처럼 색상 정보가 가변인 효과나 길이가 맞지 않는
-/// 꼬리는 종전 해석을 그대로 쓴다.
+/// 효과 정보를 읽을 수 있으면(`decode_hwp_picture_effects`) 그 뒤 길이가 원본 크기(8)나
+/// 원본 크기+투명도(9)와 정확히 맞을 때만 건너뛴다. 모르는 색 종류처럼 읽지 못하거나
+/// 길이가 맞지 않는 꼬리는 종전 해석을 그대로 쓴다.
 pub(crate) fn picture_extra_layout(extra: &[u8]) -> PictureExtraLayout {
     const EFFECTS_OFFSET: usize = 5;
     const FIXED_DIM_OFFSET: usize = EFFECTS_OFFSET + 4;
@@ -364,11 +424,14 @@ pub(crate) fn picture_extra_layout(extra: &[u8]) -> PictureExtraLayout {
     else {
         return legacy;
     };
-    let effects_len = match flags {
-        PICTURE_EFFECT_SOFT_EDGE => 4,
-        _ => return legacy,
+    let dim_offset = match flags {
+        0 => return legacy,
+        PICTURE_EFFECT_SOFT_EDGE => FIXED_DIM_OFFSET + 4,
+        _ => match super::picture_effects::decode_hwp_picture_effects(extra) {
+            Some((_, end)) => end,
+            None => return legacy,
+        },
     };
-    let dim_offset = FIXED_DIM_OFFSET + effects_len;
     match extra.len().checked_sub(dim_offset) {
         Some(8) => PictureExtraLayout {
             dim_offset: Some(dim_offset),

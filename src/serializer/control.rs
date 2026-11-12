@@ -1695,9 +1695,22 @@ fn write_picture_data<W: std::io::Write>(
         w.write_u8(pic.border_opacity)?;
         w.write_u32(pic.instance_id)?;
         if let Some(radius) = pic.effects.soft_edge_radius {
-            write_picture_soft_edge(radius, w)?;
+            // 반경 범위 검사는 단독 옅은 테두리 경로가 맡는다.
+            if pic.effects.shadow.is_none()
+                && pic.effects.glow.is_none()
+                && pic.effects.reflection.is_none()
+            {
+                write_picture_soft_edge(radius, w)?;
+            } else {
+                w.write_bytes(&crate::model::picture_effects::encode_hwp_picture_effects(
+                    &pic.effects,
+                ))?;
+            }
         } else {
-            w.write_u32(0)?; // image_effect_extra
+            // 효과 없음은 플래그 0 네 바이트다.
+            w.write_bytes(&crate::model::picture_effects::encode_hwp_picture_effects(
+                &pic.effects,
+            ))?;
         }
         // 원본 이미지 크기(HWPUNIT) + 플래그(1): 한컴 호환 추가 9바이트
         // [#1929] IR img_dim(HWPX hp:imgDim 대응)이 있으면 우선 기록 —

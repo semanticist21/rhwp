@@ -1015,8 +1015,10 @@ fn normalize_picture_geometry_for_hwp<S: crate::storage::Storage>(
             pic.raw_picture_extra.push(pic.border_opacity);
             pic.raw_picture_extra
                 .extend_from_slice(&pic.instance_id.to_le_bytes());
-            pic.raw_picture_extra
-                .extend_from_slice(&0_u32.to_le_bytes());
+            // 그림 효과 정보(효과 없으면 플래그 0). HWPX의 그림자·네온·반사·옅은 테두리를 옮긴다.
+            let effects = crate::model::picture_effects::encode_hwp_picture_effects(&pic.effects);
+            storage.reserve(&mut pic.raw_picture_extra, effects.len())?;
+            pic.raw_picture_extra.extend_from_slice(&effects);
             pic.raw_picture_extra
                 .extend_from_slice(&0_u32.to_le_bytes());
             pic.raw_picture_extra

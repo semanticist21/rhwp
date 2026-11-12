@@ -978,6 +978,12 @@ fn parse_picture(common: CommonObjAttr, shape_attr: ShapeComponentAttr, data: &[
         }
         pic.effects.soft_edge_radius =
             crate::model::image::picture_soft_edge_radius(&pic.raw_picture_extra);
+        // 그림자·네온·반사도 모델로 읽어 HWPX 저장·효과 조회가 쓰게 한다. 원문 꼬리는 그대로 둔다.
+        if let Some((effects, _)) =
+            crate::model::picture_effects::decode_hwp_picture_effects(&pic.raw_picture_extra)
+        {
+            pic.effects = effects;
+        }
         // 꼬리 중간의 그림 효과 정보 뒤에 원본 크기와 투명도가 온다.
         let layout = crate::model::image::picture_extra_layout(&pic.raw_picture_extra);
         if let Some(&alpha) = layout

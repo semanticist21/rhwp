@@ -339,6 +339,7 @@ impl DocumentCore {
                     ",\"gradientType\":{},\"gradientAngle\":{},\"gradientCenterX\":{},\"gradientCenterY\":{},\"gradientBlur\":{}",
                     g.gradient_type, g.angle, g.center_x, g.center_y, g.blur
                 ));
+                extra.push_str(&gradient_stops_json(g));
             }
             extra.push_str(&format!(",\"fillAlpha\":{}", fill.alpha));
             // 그림자
@@ -575,6 +576,7 @@ impl DocumentCore {
                 let grad = d.fill.gradient.get_or_insert_with(Default::default);
                 grad.blur = v as i16;
             }
+            apply_gradient_stops(&mut d.fill, props_json);
 
             // 그림자
             if let Some(v) = crate::document_core::helpers::json_u32(props_json, "shadowType") {
@@ -758,6 +760,7 @@ impl DocumentCore {
                     ",\"gradientType\":{},\"gradientAngle\":{},\"gradientCenterX\":{},\"gradientCenterY\":{},\"gradientBlur\":{}",
                     g.gradient_type, g.angle, g.center_x, g.center_y, g.blur
                 ));
+                extra.push_str(&gradient_stops_json(g));
             }
             extra.push_str(&format!(",\"fillAlpha\":{}", fill.alpha));
             extra.push_str(&format!(",\"shadowType\":{},\"shadowColor\":{},\"shadowOffsetX\":{},\"shadowOffsetY\":{},\"shadowAlpha\":{}",
@@ -964,6 +967,7 @@ impl DocumentCore {
                 let grad = d.fill.gradient.get_or_insert_with(Default::default);
                 grad.blur = v as i16;
             }
+            apply_gradient_stops(&mut d.fill, props_json);
             if let Some(v) = crate::document_core::helpers::json_u32(props_json, "shadowType") {
                 d.shadow_type = v;
             }
@@ -2936,6 +2940,46 @@ impl DocumentCore {
 }
 
 /// 글상자 글 방향 이름. list_attr bit 0~2(1=세로)와 HWPX VERTICALALL 표지를 함께 읽는다.
+/// 그러데이션 색·위치·번짐 중심(`gradientColors`·`gradientPositions`·`gradientStepCenter`).
+/// 색은 COLORREF 숫자다. 개체 모양 복사·새 그리기 속성이 그러데이션을 옮길 때 쓴다.
+fn gradient_stops_json(g: &crate::model::style::GradientFill) -> String {
+    format!(
+        ",\"gradientColors\":{:?},\"gradientPositions\":{:?},\"gradientStepCenter\":{}",
+        g.colors, g.positions, g.step_center
+    )
+}
+
+fn apply_gradient_stops(fill: &mut crate::model::style::Fill, props_json: &str) {
+    let Ok(v) = serde_json::from_str::<serde_json::Value>(props_json) else {
+        return;
+    };
+    let list = |key: &str| -> Option<Vec<i64>> {
+        v.get(key)?
+            .as_array()?
+            .iter()
+            .map(serde_json::Value::as_i64)
+            .collect()
+    };
+    let colors = list("gradientColors");
+    let positions = list("gradientPositions");
+    let center = v
+        .get("gradientStepCenter")
+        .and_then(serde_json::Value::as_u64);
+    if colors.is_none() && positions.is_none() && center.is_none() {
+        return;
+    }
+    let grad = fill.gradient.get_or_insert_with(Default::default);
+    if let Some(colors) = colors {
+        grad.colors = colors.into_iter().map(|c| c as u32).collect();
+    }
+    if let Some(positions) = positions {
+        grad.positions = positions.into_iter().map(|p| p as i32).collect();
+    }
+    if let Some(center) = center {
+        grad.step_center = center.min(100) as u8;
+    }
+}
+
 fn textbox_direction_name(tb: &crate::model::shape::TextBox) -> &'static str {
     match tb.list_attr & 0x07 {
         0 => "Horizontal",

@@ -181,6 +181,12 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     ),
     (
         "commands/object_ops/picture.rs",
+        "get_picture_effects_native",
+        Exempt::SessionState,
+        "그림 효과를 읽기만 한다. 셀·머리말 경로 해석기가 가변 참조를 돌려줘 &mut self일 뿐 문서 IR을 바꾸지 않는다.",
+    ),
+    (
+        "commands/object_ops/picture.rs",
         "insert_picture_in_cell_native",
         Exempt::DelegatesTo("insert_picture_native_anchored"),
         "칸 경로를 검증한 뒤 같은 공통 구현에 칸 문단 앵커로 위임한다(#8556).",

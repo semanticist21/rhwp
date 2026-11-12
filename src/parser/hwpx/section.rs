@@ -19,8 +19,8 @@ use crate::model::document::{Section, SectionDef};
 use crate::model::footnote::{Endnote, Footnote};
 use crate::model::header_footer::{Footer, Header, HeaderFooterApply, MasterPage};
 use crate::model::image::{
-    CropInfo, EffectColor, EffectPoint, EffectRgb, ImageAttr, ImageEffect, PictureEffects,
-    PictureShadow,
+    ColorEffect, CropInfo, EffectColor, EffectPoint, EffectRange, EffectRgb, ImageAttr,
+    ImageEffect, PictureEffects, PictureGlow, PictureReflection, PictureShadow,
 };
 use crate::model::page::{
     BindingMethod, ColumnDef, ColumnDirection, ColumnType, PageBorderBasis, PageBorderFill,
@@ -3581,6 +3581,47 @@ fn parse_picture_effects(reader: &mut Reader<&[u8]>) -> Result<PictureEffects, H
             Ok(Event::Empty(ref e)) if local_name(e.name().as_ref()) == b"shadow" => {
                 effects.shadow = Some(parse_picture_shadow_attrs(e));
             }
+            Ok(Event::Start(ref e)) if local_name(e.name().as_ref()) == b"glow" => {
+                let mut glow = PictureGlow::default();
+                read_effect_attrs(e, &mut |key, value| match key {
+                    b"alpha" => glow.alpha = Some(value),
+                    b"radius" => glow.radius = Some(value),
+                    _ => {}
+                });
+                glow.color = parse_effect_children(reader, b"glow", &mut |_, _| {})?;
+                effects.glow = Some(glow);
+            }
+            Ok(Event::Start(ref e)) if local_name(e.name().as_ref()) == b"reflection" => {
+                let mut r = PictureReflection::default();
+                read_effect_attrs(e, &mut |key, value| match key {
+                    b"alignStyle" => r.align_style = Some(value),
+                    b"radius" => r.radius = Some(value),
+                    b"direction" => r.direction = Some(value),
+                    b"distance" => r.distance = Some(value),
+                    b"rotationStyle" => r.rotation_style = Some(value),
+                    b"fadeDirection" => r.fade_direction = Some(value),
+                    _ => {}
+                });
+                parse_effect_children(reader, b"reflection", &mut |name, e| {
+                    let range = || {
+                        let mut v = EffectRange::default();
+                        read_effect_attrs(e, &mut |key, value| match key {
+                            b"start" => v.start = Some(value),
+                            b"end" => v.end = Some(value),
+                            _ => {}
+                        });
+                        v
+                    };
+                    match name {
+                        b"skew" => r.skew = Some(parse_effect_point(e)),
+                        b"scale" => r.scale = Some(parse_effect_point(e)),
+                        b"alpha" => r.alpha = Some(range()),
+                        b"pos" => r.pos = Some(range()),
+                        _ => {}
+                    }
+                })?;
+                effects.reflection = Some(r);
+            }
             Ok(Event::Empty(ref e) | Event::Start(ref e))
                 if local_name(e.name().as_ref()) == b"softEdge" =>
             {
@@ -3602,6 +3643,39 @@ fn parse_picture_effects(reader: &mut Reader<&[u8]>) -> Result<PictureEffects, H
     }
 
     Ok(effects)
+}
+
+fn read_effect_attrs(e: &quick_xml::events::BytesStart<'_>, set: &mut dyn FnMut(&[u8], String)) {
+    for attr in e.attributes().flatten() {
+        set(attr.key.as_ref().as_bytes(), attr_str(&attr));
+    }
+}
+
+/// 네온·반사 효과의 자식을 끝 태그까지 읽는다. `effectsColor`는 돌려주고 나머지 빈 자식은 `child`에 넘긴다.
+fn parse_effect_children(
+    reader: &mut Reader<&[u8]>,
+    end: &[u8],
+    child: &mut dyn FnMut(&[u8], &quick_xml::events::BytesStart<'_>),
+) -> Result<Option<EffectColor>, HwpxError> {
+    let mut color = None;
+    let mut buf = Vec::new();
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Empty(ref e)) if local_name(e.name().as_ref()) == b"effectsColor" => {
+                color = Some(parse_effect_color_attrs(e));
+            }
+            Ok(Event::Start(ref e)) if local_name(e.name().as_ref()) == b"effectsColor" => {
+                color = Some(parse_effect_color(e, reader)?);
+            }
+            Ok(Event::Empty(ref e)) => child(local_name(e.name().as_ref()), e),
+            Ok(Event::End(ref e)) if local_name(e.name().as_ref()) == end => break,
+            Ok(Event::Eof) => break,
+            Err(e) => return Err(HwpxError::XmlError(format!("effects: {}", e))),
+            _ => {}
+        }
+        buf.clear();
+    }
+    Ok(color)
 }
 
 fn parse_picture_shadow(
@@ -3690,6 +3764,15 @@ fn parse_effect_color(
         match reader.read_event_into(&mut buf) {
             Ok(Event::Empty(ref e)) if local_name(e.name().as_ref()) == b"rgb" => {
                 color.rgb = Some(parse_effect_rgb(e));
+            }
+            Ok(Event::Empty(ref e)) if local_name(e.name().as_ref()) == b"effect" => {
+                let mut effect = ColorEffect::default();
+                read_effect_attrs(e, &mut |key, value| match key {
+                    b"type" => effect.kind = value,
+                    b"value" => effect.value = value,
+                    _ => {}
+                });
+                color.effects.push(effect);
             }
             Ok(Event::End(ref e)) if local_name(e.name().as_ref()) == b"effectsColor" => break,
             Ok(Event::Eof) => break,

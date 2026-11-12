@@ -25,6 +25,7 @@ pub mod page;
 pub mod paragraph;
 pub mod path;
 pub(crate) mod pdf_stroke;
+pub mod picture_effects;
 pub mod provenance;
 pub mod raw_provenance;
 pub mod section_tail;

@@ -501,7 +501,7 @@ impl DocumentCore {
                 // 바깥 여백
                 "\"outerMarginLeft\":{},\"outerMarginTop\":{},\"outerMarginRight\":{},\"outerMarginBottom\":{},",
                 // 테두리
-                "\"borderColor\":{},\"borderWidth\":{},",
+                "\"borderColor\":{},\"borderWidth\":{},\"borderAttr\":{},\"borderOutlineStyle\":{},",
                 // 캡션
                 "\"hasCaption\":{},\"captionDirection\":\"{}\",\"captionVertAlign\":\"{}\",",
                 "\"captionWidth\":{},\"captionSpacing\":{},\"captionMaxWidth\":{},\"captionIncludeMargin\":{}{}}}"
@@ -529,7 +529,7 @@ impl DocumentCore {
             // 바깥 여백
             c.margin.left, c.margin.top, c.margin.right, c.margin.bottom,
             // 테두리
-            pic.border_color, pic.border_width,
+            pic.border_color, pic.border_width, pic.border_attr.attr, pic.border_attr.outline_style,
             // 캡션
             pic.caption.is_some(),
             pic.caption.as_ref().map_or("Bottom", |cap| match cap.direction {
@@ -1273,6 +1273,17 @@ impl DocumentCore {
         if let Some(v) = json_i32(props_json, "borderWidth") {
             pic.border_width = v;
         }
+        // 테두리 선 종류(attr 하위 6비트, 0=없음)·끝 모양(bit 6~9)·외곽선 위치(HWPX outlineStyle).
+        // 도형 속성(`lineType`·`lineEndShape`)과 같은 키다. 한컴 그림 스타일이 실선·끝 모양을 함께 적는다.
+        if let Some(v) = json_u32(props_json, "lineType") {
+            pic.border_attr.attr = (pic.border_attr.attr & !0x3F) | (v & 0x3F);
+        }
+        if let Some(v) = json_u32(props_json, "lineEndShape") {
+            pic.border_attr.attr = (pic.border_attr.attr & !(0x0F << 6)) | ((v & 0x0F) << 6);
+        }
+        if let Some(v) = json_u32(props_json, "borderOutlineStyle") {
+            pic.border_attr.outline_style = v.min(2) as u8;
+        }
 
         // description
         if let Some(v) = json_str(props_json, "description") {
@@ -1682,6 +1693,43 @@ impl DocumentCore {
             self.after_picture_image_edit(section_idx, parent_para_idx, control_idx);
         }
         Ok(format!("{{\"ok\":true,\"changed\":{changed}}}"))
+    }
+
+    /// 그림 효과(그림자·네온·옅은 테두리·반사)를 앱 JSON으로 돌려준다(한컴 그림 도구 상자 견본의 체크).
+    pub fn get_picture_effects_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        cell_path: &[(usize, usize, usize)],
+        control_idx: usize,
+    ) -> Result<String, HwpError> {
+        let pic =
+            self.picture_image_target_mut(section_idx, parent_para_idx, cell_path, control_idx)?;
+        Ok(crate::model::picture_effects::picture_effects_to_json(&pic.effects).to_string())
+    }
+
+    /// 그림 효과를 바꾼다(한컴 그림 도구 상자의 그림자·반사·네온·옅은 테두리 견본).
+    /// `effects_json`의 `shadow`·`glow`·`softEdge`·`reflection` 중 준 키만 바꾸고 null은 그 효과를 지운다.
+    /// HWP 꼬리와 HWPX `hp:effects`에 함께 적는다. 되돌리기는 스냅샷이 맡는다.
+    ///
+    /// 반환: `{"ok":true}`
+    pub fn set_picture_effects_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        cell_path: &[(usize, usize, usize)],
+        control_idx: usize,
+        effects_json: &str,
+    ) -> Result<String, HwpError> {
+        let pic =
+            self.picture_image_target_mut(section_idx, parent_para_idx, cell_path, control_idx)?;
+        let next =
+            crate::model::picture_effects::apply_picture_effects_json(&pic.effects, effects_json)
+                .map_err(HwpError::RenderError)?;
+        pic.set_effects(next);
+        self.document.sections[section_idx].raw_stream = None;
+        self.after_picture_image_edit(section_idx, parent_para_idx, control_idx);
+        Ok("{\"ok\":true}".to_string())
     }
 
     /// 그림을 `path` 파일에 연결한다(한컴 삽입 그림 저장하기 뒤, 문서에 포함 끄기).

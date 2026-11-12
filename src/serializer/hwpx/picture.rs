@@ -489,8 +489,19 @@ where
     S::Error: std::fmt::Display,
 {
     start_tag_with_storage(w, "hp:effects", storage)?;
+    // 한컴 12.30 저장 순서: shadow → glow → softEdge → reflection.
     if let Some(shadow) = &pic.effects.shadow {
         write_shadow_with_storage(w, shadow, storage)?;
+    }
+    if let Some(glow) = &pic.effects.glow {
+        let mut attrs = Vec::new();
+        push_opt_attr_with_storage(&mut attrs, "alpha", glow.alpha.as_deref(), storage)?;
+        push_opt_attr_with_storage(&mut attrs, "radius", glow.radius.as_deref(), storage)?;
+        start_tag_attrs_with_storage(w, "hp:glow", &attrs, storage)?;
+        if let Some(color) = &glow.color {
+            write_effect_color_with_storage(w, color, storage)?;
+        }
+        end_tag_with_storage(w, "hp:glow", storage)?;
     }
     if let Some(radius) = pic
         .effects
@@ -499,6 +510,35 @@ where
     {
         let radius = xml_value(storage, radius)?;
         empty_tag_with_storage(w, "hp:softEdge", &[("radius", radius.as_str())], storage)?;
+    }
+    if let Some(r) = &pic.effects.reflection {
+        let mut attrs = Vec::new();
+        for (name, value) in [
+            ("alignStyle", &r.align_style),
+            ("radius", &r.radius),
+            ("direction", &r.direction),
+            ("distance", &r.distance),
+            ("rotationStyle", &r.rotation_style),
+            ("fadeDirection", &r.fade_direction),
+        ] {
+            push_opt_attr_with_storage(&mut attrs, name, value.as_deref(), storage)?;
+        }
+        start_tag_attrs_with_storage(w, "hp:reflection", &attrs, storage)?;
+        if let Some(skew) = &r.skew {
+            write_effect_point_with_storage(w, "hp:skew", skew, storage)?;
+        }
+        if let Some(scale) = &r.scale {
+            write_effect_point_with_storage(w, "hp:scale", scale, storage)?;
+        }
+        for (name, range) in [("hp:alpha", &r.alpha), ("hp:pos", &r.pos)] {
+            if let Some(range) = range {
+                let mut attrs = Vec::new();
+                push_opt_attr_with_storage(&mut attrs, "start", range.start.as_deref(), storage)?;
+                push_opt_attr_with_storage(&mut attrs, "end", range.end.as_deref(), storage)?;
+                empty_tag_with_storage(w, name, &attrs, storage)?;
+            }
+        }
+        end_tag_with_storage(w, "hp:reflection", storage)?;
     }
     end_tag_with_storage(w, "hp:effects", storage)?;
     Ok(())
@@ -613,9 +653,18 @@ where
         storage,
     )?;
 
-    if let Some(rgb) = &color.rgb {
+    if color.rgb.is_some() || !color.effects.is_empty() {
         start_tag_attrs_with_storage(w, "hp:effectsColor", &attrs, storage)?;
-        write_effect_rgb_with_storage(w, rgb, storage)?;
+        if let Some(rgb) = &color.rgb {
+            write_effect_rgb_with_storage(w, rgb, storage)?;
+        }
+        for effect in &color.effects {
+            let attrs = [
+                ("type", effect.kind.as_str()),
+                ("value", effect.value.as_str()),
+            ];
+            empty_tag_with_storage(w, "hp:effect", &attrs, storage)?;
+        }
         end_tag_with_storage(w, "hp:effectsColor", storage)?;
     } else {
         empty_tag_with_storage(w, "hp:effectsColor", &attrs, storage)?;
@@ -1180,6 +1229,8 @@ mod tests {
         let mut pic = make_picture(1);
         pic.effects = PictureEffects {
             soft_edge_radius: None,
+            glow: None,
+            reflection: None,
             shadow: Some(PictureShadow {
                 style: Some("OUTSIDE".to_string()),
                 alpha: Some("0.8".to_string()),
@@ -1203,6 +1254,7 @@ mod tests {
                         g: Some("0".to_string()),
                         b: Some("0".to_string()),
                     }),
+                    effects: Vec::new(),
                 }),
             }),
         };
