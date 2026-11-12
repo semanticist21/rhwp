@@ -65,7 +65,7 @@ fn char_overlap_offsets_length_and_logical_edits_share_one_slot_axis() {
 }
 
 #[test]
-fn adjacent_inline_slots_do_not_consume_text_and_keep_ambiguous_boundary_guard() {
+fn adjacent_inline_slots_do_not_consume_text_and_cut_between_them() {
     let mut picture = rhwp::model::image::Picture::default();
     picture.common.treat_as_char = true;
     let mut doc = logical_slot_document(
@@ -89,12 +89,14 @@ fn adjacent_inline_slots_do_not_consume_text_and_keep_ambiguous_boundary_guard()
     );
     doc.copy_selection_logical_native(0, 0, 3, 0, 4).unwrap();
     assert_eq!(doc.get_clipboard_text_native(), "🦦");
-    let before = serde_json::to_value(&doc.document().sections[0].paragraphs[0]).unwrap();
-    assert!(doc.delete_range_logical_native(0, 0, 2, 0, 3).is_err());
-    assert_eq!(
-        serde_json::to_value(&doc.document().sections[0].paragraphs[0]).unwrap(),
-        before
-    );
+    // 맞붙은 그림과 각주 사이 경계는 그 사이에서 지운다(한/글 12.30: 사이 선택은 뒤 부호만 지운다).
+    let snapshot = doc.save_snapshot_native();
+    doc.delete_range_logical_native(0, 0, 2, 0, 3).unwrap();
+    let para = &doc.document().sections[0].paragraphs[0];
+    assert_eq!(para.text, "가🦦끝");
+    assert!(matches!(para.controls.as_slice(), [Control::Picture(_)]));
+    assert_eq!(para.control_text_positions(), [1]);
+    doc.restore_snapshot_native(snapshot).unwrap();
     assert_eq!(doc.get_clipboard_text_native(), "🦦");
     doc.delete_range_logical_native(0, 0, 3, 0, 4).unwrap();
     assert_eq!(doc.document().sections[0].paragraphs[0].text, "가끝");
@@ -327,14 +329,28 @@ fn logical_single_slot_and_before_after_boundaries_agree_with_copy() {
 }
 
 #[test]
-fn unsupported_same_position_controls_and_inverted_ranges_keep_original() {
+fn same_position_notes_delete_one_by_one_and_inverted_ranges_keep_original() {
     let mut core = boundary_document();
     core.insert_endnote_native(0, 0, 4).unwrap();
+    let notes = |core: &DocumentCore| {
+        core.document().sections[0].paragraphs[0]
+            .controls
+            .iter()
+            .filter(|c| matches!(c, Control::Footnote(_) | Control::Endnote(_)))
+            .count()
+    };
     let before = core.export_hwp_native().unwrap();
-    assert!(core.delete_range_logical_native(0, 0, 5, 0, 6).is_err());
-    assert_eq!(core.export_hwp_native().unwrap(), before);
-    assert!(core.delete_range_logical_native(0, 0, 6, 0, 7).is_err());
-    assert_eq!(core.export_hwp_native().unwrap(), before);
+    // 같은 글자 자리의 각주·미주는 각 논리 칸만 지운다.
+    for (from, to) in [(5, 6), (6, 7)] {
+        let snapshot = core.save_snapshot_native();
+        core.delete_range_logical_native(0, 0, from, 0, to).unwrap();
+        assert_eq!(notes(&core), 1, "{from}..{to}");
+        assert_eq!(
+            core.document().sections[0].paragraphs[0].text,
+            "가🦦나\t다끝"
+        );
+        core.restore_snapshot_native(snapshot).unwrap();
+    }
     assert!(core.delete_range_logical_native(0, 0, 3, 0, 2).is_err());
     assert_eq!(core.export_hwp_native().unwrap(), before);
 }

@@ -99,11 +99,17 @@ fn boundary_controls_to_delete(
                         | Control::Footnote(_)
                         | Control::Endnote(_)
                         | Control::Form(_)
-                )
+                ) || (!Paragraph::occupies_split_slot(&para.controls[index])
+                    && para.controls.iter().enumerate().any(|(other, control)| {
+                        // 캐럿 칸이 없는 떠 있는 개체는 같은 자리 개체와 앞뒤를 가를 수 없다.
+                        other != index
+                            && Paragraph::is_split_movable_control(control)
+                            && positions.get(other) == positions.get(index)
+                    }))
             }))
     {
         return Err(HwpError::RenderError(
-            "필드를 포함한 경계 삭제는 아직 지원하지 않습니다".into(),
+            "필드나 같은 자리의 떠 있는 개체를 포함한 경계 삭제는 아직 지원하지 않습니다".into(),
         ));
     }
     Ok(selected)
