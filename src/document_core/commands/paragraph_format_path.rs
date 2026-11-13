@@ -98,8 +98,12 @@ impl DocumentCore {
         path: &[(usize, usize, usize)],
         shape_id: u16,
     ) -> Result<String, HwpError> {
+        // 머리말·꼬리말·각주·미주는 셀 번호 API가 받지 않으므로 아래 경로 갈래로 간다.
         if let [entry] = path {
-            if !self.is_header_footer_control(section, parent, entry.0) {
+            if self
+                .get_cell_paragraph_ref(section, parent, entry.0, entry.1, entry.2)
+                .is_some()
+            {
                 return self.set_cell_para_shape_id_native(
                     section, parent, entry.0, entry.1, entry.2, shape_id,
                 );
@@ -131,8 +135,8 @@ impl DocumentCore {
             .is_none_or(|old| marker_shape_changed(old, new_shape));
         let (old_indent, new_indent) = self.para_shape_indents(old_id, shape_id);
         let inner_para = path.last().unwrap().2;
-        // 머리말·꼬리말 문단은 셀 첫 문단의 저장 줄 원점을 쓰지 않는다. 머리말 문단 모양 바꾸기
-        // (`apply_para_format_in_hf_native`)처럼 그 문단만 다시 짠다.
+        // 머리말·꼬리말·각주·미주 문단은 셀 첫 문단의 저장 줄 원점을 쓰지 않는다. 머리말 문단 모양
+        // 바꾸기(`apply_para_format_in_hf_native`)처럼 그 문단만 다시 짠다.
         let header_footer = path.len() == 1;
         if !header_footer {
             self.restamp_cell_format_origin_by_path(section, parent, path, old_id, shape_id)?;

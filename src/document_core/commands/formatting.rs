@@ -1611,7 +1611,12 @@ impl DocumentCore {
         // [#2755] 깊이 1 셀은 flat 형제가 셀 폭 리플로우를 담당한다.
         // `set_char_shape_id_in_cell_native`(:1268)는 (복원 대상 모양의 내용을 알 수 없으므로)
         // 무조건 reflow_cell_paragraph 를 호출한다. undo 복원 경로의 do/undo 대칭을 지킨다.
-        if path.len() == 1 {
+        // 머리말·꼬리말·각주·미주는 셀 번호 API가 받지 않으므로 아래 경로 갈래로 간다.
+        if path.len() == 1
+            && self
+                .get_cell_paragraph_ref(sec_idx, parent_para_idx, path[0].0, path[0].1, path[0].2)
+                .is_some()
+        {
             let (control_idx, cell_idx, cell_para_idx) = path[0];
             return self.set_char_shape_id_in_cell_native(
                 sec_idx,

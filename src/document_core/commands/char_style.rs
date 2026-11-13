@@ -183,3 +183,79 @@ fn visit_nested_paragraphs(
         }
     }
 }
+
+/// 셀 경로 한 마디(컨트롤, 셀, 셀 안 문단).
+type PathEntry = (usize, usize, usize);
+
+impl DocumentCore {
+    /// 본문 문단의 컨트롤 안(표 셀·캡션·글상자·머리말·꼬리말·각주·미주와 그 안의 표)에서 `matches` 를
+    /// 만족하는 문단을 (구역, 본문 문단, 셀 경로)로 모은다. 경로는 `get_cell_paragraph_mut_by_path` 가 받는 꼴이다.
+    pub(crate) fn nested_paragraph_paths(
+        &self,
+        matches: &dyn Fn(&Paragraph) -> bool,
+    ) -> Vec<(usize, usize, Vec<PathEntry>)> {
+        let mut found = Vec::new();
+        for (sec, section) in self.document.sections.iter().enumerate() {
+            for (pi, para) in section.paragraphs.iter().enumerate() {
+                collect_paragraph_paths(&para.controls, &mut Vec::new(), matches, &mut |path| {
+                    found.push((sec, pi, path))
+                });
+            }
+        }
+        found
+    }
+}
+
+fn collect_paragraph_paths(
+    controls: &[crate::model::control::Control],
+    path: &mut Vec<PathEntry>,
+    matches: &dyn Fn(&Paragraph) -> bool,
+    found: &mut dyn FnMut(Vec<PathEntry>),
+) {
+    use crate::document_core::helpers::get_textbox_at;
+    use crate::model::control::Control;
+    for (ci, control) in controls.iter().enumerate() {
+        // (셀 번호, 문단 목록). 셀 65534는 표 캡션, 그 밖의 컨테이너는 셀 0(글상자는 묶음 안 순번)이다.
+        let mut lists: Vec<(usize, &[Paragraph])> = Vec::new();
+        match control {
+            Control::Table(t) => {
+                lists.extend(
+                    t.cells
+                        .iter()
+                        .enumerate()
+                        .map(|(i, c)| (i, &c.paragraphs[..])),
+                );
+                if let Some(c) = &t.caption {
+                    lists.push((65534, &c.paragraphs));
+                }
+            }
+            Control::Picture(p) => {
+                if let Some(c) = &p.caption {
+                    lists.push((0, &c.paragraphs));
+                }
+            }
+            Control::Shape(s) => {
+                for i in 0..s.textbox_shape_count() {
+                    if let Some(tb) = get_textbox_at(s, i) {
+                        lists.push((i, &tb.paragraphs));
+                    }
+                }
+            }
+            Control::Header(h) => lists.push((0, &h.paragraphs)),
+            Control::Footer(h) => lists.push((0, &h.paragraphs)),
+            Control::Footnote(n) => lists.push((0, &n.paragraphs)),
+            Control::Endnote(n) => lists.push((0, &n.paragraphs)),
+            _ => {}
+        }
+        for (cell, paragraphs) in lists {
+            for (p_i, p) in paragraphs.iter().enumerate() {
+                path.push((ci, cell, p_i));
+                if matches(p) {
+                    found(path.clone());
+                }
+                collect_paragraph_paths(&p.controls, path, matches, found);
+                path.pop();
+            }
+        }
+    }
+}

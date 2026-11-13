@@ -325,8 +325,17 @@ impl DocumentCore {
         let Some(&(control_idx, cell_idx, cell_para_idx)) = path.first() else {
             return Err(HwpError::RenderError("경로가 비어있습니다".into()));
         };
+        // 머리말·꼬리말·각주·미주는 셀 번호 API가 받지 않으므로 아래 경로 갈래로 간다.
         if path.len() == 1
-            && !self.is_header_footer_control(section_idx, parent_para_idx, control_idx)
+            && self
+                .get_cell_paragraph_ref(
+                    section_idx,
+                    parent_para_idx,
+                    control_idx,
+                    cell_idx,
+                    cell_para_idx,
+                )
+                .is_some()
         {
             return self.apply_cell_style_native(
                 section_idx,

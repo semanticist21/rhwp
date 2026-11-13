@@ -9367,6 +9367,42 @@ impl HwpDocument {
             }
         }
 
+        // 머리말·꼬리말·각주·미주·글상자·캡션 문단과 표 안의 표 셀 문단. 본문 표의 셀은 위에서 다뤘다.
+        let nested = self.core.nested_paragraph_paths(&|p| p.style_id == sid);
+        for (sec_idx, para_idx, path) in nested {
+            let body_table_cell = path.len() == 1
+                && path[0].1 != 65534
+                && matches!(
+                    self.core.document.sections[sec_idx].paragraphs[para_idx]
+                        .controls
+                        .get(path[0].0),
+                    Some(Control::Table(_))
+                );
+            if body_table_cell {
+                continue;
+            }
+            let Ok(cpara) = self
+                .core
+                .get_cell_paragraph_mut_by_path(sec_idx, para_idx, &path)
+            else {
+                continue;
+            };
+            if style_type == 0 && cpara.para_shape_id == old_psid {
+                cpara.para_shape_id = new_psid;
+                restamp_indentation(&mut cpara.line_segs, old_indent, new_indent);
+            }
+            cpara.replace_style_char_shape_preserving_overrides(old_csid, new_csid);
+            cpara.invalidate_layout_inputs();
+            let inner = path[path.len() - 1].2;
+            self.core
+                .reflow_cell_paragraph_by_path(sec_idx, para_idx, &path, inner);
+            self.core
+                .recalculate_cell_paragraph_vpos_by_path(sec_idx, para_idx, &path, inner, None);
+            self.core
+                .mark_cell_control_dirty(sec_idx, para_idx, path[0].0);
+            self.core.document.sections[sec_idx].raw_stream = None;
+        }
+
         // 글자 스타일은 문단이 아니라 글자에 적힌다(영역 태그 종류 1). 그 글자를 새 모양으로.
         if style_type == 1 && new_csid != old_csid {
             self.core
@@ -9481,6 +9517,35 @@ impl HwpDocument {
         true
     }
 
+    /// 스타일을 목록의 `from` 자리에서 빼 `to` 자리에 둔다(한컴 스타일 창의 한 줄 위로·아래로 이동).
+    ///
+    /// 그 사이 스타일은 한 칸씩 밀리고, 문단·글자 스타일·덧말·바탕쪽·메모·다음 스타일 참조가 모두
+    /// 스타일을 따라간다. 한컴처럼 바탕글(0번)은 옮기지 못하고 그 자리로 옮길 수도 없다.
+    #[wasm_bindgen(js_name = moveStyle)]
+    pub fn move_style(&mut self, from: u32, to: u32) -> bool {
+        let count = self.core.document.doc_info.styles.len();
+        let (from, to) = (from as usize, to as usize);
+        if from == 0 || to == 0 || from == to || from >= count || to >= count {
+            return false;
+        }
+        let (f, t) = (from as u16, to as u16);
+        self.remap_style_ids(|id| {
+            if id == f {
+                t
+            } else if f < t && id > f && id <= t {
+                id - 1
+            } else if t < f && id >= t && id < f {
+                id + 1
+            } else {
+                id
+            }
+        });
+        let style = self.core.document.doc_info.styles.remove(from);
+        self.core.document.doc_info.styles.insert(to, style);
+        self.core.rebuild_resolved_styles();
+        true
+    }
+
     /// 스타일 번호를 가리키는 모든 참조를 `remap`으로 바꾼다. 스타일 목록 자체는 바꾸지 않는다.
     ///
     /// 문단(본문·표·글상자·머리말·주석·메모·바탕쪽·복사해 둔 문단), 덧말, 다른 스타일의 다음 스타일,
@@ -9522,7 +9587,19 @@ impl HwpDocument {
         let remap_paragraphs = |paragraphs: &mut [Paragraph]| {
             walk(paragraphs, |node| {
                 match node {
-                    Node::Paragraph(para) => para.style_id = remap(u16::from(para.style_id)) as u8,
+                    Node::Paragraph(para) => {
+                        para.style_id = remap(u16::from(para.style_id)) as u8;
+                        // 글자에 적힌 글자 스타일(영역 태그 종류 1)도 따라간다. 지운 스타일(0으로
+                        // 옮겨짐)을 가리키던 영역은 바탕글 글자 스타일이 되지 않게 지운다.
+                        para.range_tags.retain_mut(|tag| {
+                            let Some(old) = tag.char_style_id() else {
+                                return true;
+                            };
+                            let new = u32::from(remap(old as u16));
+                            tag.tag = (tag.tag & 0xff00_0000) | new;
+                            new != 0
+                        });
+                    }
                     Node::Control(Control::Ruby(ruby)) => {
                         ruby.style_id_ref = remap(ruby.style_id_ref);
                     }
