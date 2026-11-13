@@ -1396,6 +1396,18 @@ impl DocumentCore {
         for i in cell_para_idx..=table_para_idx + 1 {
             self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, path, i);
         }
+        if treat_as_char {
+            // 칸 사다리가 세로 위치까지 정하므로 표 문단 줄은 한컴이 칸 안에 만든 표처럼 저장 줄로
+            // 둔다. 합성 출처(bit 31)를 남기면 HWPX 저장이 그 문단의 linesegarray를 빼고(#5847),
+            // 다시 열 때 새로 짠 줄이 글자처럼 취급 표를 다른 높이에 놓는다.
+            if let Ok(paras) =
+                self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)
+            {
+                for seg in &mut paras[table_para_idx].line_segs {
+                    seg.tag &= !LineSeg::TAG_IMPLEMENTATION_PROPERTY;
+                }
+            }
+        }
         self.recalculate_cell_paragraph_vpos_by_path(
             section_idx,
             parent_para_idx,

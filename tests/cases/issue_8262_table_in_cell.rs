@@ -370,3 +370,109 @@ fn create_table_in_cell_survives_hwp_and_hwpx_roundtrip() {
         assert_nested_placement(&reloaded, 0, 1);
     }
 }
+
+/// 쪽 렌더 트리의 표 상자(y, h)를 문서 순서(바깥 → 안)로 모은다.
+fn table_boxes(doc: &HwpDocument) -> Vec<(f64, f64)> {
+    use serde_json::Value;
+    fn walk(node: &Value, out: &mut Vec<(f64, f64)>) {
+        if node["type"] == "Table" {
+            out.push((
+                node["bbox"]["y"].as_f64().unwrap(),
+                node["bbox"]["h"].as_f64().unwrap(),
+            ));
+        }
+        for child in node["children"].as_array().into_iter().flatten() {
+            walk(child, out);
+        }
+    }
+    let tree: Value = serde_json::from_str(&doc.get_page_render_tree(0).unwrap()).unwrap();
+    let mut out = Vec::new();
+    walk(&tree, &mut out);
+    out
+}
+
+#[test]
+fn table_created_in_cell_keeps_its_place_after_hwpx_reopen() {
+    // 칸 안에 만든 글자처럼 취급 표의 줄이 합성 줄로 남으면 HWPX 저장이 linesegarray를 빼고(#5847)
+    // 다시 열 때 새로 짠 줄이 표를 7px쯤 아래에 놓았다. HWP·HWPX 모두 만든 자리 그대로다.
+    let mut doc = HwpDocument::create_empty();
+    doc.create_blank_document().unwrap();
+    doc.create_table_native(0, 0, 0, 1, 2).unwrap();
+    doc.create_table_in_cell_by_path_native(0, 0, &[(2, 0, 0)], 0, 2, 2, None, None, true)
+        .unwrap();
+    let live = table_boxes(&doc);
+    assert_eq!(live.len(), 2, "바깥 표와 칸 안 표");
+    for (label, bytes) in [
+        ("hwp", doc.export_hwp_native().unwrap()),
+        ("hwpx", doc.export_hwpx_native().unwrap()),
+    ] {
+        let reloaded = HwpDocument::new(&bytes).unwrap();
+        let boxes = table_boxes(&reloaded);
+        for (a, b) in live.iter().zip(&boxes) {
+            assert!(
+                (a.0 - b.0).abs() <= 0.2 && (a.1 - b.1).abs() <= 0.2,
+                "{label}: 다시 연 표 상자 {b:?} 가 만든 자리 {a:?} 와 같아야 한다"
+            );
+        }
+    }
+}
+
+#[test]
+fn growing_a_nested_table_cell_grows_its_host_line_without_gap() {
+    // 바깥 칸 안 글자처럼 취급 3×3 표의 칸에 표를 만들거나 Enter로 칸을 키우면, 한컴처럼 그 표의
+    // 높이와 바깥 칸의 표 줄도 함께 자란다. 줄이 옛 높이로 남으면 바깥 칸이 옛 줄과 자란 표를
+    // 겹쳐 재어 커지고, 가운데 정렬 칸에서 표 위에 큰 빈 자리가 생겼다.
+    for create in [true, false] {
+        let mut doc = HwpDocument::create_empty();
+        doc.create_blank_document().unwrap();
+        doc.create_table_native(0, 0, 0, 1, 2).unwrap();
+        doc.create_table_in_cell_by_path_native(0, 0, &[(2, 0, 0)], 0, 3, 3, None, None, true)
+            .unwrap();
+        let before = table_boxes(&doc);
+        let nested_cell = [(2, 0, 0), (0, 0, 0)];
+        if create {
+            doc.create_table_in_cell_by_path_native(0, 0, &nested_cell, 0, 1, 2, None, None, false)
+                .unwrap();
+        } else {
+            for _ in 0..3 {
+                doc.split_paragraph_in_cell_by_path(0, 0, &nested_cell, 0, None)
+                    .unwrap();
+            }
+        }
+        let after = table_boxes(&doc);
+        let (outer, nested) = (after[0], after[1]);
+        assert!(
+            nested.1 > before[1].1 + 10.0,
+            "칸 안 표가 자란다 ({create})"
+        );
+        // 빈 자리가 없으면 칸 안 표는 처음처럼 바깥 칸 위 여백과 표 바깥 여백 바로 아래에 있다.
+        assert!(
+            (nested.0 - before[1].0).abs() <= 0.2,
+            "칸 안 표 위에 빈 자리가 없다 ({create}): {} → {}",
+            before[1].0,
+            nested.0
+        );
+        let inner = only_table(&body_table(&doc).cells[0].paragraphs[0]);
+        let host = &body_table(&doc).cells[0].paragraphs[0].line_segs[0];
+        let px = |hu: i32| hu as f64 * 96.0 / 7200.0;
+        assert!(
+            (px(inner.common.height as i32) - nested.1).abs() <= 0.5,
+            "표 높이는 그린 높이를 따른다 ({create})"
+        );
+        let band = inner.common.height as i32
+            + i32::from(inner.common.margin.top)
+            + i32::from(inner.common.margin.bottom);
+        assert!(
+            host.line_height >= band - 10,
+            "바깥 칸의 표 줄은 자란 표와 바깥 여백을 담는다 ({create}): {} < {band}",
+            host.line_height
+        );
+        // 바깥 칸은 줄과 표를 겹쳐 재지 않는다.
+        assert!(
+            outer.1 < before[0].1 + (nested.1 - before[1].1) + 30.0,
+            "바깥 칸은 칸 안 표가 자란 만큼만 자란다 ({create}): {:?} → {:?}",
+            before[0],
+            outer
+        );
+    }
+}

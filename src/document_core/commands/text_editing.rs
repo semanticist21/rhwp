@@ -3963,6 +3963,64 @@ impl DocumentCore {
                 is_hwp3_variant,
             );
         }
+        self.grow_nested_tac_table_by_path(section_idx, parent_para_idx, path);
+    }
+
+    /// 칸 안 글자처럼 취급 표가 칸 내용으로 자라면 표 높이와 그 표가 놓인 바깥 칸 줄을 함께 키운다.
+    ///
+    /// 한컴은 표 높이(sz)를 행 내용으로 다시 정하고 표가 놓인 줄도 그만큼 키운다(본문 표는
+    /// `sync_tac_host_rows`). 줄이 옛 높이로 남으면 바깥 칸이 옛 줄과 자란 표를 겹쳐 재어 칸이
+    /// 커지고, 가운데 정렬 칸에서는 표 위에 빈 자리가 생긴다(칸 안 표의 칸에 표 만들기·Enter).
+    /// 바깥 칸 줄을 다시 짜면 그 칸의 사다리도 다시 쌓으므로 더 바깥 표도 같은 길로 맞춘다.
+    /// ponytail: 키우기만 한다. 칸 내용을 지워 줄어든 표는 저장 높이를 그대로 둔다.
+    fn grow_nested_tac_table_by_path(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+    ) {
+        // 경로의 마지막 마디가 고친 칸이다. 그 표가 다른 칸 안에 있어야(깊이 2 이상) 여기서 맞춘다.
+        if path.len() < 2 {
+            return;
+        }
+        let depth = path.len() - 1;
+        let content = {
+            let Ok(table) = self.resolve_table_by_path(section_idx, parent_para_idx, path) else {
+                return;
+            };
+            if !table.common.treat_as_char {
+                return;
+            }
+            let profile = self.effective_layout_profile();
+            let measured = crate::renderer::height_measurer::HeightMeasurer::new(self.dpi)
+                .with_hwp3_variant(profile.hwp3_layout())
+                .with_native_hwp5(profile.hwp5_stored_pagination_layout())
+                .with_hwpx_stored_layout(profile.hwpx_stored_layout())
+                .with_session_edited(profile.session_edited())
+                .measure_table(table, 0, path[depth].0, &self.styles)
+                .total_height;
+            if !measured.is_finite() {
+                return;
+            }
+            let content = i64::from(crate::renderer::px_to_hwpunit(measured, self.dpi));
+            if content <= i64::from(table.common.height) + 10 {
+                return;
+            }
+            content as u32
+        };
+        if let Ok(table) = self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path) {
+            table.sync_ctrl_height(content);
+        }
+        let container = &path[..depth];
+        let host = container[depth - 1].2;
+        self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, container, host);
+        self.recalculate_cell_paragraph_vpos_by_path(
+            section_idx,
+            parent_para_idx,
+            container,
+            host,
+            None,
+        );
     }
 
     // ─── Phase 3 네이티브 구현: 커서 이동 API ─────────────────
