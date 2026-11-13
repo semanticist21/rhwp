@@ -1519,12 +1519,30 @@ pub(super) fn write_shape_comment_with_storage<W: Write, S: crate::storage::Stor
 where
     S::Error: std::fmt::Display,
 {
-    if c.description.is_empty() {
-        return Ok(());
+    if !c.description.is_empty() {
+        start_tag_with_storage(w, "hp:shapeComment", storage)?;
+        text_with_storage(w, &c.description, storage)?;
+        end_tag_with_storage(w, "hp:shapeComment", storage)?;
     }
-    start_tag_with_storage(w, "hp:shapeComment", storage)?;
-    text_with_storage(w, &c.description, storage)?;
-    end_tag_with_storage(w, "hp:shapeComment", storage)
+    // 한컴 12.30은 그림·도형의 태그를 설명 뒤 마지막 자식으로 쓴다.
+    write_meta_tag_with_storage(w, c, storage)
+}
+
+/// `<hp:metaTag>` 직렬화 — 한컴 태그 넣기의 개체 태그. 없으면 내지 않는다.
+pub(super) fn write_meta_tag_with_storage<W: Write, S: crate::storage::Storage>(
+    w: &mut Writer<W>,
+    c: &CommonObjAttr,
+    storage: &S,
+) -> Result<(), SerializeError>
+where
+    S::Error: std::fmt::Display,
+{
+    let Some(tag) = c.meta_tag.as_deref().filter(|tag| !tag.is_empty()) else {
+        return Ok(());
+    };
+    start_tag_with_storage(w, "hp:metaTag", storage)?;
+    text_with_storage(w, tag, storage)?;
+    end_tag_with_storage(w, "hp:metaTag", storage)
 }
 
 // =====================================================================

@@ -271,6 +271,10 @@ pub struct Cell {
     /// HWPX `<hp:tc dirty>` 속성 (편집기 캐시 무효화 표시, 라운드트립 보존용).
     /// HWP5 바이너리에는 대응 비트가 없어 list_header_width_ref 재사용 대상에서 제외한다.
     pub dirty_flag: bool,
+    /// HWPX 셀 태그. `<hp:subList metatag>`에 든 JSON(한컴은 `{"name":"#이름"}`)을 그대로 둔다.
+    /// 한컴 12.30의 셀·셀 블록 태그 넣기가 쓰며, HWP5에는 자리가 없어 한컴도 HWP로 저장하면 지운다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub meta_tag: Option<String>,
 }
 
 /// 표 셀 행/열 바꿈 복사 데이터.
@@ -667,6 +671,7 @@ impl Cell {
             raw_list_extra: template.raw_list_extra.clone(),
             field_name: None,
             dirty_flag: false,
+            meta_tag: None,
             paragraphs: vec![para],
         }
     }

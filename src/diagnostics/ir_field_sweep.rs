@@ -1033,6 +1033,7 @@ fn sweep_cell(base: &str, a: &Cell, b: &Cell, out: &mut DivergenceCollector) {
         raw_list_extra,
         field_name,
         dirty_flag,
+        meta_tag,
     } = a;
 
     macro_rules! f {
@@ -1057,6 +1058,7 @@ fn sweep_cell(base: &str, a: &Cell, b: &Cell, out: &mut DivergenceCollector) {
     f!(raw_list_extra);
     f!(field_name);
     f!(dirty_flag);
+    f!(meta_tag);
 
     sweep_paragraphs(
         &format!("{base}.paragraphs"),

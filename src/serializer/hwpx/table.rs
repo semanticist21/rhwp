@@ -159,6 +159,8 @@ where
         end_tag_with_storage(w, "hp:tr", storage)?;
     }
 
+    // 한컴 12.30은 표 태그를 행 뒤에 쓴다.
+    super::shape::write_meta_tag_with_storage(w, &table.common, storage)?;
     // 라벨 표 정보는 한/글처럼 행 뒤 마지막 자식으로 둔다.
     if let Some(label) = &table.label {
         let attrs: Vec<(&str, &str)> = label
@@ -467,7 +469,11 @@ where
             ("textHeight", "0"),
             ("hasTextRef", "0"),
             ("hasNumRef", "0"),
-        ],
+        ]
+        .into_iter()
+        // 한컴 셀 태그(태그 넣기)는 subList 끝 속성이다.
+        .chain(cell.meta_tag.as_deref().map(|tag| ("metatag", tag)))
+        .collect::<Vec<_>>(),
         storage,
     )?;
 

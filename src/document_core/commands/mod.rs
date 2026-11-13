@@ -27,6 +27,7 @@ mod formatting_runs;
 mod header_footer_ops;
 mod html_import;
 mod master_page_ops;
+mod meta_tag;
 mod numbering_char_shape;
 mod object_ops;
 pub(crate) mod paragraph_block;

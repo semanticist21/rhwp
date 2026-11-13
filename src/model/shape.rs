@@ -119,6 +119,10 @@ pub struct CommonObjAttr {
     /// 파서가 이 속성을 읽지 않아 직렬화 시 항상 `lock="0"`으로 하드코딩되던 문제
     /// 해소 — 수식·공용 도형·표·차트/OLE 경로에 배선한다.
     pub locked: bool,
+    /// HWPX `<hp:metaTag>`에 든 JSON(한컴은 `{"name":"#이름"}`). 한컴 12.30의 개체 태그 넣기가
+    /// 표·그림·도형에 쓴다. HWP5에는 자리가 없어 한컴도 HWP로 저장하면 지운다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub meta_tag: Option<String>,
 }
 
 /// HWPX 개체 `numberingType` (캡션 번호 범주)

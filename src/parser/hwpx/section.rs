@@ -2532,6 +2532,11 @@ fn parse_table(
                         let caption = parse_caption(ce, reader)?;
                         table.caption = Some(caption);
                     }
+                    // 한컴 표 태그(태그 넣기). 셀 안 개체의 태그는 셀 파서가 먼저 읽는다.
+                    b"metaTag" => {
+                        table.common.meta_tag =
+                            Some(read_dutmal_text(reader, b"metaTag")?).filter(|t| !t.is_empty());
+                    }
                     _ => {}
                 }
             }
@@ -3048,6 +3053,10 @@ fn parse_table_cell(
                                         _ => 0,
                                     };
                                 }
+                                // 한컴 셀 태그(태그 넣기). JSON을 그대로 둔다.
+                                b"metatag" => {
+                                    cell.meta_tag = Some(attr_str(&attr)).filter(|t| !t.is_empty());
+                                }
                                 _ => {}
                             }
                         }
@@ -3248,6 +3257,11 @@ fn parse_picture(
             }
             Ok(Event::Start(ref ce)) if local_name(ce.name().as_ref()) == b"shapeComment" => {
                 common.description = read_dutmal_text(reader, b"shapeComment")?;
+            }
+            // 한컴 개체 태그(태그 넣기)
+            Ok(Event::Start(ref ce)) if local_name(ce.name().as_ref()) == b"metaTag" => {
+                common.meta_tag =
+                    Some(read_dutmal_text(reader, b"metaTag")?).filter(|t| !t.is_empty());
             }
             Ok(Event::Start(ref ce)) if local_name(ce.name().as_ref()) == b"effects" => {
                 effects = parse_picture_effects(reader)?;
@@ -4901,6 +4915,11 @@ fn parse_shape_object(
             Ok(Event::Start(ref ce)) if local_name(ce.name().as_ref()) == b"shapeComment" => {
                 common.description = read_dutmal_text(reader, b"shapeComment")?;
             }
+            // 한컴 개체 태그(태그 넣기)
+            Ok(Event::Start(ref ce)) if local_name(ce.name().as_ref()) == b"metaTag" => {
+                common.meta_tag =
+                    Some(read_dutmal_text(reader, b"metaTag")?).filter(|t| !t.is_empty());
+            }
             // 도형 캡션 (#1403) — 미적재 시 roundtrip 에서 캡션 subList 소실
             Ok(Event::Start(ref ce)) if local_name(ce.name().as_ref()) == b"caption" => {
                 caption = Some(parse_caption(ce, reader)?);
@@ -5263,6 +5282,11 @@ fn parse_container_body(
             // 묶음 개체 설명 (#1392) — 미적재 시 roundtrip 에서 소실
             Ok(Event::Start(ref ce)) if local_name(ce.name().as_ref()) == b"shapeComment" => {
                 common.description = read_dutmal_text(reader, b"shapeComment")?;
+            }
+            // 한컴 개체 태그(태그 넣기)
+            Ok(Event::Start(ref ce)) if local_name(ce.name().as_ref()) == b"metaTag" => {
+                common.meta_tag =
+                    Some(read_dutmal_text(reader, b"metaTag")?).filter(|t| !t.is_empty());
             }
             Ok(Event::Start(ref ce)) | Ok(Event::Empty(ref ce)) => {
                 let cname = ce.name();

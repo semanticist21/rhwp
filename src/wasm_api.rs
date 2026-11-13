@@ -4304,6 +4304,118 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 셀 태그 이름(한컴 태그 넣기, HWPX `hp:subList@metatag`의 name). 경로의 마지막 항목이 표이고
+    /// `cell_idx`가 그 셀이다. 태그가 없으면 빈 문자열이다.
+    #[wasm_bindgen(js_name = getCellMetaTagByPath)]
+    pub fn get_cell_meta_tag_by_path(
+        &self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        cell_idx: u32,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.cell_meta_tag_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            cell_idx as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 셀 태그 이름을 바꾼다. 빈 이름은 태그를 지운다. HWP5에는 태그 자리가 없어 HWPX로만 남는다.
+    #[wasm_bindgen(js_name = setCellMetaTagByPath)]
+    pub fn set_cell_meta_tag_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        cell_idx: u32,
+        name: &str,
+    ) -> Result<(), JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.set_cell_meta_tag_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            cell_idx as usize,
+            name,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 표·그림·도형의 태그 이름(HWPX `hp:metaTag`의 name). 경로가 `[]`이면 본문 문단 `para_idx`의 컨트롤,
+    /// 아니면 경로 끝 문단(표 셀·글상자·머리말·꼬리말·각주·미주)의 컨트롤이다. 태그가 없으면 빈 문자열이다.
+    #[wasm_bindgen(js_name = getObjectMetaTag)]
+    pub fn get_object_meta_tag(
+        &self,
+        section_idx: u32,
+        para_idx: u32,
+        cell_path_json: &str,
+        control_idx: u32,
+    ) -> Result<String, JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.object_meta_tag_native(
+            section_idx as usize,
+            para_idx as usize,
+            &path,
+            control_idx as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 표·그림·도형의 태그 이름을 바꾼다. 빈 이름은 태그를 지운다.
+    #[wasm_bindgen(js_name = setObjectMetaTag)]
+    pub fn set_object_meta_tag(
+        &mut self,
+        section_idx: u32,
+        para_idx: u32,
+        cell_path_json: &str,
+        control_idx: u32,
+        name: &str,
+    ) -> Result<(), JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        self.set_object_meta_tag_native(
+            section_idx as usize,
+            para_idx as usize,
+            &path,
+            control_idx as usize,
+            name,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 문서 어디든 셀·개체 태그가 있는가. 한컴은 그런 문서를 HWP로 저장하면 태그가 지워진다고 묻는다.
+    #[wasm_bindgen(js_name = hasMetaTags)]
+    pub fn has_meta_tags(&self) -> bool {
+        self.has_meta_tags_native()
+    }
+
+    /// 셀·글상자·머리말·꼬리말·각주·미주의 문단 `first`부터 `order_json`(원래 순번 배열) 차례로 다시 늘어놓는다.
+    /// 경로의 마지막 항목이 그 문단 목록을 담은 컨테이너다. 문단을 통째로 옮겨 모양과 개체를 지킨다.
+    #[wasm_bindgen(js_name = reorderParagraphsByPath)]
+    pub fn reorder_paragraphs_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        first: u32,
+        order_json: &str,
+    ) -> Result<(), JsValue> {
+        let path = parse_cell_path_arg(cell_path_json)?;
+        let order: Vec<usize> =
+            serde_json::from_str(order_json).map_err(|e| JsValue::from_str(&e.to_string()))?;
+        self.reorder_paragraphs_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            first as usize,
+            &order,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// `applyCellBorderFillIds`의 셀 경로 변형(undo·redo 전용). `borderPaintUndoIds`는 받지 않는다.
     #[wasm_bindgen(js_name = applyCellBorderFillIdsByPath)]
     pub fn apply_cell_border_fill_ids_by_path(
