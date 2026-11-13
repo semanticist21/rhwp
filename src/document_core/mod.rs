@@ -48,7 +48,7 @@ pub use commands::paragraph_block::{
     TemplateFillTarget, TemplateOperation, TemplateOperationResult, TemplateScope,
     TEMPLATE_REQUEST_MAX_BYTES,
 };
-pub use commands::{ComposeHost, TableColumnWidths, TableCreationOptions};
+pub use commands::{ComposeHost, ControlCode, TableColumnWidths, TableCreationOptions};
 pub mod converters;
 pub(crate) mod html_table_import;
 mod html_table_width;
