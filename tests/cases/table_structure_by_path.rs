@@ -402,6 +402,26 @@ fn cell_zone_by_path_reaches_inner_and_header_tables() {
                 "바깥 표"
             );
         }
+        // 범위를 칠한 뒤에도 칸 상자의 번호는 칸의 모델 번호다.
+        let path_json = serde_json::to_string(
+            &path
+                .iter()
+                .map(|&(c, i, p)| serde_json::json!({"controlIndex": c, "cellIndex": i, "cellParaIndex": p}))
+                .collect::<Vec<_>>(),
+        )
+        .unwrap();
+        let boxes: Vec<serde_json::Value> = serde_json::from_str(
+            &core
+                .get_table_cell_bboxes_by_path_native(0, para, &path_json)
+                .unwrap(),
+        )
+        .unwrap();
+        let mut ids: Vec<u64> = boxes
+            .iter()
+            .map(|b| b["cellIdx"].as_u64().unwrap())
+            .collect();
+        ids.sort();
+        assert_eq!(ids, vec![0, 1, 2, 3]);
         for (name, doc) in reopened(&core) {
             assert_eq!(table_at(&doc, para, &path).zones.len(), 1, "{name}");
         }

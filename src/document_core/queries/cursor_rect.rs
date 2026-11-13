@@ -4510,7 +4510,7 @@ impl DocumentCore {
     }
 
     /// 경로 기반 표 셀 바운딩박스 조회 (네이티브).
-    pub(crate) fn get_table_cell_bboxes_by_path_native(
+    pub fn get_table_cell_bboxes_by_path_native(
         &self,
         section_idx: usize,
         parent_para_idx: usize,
@@ -4573,6 +4573,9 @@ impl DocumentCore {
                     // 이 테이블의 직속 셀 bbox 수집
                     for (cell_idx, child) in node.children.iter().enumerate() {
                         if let RenderNodeType::TableCell(ref cn) = child.node_type {
+                            // 하나의 셀처럼 적용한 범위는 칸보다 앞선 자식 노드를 더하므로 자식 차례가
+                            // 아니라 칸의 모델 번호를 준다.
+                            let cell_idx = cn.model_cell_index.map_or(cell_idx, |i| i as usize);
                             result.push(format!(
                                 "{{\"cellIdx\":{},\"row\":{},\"col\":{},\"rowSpan\":{},\"colSpan\":{},\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1}}}",
                                 cell_idx, cn.row, cn.col, cn.row_span, cn.col_span,
