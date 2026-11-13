@@ -430,9 +430,30 @@ fn growing_a_nested_table_cell_grows_its_host_line_without_gap() {
             .unwrap();
         let before = table_boxes(&doc);
         let nested_cell = [(2, 0, 0), (0, 0, 0)];
+        let path_json = r#"[{"controlIndex":2,"cellIndex":0,"cellParaIndex":0},{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]"#;
+        let last_row_height = |doc: &HwpDocument| -> f64 {
+            let cells: serde_json::Value = serde_json::from_str(
+                &doc.get_table_cell_bboxes_by_path_native(0, 0, path_json)
+                    .unwrap(),
+            )
+            .unwrap();
+            cells.as_array().unwrap().last().unwrap()["h"]
+                .as_f64()
+                .unwrap()
+        };
+        let last_before = last_row_height(&doc);
         if create {
             doc.create_table_in_cell_by_path_native(0, 0, &nested_cell, 0, 1, 2, None, None, false)
                 .unwrap();
+            // 새 표의 칸(깊이 3)에 글을 넣어 키워도 바깥의 글자처럼 취급 표까지 맞춘다.
+            doc.insert_text_in_cell_by_path(
+                0,
+                0,
+                &[(2, 0, 0), (0, 0, 0), (0, 0, 0)],
+                0,
+                "가나다라마바사아자차카타파하 가나다라마바사아자차카타파하",
+            )
+            .unwrap();
         } else {
             for _ in 0..3 {
                 doc.split_paragraph_in_cell_by_path(0, 0, &nested_cell, 0, None)
@@ -467,6 +488,14 @@ fn growing_a_nested_table_cell_grows_its_host_line_without_gap() {
             "바깥 칸의 표 줄은 자란 표와 바깥 여백을 담는다 ({create}): {} < {band}",
             host.line_height
         );
+        // Enter로 자란 칸은 그 행만 키운다(남은 높이를 마지막 행에 몰지 않는다).
+        if !create {
+            assert!(
+                (last_row_height(&doc) - last_before).abs() <= 0.2,
+                "마지막 행은 그대로다: {last_before} → {}",
+                last_row_height(&doc)
+            );
+        }
         // 바깥 칸은 줄과 표를 겹쳐 재지 않는다.
         assert!(
             outer.1 < before[0].1 + (nested.1 - before[1].1) + 30.0,

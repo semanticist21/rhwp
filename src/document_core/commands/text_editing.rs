@@ -3984,12 +3984,14 @@ impl DocumentCore {
             return;
         }
         let depth = path.len() - 1;
-        let content = {
+        let container = &path[..depth];
+        let grown = {
             let Ok(table) = self.resolve_table_by_path(section_idx, parent_para_idx, path) else {
                 return;
             };
             if !table.common.treat_as_char {
-                return;
+                // 자리 차지 표는 바깥 칸 측정이 그대로 잰다. 더 바깥의 글자처럼 취급 표만 맞춘다.
+                return self.grow_nested_tac_table_by_path(section_idx, parent_para_idx, container);
             }
             let profile = self.effective_layout_profile();
             let measured = crate::renderer::height_measurer::HeightMeasurer::new(self.dpi)
@@ -3997,21 +3999,22 @@ impl DocumentCore {
                 .with_native_hwp5(profile.hwp5_stored_pagination_layout())
                 .with_hwpx_stored_layout(profile.hwpx_stored_layout())
                 .with_session_edited(profile.session_edited())
-                .measure_table(table, 0, path[depth].0, &self.styles)
-                .total_height;
-            if !measured.is_finite() {
-                return;
-            }
-            let content = i64::from(crate::renderer::px_to_hwpunit(measured, self.dpi));
-            if content <= i64::from(table.common.height) + 10 {
-                return;
-            }
-            content as u32
+                .measure_table(table, 0, path[depth].0, &self.styles);
+            let content = i64::from(crate::renderer::px_to_hwpunit(
+                measured.total_height,
+                self.dpi,
+            ));
+            (measured.total_height.is_finite() && content > i64::from(table.common.height) + 10)
+                .then_some(content as u32)
+        };
+        // 이 표가 그대로면 더 바깥 표도 그대로다.
+        let Some(content) = grown else {
+            return;
         };
         if let Ok(table) = self.resolve_table_mut_by_cell_path(section_idx, parent_para_idx, path) {
+            // 한컴처럼 칸 높이(cellSz)는 그대로 두고 표 높이만 행 내용으로 다시 정한다.
             table.sync_ctrl_height(content);
         }
-        let container = &path[..depth];
         let host = container[depth - 1].2;
         self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, container, host);
         self.recalculate_cell_paragraph_vpos_by_path(
