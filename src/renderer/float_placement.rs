@@ -7552,9 +7552,14 @@ pub(crate) fn stored_block_cell_flow_with_storage<S: crate::storage::Storage>(
     if !unabsorbed_block {
         // 호스트 앞에서 닫힌 표는 저장 위치를 재사용할 수 있다. 이 결과를
         // 반환하지 않으면 fallback이 호스트 아래에 같은 표 높이를 다시 더한다.
-        return Ok(stored_closed_cell_frame::closed_before_host_flow(
-            paragraphs, styles, &heights, dpi,
-        ));
+        let closed =
+            stored_closed_cell_frame::closed_before_host_flow(paragraphs, styles, &heights, dpi);
+        // 한컴 12.30은 글 없는 호스트 줄을 표 위 끝에 두고(줄이 표보다 짧다) 뒤 문단을 표 바깥
+        // 상자 바로 아래에 저장한다. 이 사다리는 아래 흐름과 같은 자리이므로 그 흐름으로 잰다.
+        // 줄 높이 합으로만 재면 칸이 표의 남은 띠만큼 작아 그 몫을 표의 마지막 행이 받았다.
+        if closed.is_some() || !hosts_sit_on_block_top(paragraphs, &heights, dpi) {
+            return Ok(closed);
+        }
     }
     let mut result = StoredBlockCellFlow {
         paragraph_origins: storage.vec(paragraphs.len())?,
@@ -7626,6 +7631,37 @@ pub(crate) fn stored_block_cell_flow_with_storage<S: crate::storage::Storage>(
         result.bottom = cursor;
     }
     Ok(Some(result))
+}
+
+/// 표 호스트 줄이 모두 표 위 끝에 놓이고 다음 문단이 표 바깥 상자 바로 아래에서 시작하는가.
+fn hosts_sit_on_block_top(paragraphs: &[Paragraph], heights: &[Vec<f64>], dpi: f64) -> bool {
+    let mut any = false;
+    for (pi, para) in paragraphs.iter().enumerate() {
+        let Some(h) = heights.get(pi) else {
+            return false;
+        };
+        let block: f64 = nested_table_groups(para, false)
+            .iter()
+            .map(|group| nested_group_occupied_height(para, group, h, 0.0, dpi))
+            .sum();
+        if block <= 0.0 {
+            continue;
+        }
+        let (Some(host), Some(next)) = (
+            para.line_segs.first(),
+            paragraphs.get(pi + 1).and_then(|p| p.line_segs.first()),
+        ) else {
+            return false;
+        };
+        let line = hwpunit_to_px(host.line_height, dpi);
+        let gap = hwpunit_to_px(next.vertical_pos.saturating_sub(host.vertical_pos), dpi);
+        // 저장 정수 HU와 실측 표 높이의 반올림 차만 허용한다.
+        if line >= block || (gap - block).abs() > 0.5 {
+            return false;
+        }
+        any = true;
+    }
+    any
 }
 
 /// 문단 기준 글 앞/뒤 표는 같은 앵커에 겹치는 개체이며 별도의 흐름 띠가 아니다.

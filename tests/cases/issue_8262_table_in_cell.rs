@@ -488,14 +488,12 @@ fn growing_a_nested_table_cell_grows_its_host_line_without_gap() {
             "바깥 칸의 표 줄은 자란 표와 바깥 여백을 담는다 ({create}): {} < {band}",
             host.line_height
         );
-        // Enter로 자란 칸은 그 행만 키운다(남은 높이를 마지막 행에 몰지 않는다).
-        if !create {
-            assert!(
-                (last_row_height(&doc) - last_before).abs() <= 0.2,
-                "마지막 행은 그대로다: {last_before} → {}",
-                last_row_height(&doc)
-            );
-        }
+        // 표를 만들거나 Enter로 자란 칸은 그 행만 키운다(남은 높이를 마지막 행에 몰지 않는다).
+        assert!(
+            (last_row_height(&doc) - last_before).abs() <= 0.2,
+            "마지막 행은 그대로다 ({create}): {last_before} → {}",
+            last_row_height(&doc)
+        );
         // 바깥 칸은 줄과 표를 겹쳐 재지 않는다.
         assert!(
             outer.1 < before[0].1 + (nested.1 - before[1].1) + 30.0,
@@ -503,5 +501,85 @@ fn growing_a_nested_table_cell_grows_its_host_line_without_gap() {
             before[0],
             outer
         );
+    }
+}
+
+#[test]
+fn block_table_in_nested_cell_grows_its_own_row_like_hancom() {
+    // 바깥 칸 안 글자처럼 취급 3×3 표의 첫 칸 'A1' 끝에 자리 차지 1×2 표를 만들면 한컴 12.30은
+    // 표 줄을 표 위 끝(vpos 1600, 줄 폭 0)에, 뒤 빈 문단을 표 바깥 상자 아래(3448)에 저장하고
+    // 그 칸의 행을 4730HU(63.07px)로 키운다. 다른 행은 17.1px 그대로, 안쪽 표는 7294HU다
+    // (한컴 12.30이 같은 문서를 다시 저장한 값). 전에는 칸을 줄 높이 합(59.8px)으로 재고 남는
+    // 높이를 마지막 행에 몰았다.
+    let mut doc = HwpDocument::create_empty();
+    doc.create_blank_document().unwrap();
+    doc.create_table_native(0, 0, 0, 1, 2).unwrap();
+    doc.create_table_in_cell_by_path_native(0, 0, &[(2, 0, 0)], 0, 3, 3, None, None, true)
+        .unwrap();
+    doc.insert_text_in_cell_by_path(0, 0, &[(2, 0, 0), (0, 0, 0)], 0, "A1")
+        .unwrap();
+    doc.create_table_in_cell_by_path_native(
+        0,
+        0,
+        &[(2, 0, 0), (0, 0, 0)],
+        2,
+        1,
+        2,
+        None,
+        None,
+        false,
+    )
+    .unwrap();
+    let path = r#"[{"controlIndex":2,"cellIndex":0,"cellParaIndex":0},{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]"#;
+    let rows = |doc: &HwpDocument| -> Vec<f64> {
+        let cells: serde_json::Value = serde_json::from_str(
+            &doc.get_table_cell_bboxes_by_path_native(0, 0, path)
+                .unwrap(),
+        )
+        .unwrap();
+        cells
+            .as_array()
+            .unwrap()
+            .iter()
+            .step_by(3)
+            .map(|c| c["h"].as_f64().unwrap())
+            .collect()
+    };
+    let px = |hu: f64| hu * 96.0 / 7200.0;
+    let check = |label: &str, doc: &HwpDocument| {
+        let rows = rows(doc);
+        assert_eq!(rows.len(), 3, "{label}");
+        assert!(
+            (rows[0] - px(4730.0)).abs() <= 0.5,
+            "{label}: 첫 행 {rows:?}"
+        );
+        assert!(
+            (rows[1] - px(1282.0)).abs() <= 0.2,
+            "{label}: 둘째 행 {rows:?}"
+        );
+        assert!(
+            (rows[2] - px(1282.0)).abs() <= 0.2,
+            "{label}: 마지막 행 {rows:?}"
+        );
+        let inner = only_table(&body_table(doc).cells[0].paragraphs[0]);
+        assert!(
+            (i64::from(inner.common.height) - 7294).abs() <= 40,
+            "{label}: 안쪽 표 높이 {}",
+            inner.common.height
+        );
+        let cell = &inner.cells[0];
+        let vpos: Vec<i32> = cell
+            .paragraphs
+            .iter()
+            .map(|p| p.line_segs[0].vertical_pos)
+            .collect();
+        assert_eq!(vpos, [0, 1600, 3448], "{label}: 칸 사다리");
+    };
+    check("live", &doc);
+    for (label, bytes) in [
+        ("hwp", doc.export_hwp_native().unwrap()),
+        ("hwpx", doc.export_hwpx_native().unwrap()),
+    ] {
+        check(label, &HwpDocument::new(&bytes).unwrap());
     }
 }

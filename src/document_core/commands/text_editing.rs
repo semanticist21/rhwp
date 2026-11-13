@@ -352,7 +352,40 @@ fn cell_paragraph_flow_end(para: &Paragraph, dpi: f64) -> Option<i32> {
                 .saturating_add(crate::renderer::px_to_hwpunit(advance, dpi))
         })
         .unwrap_or(line_end);
-    Some(line_end.max(picture_end))
+    Some(
+        line_end
+            .max(picture_end)
+            .max(block_table_host_end(para).unwrap_or(line_end)),
+    )
+}
+
+/// 글 없는 자리 차지 표 문단이 뒤 문단까지 차지하는 끝.
+///
+/// 한컴 12.30은 칸 안 이 문단의 줄을 표 위 끝에 두고(줄 폭 0) 다음 문단을 표 바깥 상자 아래에
+/// 둔다(표 줄 vpos 1600, 뒤 문단 1600 + 위 여백 283 + 표 1282 + 아래 여백 283 = 3448).
+/// ponytail: 표 하나짜리 문단만 본다. 한 문단에 표를 여럿 쌓은 칸은 종전처럼 줄 끝을 쓴다.
+fn block_table_host_end(para: &Paragraph) -> Option<i32> {
+    use crate::model::shape::{TextWrap, VertAlign, VertRelTo};
+    let ([line], [Control::Table(table)]) = (para.line_segs.as_slice(), para.controls.as_slice())
+    else {
+        return None;
+    };
+    let offset = crate::renderer::float_placement::signed_hwpunit(table.common.vertical_offset);
+    // 공백 글이 있는 문단은 그 글줄이 표 아래에 따로 선다(`whitespace_follows_block_table`).
+    (para.text.is_empty()
+        && !table.common.treat_as_char
+        && table.common.text_wrap == TextWrap::TopAndBottom
+        && table.common.vert_rel_to == VertRelTo::Para
+        && table.common.vert_align == VertAlign::Top
+        && offset >= 0
+        && table.caption.is_none())
+    .then(|| {
+        line.vertical_pos
+            .saturating_add(offset)
+            .saturating_add(table.common.height as i32)
+            .saturating_add(i32::from(table.outer_margin_top))
+            .saturating_add(i32::from(table.outer_margin_bottom))
+    })
 }
 
 /// [#4138] `[start_para, stop_para)` 구간의 셀 문단 vpos 사다리를 문단 간격·줄간격
