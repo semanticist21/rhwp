@@ -1381,6 +1381,83 @@ impl Paragraph {
         );
     }
 
+    /// 필드의 BEGIN·END 자리만 걷어내고 그 사이 글은 남긴다(한컴 조판 부호 지우기의 필드).
+    ///
+    /// 자리는 저장기가 쓰는 좌표로 찾는다. 짝 범위나 자리를 찾지 못하면 아무것도 바꾸지 않고
+    /// `false` 를 돌려준다.
+    pub(crate) fn unwrap_field_control(&mut self, control_idx: usize) -> bool {
+        let Some(range_idx) = self
+            .field_ranges
+            .iter()
+            .position(|range| range.control_idx == control_idx)
+        else {
+            return false;
+        };
+        let begin = crate::serializer::body_text::control_stream_slots(self)
+            .get(control_idx)
+            .copied()
+            .flatten()
+            .map(|(start, _)| start);
+        let end = crate::serializer::body_text::field_stream_ends(self)
+            .get(range_idx)
+            .copied()
+            .flatten();
+        let (Some(begin), Some(end)) = (begin, end) else {
+            return false;
+        };
+        self.field_ranges.remove(range_idx);
+        // 뒤 자리부터 걷어내야 앞 자리 좌표가 그대로다.
+        for slot in [begin.max(end), begin.min(end)] {
+            self.remove_stream_slot(slot, true);
+        }
+        self.char_count = self.char_count.saturating_sub(CTRL_CHAR_CODE_UNITS);
+        self.remove_control_entry(control_idx);
+        self.invalidate_layout_inputs();
+        true
+    }
+
+    /// 제목 차례 표시 하나를 그 8유닛 자리와 함께 걷어낸다.
+    pub(crate) fn remove_title_mark(&mut self, index: usize) {
+        if index >= self.title_marks.len() {
+            return;
+        }
+        let char_idx = self.title_marks.remove(index).char_idx;
+        self.remove_leading_gap_slot(char_idx);
+        if !self.title_marks.is_empty() {
+            self.control_mask |= 1u32 << 0x0008;
+        }
+    }
+
+    /// 여러 문단에 걸친 필드의 고아 끝 표지 하나를 그 8유닛 자리와 함께 걷어낸다.
+    pub(crate) fn remove_orphan_field_end(&mut self, index: usize) {
+        if index >= self.orphan_field_ends.len() {
+            return;
+        }
+        let char_idx = self.orphan_field_ends.remove(index).char_idx;
+        self.remove_leading_gap_slot(char_idx);
+    }
+
+    /// `char_idx` 글자 앞 갭의 첫 8유닛을 걷어낸다. 글자 끝 갭(`char_idx` 가 글자 수)도 받는다.
+    ///
+    /// 고아 필드 끝·제목 차례 표시처럼 컨트롤 목록에 없는 표지에 쓴다. 갭 안의 차례는 축에
+    /// 영향이 없으므로 갭의 첫 슬롯을 걷는다.
+    fn remove_leading_gap_slot(&mut self, char_idx: usize) {
+        let gap_start = match char_idx.checked_sub(1) {
+            Some(prev) => self.char_offsets.get(prev).map(|offset| {
+                offset + self.text.chars().nth(prev).map_or(1, Self::char_stream_len)
+            }),
+            None => Some(0),
+        };
+        if let Some(start) = gap_start {
+            self.remove_stream_slot(start, true);
+            self.char_count = self.char_count.saturating_sub(CTRL_CHAR_CODE_UNITS);
+        }
+        self.control_mask =
+            Self::compute_control_mask_for(&self.text, &self.controls, &self.field_ranges);
+        self.forget_para_text_if_emptied();
+        self.invalidate_layout_inputs();
+    }
+
     /// `char_idx` 글자 앞 갭의 첫 슬롯(8유닛)을 걷어낸다.
     ///
     /// 나누기로 잘린 누름틀의 끝 표지처럼 다른 문단으로 간 슬롯 자리에 쓴다. 남겨 두면 그
