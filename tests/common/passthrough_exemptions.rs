@@ -1051,4 +1051,16 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         Exempt::DelegatesTo("insert_hyperlink_command"),
         "웹 꼴 메일 Command를 만든 뒤 하이퍼링크 넣기 공통 함수에 위임한다. 공통 함수가 구역의 raw_stream을 비운다.",
     ),
+    (
+        "queries/document_info.rs",
+        "update_document_summary",
+        Exempt::SurgicalRawEdit,
+        "문서 요약은 구역·DocInfo 밖 저장 자리다. HWP 요약 스트림(extra_streams)과 HWPX content.hpf metadata 원문을 직접 고쳐 쓴다.",
+    ),
+    (
+        "queries/document_info.rs",
+        "set_document_summary_json",
+        Exempt::SurgicalRawEdit,
+        "JSON 을 풀어 update_document_summary 로 요약 원문만 고쳐 쓴다. 구역·DocInfo 패스스루와 무관하다.",
+    ),
 ];
