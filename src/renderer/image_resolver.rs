@@ -37,10 +37,13 @@ use crate::renderer::render_tree::{
 };
 
 mod picture_adjustments;
+mod picture_effect_paint;
 mod picture_soft_edge;
 pub(crate) use picture_adjustments::{
     adjusted_picture_bytes, picture_tone_parameters, resolve_page_background_tone,
 };
+pub(crate) use picture_effect_paint::{prepare_picture_effects, PictureEffectOps};
+pub use picture_effect_paint::{shift_floating_pictures_for_effects, PictureEffectPaint};
 pub(crate) use picture_soft_edge::prepare_picture_soft_edge;
 mod wmf_picture;
 pub(crate) use wmf_picture::adjust_pixels as adjust_wmf_device_pixels;
@@ -126,6 +129,10 @@ const MAX_MEMO_ENTRIES: usize = 64;
 /// 변환 종류. 같은 바이트라도 어떤 변환을 거쳤느냐에 따라 결과가 다르다.
 #[derive(Clone, Copy, Hash)]
 enum Conversion {
+    /// 그림자·네온·반사 래스터. 값은 효과 종류·크기·색을 묶은 지문이다.
+    PictureEffect {
+        spec: u64,
+    },
     PictureSoftEdge {
         radius: u64,
         width: u32,

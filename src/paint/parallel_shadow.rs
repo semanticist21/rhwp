@@ -59,6 +59,11 @@ pub(super) fn split(node: &RenderNode) -> Option<ShadowParts> {
         return None;
     }
 
+    // 그림으로 채운 도형도 한컴은 그림자를 면으로 칠한다. 그림 채우기는 자식 그림 노드다.
+    let image_fill = node
+        .children
+        .iter()
+        .any(|c| matches!(&c.node_type, RenderNodeType::Image(i) if i.fill_mode.is_some()));
     let mut body = node.clone();
     clear_shadow(&mut body);
     let mut silhouette = body.clone();
@@ -67,17 +72,29 @@ pub(super) fn split(node: &RenderNode) -> Option<ShadowParts> {
     silhouette.control_code = crate::renderer::render_tree::ControlCode::Hidden;
     match &mut silhouette.node_type {
         RenderNodeType::Rectangle(rect) => {
-            recolor(&mut rect.style, shadow, rect.gradient.is_some());
+            recolor(
+                &mut rect.style,
+                shadow,
+                rect.gradient.is_some() || image_fill,
+            );
             rect.gradient = None;
             rect.image_frame_owner = None;
             rect.picture_border_width_hu = None;
         }
         RenderNodeType::Ellipse(ellipse) => {
-            recolor(&mut ellipse.style, shadow, ellipse.gradient.is_some());
+            recolor(
+                &mut ellipse.style,
+                shadow,
+                ellipse.gradient.is_some() || image_fill,
+            );
             ellipse.gradient = None;
         }
         RenderNodeType::Path(path) => {
-            recolor(&mut path.style, shadow, path.gradient.is_some());
+            recolor(
+                &mut path.style,
+                shadow,
+                path.gradient.is_some() || image_fill,
+            );
             path.gradient = None;
             if let Some(style) = &mut path.line_style {
                 style.color = shadow.color;

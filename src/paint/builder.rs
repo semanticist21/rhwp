@@ -396,6 +396,8 @@ impl LayerBuilder {
         }
 
         let mut image_fill_clip = None;
+        // 그림자·네온·반사는 그림 뒤, 안쪽 그림자는 그림 위(테두리는 형제 노드라 그 위).
+        let mut picture_effects: Option<crate::renderer::image_resolver::PictureEffectOps> = None;
         let own_ops = match &node.node_type {
             RenderNodeType::PageBackground(background) => Some(vec![PaintOp::page_background(
                 node.bbox,
@@ -568,7 +570,16 @@ impl LayerBuilder {
                         && image_fill_clip.is_none())
                     .then(|| super::group_picture::project(&image, frame, self.layout_dpi))
                     .flatten();
-                    if let Some((full, image, payload)) = group_projection {
+                    if let Some((full, projected, payload)) = group_projection {
+                        // 묶음 안 그림은 틀로 자른다. 효과는 그 clip 밖의 형제로 둔다.
+                        picture_effects =
+                            Some(crate::renderer::image_resolver::prepare_picture_effects(
+                                &image,
+                                frame,
+                                self.layout_dpi,
+                                true,
+                            ));
+                        let image = projected;
                         image_fill_clip = Some(frame);
                         vec![PaintOp::image(full, image, Some(payload))]
                     } else {
@@ -747,6 +758,13 @@ impl LayerBuilder {
                                 resolved = soft_edge_payload;
                             }
                         }
+                        picture_effects =
+                            Some(crate::renderer::image_resolver::prepare_picture_effects(
+                                &image,
+                                frame,
+                                self.layout_dpi,
+                                !device_effect,
+                            ));
                         vec![PaintOp::image(frame, image, resolved)]
                     }
                 };
@@ -787,6 +805,33 @@ impl LayerBuilder {
                     clip,
                     own_leaf,
                     ClipKind::PrintBitmapFill,
+                )
+                .with_layer(node.layer);
+            }
+            if let Some(effects) = picture_effects.filter(|e| !e.is_empty()) {
+                let leaf = |ops: Vec<PaintOp>| {
+                    let bounds = ops
+                        .iter()
+                        .map(PaintOp::bounds)
+                        .reduce(super::paint_bounds::union)?;
+                    Some(LayerNode::leaf(bounds, Some(node.id), ops).with_layer(node.layer))
+                };
+                let children: Vec<LayerNode> = leaf(effects.behind)
+                    .into_iter()
+                    .chain(std::iter::once(own_leaf))
+                    .chain(leaf(effects.front))
+                    .collect();
+                let bounds = children
+                    .iter()
+                    .map(|c| c.bounds)
+                    .reduce(super::paint_bounds::union)
+                    .unwrap_or(node.bbox);
+                own_leaf = LayerNode::group(
+                    bounds,
+                    Some(node.id),
+                    children,
+                    CacheHint::None,
+                    GroupKind::Generic,
                 )
                 .with_layer(node.layer);
             }

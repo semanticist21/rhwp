@@ -600,6 +600,9 @@ impl LayoutEngine {
                 crop,
                 original_size_hu,
                 soft_edge_radius_hu: picture.effects.soft_edge_radius,
+                picture_effects: crate::renderer::image_resolver::PictureEffectPaint::from_picture(
+                    picture,
+                ),
                 effect: picture.image_attr.effect,
                 brightness: picture.image_attr.brightness,
                 contrast: picture.image_attr.contrast,
@@ -897,6 +900,9 @@ impl LayoutEngine {
                 crop,
                 original_size_hu,
                 soft_edge_radius_hu: picture.effects.soft_edge_radius,
+                picture_effects: crate::renderer::image_resolver::PictureEffectPaint::from_picture(
+                    picture,
+                ),
                 effect: picture.image_attr.effect,
                 brightness: picture.image_attr.brightness,
                 contrast: picture.image_attr.contrast,

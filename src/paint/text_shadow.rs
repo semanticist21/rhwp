@@ -57,8 +57,26 @@ pub(crate) fn offsets_for(
 ) -> impl Iterator<Item = [f64; 2]> + '_ {
     // 편집·출력 투영에서 종류가 바뀌면 이전 세션 계획으로 효과를 되살리지 않는다.
     let continuous = plan.filter(|_| kind == 2).map(|plan| plan.offsets());
-    let endpoint = (kind > 0 && continuous.is_none()).then_some(nominal);
-    continuous.into_iter().flatten().chain(endpoint)
+    // 글꼴 파일이 없어 장치 계획을 세우지 못한 연속 그림자(화면 등)는 글자에서 그림자 끝까지
+    // 반 픽셀 간격으로 이어 그린다. 한컴 12.30 화면도 글자와 그림자 사이 띠를 채운다.
+    let swept = (kind == 2 && continuous.is_none()).then(|| sweep(nominal));
+    let endpoint = (kind > 0 && kind != 2).then_some(nominal);
+    continuous
+        .into_iter()
+        .flatten()
+        .chain(swept.into_iter().flatten())
+        .chain(endpoint)
+}
+
+/// 원점 다음부터 `nominal`까지 같은 간격의 이동. 끝점은 비연속 그림자와 같다.
+fn sweep(nominal: [f64; 2]) -> impl Iterator<Item = [f64; 2]> {
+    let longest = nominal[0].abs().max(nominal[1].abs());
+    let count = if longest.is_finite() {
+        (longest * 2.0).ceil().clamp(1.0, 512.0) as u32
+    } else {
+        1
+    };
+    (1..=count).map(move |step| nominal.map(|v| v * f64::from(step) / f64::from(count)))
 }
 
 /// 전송 소비자는 SFNT 메트릭이나 보간을 다시 계산하지 않고 확정된 표본을 재생한다.
@@ -257,4 +275,18 @@ pub(super) fn prepare(
         }
     }
     None
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn continuous_shadow_without_plan_sweeps_to_the_nominal_offset() {
+        let all: Vec<_> = super::offsets_for(2, [3.0, -1.5], None).collect();
+        assert_eq!(all.len(), 6);
+        assert_eq!(all[0], [0.5, -0.25]);
+        assert_eq!(*all.last().unwrap(), [3.0, -1.5]);
+        let discrete: Vec<_> = super::offsets_for(1, [3.0, -1.5], None).collect();
+        assert_eq!(discrete, vec![[3.0, -1.5]]);
+        assert_eq!(super::offsets_for(0, [3.0, 1.0], None).count(), 0);
+    }
 }

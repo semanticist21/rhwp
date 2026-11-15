@@ -305,7 +305,7 @@ fn expand(bounds: BoundingBox, amount: f64) -> BoundingBox {
     }
 }
 
-fn union(a: BoundingBox, b: BoundingBox) -> BoundingBox {
+pub(super) fn union(a: BoundingBox, b: BoundingBox) -> BoundingBox {
     if !valid(a) {
         return b;
     }

@@ -1745,6 +1745,9 @@ pub struct ImageNode {
     /// None은 효과 없음, Some(0)은 명시적인 0 반경이며 무효과 노드의 JSON은 유지한다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub soft_edge_radius_hu: Option<f64>,
+    /// 그림자·네온·반사와 테두리. 공통 paint가 그림 뒤·위의 래스터로 그린다.
+    #[serde(skip)]
+    pub picture_effects: Option<Box<crate::renderer::image_resolver::PictureEffectPaint>>,
     /// 텍스트 흐름 wrap 모드 (Task #516, 다층 레이어 분리용).
     /// `None` 또는 `Some(Square/TopAndBottom/Tight/Through)` 는 본문 layer 에 포함되고,
     /// `Some(BehindText)` / `Some(InFrontOfText)` 는 overlay layer 로 분리 후보.
@@ -1843,6 +1846,7 @@ impl ImageNode {
             contrast: 0,
             opacity: 1.0,
             soft_edge_radius_hu: None,
+            picture_effects: None,
             text_wrap: None,
             external_path: None,
             header_footer_ref: None,
