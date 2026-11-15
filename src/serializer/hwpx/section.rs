@@ -4578,6 +4578,16 @@ where
             storage,
             format_args!(r#" type="{}""#, arc_type_hwpx_str(a.arc_type)),
         )?,
+        // 한컴 12.30은 호·부채꼴·활로 바꾼 타원을 이 세 속성으로 저장한다.
+        ShapeObject::Ellipse(e) => xml_value(
+            storage,
+            format_args!(
+                r#" intervalDirty="{}" hasArcPr="{}" arcType="{}""#,
+                e.attr & 1,
+                u8::from(e.arc_type().is_some()),
+                arc_type_hwpx_str(e.arc_type().unwrap_or(0))
+            ),
+        )?,
         _ => String::new(),
     };
     render_common_shape_xml_with_storage(

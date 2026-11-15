@@ -1,6 +1,8 @@
 //! 도형 생성/속성/그룹 native 명령 (object_ops 분할, #1904).
 
 pub(super) mod group_geometry;
+// 한컴 다각형 편집의 꼭짓점 읽기·고치기.
+mod points;
 
 use super::MIN_SHAPE_SIZE;
 use crate::document_core::helpers::get_textbox_from_shape;
@@ -354,6 +356,8 @@ impl DocumentCore {
         // Rectangle 전용: 모서리 곡률
         let round_json = if let crate::model::shape::ShapeObject::Rectangle(ref rect) = shape {
             format!(",\"roundRate\":{}", rect.round_rate)
+        } else if let crate::model::shape::ShapeObject::Ellipse(ref ellipse) = shape {
+            ellipse_arc_json(ellipse)
         } else {
             String::new()
         };
@@ -623,6 +627,10 @@ impl DocumentCore {
             if let Some(v) = crate::document_core::helpers::json_i32(props_json, "roundRate") {
                 rect.round_rate = v as u8;
             }
+        }
+        // 타원 → 호·부채꼴·활(한컴 다각형 편집·개체 속성 호 테두리)
+        if let crate::model::shape::ShapeObject::Ellipse(ref mut ellipse) = shape {
+            apply_ellipse_arc(ellipse, props_json);
         }
 
         // 꼭짓점은 original 좌표계로 보존한다. current/common 크기로 덮으면
@@ -1226,6 +1234,7 @@ impl DocumentCore {
             "ellipse" => 0x24656c6c, // '$ell'
             "polygon" => 0x24706f6c, // '$pol'
             "arc" => 0x24617263,     // '$arc'
+            "curve" => 0x24637572,   // '$cur'
             _ => 0x24726563,         // '$rec' (rectangle, textbox)
         };
 
@@ -1290,6 +1299,7 @@ impl DocumentCore {
                 "textbox" => "글상자입니다.".to_string(),
                 "polygon" => "다각형입니다.".to_string(),
                 "arc" => "호입니다.".to_string(),
+                "curve" => "곡선입니다.".to_string(),
                 "connector-straight" => "직선 연결선입니다.".to_string(),
                 "connector-stroke" => "꺾인 연결선입니다.".to_string(),
                 "connector-arc" => "곡선 연결선입니다.".to_string(),
@@ -1480,6 +1490,24 @@ impl DocumentCore {
                     points,
                     affine_edit_reference: None,
                     raw_trailing: Vec::new(),
+                })
+            }
+            "curve" => {
+                // 한컴 12.30 곡선 그리기: 누른 점을 지나는 곡선 구간들(점 N개 → 구간 N-1개).
+                let points = if polygon_points.len() >= 2 {
+                    polygon_points.to_vec()
+                } else {
+                    vec![
+                        crate::model::Point { x: 0, y: h_i },
+                        crate::model::Point { x: w_i / 2, y: 0 },
+                        crate::model::Point { x: w_i, y: h_i },
+                    ]
+                };
+                ShapeObject::Curve(CurveShape {
+                    common,
+                    drawing,
+                    segment_types: vec![1; points.len() - 1],
+                    points,
                 })
             }
             "arc" => {
@@ -3004,6 +3032,53 @@ fn apply_textbox_direction(tb: &mut crate::model::shape::TextBox, props_json: &s
     tb.list_attr = (tb.list_attr & !0x07) | code;
     tb.vertical_all = all;
     changed
+}
+
+/// 호로 바꾼 타원의 종류와 시작·끝 매개 각(도, 아래로 내려가는 y축에서 시계 방향 +).
+fn ellipse_arc_json(ellipse: &crate::model::shape::EllipseShape) -> String {
+    let Some(kind) = ellipse.arc_type() else {
+        return ",\"ellipseArcType\":\"none\"".to_string();
+    };
+    let sa = &ellipse.drawing.shape_attr;
+    let (start, end) = ellipse.arc_angles(sa.original_width, sa.original_height);
+    let round = |r: f64| (r.to_degrees() * 100.0).round() / 100.0;
+    format!(
+        ",\"ellipseArcType\":\"{}\",\"ellipseArcStart\":{},\"ellipseArcEnd\":{}",
+        ["arc", "pie", "chord"][usize::from(kind.min(2))],
+        round(start),
+        round(end)
+    )
+}
+
+/// `ellipseArcType`("none"·"arc"·"pie"·"chord")과 `ellipseArcStart`·`ellipseArcEnd`(도)를 적용한다.
+/// 각을 주지 않고 처음 호로 바꾸면 한컴처럼 위 점을 끝으로 둔 온전한 둘레에서 시작한다.
+fn apply_ellipse_arc(ellipse: &mut crate::model::shape::EllipseShape, props_json: &str) {
+    use crate::document_core::helpers::{json_f64, json_str};
+    let kind = json_str(props_json, "ellipseArcType").map(|v| match v.as_str() {
+        "arc" => Some(0),
+        "pie" => Some(1),
+        "chord" => Some(2),
+        _ => None,
+    });
+    let start = json_f64(props_json, "ellipseArcStart");
+    let end = json_f64(props_json, "ellipseArcEnd");
+    if kind.is_none() && start.is_none() && end.is_none() {
+        return;
+    }
+    let sa = &ellipse.drawing.shape_attr;
+    let (ow, oh) = (sa.original_width, sa.original_height);
+    let (old_start, old_end) = if ellipse.arc_type().is_some() {
+        let (s, e) = ellipse.arc_angles(ow, oh);
+        (s.to_degrees(), e.to_degrees())
+    } else {
+        (-90.0, -90.0)
+    };
+    if let Some(kind) = kind {
+        ellipse.set_arc_type(kind);
+    }
+    if ellipse.arc_type().is_some() {
+        ellipse.set_arc_angles(start.unwrap_or(old_start), end.unwrap_or(old_end), ow, oh);
+    }
 }
 
 #[cfg(test)]

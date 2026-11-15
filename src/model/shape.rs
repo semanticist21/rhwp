@@ -893,6 +893,72 @@ pub struct EllipseShape {
     pub end2: Point,
 }
 
+/// 타원 속성(HWP5 표 97)의 호 표지. 한컴 12.30은 다각형 편집으로 바꾼 호·부채꼴·활을
+/// 타원 그대로 두고 이 표지와 시작·끝점으로 저장한다(호 개체로 바꾸지 않는다).
+pub const ELLIPSE_ARC_FLAG: u32 = 0x0000_0002;
+/// 한컴 저장본의 호 타원은 이 비트도 켠다(뜻은 확인하지 못했다).
+const ELLIPSE_ARC_SAVED_BIT: u32 = 0x0001_0000;
+
+impl EllipseShape {
+    /// 호로 바꾼 타원의 종류(0 호, 1 부채꼴, 2 활). 온전한 타원이면 `None`.
+    pub fn arc_type(&self) -> Option<u8> {
+        (self.attr & ELLIPSE_ARC_FLAG != 0).then_some(((self.attr >> 8) & 0xFF) as u8)
+    }
+
+    /// 호 종류를 바꾸거나(`Some`) 온전한 타원으로 되돌린다(`None`).
+    pub fn set_arc_type(&mut self, arc_type: Option<u8>) {
+        self.attr &= !(ELLIPSE_ARC_FLAG | ELLIPSE_ARC_SAVED_BIT | 0xFF01);
+        if let Some(kind) = arc_type {
+            self.attr |= ELLIPSE_ARC_FLAG | ELLIPSE_ARC_SAVED_BIT | (u32::from(kind.min(2)) << 8);
+        }
+    }
+
+    /// 타원 중심과 두 반지름(원본 좌표). 축 점이 없으면 원본 크기로 정한다.
+    pub fn arc_frame(&self, original_width: u32, original_height: u32) -> (f64, f64, f64, f64) {
+        let (cx, cy) = (f64::from(self.center.x), f64::from(self.center.y));
+        let rx =
+            f64::from(self.axis1.x - self.center.x).hypot(f64::from(self.axis1.y - self.center.y));
+        let ry =
+            f64::from(self.axis2.x - self.center.x).hypot(f64::from(self.axis2.y - self.center.y));
+        if rx > 0.0 && ry > 0.0 {
+            (cx, cy, rx, ry)
+        } else {
+            let (w, h) = (f64::from(original_width), f64::from(original_height));
+            (w / 2.0, h / 2.0, w / 2.0, h / 2.0)
+        }
+    }
+
+    /// 시작·끝의 타원 매개 각(라디안, 아래로 내려가는 y축에서 시계 방향 +).
+    /// 한컴은 시작1·끝1(누른 자리)을 지나는 중심 반직선으로 그린다.
+    pub fn arc_angles(&self, original_width: u32, original_height: u32) -> (f64, f64) {
+        let (cx, cy, rx, ry) = self.arc_frame(original_width, original_height);
+        let angle = |p: &Point| ((f64::from(p.y) - cy) / ry).atan2((f64::from(p.x) - cx) / rx);
+        (angle(&self.start1), angle(&self.end1))
+    }
+
+    /// 매개 각(도)으로 시작·끝점을 정한다. 1·2 점 모두 타원 위에 둔다.
+    pub fn set_arc_angles(
+        &mut self,
+        start_deg: f64,
+        end_deg: f64,
+        original_width: u32,
+        original_height: u32,
+    ) {
+        let (cx, cy, rx, ry) = self.arc_frame(original_width, original_height);
+        let at = |deg: f64| {
+            let t = deg.to_radians();
+            Point {
+                x: (cx + rx * t.cos()).round() as i32,
+                y: (cy + ry * t.sin()).round() as i32,
+            }
+        };
+        self.start1 = at(start_deg);
+        self.start2 = self.start1;
+        self.end1 = at(end_deg);
+        self.end2 = self.end1;
+    }
+}
+
 /// 호 개체 (HWPTAG_SHAPE_COMPONENT_ARC)
 #[derive(Debug, Default, Clone, serde::Serialize)]
 pub struct ArcShape {

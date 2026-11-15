@@ -4541,6 +4541,31 @@ fn parse_arc_type_attr(e: &quick_xml::events::BytesStart) -> u8 {
     0
 }
 
+/// `<hp:ellipse>`의 `intervalDirty`·`hasArcPr`·`arcType`(한컴 다각형 편집으로 바꾼 호·부채꼴·활)을
+/// HWP5 타원 속성 비트로 옮긴다.
+fn parse_ellipse_arc_attr(e: &quick_xml::events::BytesStart) -> u32 {
+    let mut shape = EllipseShape::default();
+    let mut dirty = false;
+    let mut arc = false;
+    let mut kind = 0;
+    for attr in e.attributes().flatten() {
+        match attr.key.as_ref().as_bytes() {
+            b"intervalDirty" => dirty = attr_str(&attr) == "1",
+            b"hasArcPr" => arc = attr_str(&attr) == "1",
+            b"arcType" => {
+                kind = match attr_str(&attr).to_ascii_uppercase().as_str() {
+                    "PIE" => 1,
+                    "CHORD" => 2,
+                    _ => 0,
+                }
+            }
+            _ => {}
+        }
+    }
+    shape.set_arc_type(arc.then_some(kind));
+    shape.attr | u32::from(dirty)
+}
+
 /// shape 내부의 `<hp:fillBrush>` 자식 요소를 파싱하여 Fill을 반환한다.
 fn parse_shape_fill_brush(reader: &mut Reader<&[u8]>) -> Result<Fill, HwpxError> {
     use crate::model::style::{FillType, GradientFill, ImageFill, ImageFillMode, SolidFill};
@@ -4896,6 +4921,11 @@ fn parse_shape_object(
     } else {
         0
     };
+    let ellipse_attr = if shape_type == b"ellipse" {
+        parse_ellipse_arc_attr(e)
+    } else {
+        0
+    };
     let mut connect_start_subject_id = 0_u32;
     let mut connect_start_subject_index = 0_u32;
     let mut connect_end_subject_id = 0_u32;
@@ -5143,7 +5173,7 @@ fn parse_shape_object(
             end1: e_end1,
             start2: e_start2,
             end2: e_end2,
-            ..Default::default()
+            attr: ellipse_attr,
         }),
         b"line" => ShapeObject::Line(LineShape {
             common,

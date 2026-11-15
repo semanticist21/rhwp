@@ -6183,6 +6183,8 @@ impl HwpDocument {
     ///
     /// json: `{"sectionIdx":N,"paraIdx":N,"charOffset":N,"width":N,"height":N,
     ///         "horzOffset":N,"vertOffset":N,"treatAsChar":bool,"textWrap":"Square"}`
+    /// `shapeType` "polygon"·"curve"는 `polygonPoints`(상자 기준 꼭짓점)를 받고, 곡선은
+    /// `curveSegmentTypes`(구간마다 0 직선·1 곡선, 빼면 모두 곡선)도 받는다.
     /// 반환: JSON `{"ok":true,"paraIdx":<N>,"controlIdx":0}`
     #[wasm_bindgen(js_name = createShapeControl)]
     pub fn create_shape_control(&mut self, json: &str) -> Result<String, JsValue> {
@@ -6201,11 +6203,12 @@ impl HwpDocument {
         let line_flip_x = json_bool(json, "lineFlipX").unwrap_or(false);
         let line_flip_y = json_bool(json, "lineFlipY").unwrap_or(false);
         // 다각형 꼭짓점: "polygonPoints":[{"x":N,"y":N},...]
-        let polygon_points: Vec<crate::model::Point> = if shape_type == "polygon" {
-            Self::parse_polygon_points(json)
-        } else {
-            Vec::new()
-        };
+        let polygon_points: Vec<crate::model::Point> =
+            if shape_type == "polygon" || shape_type == "curve" {
+                Self::parse_polygon_points(json)
+            } else {
+                Vec::new()
+            };
         let result = self.create_shape_control_native(
             sec,
             para,
@@ -6221,6 +6224,25 @@ impl HwpDocument {
             line_flip_y,
             &polygon_points,
         )?;
+
+        // 곡선: Ctrl로 그은 직선 구간(0)은 만든 뒤 구간 종류로 적용한다.
+        let segment_types = (shape_type == "curve")
+            .then(|| serde_json::from_str::<serde_json::Value>(json).ok())
+            .flatten()
+            .and_then(|v| v.get("curveSegmentTypes").cloned());
+        if let (Some(types), Some(pi), Some(ci)) = (
+            segment_types,
+            json_u32(&result, "paraIdx"),
+            json_u32(&result, "controlIdx"),
+        ) {
+            let points: Vec<[i32; 2]> = polygon_points.iter().map(|p| [p.x, p.y]).collect();
+            self.set_shape_points_native(
+                sec,
+                pi as usize,
+                ci as usize,
+                &serde_json::json!({ "points": points, "segmentTypes": types }).to_string(),
+            )?;
+        }
 
         // 연결선: SubjectID + 제어점 라우팅 설정 (생성 후)
         if shape_type.starts_with("connector-") {
@@ -6281,6 +6303,45 @@ impl HwpDocument {
             parent_para_idx as usize,
             control_idx as usize,
             props_json,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 본문 다각형·곡선의 꼭짓점(틀 기준 HWPUNIT)과 곡선 구간 종류를 읽는다.
+    ///
+    /// 반환: `{"kind":"polygon"|"curve","points":[[x,y],...],"segmentTypes":[0|1,...]}`
+    #[wasm_bindgen(js_name = getShapePoints)]
+    pub fn get_shape_points(
+        &self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        control_idx: u32,
+    ) -> Result<String, JsValue> {
+        self.get_shape_points_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            control_idx as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 본문 다각형·곡선의 꼭짓점을 바꾼다(한컴 다각형 편집, 열린 다각형 닫기/닫힌 다각형 열기).
+    /// 회전·대칭한 도형과 왼쪽·위 기준이 아닌 떠 있는 도형은 거절한다.
+    ///
+    /// points_json: `{"points":[[x,y],...],"segmentTypes":[...]}` (틀 기준 HWPUNIT)
+    #[wasm_bindgen(js_name = setShapePoints)]
+    pub fn set_shape_points(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        control_idx: u32,
+        points_json: &str,
+    ) -> Result<String, JsValue> {
+        self.set_shape_points_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            control_idx as usize,
+            points_json,
         )
         .map_err(|e| e.into())
     }

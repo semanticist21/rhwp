@@ -97,6 +97,52 @@ fn group_point_frame(
     )
 }
 
+/// 호·부채꼴·활로 바꾼 타원의 경로. `map`은 원본 좌표를 화면 좌표로 옮기는 아핀 변환이다.
+/// 한컴 12.30처럼 시작점에서 화면 반시계 방향(매개 각이 줄어드는 쪽)으로 끝점까지 긋고,
+/// 시작·끝이 같으면 온전한 둘레를 긋는다.
+fn ellipse_arc_commands(
+    ellipse: &crate::model::shape::EllipseShape,
+    kind: u8,
+    original: (u32, u32),
+    map: impl Fn(f64, f64) -> (f64, f64),
+) -> Vec<PathCommand> {
+    use std::f64::consts::{FRAC_PI_2, TAU};
+    let (cx, cy, rx, ry) = ellipse.arc_frame(original.0, original.1);
+    let (start, end) = ellipse.arc_angles(original.0, original.1);
+    let mut sweep = (start - end).rem_euclid(TAU);
+    if sweep < 1e-9 {
+        sweep = TAU;
+    }
+    let at = |t: f64| map(cx + rx * t.cos(), cy + ry * t.sin());
+    let tangent = |t: f64, k: f64| (-rx * t.sin() * k, ry * t.cos() * k);
+    let first = at(start);
+    let mut commands = vec![PathCommand::MoveTo(first.0, first.1)];
+    let pieces = (sweep / FRAC_PI_2).ceil().max(1.0) as usize;
+    let step = sweep / pieces as f64;
+    // 매개 각이 줄어드는 쪽으로 가므로 접선 길이에 음의 부호를 준다.
+    let k = -(4.0 / 3.0) * (step / 4.0).tan();
+    for i in 0..pieces {
+        let t0 = start - step * i as f64;
+        let t1 = t0 - step;
+        let (d0x, d0y) = tangent(t0, k);
+        let (d1x, d1y) = tangent(t1, k);
+        let c1 = map(cx + rx * t0.cos() + d0x, cy + ry * t0.sin() + d0y);
+        let c2 = map(cx + rx * t1.cos() - d1x, cy + ry * t1.sin() - d1y);
+        let p1 = at(t1);
+        commands.push(PathCommand::CurveTo(c1.0, c1.1, c2.0, c2.1, p1.0, p1.1));
+    }
+    match kind {
+        1 => {
+            let center = map(cx, cy);
+            commands.push(PathCommand::LineTo(center.0, center.1));
+            commands.push(PathCommand::ClosePath);
+        }
+        2 => commands.push(PathCommand::ClosePath),
+        _ => {}
+    }
+    commands
+}
+
 /// 저장한 화살촉이 있으면 모양·크기·끝점 소유를 그대로 사용한다.
 /// 연결선 종류의 기본 화살표는 장식 정보가 전혀 없는 생성 경로에만 적용한다.
 fn connector_line_style(
@@ -1498,19 +1544,34 @@ impl LayoutEngine {
                 ];
                 let start = pt(1.0, 0.0);
                 let mut commands = vec![PathCommand::MoveTo(start.0, start.1)];
-                let (mut min_x, mut min_y, mut max_x, mut max_y) =
-                    (start.0, start.1, start.0, start.1);
                 for q in quarters {
                     let [c1, c2, end] = q.map(|(ux, uy)| pt(ux, uy));
                     commands.push(PathCommand::CurveTo(c1.0, c1.1, c2.0, c2.1, end.0, end.1));
-                    for (px, py) in [c1, c2, end] {
+                }
+                commands.push(PathCommand::ClosePath);
+                if let Some(kind) = ellipse.arc_type() {
+                    commands = ellipse_arc_commands(
+                        ellipse,
+                        kind,
+                        (sa.original_width, sa.original_height),
+                        |x, y| transform_pt(x, y),
+                    );
+                }
+                let (mut min_x, mut min_y, mut max_x, mut max_y) =
+                    (f64::MAX, f64::MAX, f64::MIN, f64::MIN);
+                for command in &commands {
+                    let points: &[(f64, f64)] = match *command {
+                        PathCommand::MoveTo(x, y) | PathCommand::LineTo(x, y) => &[(x, y)],
+                        PathCommand::CurveTo(x1, y1, x2, y2, x, y) => &[(x1, y1), (x2, y2), (x, y)],
+                        _ => &[],
+                    };
+                    for &(px, py) in points {
                         min_x = min_x.min(px);
                         min_y = min_y.min(py);
                         max_x = max_x.max(px);
                         max_y = max_y.max(py);
                     }
                 }
-                commands.push(PathCommand::ClosePath);
                 let (style, gradient) = drawing_to_shape_style(&ellipse.drawing, self.dpi);
                 let node_id = tree.next_id();
                 parent.children.push(RenderNode::new(
@@ -2121,6 +2182,35 @@ impl LayoutEngine {
                     node.visible = line_visible;
                     parent.children.push(node);
                 }
+            }
+            ShapeObject::Ellipse(ellipse) if ellipse.arc_type().is_some() => {
+                // 호·부채꼴·활로 바꾼 타원은 호 개체처럼 경로로 그린다.
+                let (style, gradient) = drawing_to_shape_style(&ellipse.drawing, self.dpi);
+                let sa = &ellipse.drawing.shape_attr;
+                let (ow, oh) = (sa.original_width.max(1), sa.original_height.max(1));
+                let sx = render_w / hwpunit_to_px(ow as i32, self.dpi);
+                let sy = render_h / hwpunit_to_px(oh as i32, self.dpi);
+                let unit = self.dpi / super::super::HWPUNIT_PER_INCH;
+                let commands = ellipse_arc_commands(
+                    ellipse,
+                    ellipse.arc_type().unwrap_or(0),
+                    (ow, oh),
+                    |x, y| (render_x + x * unit * sx, render_y + y * unit * sy),
+                );
+                let node_id = tree.next_id();
+                let mut path_node = PathNode::new(commands, style, gradient);
+                path_node.section_index = Some(section_index);
+                path_node.para_index = Some(para_index);
+                path_node.control_index = Some(control_index);
+                path_node.transform = transform;
+                path_node.cell_index = cell_index;
+                path_node.cell_para_index = cell_para_index;
+                path_node.outer_table_control_index = outer_table_control_index;
+                parent.children.push(RenderNode::new(
+                    node_id,
+                    RenderNodeType::Path(path_node),
+                    BoundingBox::new(render_x, render_y, render_w, render_h),
+                ));
             }
             ShapeObject::Ellipse(ellipse) => {
                 let (style, gradient) = drawing_to_shape_style(&ellipse.drawing, self.dpi);
