@@ -1278,27 +1278,10 @@ impl DocumentCore {
                     ..Default::default()
                 })
             }
-            Some("image") if json_u32(json, "imageBinDataId").is_some_and(|id| id > 0) => {
-                use crate::model::style::ImageFill;
-                let mode = json_str(json, "imageFillMode")
-                    .and_then(|name| {
-                        crate::document_core::helpers::IMAGE_FILL_MODES
-                            .iter()
-                            .find(|(n, _)| *n == name)
-                            .map(|(_, mode)| *mode)
-                    })
-                    .unwrap_or_default();
-                let byte = |key: &str| json_i32(json, key).unwrap_or(0).clamp(-100, 100) as i8;
-                // 이진 FILL_INFO 순서: 첫 바이트가 화면 대비, 둘째가 화면 밝기다.
-                Some(Fill {
+            Some("image") => {
+                crate::document_core::helpers::image_fill_from_json(json).map(|image| Fill {
                     fill_type: FillType::Image,
-                    image: Some(ImageFill {
-                        fill_mode: mode,
-                        brightness: byte("imageContrast"),
-                        contrast: byte("imageBrightness"),
-                        effect: json_i32(json, "imageEffect").unwrap_or(0).clamp(0, 3) as u8,
-                        bin_data_id: json_u32(json, "imageBinDataId").unwrap_or(0) as u16,
-                    }),
+                    image: Some(image),
                     ..Default::default()
                 })
             }

@@ -343,6 +343,9 @@ impl DocumentCore {
                 ));
                 extra.push_str(&gradient_stops_json(g));
             }
+            if let Some(ref image) = fill.image {
+                extra.push_str(&crate::document_core::helpers::image_fill_json(image));
+            }
             extra.push_str(&format!(",\"fillAlpha\":{}", fill.alpha));
             // 그림자
             extra.push_str(&format!(",\"shadowType\":{},\"shadowColor\":{},\"shadowOffsetX\":{},\"shadowOffsetY\":{},\"shadowAlpha\":{}",
@@ -581,6 +584,10 @@ impl DocumentCore {
                 grad.blur = v as i16;
             }
             apply_gradient_stops(&mut d.fill, props_json);
+            // 채우기 (그림) — 같은 문서의 그림 번호만 받는다.
+            if let Some(image) = crate::document_core::helpers::image_fill_from_json(props_json) {
+                d.fill.image = Some(image);
+            }
 
             // 그림자
             if let Some(v) = crate::document_core::helpers::json_u32(props_json, "shadowType") {
@@ -594,6 +601,9 @@ impl DocumentCore {
             }
             if let Some(v) = crate::document_core::helpers::json_i32(props_json, "shadowOffsetY") {
                 d.shadow_offset_y = v;
+            }
+            if let Some(v) = crate::document_core::helpers::json_i32(props_json, "shadowAlpha") {
+                d.shadow_alpha = v.clamp(0, 255) as u8;
             }
 
             // TextBox 속성 업데이트
@@ -769,6 +779,9 @@ impl DocumentCore {
                     g.gradient_type, g.angle, g.center_x, g.center_y, g.blur
                 ));
                 extra.push_str(&gradient_stops_json(g));
+            }
+            if let Some(ref image) = fill.image {
+                extra.push_str(&crate::document_core::helpers::image_fill_json(image));
             }
             extra.push_str(&format!(",\"fillAlpha\":{}", fill.alpha));
             extra.push_str(&format!(",\"shadowType\":{},\"shadowColor\":{},\"shadowOffsetX\":{},\"shadowOffsetY\":{},\"shadowAlpha\":{}",
@@ -976,6 +989,10 @@ impl DocumentCore {
                 grad.blur = v as i16;
             }
             apply_gradient_stops(&mut d.fill, props_json);
+            // 채우기 (그림) — 같은 문서의 그림 번호만 받는다.
+            if let Some(image) = crate::document_core::helpers::image_fill_from_json(props_json) {
+                d.fill.image = Some(image);
+            }
             if let Some(v) = crate::document_core::helpers::json_u32(props_json, "shadowType") {
                 d.shadow_type = v;
             }
@@ -987,6 +1004,9 @@ impl DocumentCore {
             }
             if let Some(v) = crate::document_core::helpers::json_i32(props_json, "shadowOffsetY") {
                 d.shadow_offset_y = v;
+            }
+            if let Some(v) = crate::document_core::helpers::json_i32(props_json, "shadowAlpha") {
+                d.shadow_alpha = v.clamp(0, 255) as u8;
             }
             if let Some(ref mut tb) = d.text_box {
                 if let Some(v) = json_i32(props_json, "tbMarginLeft") {

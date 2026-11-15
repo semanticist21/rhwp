@@ -1143,29 +1143,52 @@ pub(crate) fn fill_detail_json(fill: &crate::model::style::Fill) -> String {
             color_ref_to_css(g.colors.first().copied().unwrap_or(0xFFFFFF)),
             color_ref_to_css(g.colors.last().copied().unwrap_or(0)),
         ),
-        (FillType::Image, _, Some(image)) => {
-            let (bright, contrast) = image.display_brightness_contrast();
-            // HWPX TOTAL(크기에 맞추어)은 HWP의 크기에 맞추어와 같은 항목으로 알린다.
-            let fill_mode = match image.fill_mode {
-                crate::model::style::ImageFillMode::Total => {
-                    crate::model::style::ImageFillMode::FitToSize
-                }
-                mode => mode,
-            };
-            format!(
-                ",\"imageBinDataId\":{},\"imageFillMode\":\"{}\",\"imageEffect\":{},\"imageBrightness\":{},\"imageContrast\":{}",
-                image.bin_data_id,
-                IMAGE_FILL_MODES
-                    .iter()
-                    .find(|(_, mode)| *mode == fill_mode)
-                    .map_or("tileAll", |(name, _)| name),
-                image.effect,
-                bright,
-                contrast,
-            )
-        }
+        (FillType::Image, _, Some(image)) => image_fill_json(image),
         _ => String::new(),
     }
+}
+
+/// 그림 채우기의 세부 값 JSON 조각(`,"image…"`). 셀 배경과 도형 채우기가 함께 쓴다.
+pub(crate) fn image_fill_json(image: &crate::model::style::ImageFill) -> String {
+    let (bright, contrast) = image.display_brightness_contrast();
+    // HWPX TOTAL(크기에 맞추어)은 HWP의 크기에 맞추어와 같은 항목으로 알린다.
+    let fill_mode = match image.fill_mode {
+        crate::model::style::ImageFillMode::Total => crate::model::style::ImageFillMode::FitToSize,
+        mode => mode,
+    };
+    format!(
+        ",\"imageBinDataId\":{},\"imageFillMode\":\"{}\",\"imageEffect\":{},\"imageBrightness\":{},\"imageContrast\":{}",
+        image.bin_data_id,
+        IMAGE_FILL_MODES
+            .iter()
+            .find(|(_, mode)| *mode == fill_mode)
+            .map_or("tileAll", |(name, _)| name),
+        image.effect,
+        bright,
+        contrast,
+    )
+}
+
+/// [`image_fill_json`]의 값으로 그림 채우기를 만든다. `imageBinDataId`가 1 이상일 때만 만든다.
+pub(crate) fn image_fill_from_json(json: &str) -> Option<crate::model::style::ImageFill> {
+    let id = json_u32(json, "imageBinDataId").filter(|id| (1..=u16::MAX as u32).contains(id))?;
+    let fill_mode = json_str(json, "imageFillMode")
+        .and_then(|name| {
+            IMAGE_FILL_MODES
+                .iter()
+                .find(|(n, _)| *n == name)
+                .map(|(_, mode)| *mode)
+        })
+        .unwrap_or_default();
+    let byte = |key: &str| json_i32(json, key).unwrap_or(0).clamp(-100, 100) as i8;
+    // 이진 FILL_INFO 순서: 첫 바이트가 화면 대비, 둘째가 화면 밝기다.
+    Some(crate::model::style::ImageFill {
+        fill_mode,
+        brightness: byte("imageContrast"),
+        contrast: byte("imageBrightness"),
+        effect: json_i32(json, "imageEffect").unwrap_or(0).clamp(0, 3) as u8,
+        bin_data_id: id as u16,
+    })
 }
 
 /// 그림 채우기 유형 이름(채우기 JSON)과 모델 값.
