@@ -189,11 +189,164 @@ fn polygon_points_move_the_frame_with_them() {
     };
     assert_eq!(xy(&poly.points)[3], (0, 0));
     assert_eq!(poly.common.horizontal_offset, 4000);
+}
 
-    // 회전한 도형은 거절한다(점 좌표계가 틀과 다르다).
+fn points_json(doc: &HwpDocument, para: usize, ctrl: usize) -> serde_json::Value {
+    serde_json::from_str(&doc.get_shape_points_native(0, para, ctrl).unwrap()).unwrap()
+}
+
+fn page_points(doc: &HwpDocument, para: usize, ctrl: usize) -> Vec<(i64, i64)> {
+    let c = shape(doc, para, ctrl).common();
+    let (x, y) = (
+        i64::from(c.horizontal_offset as i32),
+        i64::from(c.vertical_offset as i32),
+    );
+    points_json(doc, para, ctrl)["points"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|p| (x + p[0].as_i64().unwrap(), y + p[1].as_i64().unwrap()))
+        .collect()
+}
+
+/// 한컴 12.30(r8g/x/hc-rot.hwpx): 돌린·뒤집은 다각형·곡선의 꼭짓점은 보이는 자리에 손잡이가 있고,
+/// 고치면 보이는 자리를 점에 새겨 회전각 0·단위 행렬로 저장한다. 틀은 점 상자다.
+#[test]
+fn rotated_and_flipped_shapes_edit_their_visible_points() {
+    let tri = pts(&[(0, 0), (8000, 0), (2000, 6000), (0, 0)]);
+    let mut doc = blank();
+    let (para, ctrl) = insert(&mut doc, "polygon", 8000, 6000, &tri);
+    doc.set_shape_properties_native(0, para, ctrl, r#"{"horzFlip":true}"#)
+        .unwrap();
+    assert_eq!(
+        points_json(&doc, para, ctrl)["points"],
+        serde_json::json!([[8000, 0], [0, 0], [6000, 6000], [8000, 0]])
+    );
+
+    doc.set_shape_properties_native(0, para, ctrl, r#"{"horzFlip":false,"rotationAngle":90}"#)
+        .unwrap();
+    let c = shape(&doc, para, ctrl).common();
+    let (w, h) = (i64::from(c.width), i64::from(c.height));
+    // 90도 돌린 틀 가운데를 축으로 (x, y) → (가운데 + (-(y-3000), x-4000)).
+    let got = points_json(&doc, para, ctrl)["points"].clone();
+    let want: Vec<[i64; 2]> = [(0, 0), (8000, 0), (2000, 6000), (0, 0)]
+        .iter()
+        .map(|&(x, y)| [w / 2 - (y - 3000), h / 2 + (x - 4000)])
+        .collect();
+    assert_eq!(got, serde_json::json!(want));
+
+    // 셋째 꼭짓점만 옮기면 다른 점은 쪽 위 제자리이고 회전이 사라진다.
+    let before = page_points(&doc, para, ctrl);
+    let mut moved: Vec<[i64; 2]> = serde_json::from_value(got).unwrap();
+    moved[2] = [moved[2][0] - 3000, moved[2][1] + 1500];
+    doc.set_shape_points_native(
+        0,
+        para,
+        ctrl,
+        &serde_json::json!({ "points": moved }).to_string(),
+    )
+    .unwrap();
+    let after = page_points(&doc, para, ctrl);
+    assert_eq!((after[0], after[1]), (before[0], before[1]));
+    assert_eq!(after[2], (before[2].0 - 3000, before[2].1 + 1500));
+    let sa = shape(&doc, para, ctrl).shape_attr();
+    assert_eq!(
+        (sa.rotation_angle, sa.horz_flip, sa.vert_flip),
+        (0, false, false)
+    );
+    let xml = section_xml(doc.export_hwpx_native().unwrap());
+    assert!(xml.contains(r#"<hp:rotationInfo angle="0""#), "{xml}");
+
+    // 돌린 곡선도 같다.
+    let (para, ctrl) = insert(
+        &mut doc,
+        "curve",
+        9000,
+        5000,
+        &pts(&[(0, 5000), (3000, 0), (6000, 5000), (9000, 0)]),
+    );
+    doc.set_shape_properties_native(0, para, ctrl, r#"{"rotationAngle":45}"#)
+        .unwrap();
+    let before = page_points(&doc, para, ctrl);
+    let mut moved: Vec<[i64; 2]> =
+        serde_json::from_value(points_json(&doc, para, ctrl)["points"].clone()).unwrap();
+    moved[3] = [moved[3][0] + 2000, moved[3][1] + 2000];
+    doc.set_shape_points_native(
+        0,
+        para,
+        ctrl,
+        &serde_json::json!({ "points": moved }).to_string(),
+    )
+    .unwrap();
+    let after = page_points(&doc, para, ctrl);
+    assert_eq!(&after[..3], &before[..3]);
+    assert_eq!(shape(&doc, para, ctrl).shape_attr().rotation_angle, 0);
+}
+
+/// 한컴 12.30: 가운데 기준 도형은 기준을 둔 채 위치값을 바꿔 다른 점을 제자리에 둔다
+/// (왼쪽으로 17.9mm 넓히자 가로 위치 0 → -8.95mm).
+#[test]
+fn centered_and_right_aligned_shapes_keep_their_other_points() {
+    let tri = pts(&[(0, 0), (8000, 0), (4000, 6000), (0, 0)]);
+    for (align, offset) in [("Center", -500i32), ("Right", 0)] {
+        let mut doc = blank();
+        let (para, ctrl) = insert(&mut doc, "polygon", 8000, 6000, &tri);
+        doc.set_shape_properties_native(
+            0,
+            para,
+            ctrl,
+            &format!(r#"{{"horzRelTo":"Paper","horzAlign":"{align}","horzOffset":0}}"#),
+        )
+        .unwrap();
+        doc.set_shape_points_native(
+            0,
+            para,
+            ctrl,
+            r#"{"points":[[-1000,0],[8000,0],[4000,6000],[-1000,0]]}"#,
+        )
+        .unwrap();
+        let c = shape(&doc, para, ctrl).common();
+        assert_eq!(
+            (c.horizontal_offset as i32, c.width, c.horz_align),
+            (
+                offset,
+                9000,
+                if align == "Center" {
+                    rhwp::model::shape::HorzAlign::Center
+                } else {
+                    rhwp::model::shape::HorzAlign::Right
+                }
+            ),
+            "{align}"
+        );
+    }
+}
+
+#[test]
+fn ellipse_points_give_its_frame_transform() {
+    let mut doc = blank();
+    let (para, ctrl) = insert(&mut doc, "ellipse", 9000, 5000, &[]);
     doc.set_shape_properties_native(0, para, ctrl, r#"{"rotationAngle":30}"#)
         .unwrap();
-    assert!(doc.get_shape_points_native(0, para, ctrl).is_err());
+    let got = points_json(&doc, para, ctrl);
+    assert_eq!(got["kind"], "ellipse");
+    assert_eq!(got["original"], serde_json::json!([9000, 5000]));
+    // 원래 상자의 가운데는 틀 가운데로 간다.
+    let m: Vec<f64> = serde_json::from_value(got["affine"].clone()).unwrap();
+    let c = shape(&doc, para, ctrl).common();
+    let center = (
+        m[0] * 4500.0 + m[1] * 2500.0 + m[2],
+        m[3] * 4500.0 + m[4] * 2500.0 + m[5],
+    );
+    assert!(
+        (center.0 - f64::from(c.width) / 2.0).abs() < 1.0,
+        "{center:?}"
+    );
+    assert!(
+        (center.1 - f64::from(c.height) / 2.0).abs() < 1.0,
+        "{center:?}"
+    );
+    assert!((m[3] - 0.5).abs() < 1e-9, "{m:?}");
     assert!(doc
         .set_shape_points_native(0, para, ctrl, r#"{"points":[[0,0],[10,10]]}"#)
         .is_err());
