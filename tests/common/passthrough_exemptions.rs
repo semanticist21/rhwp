@@ -315,6 +315,18 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     ),
     (
         "hyperlink.rs",
+        "insert_hwp_hyperlink_native",
+        Exempt::DelegatesTo("insert_hyperlink_command"),
+        "한글 문서 링크 Command를 공통 삽입 경로에 넘긴다. 대상 번호를 새로 매기면 set_link_object_id가 구역 raw_stream을 따로 무효화한다.",
+    ),
+    (
+        "hyperlink.rs",
+        "insert_file_hyperlink_native",
+        Exempt::DelegatesTo("insert_hyperlink_command"),
+        "외부 파일 링크 Command를 공통 삽입 경로에 넘긴다. 그 경로가 commit helper로 구역 raw_stream과 페이지 캐시를 무효화한다.",
+    ),
+    (
+        "hyperlink.rs",
         "insert_bookmark_hyperlink_native",
         Exempt::DelegatesTo("insert_hyperlink_command"),
         "책갈피 Command를 공통 삽입 경로에 넘긴다. 그 경로가 commit helper로 구역 raw_stream과 페이지 캐시를 무효화한다 (#6963).",

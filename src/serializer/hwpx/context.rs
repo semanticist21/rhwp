@@ -141,6 +141,10 @@ pub struct SerializeContext {
     pub(crate) para_page_num_pos_emitted: bool,
     /// 문서 전역 문단 ID 카운터 — `<hp:p id="...">` 에 발급한다.
     para_id_counter: u32,
+    /// 지금 문서 개요 링크(`?#번호;0;1;…`)가 가리키는 문단 ID. 이 문단은 `hp:p id`를 지킨다.
+    linked_para_ids: std::collections::HashSet<u32>,
+    /// 이미 낸 개요 링크 대상 문단 ID.
+    emitted_linked_para_ids: std::collections::HashSet<u32>,
     /// HWP3 전용 Hyperlink control을 HWPX `fieldBegin`으로 승격할 때 쓰는 ID.
     /// HWP3 원본에는 HWPX field ID가 없으므로, 기존 Field ID와 충돌 가능성이 낮은
     /// 상위 범위를 문서 내에서 단조 감소시켜 링크마다 다른 값을 발급한다.
@@ -200,6 +204,8 @@ impl Default for SerializeContext {
             chart_entries: Vec::new(),
             para_page_num_pos_emitted: false,
             para_id_counter: 0,
+            linked_para_ids: Default::default(),
+            emitted_linked_para_ids: Default::default(),
             generated_hyperlink_id: u32::MAX,
             sub_list_depth: 0,
             body_coldef_template_pending: false,
@@ -235,6 +241,7 @@ impl SerializeContext {
         S::Error: std::fmt::Display,
     {
         let mut ctx = Self::default();
+        ctx.linked_para_ids = crate::document_core::hyperlink::linked_outline_ids(doc);
         ctx.char_shape_ids.reservation = reservation.clone();
         ctx.para_shape_ids.reservation = reservation.clone();
         ctx.border_fill_ids.reservation = reservation.clone();
@@ -695,6 +702,22 @@ impl SerializeContext {
     }
 
     /// 문서 전역 문단 ID를 하나 발급하고 카운터를 증가시킨다.
+    /// 문단 `p`의 `hp:p id`. 개요 링크가 가리키는 문단은 원래 ID를 한 번 쓰고, 나머지는
+    /// 발급기 번호를 쓰되 그 ID들과 겹치지 않게 건너뛴다.
+    pub fn para_id(&mut self, p: &crate::model::paragraph::Paragraph) -> u32 {
+        let kept = crate::document_core::hyperlink::paragraph_instance_id(p);
+        if self.linked_para_ids.remove(&kept) {
+            self.emitted_linked_para_ids.insert(kept);
+            return kept;
+        }
+        loop {
+            let id = self.next_para_id();
+            if !self.linked_para_ids.contains(&id) && !self.emitted_linked_para_ids.contains(&id) {
+                return id;
+            }
+        }
+    }
+
     pub fn next_para_id(&mut self) -> u32 {
         let id = self.para_id_counter;
         self.para_id_counter += 1;

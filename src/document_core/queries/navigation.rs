@@ -213,7 +213,7 @@ fn advance_nested_table_numbers(
 ///
 /// `table_row_pages` 는 `build_table_row_page_index` 의 결과다 — 쪽을 넘는 표의 셀
 /// 개요는 그 행이 놓인 쪽을 쓴다(#3403 의 grep 과 같은 규칙).
-fn build_outline_navigation(
+pub(crate) fn build_outline_navigation(
     document: &Document,
     paragraph_pages: &HashMap<(usize, usize), u32>,
     table_row_pages: &HashMap<(usize, usize, usize), Vec<(usize, usize, u32)>>,

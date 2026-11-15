@@ -8,7 +8,8 @@ use crate::model::control::{Control, Field, FieldType, Parameter};
 use crate::model::event::DocumentEvent;
 use crate::model::hyperlink::{
     bookmark_command, classify_destination, command_bookmark, command_uri, destination_command,
-    LinkDestinationKind,
+    file_link, file_link_command, hwp_link, hwp_link_command, HwpLink, LinkDestinationKind,
+    LINK_TARGET_EQUATION, LINK_TARGET_FIGURE, LINK_TARGET_OUTLINE, LINK_TARGET_TABLE,
 };
 use crate::model::paragraph::{FieldRange, Paragraph};
 use crate::parser::tags;
@@ -43,6 +44,25 @@ pub struct HyperlinkInfo {
     /// 문서 내부 책갈피 링크의 대상 이름. `uri`에는 원문 주소(`?<이름>`)가 그대로 남는다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub bookmark: Option<String>,
+    /// 한글 문서 링크(지금·다른 문서의 처음·책갈피·개요·표·그림·수식)의 대상.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub hwp: Option<HwpLink>,
+    /// 외부 파일 링크의 파일 경로.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub file: Option<String>,
+}
+
+/// 한글 문서 링크가 가리킬 지금 문서의 개요 문단(`control` 없음)이나 표·그림·수식 컨트롤 자리.
+/// 문단 주소는 [`HyperlinkTarget`]과 같다.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct LinkObjectAddress {
+    pub section: usize,
+    pub para: usize,
+    #[serde(default)]
+    pub cell_path: Vec<(usize, usize, usize)>,
+    #[serde(default)]
+    pub control: Option<usize>,
 }
 
 impl DocumentCore {
@@ -70,6 +90,8 @@ impl DocumentCore {
                         .collect(),
                     uri: command_uri(&field.command),
                     bookmark: command_bookmark(&field.command),
+                    hwp: hwp_link(&field.command),
+                    file: file_link(&field.command),
                 })
             })
             .collect())
@@ -110,6 +132,193 @@ impl DocumentCore {
     ) -> Result<u32, HwpError> {
         let command = self.existing_bookmark_command(bookmark)?;
         self.insert_hyperlink_command(target, start, end, command)
+    }
+
+    /// 한컴 한글 문서 링크를 붙인다. 지금 문서(`link.path` 빈 값)의 개요·표·그림·수식 대상은
+    /// `at`의 문단·컨트롤을 가리키며, 그 대상의 인스턴스 ID가 없거나 겹치면 한컴처럼 새로 매긴 뒤
+    /// `#번호`로 잇는다. 지금 문서의 책갈피는 문서에 있어야 한다. 다른 문서 대상은 그대로 적는다.
+    pub fn insert_hwp_hyperlink_native(
+        &mut self,
+        target: &HyperlinkTarget,
+        start: usize,
+        end: usize,
+        link: &HwpLink,
+        at: Option<&LinkObjectAddress>,
+    ) -> Result<u32, HwpError> {
+        let mut link = link.clone();
+        let mut assign = None;
+        if link.path.is_empty() && link.target_type != 0 {
+            let at = at.ok_or_else(|| invalid("연결할 대상을 골라 주세요"))?;
+            let (id, fresh) = self.link_object_id(link.target_type, at)?;
+            link.anchor = format!("#{id}");
+            assign = fresh.then_some((at.clone(), id));
+        } else if link.path.is_empty()
+            && !link.anchor.is_empty()
+            && !self.has_bookmark_named(&link.anchor)
+        {
+            return Err(invalid("문서에 없는 책갈피입니다"));
+        }
+        let field_id =
+            self.insert_hyperlink_command(target, start, end, hwp_link_command(&link)?)?;
+        if let Some((at, id)) = assign {
+            self.set_link_object_id(link.target_type, &at, id)?;
+        }
+        Ok(field_id)
+    }
+
+    /// 한컴 하이퍼링크 창 한글 문서 탭의 대상 목록: 개요 문단(번호·제목)과 표·그림·수식을 문서 순서로
+    /// 주소·인스턴스 ID와 함께 준다. 링크를 따라갈 때도 `#번호`를 이 목록에서 찾는다.
+    pub fn link_destinations_native(&self) -> serde_json::Value {
+        use crate::document_core::queries::navigation::build_outline_navigation;
+        let outline =
+            build_outline_navigation(&self.document, &Default::default(), &Default::default());
+        let outlines: Vec<_> = outline
+            .outline
+            .iter()
+            .filter_map(|item| {
+                let cell_path: Vec<(usize, usize, usize)> = item
+                    .cell
+                    .as_ref()
+                    .map(|c| {
+                        c.cell_path
+                            .iter()
+                            .map(|e| (e.control_index, e.cell_index, e.cell_para_index))
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let p = self
+                    .hyperlink_paragraph(&HyperlinkTarget {
+                        section: item.section,
+                        para: item.paragraph,
+                        cell_path: cell_path.clone(),
+                    })
+                    .ok()?;
+                Some(serde_json::json!({
+                    "section": item.section,
+                    "para": item.paragraph,
+                    "cellPath": cell_path,
+                    "id": paragraph_instance_id(p),
+                    "number": item.number,
+                    "title": item.title,
+                }))
+            })
+            .collect();
+        let mut objects: [Vec<serde_json::Value>; 3] = Default::default();
+        for (section, sec) in self.document.sections.iter().enumerate() {
+            for (para, p) in sec.paragraphs.iter().enumerate() {
+                collect_link_objects(p, section, para, &mut Vec::new(), &mut objects);
+            }
+        }
+        let [tables, figures, equations] = objects;
+        serde_json::json!({
+            "outlines": outlines,
+            "tables": tables,
+            "figures": figures,
+            "equations": equations,
+        })
+    }
+
+    /// 외부 파일 링크(한컴 파일 탭의 기존 파일)를 붙인다.
+    pub fn insert_file_hyperlink_native(
+        &mut self,
+        target: &HyperlinkTarget,
+        start: usize,
+        end: usize,
+        path: &str,
+    ) -> Result<u32, HwpError> {
+        self.insert_hyperlink_command(target, start, end, file_link_command(path)?)
+    }
+
+    /// 대상의 인스턴스 ID와 새로 매겨야 하는지. 0이거나 문서의 다른 대상과 겹치면 새 번호다.
+    fn link_object_id(
+        &self,
+        target_type: u8,
+        at: &LinkObjectAddress,
+    ) -> Result<(u32, bool), HwpError> {
+        let mut ids = Vec::new();
+        for sec in &self.document.sections {
+            walk_paragraphs(&sec.paragraphs, &mut |p| {
+                if target_type == LINK_TARGET_OUTLINE {
+                    ids.push(paragraph_instance_id(p));
+                } else {
+                    ids.extend(p.controls.iter().filter_map(object_instance_id));
+                }
+            });
+        }
+        let current = self.link_object(target_type, at)?;
+        let shared = ids.iter().filter(|&&id| id == current).count() > 1;
+        if current != 0 && !shared {
+            return Ok((current, false));
+        }
+        // 한컴은 큰 번호를 새로 매긴다. HWPX 문단 번호 발급기와 겹치지 않게 큰 수부터 쓴다.
+        let next = ids.into_iter().max().unwrap_or(0).max(0x4000_0000) + 1;
+        Ok((next, true))
+    }
+
+    /// 주소가 가리키는 대상의 지금 인스턴스 ID. 대상 종류와 맞지 않으면 오류다.
+    fn link_object(&self, target_type: u8, at: &LinkObjectAddress) -> Result<u32, HwpError> {
+        let p = self.hyperlink_paragraph(&HyperlinkTarget {
+            section: at.section,
+            para: at.para,
+            cell_path: at.cell_path.clone(),
+        })?;
+        match (target_type, at.control) {
+            (LINK_TARGET_OUTLINE, None) => {
+                let is_outline = self
+                    .document
+                    .doc_info
+                    .para_shapes
+                    .get(p.para_shape_id as usize)
+                    .is_some_and(|shape| shape.head_type == crate::model::style::HeadType::Outline);
+                if !is_outline {
+                    return Err(invalid("개요 문단이 아닙니다"));
+                }
+                Ok(paragraph_instance_id(p))
+            }
+            (_, Some(idx)) => match (target_type, p.controls.get(idx)) {
+                (LINK_TARGET_TABLE, Some(c @ Control::Table(_)))
+                | (LINK_TARGET_FIGURE, Some(c @ Control::Picture(_)))
+                | (LINK_TARGET_EQUATION, Some(c @ Control::Equation(_))) => {
+                    Ok(object_instance_id(c).unwrap_or(0))
+                }
+                _ => Err(invalid("연결할 개체를 찾을 수 없습니다")),
+            },
+            _ => Err(invalid("연결할 대상을 골라 주세요")),
+        }
+    }
+
+    fn set_link_object_id(
+        &mut self,
+        target_type: u8,
+        at: &LinkObjectAddress,
+        id: u32,
+    ) -> Result<(), HwpError> {
+        let p = if at.cell_path.is_empty() {
+            self.document
+                .sections
+                .get_mut(at.section)
+                .and_then(|s| s.paragraphs.get_mut(at.para))
+                .ok_or_else(|| invalid("문단 인덱스 초과"))?
+        } else {
+            self.get_cell_paragraph_mut_by_path(at.section, at.para, &at.cell_path)?
+        };
+        if target_type == LINK_TARGET_OUTLINE {
+            // raw_header_extra[6..10]이 HWP5 PARA_HEADER instanceId이자 HWPX `hp:p id`다.
+            if p.raw_header_extra.len() < 10 {
+                p.raw_header_extra.resize(10, 0);
+            }
+            p.raw_header_extra[6..10].copy_from_slice(&id.to_le_bytes());
+        } else {
+            match at.control.and_then(|idx| p.controls.get_mut(idx)) {
+                Some(Control::Table(t)) => t.common.instance_id = id,
+                Some(Control::Picture(pic)) => pic.common.instance_id = id,
+                Some(Control::Equation(eq)) => eq.common.instance_id = id,
+                _ => return Err(invalid("연결할 개체를 찾을 수 없습니다")),
+            }
+        }
+        self.document.sections[at.section].raw_stream = None;
+        self.mark_section_dirty(at.section);
+        Ok(())
     }
 
     fn insert_hyperlink_command(
@@ -646,6 +855,107 @@ fn path_paragraphs(control: &Control, cell_idx: usize) -> Option<&[Paragraph]> {
     }
 }
 
+/// 컨트롤이 품은 문단 목록들(표 셀·글상자·캡션·머리말·꼬리말·각주·미주)과 그 경로 셀 번호.
+fn child_lists(control: &Control) -> Vec<(usize, &[Paragraph])> {
+    let cells: Vec<usize> = match control {
+        Control::Table(table) => (0..table.cells.len()).chain([65534]).collect(),
+        Control::Shape(shape) => (0..shape.textbox_shape_count()).chain([65534]).collect(),
+        _ => vec![0],
+    };
+    cells
+        .into_iter()
+        .filter_map(|cell| Some((cell, path_paragraphs(control, cell)?)))
+        .collect()
+}
+
+/// 문단과 그 안 문단을 문서 순서로 모두 훑는다.
+pub(crate) fn walk_paragraphs<'a>(paragraphs: &'a [Paragraph], f: &mut dyn FnMut(&'a Paragraph)) {
+    for p in paragraphs {
+        f(p);
+        for control in &p.controls {
+            for (_, inner) in child_lists(control) {
+                walk_paragraphs(inner, f);
+            }
+        }
+    }
+}
+
+/// 문단 `p`와 그 안의 표·그림·수식을 [표, 그림, 수식] 목록에 문서 순서로 더한다.
+fn collect_link_objects(
+    p: &Paragraph,
+    section: usize,
+    para: usize,
+    path: &mut Vec<(usize, usize, usize)>,
+    out: &mut [Vec<serde_json::Value>; 3],
+) {
+    for (ctrl_idx, control) in p.controls.iter().enumerate() {
+        let kind = match control {
+            Control::Table(_) => Some(0),
+            Control::Picture(_) => Some(1),
+            Control::Equation(_) => Some(2),
+            _ => None,
+        };
+        if let Some(kind) = kind {
+            out[kind].push(serde_json::json!({
+                "section": section,
+                "para": para,
+                "cellPath": path.clone(),
+                "control": ctrl_idx,
+                "id": object_instance_id(control).unwrap_or(0),
+            }));
+        }
+        for (cell_idx, paragraphs) in child_lists(control) {
+            for (child, inner) in paragraphs.iter().enumerate() {
+                path.push((ctrl_idx, cell_idx, child));
+                collect_link_objects(inner, section, para, path, out);
+                path.pop();
+            }
+        }
+    }
+}
+
+/// 문단 인스턴스 ID(HWP5 PARA_HEADER instanceId, HWPX `hp:p id`). 없으면 0이다.
+pub(crate) fn paragraph_instance_id(p: &Paragraph) -> u32 {
+    p.raw_header_extra
+        .get(6..10)
+        .map_or(0, |b| u32::from_le_bytes([b[0], b[1], b[2], b[3]]))
+}
+
+/// 링크 대상이 되는 개체(표·그림·도형·수식)의 인스턴스 ID.
+fn object_instance_id(control: &Control) -> Option<u32> {
+    match control {
+        Control::Table(t) => Some(t.common.instance_id),
+        Control::Picture(p) => Some(p.common.instance_id),
+        Control::Equation(e) => Some(e.common.instance_id),
+        Control::Shape(s) => Some(s.common().instance_id),
+        _ => None,
+    }
+}
+
+/// 문서의 개요 링크(`?#번호;0;1;…`, 지금 문서)가 가리키는 문단 인스턴스 ID. HWPX 저장이 이
+/// 문단의 `hp:p id`를 지켜야 링크가 산다.
+pub(crate) fn linked_outline_ids(
+    doc: &crate::model::document::Document,
+) -> std::collections::HashSet<u32> {
+    let mut ids = std::collections::HashSet::new();
+    for sec in &doc.sections {
+        walk_paragraphs(&sec.paragraphs, &mut |p| {
+            for c in &p.controls {
+                let Control::Field(f) = c else { continue };
+                if let Some(link) = hwp_link(&f.command) {
+                    if link.path.is_empty() && link.target_type == LINK_TARGET_OUTLINE {
+                        if let Some(id) = link.anchor.strip_prefix('#').and_then(|n| n.parse().ok())
+                        {
+                            ids.insert(id);
+                        }
+                    }
+                }
+            }
+        });
+    }
+    ids
+}
+
 /// 문단 `p`에 링크가 있으면 그 주소를 더하고, 컨트롤 안 문단 목록으로 내려간다.
 fn collect_hyperlink_targets(
     p: &Paragraph,
@@ -667,15 +977,7 @@ fn collect_hyperlink_targets(
         });
     }
     for (ctrl_idx, control) in p.controls.iter().enumerate() {
-        let cells: Vec<usize> = match control {
-            Control::Table(table) => (0..table.cells.len()).chain([65534]).collect(),
-            Control::Shape(shape) => (0..shape.textbox_shape_count()).chain([65534]).collect(),
-            _ => vec![0],
-        };
-        for cell_idx in cells {
-            let Some(paragraphs) = path_paragraphs(control, cell_idx) else {
-                continue;
-            };
+        for (cell_idx, paragraphs) in child_lists(control) {
             // 경로 마지막 항목의 문단 번호가 지금 문단 `p`다. 그 컨트롤 안으로 한 겹 더 간다.
             for (child, inner) in paragraphs.iter().enumerate() {
                 path.push((ctrl_idx, cell_idx, child));

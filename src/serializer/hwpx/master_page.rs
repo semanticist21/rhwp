@@ -86,7 +86,7 @@ where
             render_paragraph_parts_with_storage(p, vert_cursor, ctx, storage)?;
         ctx.check_storage()?;
         vert_cursor = advance;
-        let pid = ctx.next_para_id();
+        let pid = ctx.para_id(p);
         let sid = ctx.effective_style_id(p.style_id);
         storage
             .push_str(

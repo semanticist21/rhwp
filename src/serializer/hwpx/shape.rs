@@ -737,7 +737,7 @@ where
             let (runs, linesegs, advance) =
                 render_paragraph_parts_with_storage(para, vert_cursor, ctx, storage)?;
             vert_cursor = advance;
-            let pid = ctx.next_para_id();
+            let pid = ctx.para_id(para);
             let mut p_xml = render_hp_p_open_with_storage(para, pid, sid, storage)?;
             storage.push_str(&mut p_xml, &runs).map_err(xml_error)?;
             storage.push_str(&mut p_xml, &linesegs).map_err(xml_error)?;

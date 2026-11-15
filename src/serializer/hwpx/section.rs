@@ -817,7 +817,7 @@ where
         // 첫 문단 `<hp:p>` 태그를 IR 기반 속성으로 교체
         // (#1933) 본문 경로는 종전에 style_id 를 reference 하지 않았다 — emit 만
         // 강등해 미등록 ID 방출을 막고, 참조 집합/assert 동작은 종전 유지한다.
-        let pid = ctx.next_para_id();
+        let pid = ctx.para_id(p);
         let sid = ctx.effective_style_id(p.style_id);
         let new_p_tag = render_hp_p_open_with_storage(p, pid, sid, storage)?;
         out = xml_replacen(out, TEMPLATE_FIRST_P_TAG, &new_p_tag, 1, storage)?;
@@ -886,7 +886,7 @@ where
                 render_paragraph_parts_with_storage(p, vert_cursor, ctx, storage)?;
             ctx.check_storage()?;
             vert_cursor = advance;
-            let pid = ctx.next_para_id();
+            let pid = ctx.para_id(p);
             let sid = ctx.effective_style_id(p.style_id);
             storage
                 .push_str(
@@ -3533,7 +3533,7 @@ where
                         let (runs, linesegs, advance) =
                             render_paragraph_parts_with_storage(para, vert_cursor, ctx, storage)?;
                         vert_cursor = advance;
-                        let pid = ctx.next_para_id();
+                        let pid = ctx.para_id(para);
                         storage
                             .push_str(
                                 out,
@@ -4090,7 +4090,7 @@ where
         let (runs, linesegs, advance) =
             render_paragraph_parts_with_storage(p, vert_cursor, ctx, storage)?;
         vert_cursor = advance;
-        let pid = ctx.next_para_id();
+        let pid = ctx.para_id(p);
         let sid = ctx.effective_style_id(p.style_id);
         storage
             .push_str(
@@ -5010,7 +5010,7 @@ where
         let (runs, linesegs, advance) =
             render_paragraph_parts_with_storage(p, vert_cursor, ctx, storage)?;
         vert_cursor = advance;
-        let pid = ctx.next_para_id();
+        let pid = ctx.para_id(p);
         let sid = ctx.effective_style_id(p.style_id);
         storage
             .push_str(
@@ -5064,7 +5064,7 @@ where
         let (runs, linesegs, advance) =
             render_paragraph_parts_with_storage(p, vert_cursor, ctx, storage)?;
         vert_cursor = advance;
-        let pid = ctx.next_para_id();
+        let pid = ctx.para_id(p);
         storage
             .push_str(
                 &mut out,

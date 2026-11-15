@@ -83,12 +83,140 @@ pub fn bookmark_command(name: &str) -> Result<String, HwpError> {
     checked_length(command)
 }
 
-/// Command가 문서 내부 책갈피 링크이면 책갈피 이름을 돌려준다.
+/// Command가 지금 문서의 책갈피 링크이면 책갈피 이름을 돌려준다. 개요·표·그림·수식
+/// 대상(`?#번호;0;1;0;` 등)과 다른 문서·문서의 처음 링크는 책갈피가 아니다.
 pub fn command_bookmark(command: &str) -> Option<String> {
-    command_uri(command)
-        .strip_prefix('?')
-        .filter(|name| !name.is_empty())
-        .map(str::to_string)
+    hwp_link(command)
+        .filter(|link| link.path.is_empty() && link.target_type == 0 && !link.anchor.is_empty())
+        .map(|link| link.anchor)
+}
+
+/// 한컴 Command `주소;종류;대상 종류;여는 방법;`의 첫 칸(이스케이프를 푼 주소)과 숫자 칸들.
+/// 한글 문서 링크의 주소는 첫 비이스케이프 `?`에서 파일 경로와 대상(책갈피 이름·`#번호`)으로 나뉜다.
+struct CommandParts {
+    path: String,
+    anchor: Option<String>,
+    numbers: Vec<u8>,
+}
+
+fn command_parts(command: &str) -> CommandParts {
+    let (mut path, mut anchor, mut numbers) = (String::new(), None::<String>, Vec::new());
+    let mut chars = command.chars();
+    while let Some(c) = chars.next() {
+        let c = match c {
+            '\\' => match chars.next() {
+                Some(next) => next,
+                None => break,
+            },
+            ';' => break,
+            '?' if anchor.is_none() => {
+                anchor = Some(String::new());
+                continue;
+            }
+            _ => c,
+        };
+        match &mut anchor {
+            Some(anchor) => anchor.push(c),
+            None => path.push(c),
+        }
+    }
+    for field in chars.as_str().split(';') {
+        numbers.push(field.trim().parse().unwrap_or(0));
+    }
+    CommandParts {
+        path: path.trim().to_string(),
+        anchor,
+        numbers,
+    }
+}
+
+/// 한글 문서 링크(종류 0)의 대상. 한컴 12.30 하이퍼링크 창의 한글 문서 탭이 만든다.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", default, deny_unknown_fields)]
+pub struct HwpLink {
+    /// 다른 한글 문서의 경로. 비면 지금 문서다.
+    pub path: String,
+    /// 책갈피 이름이나 `#번호`(개요 문단·표·그림·수식의 인스턴스 ID). 비면 문서의 처음이다.
+    pub anchor: String,
+    /// 0 책갈피(문서의 처음 포함)·1 개요·2 표·3 그림·4 수식.
+    pub target_type: u8,
+    /// 연결 문서 열기: 0 현재 문서 닫기·1 새 탭·2 새 창.
+    pub open: u8,
+}
+
+/// 한컴 대상 종류 번호(HWPX `TargetType`).
+pub const LINK_TARGET_OUTLINE: u8 = 1;
+pub const LINK_TARGET_TABLE: u8 = 2;
+pub const LINK_TARGET_FIGURE: u8 = 3;
+pub const LINK_TARGET_EQUATION: u8 = 4;
+
+/// Command가 한글 문서 링크면 그 대상을 돌려준다. 종류 칸이 0인 링크다.
+pub fn hwp_link(command: &str) -> Option<HwpLink> {
+    let parts = command_parts(command);
+    if parts.numbers.first().copied() != Some(0) {
+        return None;
+    }
+    Some(HwpLink {
+        path: parts.path,
+        anchor: parts.anchor.unwrap_or_default(),
+        target_type: parts.numbers.get(1).copied().unwrap_or(0),
+        open: parts.numbers.get(2).copied().unwrap_or(0),
+    })
+}
+
+/// Command가 외부 파일 링크(종류 3)면 파일 경로를 돌려준다.
+pub fn file_link(command: &str) -> Option<String> {
+    let parts = command_parts(command);
+    (parts.numbers.first().copied() == Some(3) && !parts.path.is_empty()).then_some(parts.path)
+}
+
+fn escaped(text: &str, special: &[char], out: &mut String) -> Result<(), HwpError> {
+    if text.chars().any(char::is_control) {
+        return Err(HwpError::InvalidField(
+            "링크 대상에 제어 문자를 넣을 수 없습니다".into(),
+        ));
+    }
+    for c in text.chars() {
+        if c == '\\' || special.contains(&c) {
+            out.push('\\');
+        }
+        out.push(c);
+    }
+    Ok(())
+}
+
+/// 한글 문서 링크의 한컴 Command를 만든다. 한컴 12.30 Mac 저장 꼴(2026-11-16 확인):
+/// 문서의 처음 `;0;0;0;`, 개요 `?#번호;0;1;0;`, 표 `?#번호;0;2;0;`, 그림 `?#번호;0;3;0;`,
+/// 수식 `?#번호;0;4;0;`, 다른 문서 책갈피 `경로?이름;0;0;0;`, 새 창으로 여는 다른 문서 개요
+/// `경로?#번호;0;1;2;`. 경로는 `\ ; ?`를, 대상은 책갈피처럼 `\ : ;`를 이스케이프한다.
+pub fn hwp_link_command(link: &HwpLink) -> Result<String, HwpError> {
+    if link.target_type > LINK_TARGET_EQUATION || link.open > 2 {
+        return Err(HwpError::InvalidField(
+            "알 수 없는 링크 대상 종류입니다".into(),
+        ));
+    }
+    if link.target_type != 0 && link.anchor.is_empty() {
+        return Err(HwpError::InvalidField("연결할 대상을 골라 주세요".into()));
+    }
+    let mut command = String::new();
+    escaped(&link.path, &[';', '?'], &mut command)?;
+    if !link.anchor.is_empty() {
+        command.push('?');
+        escaped(&link.anchor, &[':', ';'], &mut command)?;
+    }
+    command.push_str(&format!(";0;{};{};", link.target_type, link.open));
+    checked_length(command)
+}
+
+/// 외부 파일 링크의 한컴 Command(`경로;3;0;0;`, HWPX `Category=HWPHYPERLINK_TYPE_EX`)를 만든다.
+pub fn file_link_command(path: &str) -> Result<String, HwpError> {
+    if path.trim().is_empty() {
+        return Err(HwpError::InvalidField("연결할 파일을 골라 주세요".into()));
+    }
+    let mut command = String::new();
+    escaped(path.trim(), &[';'], &mut command)?;
+    command.push_str(";3;0;0;");
+    checked_length(command)
 }
 
 fn checked_length(command: String) -> Result<String, HwpError> {

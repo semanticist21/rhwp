@@ -528,7 +528,7 @@ where
             let (runs, linesegs, advance) =
                 render_paragraph_parts_with_storage(para, vert_cursor, ctx, storage)?;
             vert_cursor = advance;
-            let pid = ctx.next_para_id();
+            let pid = ctx.para_id(para);
             let mut p_xml = render_hp_p_open_with_storage(para, pid, sid, storage)?;
             // [#5873] 셀 안 구역 나누기 — #4056 의 본문 경로와 같은 보완.
             if let Some(crate::model::control::Control::SectionDef(sd)) = para
