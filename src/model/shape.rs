@@ -928,15 +928,28 @@ impl EllipseShape {
         }
     }
 
-    /// 시작·끝의 타원 매개 각(라디안, 아래로 내려가는 y축에서 시계 방향 +).
+    /// 화면 반시계 방향으로 그을 시작·끝의 타원 매개 각(라디안, 아래로 내려가는 y축에서 시계 방향 +).
     /// 한컴은 시작1·끝1(누른 자리)을 지나는 중심 반직선으로 그린다.
     pub fn arc_angles(&self, original_width: u32, original_height: u32) -> (f64, f64) {
         let (cx, cy, rx, ry) = self.arc_frame(original_width, original_height);
         let angle = |p: &Point| ((f64::from(p.y) - cy) / ry).atan2((f64::from(p.x) - cx) / rx);
-        (angle(&self.start1), angle(&self.end1))
+        let (start, end) = (angle(&self.start1), angle(&self.end1));
+        if self.arc_axes_mirrored() {
+            (end, start)
+        } else {
+            (start, end)
+        }
     }
 
-    /// 매개 각(도)으로 시작·끝점을 정한다. 1·2 점 모두 타원 위에 둔다.
+    /// 한컴은 제1축→제2축 쪽으로 시작에서 끝까지 긋는다. 한컴 타원은 제2축이 위(화면 반시계)지만
+    /// rhwp가 만든 타원은 제2축이 아래라 방향이 뒤집힌다. 그런 타원은 시작·끝을 바꿔 읽고 쓴다.
+    fn arc_axes_mirrored(&self) -> bool {
+        let (dx1, dy1) = (self.axis1.x - self.center.x, self.axis1.y - self.center.y);
+        let (dx2, dy2) = (self.axis2.x - self.center.x, self.axis2.y - self.center.y);
+        i64::from(dx1) * i64::from(dy2) - i64::from(dy1) * i64::from(dx2) > 0
+    }
+
+    /// 화면 반시계 방향으로 그을 매개 각(도)으로 시작·끝점을 정한다. 1·2 점 모두 타원 위에 둔다.
     pub fn set_arc_angles(
         &mut self,
         start_deg: f64,
@@ -951,6 +964,11 @@ impl EllipseShape {
                 x: (cx + rx * t.cos()).round() as i32,
                 y: (cy + ry * t.sin()).round() as i32,
             }
+        };
+        let (start_deg, end_deg) = if self.arc_axes_mirrored() {
+            (end_deg, start_deg)
+        } else {
+            (start_deg, end_deg)
         };
         self.start1 = at(start_deg);
         self.start2 = self.start1;

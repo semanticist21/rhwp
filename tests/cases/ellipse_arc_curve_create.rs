@@ -124,8 +124,10 @@ fn ellipse_becomes_pie_and_round_trips_like_hancom() {
         panic!("타원이 아니다");
     };
     assert_eq!(ellipse.attr, 0x0001_0102);
-    assert_eq!((ellipse.start1.x, ellipse.start1.y), (16800, 5362));
-    assert_eq!((ellipse.end1.x, ellipse.end1.y), (8400, 10724));
+    // rhwp가 만든 타원은 제2축이 아래라 한컴이 시작→끝을 화면 시계 방향으로 긋는다.
+    // 화면 반시계 0°→90°를 그리도록 시작·끝을 바꿔 저장한다(한컴 12.30에서 확인).
+    assert_eq!((ellipse.start1.x, ellipse.start1.y), (8400, 10724));
+    assert_eq!((ellipse.end1.x, ellipse.end1.y), (16800, 5362));
 
     let props = doc.get_shape_properties_native(0, para, ctrl).unwrap();
     assert!(props.contains(r#""ellipseArcType":"pie""#), "{props}");
@@ -171,7 +173,7 @@ fn ellipse_becomes_pie_and_round_trips_like_hancom() {
             panic!("다시 연 도형이 타원이 아니다");
         };
         assert_eq!(ellipse.attr, 0x0001_0102);
-        assert_eq!((ellipse.start1.x, ellipse.end1.y), (16800, 10724));
+        assert_eq!((ellipse.start1.x, ellipse.end1.y), (8400, 5362));
     }
 
     // 두 점을 겹치면 한컴처럼 온전한 타원으로 되돌린다.
@@ -197,7 +199,8 @@ fn hancom_arc_ellipse_reads_from_hwpx() {
         head.split(" intervalDirty").next().unwrap()
     );
     let mut edited = xml.replacen(&head, &edited_head, 1);
-    for (tag, x, y) in [("start1", 20926, 6675), ("end1", 8438, 0)] {
+    // 한컴 타원처럼 제2축을 위에 두면 시작·끝을 그대로 읽는다.
+    for (tag, x, y) in [("start1", 20926, 6675), ("end1", 8438, 0), ("ax2", 8438, 0)] {
         let at = edited.find(&format!("<hc:{tag} ")).unwrap();
         let end = at + edited[at..].find("/>").unwrap();
         edited.replace_range(at..end, &format!(r#"<hc:{tag} x="{x}" y="{y}""#));
@@ -227,6 +230,15 @@ fn hancom_arc_ellipse_reads_from_hwpx() {
         panic!("타원이 아니다");
     };
     assert_eq!(ellipse.attr, 0x0001_0002);
+    let doc = HwpDocument::from_bytes(&core.export_hwpx_native().unwrap()).unwrap();
+    let ctrl = doc.document().sections[0].paragraphs[0]
+        .controls
+        .iter()
+        .position(|c| matches!(c, Control::Shape(_)))
+        .unwrap();
+    let props = doc.get_shape_properties_native(0, 0, ctrl).unwrap();
+    assert!(props.contains(r#""ellipseArcType":"arc""#), "{props}");
+    assert!(props.contains(r#""ellipseArcEnd":-90"#), "{props}");
     let reopened = DocumentCore::from_bytes(&core.export_hwp_native().unwrap()).unwrap();
     let ShapeObject::Ellipse(ellipse) = first_shape(&reopened) else {
         panic!("타원이 아니다");
