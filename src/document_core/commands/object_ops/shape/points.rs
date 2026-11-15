@@ -81,7 +81,7 @@ impl DocumentCore {
     /// 구간 종류(0 직선, 1 곡선). 타원은 점 없이 같은 변환만 준다.
     ///
     /// 반환: `{"kind":"polygon"|"curve"|"ellipse","points":[[x,y],...],"segmentTypes":[...],
-    /// "affine":[a,b,tx,c,d,ty],"original":[w,h]}` — affine은 원본 좌표 → 틀 좌표다.
+    /// "affine":[a,b,tx,c,d,ty],"original":[w,h],"axesMirrored":bool}` — affine은 원본 좌표 → 틀 좌표다.
     pub fn get_shape_points_native(
         &self,
         section_idx: usize,
@@ -108,6 +108,8 @@ impl DocumentCore {
             "segmentTypes": segments.unwrap_or(&[]),
             "affine": affine,
             "original": [shape.shape_attr().original_width, shape.shape_attr().original_height],
+            // 타원의 제2축이 아래(rhwp가 만든 타원)인지. 한컴은 제1축→제2축 쪽으로 호를 긋는다.
+            "axesMirrored": matches!(shape, ShapeObject::Ellipse(e) if e.arc_axes_mirrored()),
         })
         .to_string())
     }

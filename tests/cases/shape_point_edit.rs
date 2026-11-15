@@ -347,7 +347,30 @@ fn ellipse_points_give_its_frame_transform() {
         "{center:?}"
     );
     assert!((m[3] - 0.5).abs() < 1e-9, "{m:?}");
+    // rhwp가 만든 타원은 제2축이 아래다.
+    assert_eq!(got["axesMirrored"], true);
     assert!(doc
         .set_shape_points_native(0, para, ctrl, r#"{"points":[[0,0],[10,10]]}"#)
         .is_err());
+}
+
+/// 한컴 12.30은 제2축이 아래인 타원(rhwp가 만든 타원)을 부채꼴로 바꾸면 끝1을 중심에 두고 끝점을
+/// 끝2에 적는다(r8g/x/hc-ell.hwpx). 중심에 놓인 1 점은 2 점으로 읽어 한컴처럼 오른쪽 아래 부채꼴을 그린다.
+#[test]
+fn hancom_arc_with_end1_at_center_reads_end2() {
+    let p = |x, y| Point { x, y };
+    let ellipse = rhwp::model::shape::EllipseShape {
+        center: p(4500, 2500),
+        axis1: p(9000, 2500),
+        axis2: p(4500, 5000),
+        start1: p(6889, 2850),
+        end1: p(4500, 2500),
+        start2: p(8952, 2850),
+        end2: p(4489, 4988),
+        ..Default::default()
+    };
+    let (start, end) = ellipse.arc_angles(9000, 5000);
+    // 제2축이 아래라 시작·끝을 바꿔 읽는다: 아래(90도)에서 화면 반시계로 누른 자리(약 15도)까지.
+    assert!((start.to_degrees() - 90.3).abs() < 0.5, "{start}");
+    assert!((end.to_degrees() - 14.8).abs() < 0.5, "{end}");
 }

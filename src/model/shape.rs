@@ -929,11 +929,17 @@ impl EllipseShape {
     }
 
     /// 화면 반시계 방향으로 그을 시작·끝의 타원 매개 각(라디안, 아래로 내려가는 y축에서 시계 방향 +).
-    /// 한컴은 시작1·끝1(누른 자리)을 지나는 중심 반직선으로 그린다.
+    /// 한컴은 시작1·끝1(누른 자리)을 지나는 중심 반직선으로 그린다. 한컴 12.30은 제2축이 아래인
+    /// 타원을 호로 바꾸면 끝1을 중심에 두고 끝2에 끝점을 적으므로, 중심에 놓인 1 점은 2 점으로 읽는다.
     pub fn arc_angles(&self, original_width: u32, original_height: u32) -> (f64, f64) {
         let (cx, cy, rx, ry) = self.arc_frame(original_width, original_height);
         let angle = |p: &Point| ((f64::from(p.y) - cy) / ry).atan2((f64::from(p.x) - cx) / rx);
-        let (start, end) = (angle(&self.start1), angle(&self.end1));
+        let at_center = |p: &Point| p.x == self.center.x && p.y == self.center.y;
+        let pick = |one: &Point, two: &Point| angle(if at_center(one) { two } else { one });
+        let (start, end) = (
+            pick(&self.start1, &self.start2),
+            pick(&self.end1, &self.end2),
+        );
         if self.arc_axes_mirrored() {
             (end, start)
         } else {
@@ -943,7 +949,7 @@ impl EllipseShape {
 
     /// 한컴은 제1축→제2축 쪽으로 시작에서 끝까지 긋는다. 한컴 타원은 제2축이 위(화면 반시계)지만
     /// rhwp가 만든 타원은 제2축이 아래라 방향이 뒤집힌다. 그런 타원은 시작·끝을 바꿔 읽고 쓴다.
-    fn arc_axes_mirrored(&self) -> bool {
+    pub(crate) fn arc_axes_mirrored(&self) -> bool {
         let (dx1, dy1) = (self.axis1.x - self.center.x, self.axis1.y - self.center.y);
         let (dx2, dy2) = (self.axis2.x - self.center.x, self.axis2.y - self.center.y);
         i64::from(dx1) * i64::from(dy2) - i64::from(dy1) * i64::from(dx2) > 0
