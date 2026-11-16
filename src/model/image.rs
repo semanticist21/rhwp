@@ -388,6 +388,22 @@ pub fn alpha_byte_to_transparency_percent(alpha: u8) -> u8 {
     ((alpha as f64 * 100.0) / 255.0).round().clamp(0.0, 100.0) as u8
 }
 
+/// 그림 하이퍼링크 CTRL_DATA(ParameterSet 0x021b > 집합 0x026f > 문자열 0x0265)를 HWPX
+/// `hp:pic@href` 값으로 읽는다. 한컴 12.30 HWP 저장본은 주소를 그대로 싣고(`http://…;1;0;1`),
+/// 우리 HWP 저장은 `\://`로 싣는다. 둘 다 HWPX처럼 `://`로 돌린다.
+pub fn parse_href_ctrl_data(data: &[u8]) -> Option<String> {
+    let words: Vec<u16> = data
+        .chunks_exact(2)
+        .map(|b| u16::from_le_bytes([b[0], b[1]]))
+        .collect();
+    let (head, text) = words.split_at_checked(11)?;
+    if head[..10] != [0x021b, 1, 0, 0x026f, 0x8000, 0x026f, 1, 0, 0x0265, 1] {
+        return None;
+    }
+    let href = String::from_utf16(text.get(..usize::from(head[10]))?).ok()?;
+    (!href.is_empty()).then(|| href.replace("\\://", "://"))
+}
+
 /// HWP5 SHAPE_COMPONENT_PICTURE 꼬리(`raw_picture_extra`) 안 필드 위치.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) struct PictureExtraLayout {
@@ -486,6 +502,41 @@ impl Default for ImageFormat {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn href_ctrl_data_reads_hancom_and_escaped_forms() {
+        // 한컴 12.30 Mac HWP 저장본(CCL 그림)의 CTRL_DATA 머리.
+        let url = "http://creativecommons.org/licenses/by/4.0/deed.ko;1;0;1";
+        let mut data = Vec::new();
+        for w in [
+            0x021b,
+            1,
+            0,
+            0x026f,
+            0x8000,
+            0x026f,
+            1,
+            0,
+            0x0265,
+            1,
+            url.len() as u16,
+        ] {
+            data.extend_from_slice(&u16::to_le_bytes(w));
+        }
+        let hancom: Vec<u8> = url.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        assert_eq!(
+            parse_href_ctrl_data(&[data.clone(), hancom].concat()).as_deref(),
+            Some(url)
+        );
+        let escaped = url.replace("://", "\\://");
+        data[20..22].copy_from_slice(&(escaped.len() as u16).to_le_bytes());
+        let ours: Vec<u8> = escaped.encode_utf16().flat_map(u16::to_le_bytes).collect();
+        assert_eq!(
+            parse_href_ctrl_data(&[data.clone(), ours].concat()).as_deref(),
+            Some(url)
+        );
+        assert_eq!(parse_href_ctrl_data(&data[..10]), None);
+    }
 
     #[test]
     fn test_picture_default() {

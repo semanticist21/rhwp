@@ -143,7 +143,7 @@ where
         }
         None => {
             write_compatible_document(&mut w, storage)?;
-            write_doc_option(&mut w, storage)?;
+            write_doc_option(&mut w, doc.license_mark(), storage)?;
             write_track_change_config(&mut w, doc.doc_info.track_change_flags(), storage)?;
         }
     }
@@ -1659,8 +1659,10 @@ where
     Ok(())
 }
 
+/// HWP 원본의 저작권 표시(FileHeader)는 한컴 HWPX 저장본처럼 `hh:linkinfo` 뒤 `hh:licensemark`로 싣는다.
 fn write_doc_option<W: Write, S: crate::storage::Storage>(
     w: &mut Writer<W>,
+    license: Option<(String, u32, u32)>,
     storage: &S,
 ) -> Result<(), SerializeError>
 where
@@ -1673,6 +1675,18 @@ where
         &[("path", ""), ("pageInherit", "0"), ("footnoteInherit", "0")],
         storage,
     )?;
+    if let Some((kind, flag, lang)) = license {
+        empty_tag(
+            w,
+            "hh:licensemark",
+            &[
+                ("type", kind.as_str()),
+                ("flag", &xml_value(storage, flag)?),
+                ("lang", &xml_value(storage, lang)?),
+            ],
+            storage,
+        )?;
+    }
     end_tag(w, "hh:docOption", storage)?;
     Ok(())
 }

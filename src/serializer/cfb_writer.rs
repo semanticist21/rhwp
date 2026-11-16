@@ -155,6 +155,24 @@ where
     } else {
         serialize_file_header(&doc.header)
     };
+    // 저작권 표시는 HWP FileHeader 자리(속성 bit 11·15, 오프셋 40 조건, 48 언어)에 싣는다.
+    // HWPX 원본은 머리 꼬리에 있어 HWP로 저장할 때 여기로 옮긴다.
+    let mut header_bytes = header_bytes;
+    let license = doc.license_mark().and_then(|(kind, flag, lang)| {
+        use crate::model::document::{LICENSE_CCL_BIT, LICENSE_KOGL_BIT};
+        match kind.as_str() {
+            "CCL" => Some((LICENSE_CCL_BIT, flag, lang)),
+            "KOGL" => Some((LICENSE_KOGL_BIT, flag, lang)),
+            _ => None,
+        }
+    });
+    if let Some((bit, flag, lang)) = license {
+        header_bytes.resize(header_bytes.len().max(256), 0);
+        let props = u32::from_le_bytes(header_bytes[36..40].try_into().unwrap()) | bit;
+        header_bytes[36..40].copy_from_slice(&props.to_le_bytes());
+        header_bytes[40..44].copy_from_slice(&flag.to_le_bytes());
+        header_bytes[48..52].copy_from_slice(&lang.to_le_bytes());
+    }
 
     // raw FileHeader가 보존되면 모델의 version과 다를 수 있으므로 실제 출력값을 쓴다.
     let output_version = u32::from_le_bytes(header_bytes[32..36].try_into().unwrap());

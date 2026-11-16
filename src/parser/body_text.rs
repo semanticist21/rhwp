@@ -568,6 +568,13 @@ pub fn parse_paragraph(records: &[Record]) -> Result<Paragraph, BodyTextError> {
                     }
                 }
 
+                // CTRL_DATA의 그림 하이퍼링크 → Picture.href (HWPX `hp:pic@href`와 같은 값)
+                if let Control::Picture(ref mut picture) = control {
+                    if let Some(ref cd) = ctrl_data {
+                        picture.href = crate::model::image::parse_href_ctrl_data(cd);
+                    }
+                }
+
                 para.controls.push(control);
                 para.ctrl_data_records.push(ctrl_data);
                 continue; // i는 이미 전진됨

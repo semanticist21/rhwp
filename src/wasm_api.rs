@@ -8050,6 +8050,12 @@ impl HwpDocument {
         self.core.license_mark_json()
     }
 
+    /// 문서 정보 > 저작권에 CCL을 적는다. `flag`는 조건 비트(1 영리 불허, 2 변경 불허, 4 동일 조건)다.
+    #[wasm_bindgen(js_name = setLicenseMark)]
+    pub fn set_license_mark(&mut self, flag: u32) -> Result<(), JsValue> {
+        self.core.set_ccl_license_mark(flag).map_err(|e| e.into())
+    }
+
     /// 표·그림·글상자 수(본문·머리말·꼬리말·바탕쪽). 문서 정보 > 문서 통계.
     #[wasm_bindgen(js_name = getObjectCount)]
     pub fn get_object_count(&self) -> String {
@@ -8115,6 +8121,31 @@ impl HwpDocument {
     ) -> Result<String, JsValue> {
         self.insert_auto_number_at_cursor(list_id, para_in_list as usize, pos as usize, kind)
             .map_err(|e| e.into())
+    }
+
+    /// 본문 문단 글자 자리(엔진 글자 좌표)에 쪽 번호(`page`)나 전체 쪽수(`total`) 자동 번호를
+    /// 넣는다. 한컴 입력 > 상용구의 현재 쪽 번호·전체 쪽수다.
+    #[wasm_bindgen(js_name = insertAutoNumber)]
+    pub fn insert_auto_number_api(
+        &mut self,
+        section_idx: u32,
+        para_idx: u32,
+        char_offset: u32,
+        kind: &str,
+    ) -> Result<(), JsValue> {
+        use crate::model::control::AutoNumberType;
+        let number_type = match kind {
+            "page" => AutoNumberType::Page,
+            "total" => AutoNumberType::TotalPage,
+            _ => return Err(JsValue::from_str("모르는 번호 갈래")),
+        };
+        self.insert_auto_number_at(
+            section_idx as usize,
+            para_idx as usize,
+            char_offset as usize,
+            number_type,
+        )
+        .map_err(|e| e.into())
     }
 
     /// 문서 글 전체 — `GetTextFile("TEXT")`. CP949 수치 참조를 적용한 JSON 문자열이다.

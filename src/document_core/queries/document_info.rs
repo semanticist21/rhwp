@@ -14,6 +14,7 @@ use crate::document_core::DocumentCore;
 use crate::error::HwpError;
 use crate::model::bin_data::BinDataType;
 use crate::model::control::Control;
+use crate::model::document::{LICENSE_CCL_BIT, LICENSE_KOGL_BIT};
 use crate::model::paragraph::Paragraph;
 use crate::model::shape::ShapeObject;
 
@@ -311,6 +312,40 @@ fn write_summary_stream(original: Option<&[u8]>, summary: &DocumentSummary) -> V
         }
     }
     set.to_bytes()
+}
+
+/// 한컴 12.30이 CCL 표시에 적는 언어(문서 정보 > 저작권의 재판 관할 '국제').
+const CCL_LANG: u32 = 6;
+
+/// HWPX 머리 꼬리(`compatibleDocument`·`docOption`·`trackchageConfig`)의 `hh:licensemark`를
+/// CCL `flag`로 바꾼다. 없으면 한컴 저장본처럼 `hh:docOption` 끝(`hh:linkinfo` 뒤)에 넣는다.
+fn splice_license_mark(tail: &str, flag: u32) -> String {
+    let mark = format!(r#"<hh:licensemark type="CCL" flag="{flag}" lang="{CCL_LANG}"/>"#);
+    if let Some(start) = tail.find("<hh:licensemark") {
+        let rest = &tail[start..];
+        let len = match (rest.find("/>"), rest.find('>')) {
+            (Some(empty), Some(open)) if empty + 1 == open => empty + 2,
+            _ => rest
+                .find("</hh:licensemark>")
+                .map_or(rest.len(), |end| end + "</hh:licensemark>".len()),
+        };
+        return format!("{}{mark}{}", &tail[..start], &rest[len..]);
+    }
+    if let Some(end) = tail.find("</hh:docOption>") {
+        return format!("{}{mark}{}", &tail[..end], &tail[end..]);
+    }
+    let option = format!("<hh:docOption>{mark}</hh:docOption>");
+    if let Some(at) = tail.find("<hh:docOption/>") {
+        return format!(
+            "{}{option}{}",
+            &tail[..at],
+            &tail[at + "<hh:docOption/>".len()..]
+        );
+    }
+    match tail.find("<hh:trackchageConfig") {
+        Some(at) => format!("{}{option}{}", &tail[..at], &tail[at..]),
+        None => format!("{tail}{option}"),
+    }
 }
 
 fn attr_value(e: &quick_xml::events::BytesStart<'_>, key: &str) -> Option<String> {
@@ -641,40 +676,37 @@ impl DocumentCore {
             .collect()
     }
 
-    /// 저작권 탭의 값 — HWPX `hh:docOption/hh:licensemark`, HWP FileHeader(속성 bit 11 CCL·
-    /// bit 15 공공누리, 오프셋 40 조건 비트, 48 언어). 조건 비트는 한컴 12.30 Mac 저장본에서
-    /// 쟀다: bit 0 영리 불허, bit 1 변경 불허, bit 2 동일 조건 변경 허락. 없으면 `None`.
+    /// 저작권 탭의 값(`Document::license_mark`). 없으면 `None`.
     pub fn license_mark(&self) -> Option<(String, u32, u32)> {
-        let doc = &self.document;
-        if let Some(tail) = &doc.doc_info.hwpx_head_tail {
-            let mut reader = Reader::from_str(tail);
-            loop {
-                match reader.read_event() {
-                    Ok(Event::Start(e)) | Ok(Event::Empty(e))
-                        if e.name().as_ref() == "hh:licensemark" =>
-                    {
-                        let num = |key: &str| {
-                            attr_value(&e, key)
-                                .and_then(|v| v.parse().ok())
-                                .unwrap_or(0)
-                        };
-                        return Some((attr_value(&e, "type")?, num("flag"), num("lang")));
-                    }
-                    Ok(Event::Eof) | Err(_) => return None,
-                    _ => {}
-                }
-            }
+        self.document.license_mark()
+    }
+
+    /// 한컴 12.30 CCL 넣기처럼 문서 정보 > 저작권에 CCL을 적는다(언어 6 국제). HWPX 원본은 머리
+    /// 꼬리의 `hh:docOption`에, 그 밖은 HWP FileHeader에 적는다. 다른 형식으로 저장할 때는
+    /// 직렬화기가 `Document::license_mark`를 그 형식의 자리로 옮긴다.
+    pub fn set_ccl_license_mark(&mut self, flag: u32) -> Result<(), HwpError> {
+        if flag & !0b111 != 0 || flag & 0b110 == 0b110 {
+            return Err(HwpError::InvalidField(format!("CCL 조건이 아님: {flag}")));
         }
-        let raw = doc.header.raw_data.as_deref()?;
-        let props = u32_at(raw, 36)?;
-        let kind = if props & (1 << 11) != 0 {
-            "CCL"
-        } else if props & (1 << 15) != 0 {
-            "KOGL"
-        } else {
-            return None;
-        };
-        Some((kind.to_string(), u32_at(raw, 40)?, u32_at(raw, 48)?))
+        let doc = &mut self.document;
+        if let Some(tail) = doc.doc_info.hwpx_head_tail.as_mut() {
+            *tail = splice_license_mark(tail, flag);
+            return Ok(());
+        }
+        let mut raw = doc
+            .header
+            .raw_data
+            .take()
+            .unwrap_or_else(|| crate::serializer::header::serialize_file_header(&doc.header));
+        // FileHeader는 256바이트다.
+        raw.resize(raw.len().max(256), 0);
+        let props = (u32_at(&raw, 36).unwrap_or(0) & !LICENSE_KOGL_BIT) | LICENSE_CCL_BIT;
+        raw[36..40].copy_from_slice(&props.to_le_bytes());
+        raw[40..44].copy_from_slice(&flag.to_le_bytes());
+        raw[48..52].copy_from_slice(&CCL_LANG.to_le_bytes());
+        doc.header.raw_data = Some(raw);
+        doc.header.flags = props;
+        Ok(())
     }
 
     /// 문서 통계의 표·그림·글상자 수 — 본문과 그 속(표 셀·글상자·캡션), 머리말·꼬리말, 바탕쪽.

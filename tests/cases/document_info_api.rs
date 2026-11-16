@@ -118,3 +118,94 @@ fn license_mark_reads_hwpx_and_hwp_storage() {
     raw[48..52].copy_from_slice(&6u32.to_le_bytes());
     assert_eq!(doc.license_mark(), Some(("CCL".into(), 2, 6)));
 }
+
+/// CCL 넣기 — HWP·HWPX 원본 모두 적은 CCL 이 HWP·HWPX 어느 쪽으로 저장해도 한컴 자리에 남는다.
+#[test]
+fn ccl_license_mark_is_written_to_both_formats() {
+    for name in ["field-01.hwp", "pic2.hwpx"] {
+        let mut doc = open(name);
+        doc.set_ccl_license_mark(5).unwrap();
+        assert_eq!(doc.license_mark(), Some(("CCL".into(), 5, 6)), "{name}");
+        // 한컴처럼 이미 있으면 새 조건으로 바꾼다.
+        doc.set_ccl_license_mark(2).unwrap();
+        assert!(
+            doc.set_ccl_license_mark(6).is_err(),
+            "변경 불허와 동일 조건은 함께 못 쓴다"
+        );
+        assert!(doc.set_ccl_license_mark(8).is_err());
+
+        let hwp = HwpDocument::from_bytes(&doc.export_hwp().unwrap()).unwrap();
+        let raw = hwp.document().header.raw_data.clone().unwrap();
+        let at = |off: usize| u32::from_le_bytes(raw[off..off + 4].try_into().unwrap());
+        assert_ne!(at(36) & (1 << 11), 0, "{name}: FileHeader 속성 bit 11");
+        assert_eq!((at(40), at(48)), (2, 6), "{name}");
+        assert_eq!(hwp.license_mark(), Some(("CCL".into(), 2, 6)), "{name}");
+
+        let hwpx = HwpDocument::from_bytes(&doc.export_hwpx().unwrap()).unwrap();
+        let tail = hwpx.document().doc_info.hwpx_head_tail.clone().unwrap();
+        assert_eq!(tail.matches("<hh:licensemark").count(), 1, "{name}: {tail}");
+        assert!(
+            tail.contains(r#"<hh:licensemark type="CCL" flag="2" lang="6"/></hh:docOption>"#),
+            "{name}: {tail}"
+        );
+    }
+}
+
+fn first_picture(doc: &mut HwpDocument) -> &mut rhwp::model::image::Picture {
+    doc.document_mut().sections[0]
+        .paragraphs
+        .iter_mut()
+        .flat_map(|p| p.controls.iter_mut())
+        .find_map(|c| match c {
+            rhwp::model::control::Control::Picture(p) => Some(p.as_mut()),
+            _ => None,
+        })
+        .expect("그림")
+}
+
+/// HWP 그림 하이퍼링크(CTRL_DATA)를 `href` 로 읽어, HWP 를 HWPX 로 저장해도 그림 링크가 남는다.
+#[test]
+fn hwp_picture_link_is_read_as_href() {
+    let url = "http://creativecommons.org/licenses/by/4.0/deed.ko;1;0;1";
+    let mut doc = open("pic2.hwpx");
+    first_picture(&mut doc).href = Some(url.into());
+    let mut hwp = HwpDocument::from_bytes(&doc.export_hwp().unwrap()).unwrap();
+    assert_eq!(first_picture(&mut hwp).href.as_deref(), Some(url));
+    let mut hwpx = HwpDocument::from_bytes(&hwp.export_hwpx().unwrap()).unwrap();
+    assert_eq!(first_picture(&mut hwpx).href.as_deref(), Some(url));
+}
+
+/// 상용구의 현재 쪽 번호·전체 쪽수 — 글 가운데 넣은 자동 번호가 HWP·HWPX 저장 뒤에도 그 자리에 있다.
+#[test]
+fn auto_number_inserted_mid_text_keeps_its_place() {
+    use rhwp::model::control::{AutoNumberType, Control};
+    let mut doc = open("field-01.hwp");
+    let para = doc.document().sections[0]
+        .paragraphs
+        .iter()
+        .position(|p| p.controls.is_empty() && p.text.chars().count() >= 2)
+        .expect("글만 든 문단");
+    let text = doc.document().sections[0].paragraphs[para].text.clone();
+    doc.insert_auto_number_at(0, para, 1, AutoNumberType::Page)
+        .unwrap();
+    doc.insert_auto_number_at(0, para, 3, AutoNumberType::TotalPage)
+        .unwrap();
+    for bytes in [doc.export_hwp().unwrap(), doc.export_hwpx().unwrap()] {
+        let reopened = HwpDocument::from_bytes(&bytes).unwrap();
+        let p = &reopened.document().sections[0].paragraphs[para];
+        let kinds: Vec<_> = p
+            .controls
+            .iter()
+            .filter_map(|c| match c {
+                Control::AutoNumber(a) => Some(a.number_type),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(kinds, [AutoNumberType::Page, AutoNumberType::TotalPage]);
+        // 자리표 글자 둘이 첫 글자 뒤와 (그 뒤) 둘째 글자 뒤에 있다.
+        let mut expected: Vec<char> = text.chars().collect();
+        expected.insert(1, ' ');
+        expected.insert(3, ' ');
+        assert_eq!(p.text, expected.into_iter().collect::<String>());
+    }
+}

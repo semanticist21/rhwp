@@ -84,6 +84,10 @@ pub struct RawRecord {
     pub data: Vec<u8>,
 }
 
+/// HWP FileHeader 속성(오프셋 36)의 저작권 표시 비트: CCL·공공누리.
+pub const LICENSE_CCL_BIT: u32 = 1 << 11;
+pub const LICENSE_KOGL_BIT: u32 = 1 << 15;
+
 /// HWP 문서 전체를 나타내는 최상위 구조체
 #[derive(Debug, Clone, Default)]
 pub struct Document {
@@ -440,6 +444,46 @@ impl SectionDef {
 }
 
 impl Document {
+    /// 문서 정보 > 저작권의 표시(종류, 조건 비트, 언어) — HWPX `hh:docOption/hh:licensemark`,
+    /// HWP FileHeader(속성 bit 11 CCL·bit 15 공공누리, 오프셋 40 조건 비트, 48 언어). 조건 비트는
+    /// 한컴 12.30 Mac 저장본에서 쟀다: bit 0 영리 불허, bit 1 변경 불허, bit 2 동일 조건 변경 허락.
+    /// HWPX 원본은 머리 꼬리를, HWP 원본은 FileHeader를 읽는다. 없으면 `None`.
+    pub fn license_mark(&self) -> Option<(String, u32, u32)> {
+        use quick_xml::events::Event;
+        if let Some(tail) = &self.doc_info.hwpx_head_tail {
+            let mut reader = quick_xml::Reader::from_str(tail);
+            loop {
+                match reader.read_event() {
+                    Ok(Event::Start(e)) | Ok(Event::Empty(e))
+                        if e.name().as_ref() == "hh:licensemark" =>
+                    {
+                        let attr = |key: &str| {
+                            e.attributes()
+                                .flatten()
+                                .find(|a| a.key.as_ref() == key)
+                                .map(|a| a.value.as_ref().to_string())
+                        };
+                        let num = |key: &str| attr(key).and_then(|v| v.parse().ok()).unwrap_or(0);
+                        return Some((attr("type")?, num("flag"), num("lang")));
+                    }
+                    Ok(Event::Eof) | Err(_) => return None,
+                    _ => {}
+                }
+            }
+        }
+        let raw = self.header.raw_data.as_deref()?;
+        let at = |off: usize| Some(u32::from_le_bytes(raw.get(off..off + 4)?.try_into().ok()?));
+        let props = at(36)?;
+        let kind = if props & LICENSE_CCL_BIT != 0 {
+            "CCL"
+        } else if props & LICENSE_KOGL_BIT != 0 {
+            "KOGL"
+        } else {
+            return None;
+        };
+        Some((kind.to_string(), at(40)?, at(48)?))
+    }
+
     /// HWPX 인쇄 설정의 편집 용지 표시 값. 미기재와 미지원 값은 구분한다.
     pub(crate) fn hwpx_print_crop_mark(settings: &[u8]) -> Option<bool> {
         let xml = std::str::from_utf8(settings).ok()?;

@@ -1950,6 +1950,29 @@ impl DocumentCore {
         };
         let (sec, para_idx) = root_para_location(self, para_in_list)
             .ok_or_else(|| HwpError::InvalidField(format!("본문 문단 {} 없음", para_in_list)))?;
+        self.insert_auto_number_at(sec, para_idx, char_idx, number_type)?;
+        Ok(r#"{"ok":true}"#.to_string())
+    }
+
+    /// 본문 문단 글자 자리 `char_idx`(엔진 글자 좌표)에 쪽 번호·전체 쪽수 자동 번호를 넣는다.
+    /// 한컴 입력 > 상용구의 현재 쪽 번호·전체 쪽수가 넣는 `hp:autoNum` 이다.
+    pub fn insert_auto_number_at(
+        &mut self,
+        sec: usize,
+        para_idx: usize,
+        char_idx: usize,
+        number_type: AutoNumberType,
+    ) -> Result<(), HwpError> {
+        let char_idx = self
+            .document
+            .sections
+            .get(sec)
+            .and_then(|s| s.paragraphs.get(para_idx))
+            .ok_or_else(|| HwpError::InvalidField(format!("문단 {sec}/{para_idx} 없음")))?
+            .text
+            .chars()
+            .count()
+            .min(char_idx);
         let stored_end_for_reset = crate::renderer::composer::paragraph_flow_end(
             &self.document.sections[sec].paragraphs[para_idx],
         );
@@ -1970,10 +1993,25 @@ impl DocumentCore {
                 .iter()
                 .filter(|p| **p < char_idx)
                 .count();
-            // 자리표 글자는 문단이 스스로 넣게 둔다 — `char_offsets`·`char_shapes`·`line_segs` 를
-            // 함께 갱신해 준다. 여기서 지우거나 직접 만지면 `control_text_positions` 가 이 컨트롤을
-            // 문단 맨 앞으로 오해해 캐럿 클램프까지 어긋난다(실제로 한 번 그랬다).
+            // 파서처럼 자리표 글자 한 칸이 컨트롤 자리(8칸)의 첫 칸을 쓴다. 자리표 글자는 문단이
+            // 스스로 넣게 두어 `char_offsets`·`char_shapes`·`line_segs` 를 함께 갱신하고, 남은
+            // 일곱 칸만큼 뒤 글자를 민다. 밀지 않으면 갭이 없어 저장할 때 번호가 문단 끝으로 간다.
             para.insert_text_at(char_idx, " ");
+            if let Some(&next) = para.char_offsets.get(char_idx + 1) {
+                for offset in &mut para.char_offsets[char_idx + 1..] {
+                    *offset += (EXTENDED_CTRL_UNITS - 1) as u32;
+                }
+                para.shift_position_metadata_for_stream_insertion(
+                    next,
+                    (EXTENDED_CTRL_UNITS - 1) as u32,
+                );
+            }
+            for range in &mut para.field_ranges {
+                if range.control_idx >= control_index {
+                    range.control_idx += 1;
+                }
+            }
+            para.align_ctrl_data_records();
             para.controls.insert(
                 control_index,
                 Control::AutoNumber(AutoNumber {
@@ -1981,6 +2019,7 @@ impl DocumentCore {
                     ..Default::default()
                 }),
             );
+            para.ctrl_data_records.insert(control_index, None);
             // 글자 한 칸은 `insert_text_at` 이 이미 셌다 — 컨트롤 몫 일곱만 더한다(합 8칸).
             para.char_count += (EXTENDED_CTRL_UNITS - 1) as u32;
             section.raw_stream = None;
@@ -1999,7 +2038,7 @@ impl DocumentCore {
         );
         self.recompose_section(sec);
         self.paginate();
-        Ok(r#"{"ok":true}"#.to_string())
+        Ok(())
     }
 
     /// 구역마다 **첫 본문 문단 번호** — `MoveSectionUp`·`MoveSectionDown` 이 딛는 자리다.

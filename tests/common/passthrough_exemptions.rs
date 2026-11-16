@@ -1063,4 +1063,16 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         Exempt::SurgicalRawEdit,
         "JSON 을 풀어 update_document_summary 로 요약 원문만 고쳐 쓴다. 구역·DocInfo 패스스루와 무관하다.",
     ),
+    (
+        "queries/document_info.rs",
+        "set_ccl_license_mark",
+        Exempt::SurgicalRawEdit,
+        "저작권 표시는 구역·DocInfo 밖 저장 자리다. HWP FileHeader 원문(raw_data)이나 HWPX 머리 꼬리 원문을 직접 고쳐 쓴다.",
+    ),
+    (
+        "queries/hwpctrl_sets.rs",
+        "insert_auto_number_at_cursor",
+        Exempt::DelegatesTo("insert_auto_number_at"),
+        "커서 좌표를 구역·문단·글자 자리로 풀어 insert_auto_number_at 에 맡긴다. 그 함수가 구역의 raw_stream을 비운다.",
+    ),
 ];
