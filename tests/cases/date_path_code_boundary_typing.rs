@@ -159,3 +159,33 @@ fn typing_into_emptied_code_fills_the_code() {
         &[(FieldType::Date, "X"), (FieldType::Path, PATH)],
     );
 }
+
+/// 문서 요약 코드(한/글 입력 > 상용구, `%smr`)도 저장할 때 다시 쓰이므로 경계의 입력은 밖에 둔다.
+#[test]
+fn typing_at_summary_code_boundaries_stays_outside_the_code() {
+    use rhwp::model::control::Control;
+    let mut core = open();
+    // 날짜 코드를 한/글 상용구의 만든 날짜 코드로 바꾼다.
+    let para = &mut core.document_mut().sections[0].paragraphs[0];
+    for (index, control) in para.controls.iter_mut().enumerate() {
+        if let Control::Field(field) = control {
+            if field.field_type == FieldType::Date {
+                field.field_type = FieldType::Summary;
+                field.ctrl_id = rhwp::parser::tags::FIELD_SUMMARY;
+                field.command = "$createtime".into();
+                for range in &mut para.field_ranges {
+                    if range.control_idx == index {
+                        range.end_field_id = rhwp::parser::tags::FIELD_SUMMARY;
+                    }
+                }
+            }
+        }
+    }
+    core.insert_text_native(0, 0, 13, ", ").unwrap();
+    core.insert_text_native(0, 0, 1, "앞").unwrap();
+    check(
+        core,
+        &[&format!("A앞{DATE}, B"), &format!("{PATH}C")],
+        &[(FieldType::Summary, DATE), (FieldType::Path, PATH)],
+    );
+}
