@@ -250,3 +250,75 @@ fn text_box_attaches_to_a_shape_in_a_header() {
     );
     assert!(header_shapes(&doc)[0].drawing().unwrap().text_box.is_none());
 }
+
+/// 표 셀 안 도형의 글상자 글은 표 셀 단계부터 시작하는 경로로 커서·히트를 낸다.
+/// 한컴 12.30은 셀 안 글상자를 누르면 그 안에 캐럿을 두고 글을 친다. 경로가 도형 단계만 있으면
+/// 표를 품은 본문 문단의 컨트롤을 도형으로 잘못 찾아 커서를 잃는다.
+#[test]
+fn text_in_a_cell_text_box_has_a_full_path_caret_and_hit() {
+    let mut doc = blank();
+    let (para, ctrl) = rect(&mut doc);
+    // 셀 안에 그려지도록 문단 기준으로 둔다(한컴이 셀 안에 그린 도형과 같은 기준).
+    doc.set_shape_properties_native(
+        0,
+        para,
+        ctrl,
+        r#"{"horzRelTo":"Para","vertRelTo":"Para","horzOffset":0,"vertOffset":0}"#,
+    )
+    .unwrap();
+    doc.copy_control_native(0, para, &[], ctrl).unwrap();
+    let table: serde_json::Value =
+        serde_json::from_str(&doc.create_table_native(0, 0, 0, 1, 1).unwrap()).unwrap();
+    let host = table["paraIdx"].as_u64().unwrap() as usize;
+    let table_ctrl = table["controlIdx"].as_u64().unwrap() as usize;
+    paste_rect(&mut doc, host, &[(table_ctrl, 0, 0)]);
+    let inner_ctrl = match &doc.document().sections[0].paragraphs[host].controls[table_ctrl] {
+        Control::Table(t) => t.cells[0].paragraphs[0]
+            .controls
+            .iter()
+            .position(|c| matches!(c, Control::Shape(_)))
+            .expect("셀에 붙인 도형이 없다"),
+        _ => panic!("표가 아니다"),
+    };
+    let cell_path = format!(r#"[{{"controlIndex":{table_ctrl},"cellIndex":0,"cellParaIndex":0}}]"#);
+    doc.set_text_box_at_by_path_native(0, host, &cell_path, inner_ctrl, true)
+        .unwrap();
+    let path = [(table_ctrl, 0, 0), (inner_ctrl, 0, 0)];
+    doc.insert_text_in_cell_by_path(0, host, &path, 0, "가나다")
+        .unwrap();
+
+    let path_json = format!(
+        r#"[{{"controlIndex":{table_ctrl},"cellIndex":0,"cellParaIndex":0}},{{"controlIndex":{inner_ctrl},"cellIndex":0,"cellParaIndex":0}}]"#
+    );
+    let rect: serde_json::Value = serde_json::from_str(
+        &doc.get_cursor_rect_by_path(0, host as u32, &path_json, 1)
+            .expect("셀 안 글상자 글의 커서"),
+    )
+    .unwrap();
+    let (x, y, h) = (
+        rect["x"].as_f64().unwrap(),
+        rect["y"].as_f64().unwrap(),
+        rect["height"].as_f64().unwrap(),
+    );
+    let hit: serde_json::Value =
+        serde_json::from_str(&doc.hit_test_native(0, x + 1.0, y + h / 2.0).unwrap()).unwrap();
+    assert_eq!(hit["parentParaIndex"], host, "{hit}");
+    assert_eq!(hit["charOffset"], 1, "{hit}");
+    let hit_path: Vec<(u64, u64, u64)> = hit["cellPath"]
+        .as_array()
+        .unwrap_or_else(|| panic!("경로 없음: {hit}"))
+        .iter()
+        .map(|e| {
+            (
+                e["controlIndex"].as_u64().unwrap(),
+                e["cellIndex"].as_u64().unwrap(),
+                e["cellParaIndex"].as_u64().unwrap(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        hit_path,
+        vec![(table_ctrl as u64, 0, 0), (inner_ctrl as u64, 0, 0)],
+        "{hit}"
+    );
+}
