@@ -1,5 +1,5 @@
 // 검사 유형: 관계형 소스 가드의 위임 분류. PDF 일치율·실물 px 기대값은 비해당이다.
-// 주석 갱신: 2026-11-10 15:57 KST.
+// 주석 갱신: 2026-11-17 01:05 KST.
 /// 무효화하지 않는 `pub fn (&mut self)` 전수 목록 — (파일, 함수, 분류, 근거).
 ///
 /// 파일 경로는 [`SCAN_ROOT`] 기준 상대 경로다. 병합 `devel` 기준 46건(2026-08-30 동결).
@@ -1086,5 +1086,29 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "insert_auto_number_at_cursor",
         Exempt::DelegatesTo("insert_auto_number_at"),
         "커서 좌표를 구역·문단·글자 자리로 풀어 insert_auto_number_at 에 맡긴다. 그 함수가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "queries/bookmark_query.rs",
+        "add_bookmark_at_native",
+        Exempt::DelegatesTo("bookmark_edited"),
+        "보통 책갈피를 넣은 뒤 주소 공통 후처리에 맡긴다. 그 helper가 구역 raw_stream을 비우고 다시 조판한다(바탕쪽은 구역 정의도 옮긴다).",
+    ),
+    (
+        "queries/bookmark_query.rs",
+        "add_block_bookmark_native",
+        Exempt::DelegatesTo("bookmark_edited"),
+        "블록 책갈피를 넣은 뒤 주소 공통 후처리에 맡긴다. 그 helper가 구역 raw_stream을 비우고 다시 조판한다(바탕쪽은 구역 정의도 옮긴다).",
+    ),
+    (
+        "queries/bookmark_query.rs",
+        "rename_bookmark_at_native",
+        Exempt::DelegatesTo("bookmark_edited"),
+        "책갈피 이름을 바꾼 뒤 주소 공통 후처리에 맡긴다. 그 helper가 구역 raw_stream을 비우고 다시 조판한다(바탕쪽은 구역 정의도 옮긴다).",
+    ),
+    (
+        "queries/bookmark_query.rs",
+        "delete_bookmark_at_native",
+        Exempt::DelegatesTo("bookmark_edited"),
+        "책갈피를 지운 뒤 주소 공통 후처리에 맡긴다. 그 helper가 구역 raw_stream을 비우고 다시 조판한다(바탕쪽은 구역 정의도 옮긴다).",
     ),
 ];

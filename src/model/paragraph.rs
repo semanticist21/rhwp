@@ -1420,6 +1420,33 @@ impl Paragraph {
         true
     }
 
+    /// 다른 문단에서 끝나는 필드(고아 끝 표지 짝)의 BEGIN 자리만 걷어내고 뒤 글은 남긴다.
+    ///
+    /// 같은 문단에서 닫히는 필드는 [`Self::unwrap_field_control`]을 쓴다. 자리를 찾지 못하면
+    /// 아무것도 바꾸지 않고 `false` 를 돌려준다.
+    pub(crate) fn remove_unclosed_field_begin(&mut self, control_idx: usize) -> bool {
+        if !matches!(self.controls.get(control_idx), Some(Control::Field(_)))
+            || self
+                .field_ranges
+                .iter()
+                .any(|range| range.control_idx == control_idx)
+        {
+            return false;
+        }
+        let Some((begin, _)) = crate::serializer::body_text::control_stream_slots(self)
+            .get(control_idx)
+            .copied()
+            .flatten()
+        else {
+            return false;
+        };
+        self.remove_stream_slot(begin, true);
+        // 컨트롤 항목을 빼며 그 8유닛도 char_count 에서 뺀다.
+        self.remove_control_entry(control_idx);
+        self.invalidate_layout_inputs();
+        true
+    }
+
     /// 제목 차례 표시 하나를 그 8유닛 자리와 함께 걷어낸다.
     pub(crate) fn remove_title_mark(&mut self, index: usize) {
         if index >= self.title_marks.len() {
