@@ -1755,7 +1755,9 @@ fn write_picture_extra<W: std::io::Write>(
             w.write_bytes(&extra[start..])?;
             // 생략된 alpha는 기본 불투명이다. 투명도를 실제로 편집한 경우만
             // 새 꼬리를 붙이며 원본의 누락된 크기를 임의로 materialize하지 않는다.
-            if pic.image_attr.clamped_transparency() > 0 {
+            if pic.image_attr.clamped_transparency() > 0
+                || (extra.len() == start && pic.img_dim != (0, 0))
+            {
                 if extra.len() == start {
                     // crop 끝점은 전체 원본 크기가 아니다. 알려지지 않은
                     // imgDim은 0으로 유지해 실제 bitmap의 기존 기준을 보존한다.
@@ -1779,7 +1781,12 @@ fn write_picture_extra<W: std::io::Write>(
         }
     } else {
         w.write_bytes(extra)?;
-        if transparency > 0 {
+        if layout.dim_offset.is_none() && pic.img_dim != (0, 0) {
+            // 원본 크기가 없는 옛 꼬리: 자르기로 굳힌 imgDim을 한컴처럼 투명도와 함께 붙인다.
+            w.write_u32(pic.img_dim.0)?;
+            w.write_u32(pic.img_dim.1)?;
+            w.write_u8(transparency)?;
+        } else if transparency > 0 {
             let width = if pic.shape_attr.original_width > 0 {
                 pic.shape_attr.original_width
             } else {

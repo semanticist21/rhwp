@@ -211,3 +211,42 @@ fn crop_extent_without_img_dim_follows_decoded_pixels() {
         )
     );
 }
+
+/// 옛 HWP 그림(한컴이 만든 머리말 그림 표본)은 imgDim 꼬리가 없고 자르기 끝점이 픽셀×75와 다르다
+/// (2480×314px, 자르기 끝점 186000×23580). 한컴 12.30은 이 그림을 저장할 때 자르기 끝점을 imgDim으로
+/// 쓴다. 자르면 그 기준을 imgDim으로 굳혀 자르기 범위가 바뀌지 않고, HWP·HWPX에 남는다.
+#[test]
+fn cropping_picture_without_img_dim_keeps_crop_extent() {
+    let (core, para, ctrl) = with_picture(20000);
+    let mut old = DocumentCore::from_bytes(&core.export_hwp_native().unwrap()).unwrap();
+    {
+        let Control::Picture(p) =
+            &mut old.document_mut().sections[0].paragraphs[para].controls[ctrl]
+        else {
+            unreachable!()
+        };
+        // 16px 그림을 옛 꼬리(원본 크기 없음)와 픽셀×75(1200)와 다른 자르기 끝점 1215로 만든다.
+        p.img_dim = (0, 0);
+        p.raw_picture_extra.truncate(9);
+        p.crop.bottom = 1215;
+        p.shape_attr.original_width = 1200;
+        p.shape_attr.original_height = 1215;
+    }
+    let props = |core: &DocumentCore| -> serde_json::Value {
+        serde_json::from_str(&core.get_picture_properties_native(0, para, ctrl).unwrap()).unwrap()
+    };
+    assert_eq!(props(&old)["cropExtentHeight"], 1215);
+    old.set_picture_properties_native(0, para, ctrl, r#"{"cropBottom":300}"#)
+        .unwrap();
+    assert_eq!(picture(&old).img_dim, (1200, 1215));
+    assert_eq!(picture(&old).crop.bottom, 915);
+    for (format, reopened) in reopened(&old) {
+        let v = props(&reopened);
+        assert_eq!(
+            (&v["cropExtentHeight"], &v["cropBottom"]),
+            (&serde_json::json!(1215), &serde_json::json!(300)),
+            "{format}"
+        );
+        assert_eq!(picture(&reopened).img_dim, (1200, 1215), "{format}");
+    }
+}

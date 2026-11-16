@@ -252,6 +252,17 @@ impl DocumentCore {
         bottom: i32,
     ) {
         let (extent_w, extent_h) = Self::picture_crop_extent_hu(pic, pixel_size);
+        // imgDim이 없는 그림(옛 HWP)은 자르기 기준을 자르기 끝점·디코딩 픽셀에서 추정하므로 자르면
+        // 기준이 바뀐다. 한컴 12.30은 이 그림을 저장할 때 자르기 전 기준(자르기 끝점 186000×23580)을
+        // imgDim으로 쓰므로, 자르기 양이 바뀔 때 그 기준을 imgDim으로 굳힌다.
+        if pic.img_dim == (0, 0)
+            && extent_w > 0
+            && extent_h > 0
+            && Self::picture_crop_ui_amounts(pic, pixel_size)
+                != (left.max(0), top.max(0), right.max(0), bottom.max(0))
+        {
+            pic.img_dim = (extent_w.unsigned_abs(), extent_h.unsigned_abs());
+        }
         pic.crop.left = left.max(0);
         pic.crop.top = top.max(0);
         if extent_w > 0 {
