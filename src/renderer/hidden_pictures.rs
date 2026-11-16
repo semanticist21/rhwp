@@ -159,7 +159,7 @@ mod tests {
         let cell_fill = node(&mut tree, image(None, true));
         let mut shape = node(
             &mut tree,
-            RenderNodeType::Rectangle(RectangleNode::new(ShapeStyle::default(), None)),
+            RenderNodeType::Rectangle(RectangleNode::new(0.0, ShapeStyle::default(), None)),
         );
         shape.children.push(node(&mut tree, image(None, true)));
         let mut column = node(&mut tree, RenderNodeType::Column(0));
