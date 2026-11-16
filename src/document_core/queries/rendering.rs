@@ -8819,6 +8819,9 @@ impl DocumentCore {
             &mut tree,
             crate::renderer::DEFAULT_DPI,
         );
+        if !self.show_pictures {
+            crate::renderer::hidden_pictures::hide_pictures(&mut tree);
+        }
         Ok(tree)
     }
 
