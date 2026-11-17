@@ -233,3 +233,69 @@ fn floating_picture_moves_inside_its_effect_box_like_hancom() {
     );
     assert!((shadow.y - plain.y - expected).abs() < 0.01);
 }
+
+/// "가" + 글자처럼 취급한 32px 그림 + "나", 다음 문단 "다음".
+fn inline_doc_with(effects: &str) -> HwpDocument {
+    let mut doc = HwpDocument::create_empty();
+    doc.create_blank_document_native().unwrap();
+    doc.insert_text_native(0, 0, 0, "가나").unwrap();
+    doc.split_paragraph_native(0, 0, 2, None).unwrap();
+    doc.insert_text_native(0, 1, 0, "다음").unwrap();
+    let ctrl = doc.document().sections[0].paragraphs[0].controls.len();
+    doc.insert_picture_native(
+        0,
+        0,
+        1,
+        &[],
+        &png(),
+        2400,
+        2400,
+        32,
+        32,
+        "png",
+        "",
+        None,
+        None,
+    )
+    .unwrap();
+    let ctrl = doc.document().sections[0].paragraphs[0]
+        .controls
+        .iter()
+        .position(|c| matches!(c, rhwp::model::control::Control::Picture(_)))
+        .unwrap_or(ctrl);
+    doc.set_picture_properties_native(0, 0, ctrl, r#"{"treatAsChar":true}"#)
+        .unwrap();
+    doc.set_picture_effects_native(0, 0, &[], ctrl, effects)
+        .unwrap();
+    doc
+}
+
+/// 쪽 렌더 트리에서 글자 text를 담은 첫 글 조각의 상자.
+fn text_box(doc: &HwpDocument, text: &str) -> BoundingBox {
+    use rhwp::renderer::render_tree::{RenderNode, RenderNodeType};
+    fn find(node: &RenderNode, text: &str) -> Option<BoundingBox> {
+        if let RenderNodeType::TextRun(run) = &node.node_type {
+            if run.text.contains(text) {
+                return Some(node.bbox);
+            }
+        }
+        node.children.iter().find_map(|c| find(c, text))
+    }
+    find(&doc.build_page_render_tree(0).unwrap().root, text).unwrap()
+}
+
+#[test]
+fn inline_picture_takes_its_effect_box_in_the_line_like_hancom() {
+    let plain = inline_doc_with(r#"{"shadow":null}"#);
+    // 네온 15pt(20px): 한컴은 줄 안 자리를 사방 20px 넓히고 그림을 그 안쪽에 그린다.
+    let glow = inline_doc_with(r##"{"glow":{"alpha":0.5,"radius":1500,"color":"#b2b2b2"}}"##);
+    let (p, g) = (picture_frame(&plain), picture_frame(&glow));
+    assert!((g.x - p.x - 20.0).abs() < 0.5, "{g:?} {p:?}");
+    let after = text_box(&glow, "나").x - text_box(&plain, "나").x;
+    assert!((after - 40.0).abs() < 0.5, "뒤 글자는 {after}px 밀렸다");
+    let below = text_box(&glow, "다음").y - text_box(&plain, "다음").y;
+    assert!((below - 40.0).abs() < 0.5, "다음 문단은 {below}px 내려갔다");
+    // 옅은 테두리는 자리를 넓히지 않는다.
+    let soft = inline_doc_with(r#"{"softEdge":1500}"#);
+    assert!((text_box(&soft, "다음").y - text_box(&plain, "다음").y).abs() < 0.01);
+}

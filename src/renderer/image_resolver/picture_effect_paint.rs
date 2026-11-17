@@ -229,6 +229,78 @@ fn effect_origin_shift(image: &ImageNode, frame: BoundingBox, dpi: f64) -> (f64,
     })
 }
 
+/// 한컴 12.30이 글자처럼 취급한 그림의 줄 안 자리를 넓히는 효과 여백 [왼쪽, 오른쪽, 위, 아래] (HWPUNIT).
+/// `w`·`h`는 그림 틀 크기다. 한컴 저장본의 줄 높이와 PDF의 글자·그림 위치로 맞춘 식이다
+/// (단일 효과·조합·그림 스타일 견본 85개, 2026-11-17):
+/// - 바깥 그림자·네온·반사가 없으면 넓히지 않는다(옅은 테두리·안쪽 그림자·테두리만 있는 그림).
+/// - 테두리가 있으면 그림 틀을 (굵기 + 79)만큼 넓힌 상자에서 시작한다.
+/// - 네온은 반경만큼 넓힌다. 바깥 그림자는 그 상자를 기울이고 늘여 옮긴 뒤 흐림 반경(96dpi 화소로 올림)만큼
+///   넓혀 합친다.
+/// - 반사는 그 상자를 테두리 상자 아래 끝에서 뒤집어 거리(화소로 반올림)만큼 내린 모양이고, 흐림 반경만큼
+///   좌우로 넓으며 끝 위치까지 보인다.
+pub(crate) fn inline_effect_outsets_hu(pic: &Picture, w: i32, h: i32) -> [i32; 4] {
+    let e = &pic.effects;
+    let shadow = e
+        .shadow
+        .as_ref()
+        .filter(|s| s.style.as_deref() != Some("INSIDE"));
+    if shadow.is_none() && e.glow.is_none() && e.reflection.is_none() {
+        return [0; 4];
+    }
+    const PX: f64 = 75.0;
+    let ceil_px = |v: f64| (v / PX - 1e-9).ceil().max(0.0) * PX;
+    let (w, h) = (f64::from(w), f64::from(h));
+    let border = pic.border_attr.attr & 0x3f != 0;
+    let pad = if border {
+        f64::from(pic.border_width.max(0)) + 79.0
+    } else {
+        0.0
+    };
+    let frame = Rect {
+        x: -pad,
+        y: -pad,
+        w: w + 2.0 * pad,
+        h: h + 2.0 * pad,
+    };
+    let mut k = frame;
+    if let Some(g) = &e.glow {
+        k = k.grow(num(g.radius.as_deref()).max(0.0));
+    }
+    if let Some(s) = shadow {
+        let offset = polar(num(s.direction.as_deref()), num(s.distance.as_deref()));
+        let t = Affine::new(
+            k,
+            s.align_style.as_deref(),
+            s.skew.as_ref(),
+            s.scale.as_ref(),
+            offset,
+        );
+        let b = bounds(k.corners().map(|p| t.forward(p))).grow(ceil_px(num(s.radius.as_deref())));
+        k = bounds(k.corners().into_iter().chain(b.corners()));
+    }
+    // ponytail: 한컴 견본처럼 아래로 뒤집은 반사만 잰다. 다른 방향 반사는 견본이 생기면 넓힌다.
+    if let Some(r) = &e.reflection {
+        let blur = ceil_px(num(r.radius.as_deref()));
+        let end = r
+            .pos
+            .as_ref()
+            .and_then(|p| p.end.as_deref())
+            .map_or(1.0, |v| num(Some(v)))
+            .clamp(0.0, 1.0);
+        let axis = frame.y + frame.h;
+        let below = k.y + k.h - axis;
+        let length = end * (k.h + if border { 0.0 } else { 2.0 * blur }) - blur;
+        let bottom = axis + (num(r.distance.as_deref()) / PX).round() * PX - below + length;
+        k = Rect {
+            x: k.x - blur,
+            y: k.y,
+            w: k.w + 2.0 * blur,
+            h: bottom.max(k.y + k.h) - k.y,
+        };
+    }
+    [-k.x, k.x + k.w - w, -k.y, k.y + k.h - h].map(|v| v.round().max(0.0) as i32)
+}
+
 fn border_outset(fx: &PictureEffectPaint, dpi: f64) -> f64 {
     // 테두리는 그림 안으로 한 화면 픽셀(75HU)까지 겹치고 나머지가 바깥으로 자란다(picture_border).
     let px = |hu: f64| hu * dpi / 7200.0;
@@ -827,6 +899,102 @@ fn saturate(c: [f64; 3], factor: f64) -> [f64; 3] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// 4800×3600HU 그림에 앱 효과 JSON(과 테두리 굵기)을 건 효과 여백.
+    fn inline_outsets(json: &str, border: Option<i32>) -> [i32; 4] {
+        let mut pic = Picture::default();
+        pic.effects =
+            crate::model::picture_effects::apply_picture_effects_json(&pic.effects, json).unwrap();
+        if let Some(width) = border {
+            pic.border_attr.attr = 1;
+            pic.border_width = width;
+        }
+        inline_effect_outsets_hu(&pic, 4800, 3600)
+    }
+
+    const SHADOW: &str = r##""alpha":0.5,"alignStyle":"CENTER","skewX":0,"skewY":0,"scaleX":1,"scaleY":1,"color":"#000000""##;
+    const REFLECTION: &str = r#""alignStyle":"BOTTOM_LEFT","direction":90,"fadeDirection":90,"skewX":0,"skewY":0,"scaleX":1,"scaleY":-1,"startAlpha":0.5,"endAlpha":0.997,"startPos":0"#;
+
+    /// 한컴 12.30 저장본의 줄 높이(그림 높이 + 위·아래 여백)와 PDF의 그림·글자 위치로 잰 값이다.
+    #[test]
+    fn inline_effect_box_matches_hancom_line_room() {
+        let shadow = |r: i32, dir: i32, d: i32, extra: &str| {
+            format!(
+                r#"{{"shadow":{{"style":"OUTSIDE","radius":{r},"direction":{dir},"distance":{d},{SHADOW}{extra}}}}}"#
+            )
+        };
+        let refl = |r: i32, d: i32, end: f64| {
+            format!(
+                r#"{{"reflection":{{"radius":{r},"distance":{d},"endPos":{end},{REFLECTION}}}}}"#
+            )
+        };
+        // 네온은 반경 그대로 사방으로 넓힌다.
+        assert_eq!(
+            inline_outsets(
+                r##"{"glow":{"alpha":0.5,"radius":500,"color":"#6182d6"}}"##,
+                None
+            ),
+            [500; 4]
+        );
+        // 그림자 흐림 반경은 96dpi 화소로 올린다(1000HU → 14px). 30° 1500HU 옮긴 상자의 위는 300만 남는다.
+        assert_eq!(
+            inline_outsets(&shadow(1000, 30, 1500, ""), None),
+            [0, 2349, 300, 1800]
+        );
+        assert_eq!(inline_outsets(&shadow(100, 0, 0, ""), None), [150; 4]);
+        // 오른쪽 아래 그림자: 위·아래 합 1199(한컴).
+        assert_eq!(
+            inline_outsets(&shadow(600, 45, 600, ""), None),
+            [176, 1024, 176, 1024]
+        );
+        // 원근감 아래: 아래 끝을 기준으로 ¼로 뒤집어 2500 내린다(위아래 합 3999).
+        let perspective = shadow(600, 90, 2500, "")
+            .replace(r#""alignStyle":"CENTER""#, r#""alignStyle":"BOTTOM""#)
+            .replace(r#""scaleY":1"#, r#""scaleY":-0.25"#);
+        assert_eq!(inline_outsets(&perspective, None), [600, 600, 0, 4000]);
+        // 반사는 흐림 반경만큼 좌우로 넓고, 거리는 화소로 반올림하며 끝 위치까지 보인다.
+        assert_eq!(inline_outsets(&refl(50, 0, 0.5), None), [75, 75, 0, 1800]);
+        assert_eq!(inline_outsets(&refl(50, 800, 1.0), None), [75, 75, 0, 4500]);
+        assert!((inline_outsets(&refl(50, 400, 0.35), None)[3] - 1612).abs() <= 1);
+        assert_eq!(inline_outsets(&refl(500, 800, 1.0), None)[3], 4950);
+        // 옅은 테두리·안쪽 그림자·테두리만 있는 그림은 넓히지 않는다.
+        assert_eq!(inline_outsets(r#"{"softEdge":3000}"#, None), [0; 4]);
+        assert_eq!(
+            inline_outsets(
+                &shadow(600, 225, 600, "").replace("OUTSIDE", "INSIDE"),
+                None
+            ),
+            [0; 4]
+        );
+        assert_eq!(inline_outsets("{}", Some(1984)), [0; 4]);
+        // 테두리가 있으면 (굵기 + 79)만큼 넓힌 상자에 효과를 건다: 그림 스타일 '흰 테두리 그림자'(위아래 합 3958).
+        let style = inline_outsets(
+            &shadow(1000, 90, 600, "")
+                .replace(r#""alignStyle":"CENTER""#, r#""alignStyle":"BOTTOM""#),
+            Some(850),
+        );
+        assert_eq!(style[2] + style[3], 3958);
+        // 네온과 그림자는 겹쳐 넓힌다(위아래 합 3199).
+        let both = inline_outsets(
+            &shadow(600, 45, 600, "").replace(
+                r#"}}"#,
+                r##"},"glow":{"alpha":0.5,"radius":1000,"color":"#289b6e"}}"##,
+            ),
+            None,
+        );
+        assert_eq!(both, [1176, 2024, 1176, 2024]);
+        // 반사를 다른 효과·테두리와 함께 걸면 한컴과 1px(75HU) 안에서 맞는다(한컴 7258·2825).
+        let framed = inline_outsets(&refl(50, 0, 1.0), Some(850));
+        assert!((framed[2] + framed[3] - 7258).abs() < 75, "{framed:?}");
+        let glowing = inline_outsets(
+            &refl(50, 0, 0.5).replace(
+                r#"}}"#,
+                r##"},"glow":{"alpha":0.5,"radius":1000,"color":"#289b6e"}}"##,
+            ),
+            None,
+        );
+        assert!((glowing[2] + glowing[3] - 2825).abs() < 75, "{glowing:?}");
+    }
 
     #[test]
     fn blurred_box_is_half_at_edge_and_full_inside() {

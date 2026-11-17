@@ -127,10 +127,7 @@ pub(crate) fn normalized_host_with_table_height_with_storage<S: crate::storage::
             Control::Picture(picture)
                 if picture.common.treat_as_char && picture.caption.is_none() =>
             {
-                super::inline_picture_size_hu(picture)
-                    .1
-                    .checked_add(i32::from(picture.common.margin.top))?
-                    .checked_add(i32::from(picture.common.margin.bottom))?
+                super::inline_picture_occupied_size_hu(picture).1
             }
             Control::Form(form) if form.common.treat_as_char => i32::try_from(form.height)
                 .ok()?

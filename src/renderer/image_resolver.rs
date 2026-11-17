@@ -42,7 +42,9 @@ mod picture_soft_edge;
 pub(crate) use picture_adjustments::{
     adjusted_picture_bytes, picture_tone_parameters, resolve_page_background_tone,
 };
-pub(crate) use picture_effect_paint::{prepare_picture_effects, PictureEffectOps};
+pub(crate) use picture_effect_paint::{
+    inline_effect_outsets_hu, prepare_picture_effects, PictureEffectOps,
+};
 pub use picture_effect_paint::{shift_floating_pictures_for_effects, PictureEffectPaint};
 pub(crate) use picture_soft_edge::prepare_picture_soft_edge;
 mod wmf_picture;

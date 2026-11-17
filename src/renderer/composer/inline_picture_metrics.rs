@@ -9,19 +9,25 @@ pub(crate) fn inline_picture_size_hu(picture: &Picture) -> (i32, i32) {
     crate::renderer::stored_picture_metrics::stored_picture_size_hu(picture)
 }
 
+/// 글자처럼 그림의 바깥 여백 [왼쪽, 오른쪽, 위, 아래] (HWPUNIT).
+/// 개체 바깥 여백에 한컴 12.30처럼 그림 효과(그림자·네온·반사)가 덮는 만큼을 더한다.
+pub(crate) fn inline_picture_margins_hu(picture: &Picture) -> [i32; 4] {
+    let (width, height) = inline_picture_size_hu(picture);
+    let effect = crate::renderer::image_resolver::inline_effect_outsets_hu(picture, width, height);
+    let m = &picture.common.margin;
+    let margin = [m.left, m.right, m.top, m.bottom].map(i32::from);
+    std::array::from_fn(|i| margin[i].saturating_add(effect[i]))
+}
+
 /// 글줄이 예약하는 그림 상자는 잉크와 바깥 여백을 함께 포함한다.
 /// 독립 한컴 재저장본도 위·아래 여백을 포함한 높이로 LineSeg를 발행한다.
 /// 실제 잉크 배치는 기존 원점에서 같은 여백 안쪽을 소비한다.
 pub(crate) fn inline_picture_occupied_size_hu(picture: &Picture) -> (i32, i32) {
     let (width, height) = inline_picture_size_hu(picture);
-    let margin = &picture.common.margin;
+    let [left, right, top, bottom] = inline_picture_margins_hu(picture);
     (
-        width
-            .saturating_add(i32::from(margin.left))
-            .saturating_add(i32::from(margin.right)),
-        height
-            .saturating_add(i32::from(margin.top))
-            .saturating_add(i32::from(margin.bottom)),
+        width.saturating_add(left).saturating_add(right),
+        height.saturating_add(top).saturating_add(bottom),
     )
 }
 
@@ -93,11 +99,7 @@ pub(super) fn refresh_picture_rows_with_storage<S: crate::storage::Storage>(
         let mut descent = text_height - ascent;
         let mut spacing_height = text_height;
         for picture in pictures {
-            let margin = &picture.common.margin;
-            let height = inline_picture_size_hu(picture)
-                .1
-                .saturating_add(i32::from(margin.top))
-                .saturating_add(i32::from(margin.bottom));
+            let height = inline_picture_occupied_size_hu(picture).1;
             let baseline = (f64::from(height)
                 * inline_picture_ascent_ratio(style.vertical_alignment))
             .round() as i32;

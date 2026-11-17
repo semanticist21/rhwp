@@ -3,7 +3,7 @@
 use crate::model::{control::Control, image::Picture, paragraph::Paragraph};
 use crate::renderer::style_resolver::{ResolvedParaStyle, ResolvedStyleSet};
 use crate::renderer::{
-    composer::{inline_picture_ascent_ratio, inline_picture_size_hu},
+    composer::{inline_picture_ascent_ratio, inline_picture_margins_hu, inline_picture_size_hu},
     hwpunit_to_px,
 };
 
@@ -72,11 +72,8 @@ pub(super) fn picture_box(
     dpi: f64,
 ) -> InlineFlowBox {
     let (width, height) = inline_picture_size_hu(picture);
-    let margin = &picture.common.margin;
-    let left = hwpunit_to_px(i32::from(margin.left), dpi);
-    let right = hwpunit_to_px(i32::from(margin.right), dpi);
-    let top = hwpunit_to_px(i32::from(margin.top), dpi);
-    let bottom = hwpunit_to_px(i32::from(margin.bottom), dpi);
+    let [left, right, top, bottom] =
+        inline_picture_margins_hu(picture).map(|v| hwpunit_to_px(v, dpi));
     let height = hwpunit_to_px(height, dpi) + top + bottom;
     let ascent = inline_picture_ascent_ratio(style.vertical_alignment);
     InlineFlowBox {

@@ -1760,13 +1760,56 @@ impl DocumentCore {
         control_idx: usize,
         effects_json: &str,
     ) -> Result<String, HwpError> {
+        let stored_end_before = self
+            .document
+            .sections
+            .get(section_idx)
+            .and_then(|section| section.paragraphs.get(parent_para_idx))
+            .and_then(crate::renderer::composer::paragraph_flow_end);
         let pic =
             self.picture_image_target_mut(section_idx, parent_para_idx, cell_path, control_idx)?;
         let next =
             crate::model::picture_effects::apply_picture_effects_json(&pic.effects, effects_json)
                 .map_err(HwpError::RenderError)?;
+        // 글자처럼 취급한 그림은 한컴처럼 효과 상자만큼 줄 안 자리를 차지하므로 저장 줄을 다시 낸다.
+        let room = |pic: &crate::model::image::Picture| {
+            pic.common
+                .treat_as_char
+                .then(|| crate::renderer::composer::inline_picture_margins_hu(pic))
+        };
+        let room_before = room(pic);
         pic.set_effects(next);
+        let room_changed = room_before != room(pic);
         self.document.sections[section_idx].raw_stream = None;
+        if room_changed {
+            if let Some(&(_, _, cell_para)) = cell_path.last() {
+                self.reflow_cell_paragraph_by_path(
+                    section_idx,
+                    parent_para_idx,
+                    cell_path,
+                    cell_para,
+                );
+                self.recalculate_cell_paragraph_vpos_by_path(
+                    section_idx,
+                    parent_para_idx,
+                    cell_path,
+                    cell_para,
+                    None,
+                );
+            } else {
+                self.reflow_paragraph(section_idx, parent_para_idx);
+                let hwp3_layout = self.document.layout_profile().hwp3_layout();
+                crate::renderer::composer::recalculate_section_vpos(
+                    &mut self.document.sections[section_idx].paragraphs,
+                    parent_para_idx,
+                    None,
+                    stored_end_before,
+                    &self.styles,
+                    self.dpi,
+                    hwp3_layout,
+                );
+            }
+        }
         self.after_picture_image_edit(section_idx, parent_para_idx, control_idx);
         Ok("{\"ok\":true}".to_string())
     }

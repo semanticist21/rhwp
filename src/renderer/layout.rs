@@ -15969,7 +15969,9 @@ impl LayoutEngine {
                                 let outer_bottom = match para.controls.get(control_index) {
                                     Some(Control::Table(table)) => table.outer_margin_bottom as i32,
                                     Some(Control::Picture(picture)) => {
-                                        i32::from(picture.common.margin.bottom)
+                                        crate::renderer::composer::inline_picture_margins_hu(
+                                            picture,
+                                        )[3]
                                     }
                                     Some(Control::Shape(shape)) => {
                                         i32::from(shape.common().margin.bottom)

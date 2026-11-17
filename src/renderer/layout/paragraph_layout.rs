@@ -1880,7 +1880,9 @@ pub(crate) fn tac_picture_outer_margins_px(
     pic: &crate::model::image::Picture,
     dpi: f64,
 ) -> (f64, f64, f64, f64) {
-    tac_object_outer_margins_px(&pic.common, dpi)
+    let [left, right, top, bottom] =
+        crate::renderer::composer::inline_picture_margins_hu(pic).map(|v| hwpunit_to_px(v, dpi));
+    (left, right, top, bottom)
 }
 
 /// [#6606] 글자처럼 개체(그림·도형·묶음 공통)의 바깥 여백(px) — (왼쪽, 오른쪽, 위, 아래).
@@ -3668,12 +3670,10 @@ impl LayoutEngine {
                         )
                 }
                 Control::Picture(picture) if picture.common.treat_as_char => {
+                    let [left, right, ..] =
+                        crate::renderer::composer::inline_picture_margins_hu(picture);
                     hwpunit_to_px(picture.common.width as i32, self.dpi)
-                        + hwpunit_to_px(
-                            i32::from(picture.common.margin.left)
-                                + i32::from(picture.common.margin.right),
-                            self.dpi,
-                        )
+                        + hwpunit_to_px(left + right, self.dpi)
                 }
                 Control::Shape(shape) if shape.common().treat_as_char => {
                     let common = shape.common();
