@@ -321,4 +321,24 @@ fn text_in_a_cell_text_box_has_a_full_path_caret_and_hit() {
         vec![(table_ctrl as u64, 0, 0), (inner_ctrl as u64, 0, 0)],
         "{hit}"
     );
+
+    // Enter·Backspace: 셀 안 글상자 문단도 경로로 나누고 합친다.
+    let split = doc
+        .split_paragraph_in_cell_by_path(0, host, &path, 1, None)
+        .unwrap();
+    assert!(split.contains("\"cellParaIndex\":1"), "{split}");
+    let second = [(table_ctrl, 0, 0), (inner_ctrl, 0, 1)];
+    assert_eq!(
+        doc.get_text_in_cell_by_path(0, host, &second, 0, 2)
+            .unwrap(),
+        "나다"
+    );
+    let merged = doc
+        .merge_paragraph_in_cell_by_path(0, host, &second)
+        .unwrap();
+    assert!(merged.contains("\"charOffset\":1"), "{merged}");
+    assert_eq!(
+        doc.get_text_in_cell_by_path(0, host, &path, 0, 3).unwrap(),
+        "가나다"
+    );
 }
