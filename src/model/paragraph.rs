@@ -1874,7 +1874,18 @@ impl Paragraph {
             } else {
                 0
             };
-            char_end(self.char_offsets.len() - 1) + trailing_ctrl_count * 8
+            // 문단 끝에서 끝나는 코드·링크(경계 글을 품지 않는 필드)의 FIELD_END 뒤에 넣는다. 그 앞에
+            // 넣으면 원시 스트림에서 글이 필드 안에 들어 범위와 어긋난다(그 문단에 필드를 더 넣지 못한다).
+            let outside_ends = self
+                .field_ranges
+                .iter()
+                .filter(|range| {
+                    range.start_char_idx < range.end_char_idx
+                        && range.end_char_idx == text_len
+                        && keeps_boundary_text_outside(self.controls.get(range.control_idx))
+                })
+                .count() as u32;
+            char_end(self.char_offsets.len() - 1) + (trailing_ctrl_count + outside_ends) * 8
         } else {
             // 텍스트가 비어있을 때: 기존 컨트롤 뒤에 삽입 (각 컨트롤 = 8 code units)
             (self.controls.len() as u32) * 8

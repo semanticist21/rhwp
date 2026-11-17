@@ -1389,6 +1389,138 @@ impl DocumentCore {
         )))
     }
 
+    /// 머리말·꼬리말·바탕쪽 문단(`applyTo`가 16 이상이면 바탕쪽)의 글자 자리에 `field`를 빈 필드로 넣고
+    /// `text`로 채운다. 필드 번호·속성은 `field` 그대로다. 결과는 필드 글의 (시작, 끝) 글자 좌표다.
+    /// 한컴 입력 > 상용구가 바탕쪽 안에도 넣는 문서 요약·파일 경로 코드 몫이다.
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_field_in_header_footer_native(
+        &mut self,
+        section_idx: usize,
+        is_header: bool,
+        apply_to: u8,
+        hf_para_idx: usize,
+        char_offset: usize,
+        field: crate::model::control::Field,
+        text: &str,
+    ) -> Result<(usize, usize), HwpError> {
+        let para = self.get_hf_paragraph_mut(section_idx, is_header, apply_to, hf_para_idx)?;
+        let (start, end) = crate::document_core::queries::field_query::insert_filled_field_in_para(
+            para,
+            char_offset,
+            field,
+            text,
+        )?;
+        self.document.sections[section_idx].raw_stream = None;
+        self.finish_hf_field_edit(
+            section_idx,
+            is_header,
+            apply_to,
+            hf_para_idx,
+            start,
+            start,
+            end,
+        );
+        Ok((start, end))
+    }
+
+    /// 머리말·꼬리말·바탕쪽 문단의 필드 `field_id` 글을 `text`로 바꾼다. 필드 속성(dirty 포함)은 그대로
+    /// 둔다. 한컴이 저장·요약 고치기 때 바탕쪽 코드 글을 다시 쓰는 몫이다.
+    pub fn set_field_text_in_header_footer_native(
+        &mut self,
+        section_idx: usize,
+        is_header: bool,
+        apply_to: u8,
+        hf_para_idx: usize,
+        field_id: u32,
+        text: &str,
+    ) -> Result<(), HwpError> {
+        let para = self.get_hf_paragraph_mut(section_idx, is_header, apply_to, hf_para_idx)?;
+        let (start, old_end) = para
+            .field_ranges
+            .iter()
+            .find(|range| {
+                matches!(para.controls.get(range.control_idx),
+                    Some(Control::Field(f)) if f.field_id == field_id)
+            })
+            .map(|range| (range.start_char_idx, range.end_char_idx))
+            .ok_or_else(|| HwpError::InvalidField(format!("필드 ID {} 없음", field_id)))?;
+        crate::document_core::queries::field_query::set_field_text_in_para(para, field_id, text)?;
+        let end = start + text.chars().count();
+        self.document.sections[section_idx].raw_stream = None;
+        self.finish_hf_field_edit(
+            section_idx,
+            is_header,
+            apply_to,
+            hf_para_idx,
+            start,
+            old_end,
+            end,
+        );
+        Ok(())
+    }
+
+    /// 머리말·꼬리말·바탕쪽 문단의 글자 자리에 쪽 번호·전체 쪽수 자동 번호를 넣는다. 한컴 입력 > 상용구의
+    /// 현재 쪽 번호·전체 쪽수는 바탕쪽 안에도 든다.
+    pub fn insert_auto_number_in_header_footer_native(
+        &mut self,
+        section_idx: usize,
+        is_header: bool,
+        apply_to: u8,
+        hf_para_idx: usize,
+        char_offset: usize,
+        number_type: crate::model::control::AutoNumberType,
+    ) -> Result<(), HwpError> {
+        let para = self.get_hf_paragraph_mut(section_idx, is_header, apply_to, hf_para_idx)?;
+        let at = char_offset.min(para.text.chars().count());
+        crate::document_core::queries::hwpctrl_sets::insert_auto_number_in_para(
+            para,
+            at,
+            number_type,
+        );
+        self.document.sections[section_idx].raw_stream = None;
+        self.finish_hf_field_edit(
+            section_idx,
+            is_header,
+            apply_to,
+            hf_para_idx,
+            at,
+            at,
+            at + 1,
+        );
+        Ok(())
+    }
+
+    /// 머리말·꼬리말·바탕쪽 문단의 글자 `start..old_end`를 `start..end`로 바꾼(필드·자동 번호를 넣거나
+    /// 고친) 뒤 다시 짜고 쪽을 나눈다.
+    #[allow(clippy::too_many_arguments)]
+    fn finish_hf_field_edit(
+        &mut self,
+        section_idx: usize,
+        is_header: bool,
+        apply_to: u8,
+        hf_para_idx: usize,
+        start: usize,
+        old_end: usize,
+        end: usize,
+    ) {
+        self.reflow_hf_paragraph(section_idx, is_header, apply_to, hf_para_idx);
+        self.sync_master_page_edit(section_idx, apply_to);
+        self.mark_section_dirty(section_idx);
+        self.paginate_if_needed();
+        self.event_log
+            .push(DocumentEvent::HeaderFooterTextReplaced {
+                section: section_idx,
+                is_header,
+                apply_to,
+                start_para: hf_para_idx,
+                start_offset: start,
+                end_para: hf_para_idx,
+                end_offset: old_end,
+                inserted_end_para: hf_para_idx,
+                inserted_end_offset: end,
+            });
+    }
+
     /// 머리말/꼬리말 마당(템플릿)을 적용한다.
     ///
     /// template_id:

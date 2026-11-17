@@ -2488,13 +2488,25 @@ pub(crate) fn toggle_shape_text_box(
 }
 
 /// 문단 글자 자리 `char_idx`에 자동 번호 컨트롤과 그 자리표 글자 한 칸을 넣는다.
-fn insert_auto_number_in_para(para: &mut Paragraph, char_idx: usize, number_type: AutoNumberType) {
-    let char_idx = para.text.chars().count().min(char_idx);
-    // 컨트롤은 문단 안에서 **글자 차례대로** 놓인다 — 앞선 컨트롤 수가 끼울 자리다.
+pub(crate) fn insert_auto_number_in_para(
+    para: &mut Paragraph,
+    char_idx: usize,
+    number_type: AutoNumberType,
+) {
+    let text_len = para.text.chars().count();
+    let char_idx = text_len.min(char_idx);
+    // 컨트롤은 문단 안에서 **글자 차례대로** 놓인다 — 앞선 컨트롤 수가 끼울 자리다. 문단 끝 자동
+    // 번호는 제 자리표(마지막 글자) 뒤 자리로 읽히므로, 문단 끝에 넣는 번호는 그 번호 뒤에 둔다.
     let control_index = para
         .control_text_positions()
         .iter()
-        .filter(|p| **p < char_idx)
+        .enumerate()
+        .filter(|&(ci, &p)| {
+            p < char_idx
+                || (p == text_len
+                    && char_idx == text_len
+                    && matches!(para.controls.get(ci), Some(Control::AutoNumber(_))))
+        })
         .count();
     // 파서처럼 자리표 글자 한 칸이 컨트롤 자리(8칸)의 첫 칸을 쓴다. 자리표 글자는 문단이
     // 스스로 넣게 두어 `char_offsets`·`char_shapes`·`line_segs` 를 함께 갱신하고, 남은

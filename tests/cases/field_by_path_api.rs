@@ -168,3 +168,113 @@ fn cell_and_footnote_take_codes_and_numbers() {
         );
     }
 }
+
+/// 바탕쪽 문단에도 코드와 쪽 번호·전체 쪽수를 넣고 글을 고친다. 목록은 바탕쪽 번호를 주소로 주고,
+/// HWP·HWPX 저장 뒤에도 바탕쪽에 남는다. 한컴 12.30 입력 > 상용구는 바탕쪽 안에도 넣는다.
+#[test]
+fn master_page_takes_codes_and_numbers() {
+    let mut doc = HwpDocument::create_empty();
+    doc.create_blank_document_native().unwrap();
+    doc.insert_text_native(0, 0, 0, "본문").unwrap();
+    let created: serde_json::Value = serde_json::from_str(
+        &doc.create_master_page_native(0, r#"{"applyTo":0}"#)
+            .unwrap(),
+    )
+    .unwrap();
+    let apply_to = created["applyTo"].as_u64().unwrap() as u8;
+    // 빈 바탕쪽 문단 맨 앞에 전체 쪽수, 그 앞에 글, 뒤에 쪽 번호와 코드.
+    doc.insert_auto_number_in_header_footer_native(
+        0,
+        true,
+        apply_to,
+        0,
+        0,
+        AutoNumberType::TotalPage,
+    )
+    .unwrap();
+    doc.insert_text_in_header_footer_native(0, true, apply_to, 0, 0, "쪽 ")
+        .unwrap();
+    doc.insert_auto_number_in_header_footer_native(0, true, apply_to, 0, 3, AutoNumberType::Page)
+        .unwrap();
+    let (start, end) = doc
+        .insert_field_in_header_footer_native(
+            0,
+            true,
+            apply_to,
+            0,
+            4,
+            summary(950, "$author"),
+            "지은이",
+        )
+        .unwrap();
+    assert_eq!((start, end), (4, 7));
+    doc.set_field_text_in_header_footer_native(0, true, apply_to, 0, 950, "새 지은이")
+        .unwrap();
+    for reopened in std::iter::once(&doc).chain(reopen_both(&doc).iter()) {
+        let codes = summaries(reopened);
+        assert_eq!(codes.len(), 1);
+        assert_eq!(
+            (codes[0].master, codes[0].para, codes[0].cell_path.len()),
+            (Some(0), 0, 0)
+        );
+        assert_eq!(codes[0].value, "새 지은이");
+        let para = &reopened.document().sections[0].section_def.master_pages[0].paragraphs[0];
+        assert_eq!(para.text, "쪽   새 지은이");
+        let kinds: Vec<_> = para
+            .controls
+            .iter()
+            .filter_map(|c| match c {
+                Control::AutoNumber(a) => Some(format!("{:?}", a.number_type)),
+                Control::Field(f) => Some(format!("{:?}{}", f.field_type, f.properties)),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(kinds, ["TotalPage", "Page", "Summary1"]);
+        assert_eq!(reopened.document().sections[0].paragraphs[0].text, "본문");
+    }
+}
+
+/// 문단 끝 코드 바로 뒤에 친 글은 코드 밖에 들고, 그 문단에 코드를 더 넣는다(본문·머리말).
+/// 한컴 12.30에서 "만든 날짜" 코드 뒤에 ", "를 치고 "만든 사람"을 넣으면 둘 다 코드다.
+#[test]
+fn typing_after_code_at_paragraph_end_still_takes_codes() {
+    let mut doc = HwpDocument::create_empty();
+    doc.create_blank_document_native().unwrap();
+    doc.insert_text_native(0, 0, 0, "x").unwrap();
+    doc.insert_field_by_path(0, 0, &[], 1, summary(960, "$createtime"), "날짜")
+        .unwrap();
+    doc.insert_text_native(0, 0, 3, ", ").unwrap();
+    doc.insert_field_by_path(0, 0, &[], 5, summary(961, "$author"), "나")
+        .unwrap();
+    doc.insert_field_by_path(0, 0, &[], 0, summary(962, "$title"), "제목")
+        .unwrap();
+    doc.create_header_footer_native(0, true, 0).unwrap();
+    let info: serde_json::Value =
+        serde_json::from_str(&doc.get_header_footer_native(0, true, 0).unwrap()).unwrap();
+    let host = info["paraIndex"].as_u64().unwrap() as usize;
+    let path = [(info["controlIndex"].as_u64().unwrap() as usize, 0, 0)];
+    doc.insert_field_by_path(0, host, &path, 0, summary(963, "$createtime"), "날짜")
+        .unwrap();
+    doc.insert_text_in_header_footer_native(0, true, 0, 0, 2, ", ")
+        .unwrap();
+    doc.insert_field_by_path(0, host, &path, 4, summary(964, "$author"), "나")
+        .unwrap();
+    for reopened in std::iter::once(&doc).chain(reopen_both(&doc).iter()) {
+        let body = &reopened.document().sections[0].paragraphs[0];
+        assert!(body.text.ends_with("제목x날짜, 나"), "{:?}", body.text);
+        let values: Vec<_> = summaries(reopened)
+            .into_iter()
+            .map(|t| (t.cell_path.len(), t.command, t.value))
+            .collect();
+        assert_eq!(
+            values,
+            [
+                (0, "$title".into(), "제목".into()),
+                (0, "$createtime".into(), "날짜".into()),
+                (0, "$author".into(), "나".into()),
+                (1, "$createtime".into(), "날짜".into()),
+                (1, "$author".into(), "나".into()),
+            ]
+        );
+    }
+}

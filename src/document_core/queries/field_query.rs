@@ -283,22 +283,11 @@ impl DocumentCore {
         text: &str,
     ) -> Result<(usize, usize), HwpError> {
         let stored_end = self.field_path_flow_end(section_idx, para_idx, path);
-        let end_id = field.instance_id;
         let para = self.field_path_paragraph_mut(section_idx, para_idx, path)?;
-        let (start, control_idx) = insert_field_in_para(para, char_offset, field)?;
-        let range_idx = para
-            .field_ranges
-            .iter()
-            .position(|range| range.control_idx == control_idx)
-            .ok_or_else(|| HwpError::InvalidField("넣은 필드 범위를 찾지 못했습니다".into()))?;
-        // 한컴은 FIELD_END에 시작과 같은 인스턴스 아이디를 적는다.
-        if let Some(id) = end_id {
-            para.field_ranges[range_idx].end_field_id = id;
-        }
-        write_field_text_keeping_properties(para, range_idx, text)?;
+        let range = insert_filled_field_in_para(para, char_offset, field, text)?;
         self.document.sections[section_idx].raw_stream = None;
         self.reflow_field_path_paragraph(section_idx, para_idx, path, stored_end);
-        Ok((start, start + text.chars().count()))
+        Ok(range)
     }
 
     /// 문단 주소([`Self::insert_field_by_path`]와 같은 꼴)의 필드 `field_id` 글을 `text`로 바꾼다.
@@ -313,29 +302,29 @@ impl DocumentCore {
     ) -> Result<(), HwpError> {
         let stored_end = self.field_path_flow_end(section_idx, para_idx, path);
         let para = self.field_path_paragraph_mut(section_idx, para_idx, path)?;
-        let range_idx = para
-            .field_ranges
-            .iter()
-            .position(|range| {
-                matches!(
-                    para.controls.get(range.control_idx),
-                    Some(Control::Field(f)) if f.field_id == field_id
-                )
-            })
-            .ok_or_else(|| HwpError::InvalidField(format!("필드 ID {} 없음", field_id)))?;
-        write_field_text_keeping_properties(para, range_idx, text)?;
+        set_field_text_in_para(para, field_id, text)?;
         self.document.sections[section_idx].raw_stream = None;
         self.reflow_field_path_paragraph(section_idx, para_idx, path, stored_end);
         Ok(())
     }
 
-    /// 문서의 모든 필드(본문·표 셀·글상자·캡션·머리말·꼬리말·각주·미주)를 문서 차례로 문단 주소와 함께
-    /// 돌려준다. [`Self::collect_all_fields`]와 달리 머리말·꼬리말·주석 안 필드도 든다.
+    /// 문서의 모든 필드(본문·표 셀·글상자·캡션·머리말·꼬리말·각주·미주·바탕쪽)를 구역마다 본문 차례 다음
+    /// 바탕쪽 차례로 문단 주소와 함께 돌려준다. [`Self::collect_all_fields`]와 달리 머리말·꼬리말·주석 안 필드도 든다.
     pub fn field_targets_native(&self) -> Vec<FieldTarget> {
         let mut out = Vec::new();
         for (section, sec) in self.document.sections.iter().enumerate() {
             for (para, p) in sec.paragraphs.iter().enumerate() {
                 collect_field_targets(p, section, para, &mut Vec::new(), &mut out);
+            }
+            // 바탕쪽 필드는 바탕쪽 번호와 그 바탕쪽 문단 번호를 주소로 둔다.
+            for (slot, master) in sec.section_def.master_pages.iter().enumerate() {
+                let from = out.len();
+                for (para, p) in master.paragraphs.iter().enumerate() {
+                    collect_field_targets(p, section, para, &mut Vec::new(), &mut out);
+                }
+                for target in &mut out[from..] {
+                    target.master = Some(slot);
+                }
             }
         }
         out
@@ -2649,8 +2638,12 @@ fn collect_shape_field_ids(shape: &crate::model::shape::ShapeObject, max_id: &mu
 #[serde(rename_all = "camelCase")]
 pub struct FieldTarget {
     pub section: usize,
+    /// 본문 문단 번호. `master`가 있으면 그 바탕쪽의 문단 번호다.
     pub para: usize,
     pub cell_path: Vec<(usize, usize, usize)>,
+    /// 바탕쪽 안 필드면 구역의 바탕쪽 번호(머리말·꼬리말 편집 API의 `applyTo - 16`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub master: Option<usize>,
     pub field_id: u32,
     pub field_type: &'static str,
     pub command: String,
@@ -2672,6 +2665,7 @@ fn collect_field_targets(
                 section,
                 para,
                 cell_path: path.clone(),
+                master: None,
                 field_id: field.field_id,
                 field_type: field.field_type_str(),
                 command: field.command.clone(),
@@ -2695,6 +2689,47 @@ fn collect_field_targets(
             }
         }
     }
+}
+
+/// 문단 글자 자리에 `field`를 빈 필드로 넣고 `text`로 채운다. 결과는 필드 글의 (시작, 끝) 글자 좌표다.
+pub(crate) fn insert_filled_field_in_para(
+    para: &mut Paragraph,
+    char_offset: usize,
+    field: Field,
+    text: &str,
+) -> Result<(usize, usize), HwpError> {
+    let end_id = field.instance_id;
+    let (start, control_idx) = insert_field_in_para(para, char_offset, field)?;
+    let range_idx = para
+        .field_ranges
+        .iter()
+        .position(|range| range.control_idx == control_idx)
+        .ok_or_else(|| HwpError::InvalidField("넣은 필드 범위를 찾지 못했습니다".into()))?;
+    // 한컴은 FIELD_END에 시작과 같은 인스턴스 아이디를 적는다.
+    if let Some(id) = end_id {
+        para.field_ranges[range_idx].end_field_id = id;
+    }
+    write_field_text_keeping_properties(para, range_idx, text)?;
+    Ok((start, start + text.chars().count()))
+}
+
+/// 문단의 필드 `field_id` 글을 `text`로 바꾸고 필드 속성은 그대로 둔다.
+pub(crate) fn set_field_text_in_para(
+    para: &mut Paragraph,
+    field_id: u32,
+    text: &str,
+) -> Result<(), HwpError> {
+    let range_idx = para
+        .field_ranges
+        .iter()
+        .position(|range| {
+            matches!(
+                para.controls.get(range.control_idx),
+                Some(Control::Field(f)) if f.field_id == field_id
+            )
+        })
+        .ok_or_else(|| HwpError::InvalidField(format!("필드 ID {} 없음", field_id)))?;
+    write_field_text_keeping_properties(para, range_idx, text)
 }
 
 /// 필드 범위 `range_idx`의 글을 바꾸고 필드 속성은 그대로 둔다.

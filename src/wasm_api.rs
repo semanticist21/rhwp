@@ -8302,8 +8302,38 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
-    /// 문서의 모든 필드(머리말·꼬리말·주석 안 포함)와 문단 주소. JSON
-    /// `[{section, para, cellPath, fieldId, fieldType, command, start, end, value}]`.
+    /// 머리말·꼬리말·바탕쪽 문단(`applyTo`가 16 이상이면 바탕쪽)의 글자 자리에 쪽 번호(`page`)·전체 쪽수
+    /// (`total`) 자동 번호를 넣는다. 한컴 입력 > 상용구는 바탕쪽 안에도 넣는다.
+    #[wasm_bindgen(js_name = insertAutoNumberInHeaderFooter)]
+    pub fn insert_auto_number_in_header_footer_api(
+        &mut self,
+        section_idx: u32,
+        is_header: bool,
+        apply_to: u8,
+        hf_para_idx: u32,
+        char_offset: u32,
+        kind: &str,
+    ) -> Result<(), JsValue> {
+        use crate::model::control::AutoNumberType;
+        let number_type = match kind {
+            "page" => AutoNumberType::Page,
+            "total" => AutoNumberType::TotalPage,
+            _ => return Err(JsValue::from_str("모르는 번호 갈래")),
+        };
+        self.insert_auto_number_in_header_footer_native(
+            section_idx as usize,
+            is_header,
+            apply_to,
+            hf_para_idx as usize,
+            char_offset as usize,
+            number_type,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 문서의 모든 필드(머리말·꼬리말·주석·바탕쪽 안 포함)와 문단 주소. JSON
+    /// `[{section, para, cellPath, master?, fieldId, fieldType, command, start, end, value}]`.
+    /// `master`가 있으면 `para`는 그 바탕쪽의 문단 번호다.
     #[wasm_bindgen(js_name = getFieldTargets)]
     pub fn get_field_targets(&self) -> String {
         serde_json::to_string(&self.field_targets_native()).unwrap_or_else(|_| "[]".into())
