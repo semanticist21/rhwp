@@ -1715,11 +1715,8 @@ impl DocumentCore {
         inner_control_idx: usize,
     ) -> Result<String, HwpError> {
         let path = Self::parse_cell_path_json(cell_path_json)?;
-        let cell = self.resolve_cell_by_path(section_idx, parent_para_idx, &path)?;
-        let last_cell_para_idx = path.last().unwrap().2;
-        let cell_para = cell.paragraphs.get(last_cell_para_idx).ok_or_else(|| {
-            HwpError::RenderError(format!("셀 내 문단 {} 범위 초과", last_cell_para_idx))
-        })?;
+        // setter(`resolve_cell_paragraph_mut`)와 같이 표 셀·글상자·머리말/꼬리말 경로를 모두 읽는다.
+        let cell_para = self.resolve_paragraph_by_path(section_idx, parent_para_idx, &path)?;
         let ctrl = cell_para.controls.get(inner_control_idx).ok_or_else(|| {
             HwpError::RenderError(format!("셀 내 컨트롤 {} 범위 초과", inner_control_idx))
         })?;

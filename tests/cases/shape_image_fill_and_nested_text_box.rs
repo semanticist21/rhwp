@@ -225,6 +225,14 @@ fn text_box_attaches_to_a_shape_in_a_header() {
         r#"{"ok":true}"#
     );
     assert!(header_shapes(&doc)[0].drawing().unwrap().text_box.is_some());
+    // 같은 머리말 경로로 도형 속성을 읽는다(앱은 이 값으로 머리말 도형을 고른다).
+    let props: serde_json::Value = serde_json::from_str(
+        &doc.get_cell_shape_properties_by_path_native(0, host, &path, inner_ctrl)
+            .unwrap(),
+    )
+    .unwrap();
+    // 엔진은 글상자가 있을 때만 안쪽 여백을 준다.
+    assert!(props.get("tbMarginLeft").is_some(), "{props}");
     for bytes in [
         doc.export_hwp_native().unwrap(),
         doc.export_hwpx_native().unwrap(),
