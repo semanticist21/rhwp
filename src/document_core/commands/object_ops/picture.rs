@@ -1059,6 +1059,34 @@ impl DocumentCore {
                 Self::apply_picture_display_height(pic, h);
             }
         }
+        // 원래 크기(orgSz). 한컴 12.30은 본문 너비로 줄여 넣은 그림도 그림 파일 해상도로 잰 크기를 원래
+        // 크기로 둔다(72dpi 1500px → 150000, 틀 42520, 저장 배율 0.2835). 그림 테두리 점(imgRect)도 따른다.
+        let original_w = json_u32(props_json, "originalWidth").filter(|v| *v > 0);
+        let original_h = json_u32(props_json, "originalHeight").filter(|v| *v > 0);
+        if original_w.is_some() || original_h.is_some() {
+            let (old_w, old_h) = (
+                pic.shape_attr.original_width,
+                pic.shape_attr.original_height,
+            );
+            let (w, h) = (original_w.unwrap_or(old_w), original_h.unwrap_or(old_h));
+            if (w, h) != (old_w, old_h) {
+                let rect = |w: u32, h: u32| {
+                    let (w, h) = (
+                        i32::try_from(w).unwrap_or(i32::MAX),
+                        i32::try_from(h).unwrap_or(i32::MAX),
+                    );
+                    ([0, 0, w, 0], [w, h, 0, h])
+                };
+                if (pic.border_x, pic.border_y) == rect(old_w, old_h) {
+                    (pic.border_x, pic.border_y) = rect(w, h);
+                }
+                pic.shape_attr.original_width = w;
+                pic.shape_attr.original_height = h;
+                pic.shape_attr.original_width_was_zero = false;
+                pic.shape_attr.original_height_was_zero = false;
+                pic.shape_attr.raw_rendering.clear();
+            }
+        }
 
         // 위치 속성
         if let Some(tac) = json_bool(props_json, "treatAsChar") {

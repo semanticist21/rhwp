@@ -250,3 +250,41 @@ fn cropping_picture_without_img_dim_keeps_crop_extent() {
         assert_eq!(picture(&reopened).img_dim, (1200, 1215), "{format}");
     }
 }
+
+/// 한컴 12.30은 본문 너비로 줄여 넣은 그림의 원래 크기(orgSz)를 해상도로 잰 크기로 둔다(72dpi 1500px → 150000,
+/// 틀 42520, 저장 배율 0.2835). `originalWidth`·`originalHeight`가 원래 크기와 그림 테두리 점을 바꾸고,
+/// 화면은 그대로이며 HWP·HWPX에 남는다.
+#[test]
+fn original_size_can_differ_from_inserted_frame() {
+    let (mut core, para, ctrl) = with_picture(600);
+    let before = core.render_page_svg_native(0).unwrap();
+    core.set_picture_properties_native(
+        0,
+        para,
+        ctrl,
+        r#"{"originalWidth":2400,"originalHeight":2400}"#,
+    )
+    .unwrap();
+    assert_eq!(picture(&core).border_x, [0, 0, 2400, 0]);
+    assert_eq!(core.render_page_svg_native(0).unwrap(), before);
+    let props = |core: &DocumentCore| -> serde_json::Value {
+        serde_json::from_str(&core.get_picture_properties_native(0, para, ctrl).unwrap()).unwrap()
+    };
+    for (format, reopened) in reopened(&core) {
+        let v = props(&reopened);
+        assert_eq!(
+            (&v["originalWidth"], &v["width"], &v["cropExtentWidth"]),
+            (
+                &serde_json::json!(2400),
+                &serde_json::json!(600),
+                &serde_json::json!(1200)
+            ),
+            "{format}"
+        );
+        assert_eq!(
+            reopened.render_page_svg_native(0).unwrap(),
+            before,
+            "{format}"
+        );
+    }
+}
