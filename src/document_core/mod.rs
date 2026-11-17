@@ -263,6 +263,8 @@ pub struct DocumentCore {
     pub(crate) show_transparent_borders: bool,
     /// 편집 화면에 그림을 그릴지(한컴 보기 > 그림). 끄면 그림 자리만 표시한다.
     pub(crate) show_pictures: bool,
+    /// 편집 화면만 고대비 색으로 그릴지(한컴 보기 > 컬러/회색조 > 사용자 색). 인쇄는 끄고 그린다.
+    pub(crate) user_colors: Option<crate::renderer::user_colors::UserColors>,
     /// 편집 화면의 바탕쪽을 흐리게 그릴지(한컴: 편집 화면에서는 본문보다 흐리게, 인쇄는 본래 모양)
     pub(crate) dim_master_pages: bool,
     /// 잘림 보기 (body/셀 클리핑 활성화 여부)
@@ -624,6 +626,7 @@ impl DocumentCore {
             show_control_codes: false,
             show_transparent_borders: false,
             show_pictures: true,
+            user_colors: None,
             dim_master_pages: false,
             clip_enabled: true,
             debug_overlay: false,

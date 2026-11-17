@@ -453,6 +453,7 @@ impl DocumentCore {
             show_control_codes: false,
             show_transparent_borders: false,
             show_pictures: true,
+            user_colors: None,
             dim_master_pages: false,
             clip_enabled: true,
             debug_overlay: false,

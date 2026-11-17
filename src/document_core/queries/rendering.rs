@@ -8828,6 +8828,9 @@ impl DocumentCore {
         if !self.show_pictures {
             crate::renderer::hidden_pictures::hide_pictures(&mut tree);
         }
+        if let Some(colors) = self.user_colors {
+            crate::renderer::user_colors::apply_user_colors(&mut tree, colors);
+        }
         Ok(tree)
     }
 

@@ -250,6 +250,7 @@ fn render_page_to_canvas_filtered_with_profile_impl(
         renderer.set_hft_outline_fonts(&document.hft_outline_fonts);
         renderer.show_paragraph_marks = document.show_paragraph_marks;
         renderer.show_control_codes = document.show_control_codes;
+        renderer.control_label_color = document.user_label_color();
         renderer.set_scale(scale);
         renderer.set_layer_filter(filter);
         renderer.render_page(&tree).map_err(JsValue::from)?;
@@ -317,6 +318,7 @@ fn render_page_patch_to_canvas_filtered_with_profile_impl(
     renderer.set_hft_outline_fonts(&document.hft_outline_fonts);
     renderer.show_paragraph_marks = document.show_paragraph_marks;
     renderer.show_control_codes = document.show_control_codes;
+    renderer.control_label_color = document.user_label_color();
     renderer.set_scale(scale);
     renderer.set_layer_filter(filter);
     renderer.set_partial_clip(BoundingBox::new(left, top, right - left, bottom - top));
@@ -523,6 +525,15 @@ impl std::ops::DerefMut for HwpDocument {
 impl From<DocumentCore> for HwpDocument {
     fn from(core: DocumentCore) -> Self {
         Self { core }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+impl HwpDocument {
+    /// 사용자 색 화면의 조판 부호 이름표 색.
+    pub(crate) fn user_label_color(&self) -> Option<String> {
+        self.user_colors
+            .map(|colors| crate::renderer::user_colors::css(colors.text))
     }
 }
 
@@ -1191,6 +1202,33 @@ impl HwpDocument {
         self.invalidate_page_tree_cache();
     }
 
+    /// 한컴 보기 > 컬러/회색조 > 사용자 색. 편집 화면의 글자·선을 `text`, 종이·면·음영을 `background`,
+    /// 형광펜을 `highlight` 색으로 그리고 그림은 그대로 둔다. 빈 문자열이면 끈다.
+    /// 문서·저장은 바꾸지 않는다. 인쇄할 때는 끄고 그린다.
+    /// json: `{"text":"#ffffff","background":"#000000","highlight":"#00ff00"}`
+    #[wasm_bindgen(js_name = setUserColors)]
+    pub fn set_user_colors(&mut self, json: &str) -> Result<(), JsValue> {
+        use crate::document_core::helpers::json_color;
+        let colors = if json.trim().is_empty() {
+            None
+        } else {
+            let color = |key: &str| {
+                json_color(json, key)
+                    .ok_or_else(|| JsValue::from_str(&format!("사용자 색 {key}을 읽지 못했습니다")))
+            };
+            Some(crate::renderer::user_colors::UserColors {
+                text: color("text")?,
+                background: color("background")?,
+                highlight: color("highlight")?,
+            })
+        };
+        if self.user_colors != colors {
+            self.user_colors = colors;
+            self.invalidate_page_tree_cache();
+        }
+        Ok(())
+    }
+
     /// 편집 화면의 바탕쪽을 흐리게 그릴지 반환한다.
     #[wasm_bindgen(js_name = getDimMasterPages)]
     pub fn get_dim_master_pages(&self) -> bool {
@@ -1307,6 +1345,7 @@ impl HwpDocument {
             renderer.set_hft_outline_fonts(&self.hft_outline_fonts);
             renderer.show_paragraph_marks = self.show_paragraph_marks;
             renderer.show_control_codes = self.show_control_codes;
+            renderer.control_label_color = self.user_label_color();
             renderer.dim_master_pages = self.dim_master_pages;
             renderer.set_scale(scale);
             renderer.render_page(&tree).map_err(JsValue::from)?;
@@ -1349,6 +1388,7 @@ impl HwpDocument {
         renderer.set_hft_outline_fonts(&self.hft_outline_fonts);
         renderer.show_paragraph_marks = self.show_paragraph_marks;
         renderer.show_control_codes = self.show_control_codes;
+        renderer.control_label_color = self.user_label_color();
         renderer.set_scale(scale);
         renderer.render_tree(&tree);
         Ok(())
@@ -1468,6 +1508,7 @@ impl HwpDocument {
         renderer.set_hft_outline_fonts(&self.hft_outline_fonts);
         renderer.show_paragraph_marks = self.show_paragraph_marks;
         renderer.show_control_codes = self.show_control_codes;
+        renderer.control_label_color = self.user_label_color();
         renderer.set_scale(scale);
         renderer.render_tree(&tree);
         Ok(())

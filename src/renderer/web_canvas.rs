@@ -429,6 +429,8 @@ pub struct WebCanvasRenderer {
     pub show_paragraph_marks: bool,
     /// 조판부호 표시 여부
     pub show_control_codes: bool,
+    /// 조판 부호 이름표 색(CSS). 없으면 기본 빨강, 사용자 색 화면에서는 글자 색이다.
+    pub control_label_color: Option<String>,
     /// 바탕쪽을 흐리게 그릴지(편집 화면)
     pub dim_master_pages: bool,
     /// 줌 스케일 (1.0 = 100%)
@@ -486,6 +488,7 @@ impl WebCanvasRenderer {
             height: canvas.height() as f64,
             show_paragraph_marks: false,
             show_control_codes: false,
+            control_label_color: None,
             dim_master_pages: false,
             scale: 1.0,
             layer_filter: LayerFilter::All,
@@ -777,7 +780,8 @@ impl WebCanvasRenderer {
             let label = node.control_code_label();
             if let Some(label) = label {
                 let fs = 10.0;
-                self.ctx.set_fill_style_str("#CC3333");
+                self.ctx
+                    .set_fill_style_str(self.control_label_color.as_deref().unwrap_or("#CC3333"));
                 self.ctx.set_font(&format!("{:.3}px sans-serif", fs));
                 let _ = self.ctx.fill_text(label, node.bbox.x, node.bbox.y + fs);
             }
@@ -989,7 +993,8 @@ impl WebCanvasRenderer {
                 self.render_raw_svg(bbox, raw);
             }
             PaintOp::ControlLabel { bbox, label } => {
-                self.ctx.set_fill_style_str("#CC3333");
+                self.ctx
+                    .set_fill_style_str(self.control_label_color.as_deref().unwrap_or("#CC3333"));
                 self.ctx.set_font("10px sans-serif");
                 let _ = self.ctx.fill_text(label, bbox.x, bbox.y + 10.0);
             }
