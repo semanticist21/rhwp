@@ -8274,6 +8274,41 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 표 셀·글상자·머리말·꼬리말·각주·미주 문단(경로 JSON은 `[{controlIndex, cellIndex, cellParaIndex}]`,
+    /// 빈 배열은 본문)의 글자 자리에 쪽 번호(`page`)·전체 쪽수(`total`) 자동 번호를 넣는다.
+    #[wasm_bindgen(js_name = insertAutoNumberByPath)]
+    pub fn insert_auto_number_by_path_api(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+        char_offset: u32,
+        kind: &str,
+    ) -> Result<(), JsValue> {
+        use crate::model::control::AutoNumberType;
+        let number_type = match kind {
+            "page" => AutoNumberType::Page,
+            "total" => AutoNumberType::TotalPage,
+            _ => return Err(JsValue::from_str("모르는 번호 갈래")),
+        };
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        self.insert_auto_number_by_path(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            char_offset as usize,
+            number_type,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 문서의 모든 필드(머리말·꼬리말·주석 안 포함)와 문단 주소. JSON
+    /// `[{section, para, cellPath, fieldId, fieldType, command, start, end, value}]`.
+    #[wasm_bindgen(js_name = getFieldTargets)]
+    pub fn get_field_targets(&self) -> String {
+        serde_json::to_string(&self.field_targets_native()).unwrap_or_else(|_| "[]".into())
+    }
+
     /// 문서 글 전체 — `GetTextFile("TEXT")`. CP949 수치 참조를 적용한 JSON 문자열이다.
     #[wasm_bindgen(js_name = getTextFileText)]
     pub fn get_text_file_text(&self) -> String {

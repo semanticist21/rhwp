@@ -269,6 +269,150 @@ impl DocumentCore {
         ))
     }
 
+    /// 문단 주소(빈 `path`는 본문 `para`, 아니면 그 문단에서 내려가는 표 셀·글상자·캡션·머리말·
+    /// 꼬리말·각주·미주 경로)의 글자 자리에 `field`를 빈 필드로 넣고 `text`로 채운다.
+    /// 필드 번호·속성은 `field` 그대로 둔다(값을 채워도 dirty를 켜지 않는다). 결과는 필드 글의
+    /// (시작, 끝) 글자 좌표다. 한컴 입력 > 상용구가 머리말·표 셀·주석 안에도 넣는 코드 필드 몫이다.
+    pub fn insert_field_by_path(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        path: &[(usize, usize, usize)],
+        char_offset: usize,
+        field: Field,
+        text: &str,
+    ) -> Result<(usize, usize), HwpError> {
+        let stored_end = self.field_path_flow_end(section_idx, para_idx, path);
+        let end_id = field.instance_id;
+        let para = self.field_path_paragraph_mut(section_idx, para_idx, path)?;
+        let (start, control_idx) = insert_field_in_para(para, char_offset, field)?;
+        let range_idx = para
+            .field_ranges
+            .iter()
+            .position(|range| range.control_idx == control_idx)
+            .ok_or_else(|| HwpError::InvalidField("넣은 필드 범위를 찾지 못했습니다".into()))?;
+        // 한컴은 FIELD_END에 시작과 같은 인스턴스 아이디를 적는다.
+        if let Some(id) = end_id {
+            para.field_ranges[range_idx].end_field_id = id;
+        }
+        write_field_text_keeping_properties(para, range_idx, text)?;
+        self.document.sections[section_idx].raw_stream = None;
+        self.reflow_field_path_paragraph(section_idx, para_idx, path, stored_end);
+        Ok((start, start + text.chars().count()))
+    }
+
+    /// 문단 주소([`Self::insert_field_by_path`]와 같은 꼴)의 필드 `field_id` 글을 `text`로 바꾼다.
+    /// 필드 속성(dirty 포함)은 그대로 둔다. 한컴이 저장·요약 고치기 때 코드 글을 다시 쓰는 몫이다.
+    pub fn set_field_text_by_path(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        path: &[(usize, usize, usize)],
+        field_id: u32,
+        text: &str,
+    ) -> Result<(), HwpError> {
+        let stored_end = self.field_path_flow_end(section_idx, para_idx, path);
+        let para = self.field_path_paragraph_mut(section_idx, para_idx, path)?;
+        let range_idx = para
+            .field_ranges
+            .iter()
+            .position(|range| {
+                matches!(
+                    para.controls.get(range.control_idx),
+                    Some(Control::Field(f)) if f.field_id == field_id
+                )
+            })
+            .ok_or_else(|| HwpError::InvalidField(format!("필드 ID {} 없음", field_id)))?;
+        write_field_text_keeping_properties(para, range_idx, text)?;
+        self.document.sections[section_idx].raw_stream = None;
+        self.reflow_field_path_paragraph(section_idx, para_idx, path, stored_end);
+        Ok(())
+    }
+
+    /// 문서의 모든 필드(본문·표 셀·글상자·캡션·머리말·꼬리말·각주·미주)를 문서 차례로 문단 주소와 함께
+    /// 돌려준다. [`Self::collect_all_fields`]와 달리 머리말·꼬리말·주석 안 필드도 든다.
+    pub fn field_targets_native(&self) -> Vec<FieldTarget> {
+        let mut out = Vec::new();
+        for (section, sec) in self.document.sections.iter().enumerate() {
+            for (para, p) in sec.paragraphs.iter().enumerate() {
+                collect_field_targets(p, section, para, &mut Vec::new(), &mut out);
+            }
+        }
+        out
+    }
+
+    fn field_path_paragraph_mut(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        path: &[(usize, usize, usize)],
+    ) -> Result<&mut Paragraph, HwpError> {
+        if path.is_empty() {
+            return self
+                .document
+                .sections
+                .get_mut(section_idx)
+                .and_then(|section| section.paragraphs.get_mut(para_idx))
+                .ok_or_else(|| HwpError::InvalidField("문단 인덱스 초과".into()));
+        }
+        self.get_cell_paragraph_mut_by_path(section_idx, para_idx, path)
+    }
+
+    fn field_path_flow_end(
+        &self,
+        section_idx: usize,
+        para_idx: usize,
+        path: &[(usize, usize, usize)],
+    ) -> Option<i32> {
+        if !path.is_empty() {
+            return None;
+        }
+        self.document
+            .sections
+            .get(section_idx)
+            .and_then(|section| section.paragraphs.get(para_idx))
+            .and_then(crate::renderer::composer::paragraph_flow_end)
+    }
+
+    /// 문단 주소의 문단을 고친 뒤 그 상자 폭으로 다시 짜고 쪽을 나눈다.
+    pub(crate) fn reflow_field_path_paragraph(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        path: &[(usize, usize, usize)],
+        stored_end: Option<i32>,
+    ) {
+        if path.is_empty() {
+            self.reflow_paragraph(section_idx, para_idx);
+            let hwp3_layout = self.document.layout_profile().hwp3_layout();
+            crate::renderer::composer::recalculate_section_vpos(
+                &mut self.document.sections[section_idx].paragraphs,
+                para_idx,
+                None,
+                stored_end,
+                &self.styles,
+                self.dpi,
+                hwp3_layout,
+            );
+            self.recompose_paragraph(section_idx, para_idx);
+        } else {
+            let inner_para = path.last().map(|entry| entry.2).unwrap_or(0);
+            self.reflow_cell_paragraph_by_path(section_idx, para_idx, path, inner_para);
+            self.recalculate_cell_paragraph_vpos_by_path(
+                section_idx,
+                para_idx,
+                path,
+                inner_para,
+                None,
+            );
+            self.mark_cell_control_dirty(section_idx, para_idx, path[0].0);
+        }
+        self.document.sections[section_idx].raw_stream = None;
+        self.mark_section_dirty(section_idx);
+        self.paginate_if_needed();
+        self.invalidate_page_tree_cache();
+    }
+
     /// path 기반 중첩 표 셀의 현재 커서 위치에 빈 ClickHere 누름틀을 삽입한다.
     pub fn insert_click_here_field_at_by_path(
         &mut self,
@@ -2500,6 +2644,81 @@ fn collect_shape_field_ids(shape: &crate::model::shape::ShapeObject, max_id: &mu
     }
 }
 
+/// [`DocumentCore::field_targets_native`]의 한 줄. 문단 주소는 [`crate::document_core::hyperlink::HyperlinkTarget`]과 같은 꼴이다.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct FieldTarget {
+    pub section: usize,
+    pub para: usize,
+    pub cell_path: Vec<(usize, usize, usize)>,
+    pub field_id: u32,
+    pub field_type: &'static str,
+    pub command: String,
+    pub start: usize,
+    pub end: usize,
+    pub value: String,
+}
+
+fn collect_field_targets(
+    p: &Paragraph,
+    section: usize,
+    para: usize,
+    path: &mut Vec<(usize, usize, usize)>,
+    out: &mut Vec<FieldTarget>,
+) {
+    for range in &p.field_ranges {
+        if let Some(Control::Field(field)) = p.controls.get(range.control_idx) {
+            out.push(FieldTarget {
+                section,
+                para,
+                cell_path: path.clone(),
+                field_id: field.field_id,
+                field_type: field.field_type_str(),
+                command: field.command.clone(),
+                start: range.start_char_idx,
+                end: range.end_char_idx,
+                value: p
+                    .text
+                    .chars()
+                    .skip(range.start_char_idx)
+                    .take(range.end_char_idx.saturating_sub(range.start_char_idx))
+                    .collect(),
+            });
+        }
+    }
+    for (ctrl_idx, control) in p.controls.iter().enumerate() {
+        for (cell_idx, paragraphs) in crate::document_core::hyperlink::child_lists(control) {
+            for (child, inner) in paragraphs.iter().enumerate() {
+                path.push((ctrl_idx, cell_idx, child));
+                collect_field_targets(inner, section, para, path, out);
+                path.pop();
+            }
+        }
+    }
+}
+
+/// 필드 범위 `range_idx`의 글을 바꾸고 필드 속성은 그대로 둔다.
+fn write_field_text_keeping_properties(
+    para: &mut Paragraph,
+    range_idx: usize,
+    text: &str,
+) -> Result<(), HwpError> {
+    let control_idx = para
+        .field_ranges
+        .get(range_idx)
+        .map(|range| range.control_idx)
+        .ok_or_else(|| HwpError::InvalidField("field_range 인덱스 초과".into()))?;
+    let properties = match para.controls.get(control_idx) {
+        Some(Control::Field(field)) => field.properties,
+        _ => return Err(HwpError::InvalidField("필드 컨트롤이 아닙니다".into())),
+    };
+    DocumentCore::replace_field_text_model(para, range_idx, text)?;
+    if let Some(Control::Field(field)) = para.controls.get_mut(control_idx) {
+        field.properties = properties;
+    }
+    Ok(())
+}
+
 fn insert_click_here_field_in_para(
     para: &mut Paragraph,
     char_offset: usize,
@@ -2545,7 +2764,7 @@ pub(crate) fn insert_field_in_para(
 ) -> Result<(usize, usize), HwpError> {
     let text_len = para.text.chars().count();
     let start = char_offset.min(text_len);
-    let gaps = raw_slot_gaps(para)?;
+    let gaps = raw_slot_gaps_with(para, true)?;
     // 새 BEGIN·END는 시작 글자 바로 앞, 그 갭의 끝에 놓인다. 거기까지의 슬롯에서
     // 거기까지 끝난 누름틀의 END를 빼면 앞에 남는 컨트롤 수다.
     let insert_pos = gaps[start].1;
@@ -2725,6 +2944,36 @@ fn invalid_raw_slots() -> HwpError {
 /// 갭에 있어야 한다. 숨은 슬롯이 있거나 갭마다 거기까지의 슬롯 수가 이 배치와 맞지 않으면
 /// 위치를 추정하지 않고 오류를 낸다.
 pub(crate) fn raw_slot_gaps(para: &Paragraph) -> Result<Vec<(u32, u32)>, HwpError> {
+    raw_slot_gaps_with(para, false)
+}
+
+/// [`raw_slot_gaps`]에서 `numbers`면 자동 번호(쪽 번호·전체 쪽수 따위)가 든 문단도 받는다. 자동 번호의
+/// 자리표 공백은 그 자체가 8유닛 컨트롤 슬롯이므로 그 뒤 글자 앞 갭에 든 슬롯으로 센다.
+fn raw_slot_gaps_with(para: &Paragraph, numbers: bool) -> Result<Vec<(u32, u32)>, HwpError> {
+    // 자동 번호 자리표 글자 자리. 자리표 공백은 그 자체가 8유닛이라 다음 글자까지 8의 배수만큼 떨어지고,
+    // 일반 공백은 1 + 8k만큼 떨어진다. 마지막 글자는 다음 글자가 없어 남은 번호 수로 가린다(합성 문단의
+    // char_count는 믿지 않는다). 번호 수와 자리표 수가 맞지 않으면 추정하지 않는다.
+    let mut placeholders = std::collections::HashSet::new();
+    if numbers {
+        let numbers = para
+            .controls
+            .iter()
+            .filter(|control| matches!(control, Control::AutoNumber(_)))
+            .count();
+        let chars: Vec<char> = para.text.chars().collect();
+        for (idx, pair) in para.char_offsets.windows(2).enumerate() {
+            let gap = pair[1].saturating_sub(pair[0]);
+            if chars.get(idx) == Some(&' ') && gap >= 8 && gap % 8 == 0 {
+                placeholders.insert(idx);
+            }
+        }
+        if placeholders.len() < numbers && chars.last() == Some(&' ') {
+            placeholders.insert(chars.len() - 1);
+        }
+        if placeholders.len() != numbers {
+            return Err(invalid_raw_slots());
+        }
+    }
     if !para.title_marks.is_empty()
         || !para.orphan_field_ends.is_empty()
         || para.text.contains('\u{fffc}')
@@ -2733,12 +2982,11 @@ pub(crate) fn raw_slot_gaps(para: &Paragraph) -> Result<Vec<(u32, u32)>, HwpErro
             matches!(
                 control,
                 Control::Hyperlink(_)
-                    | Control::AutoNumber(_)
                     | Control::NewNumber(_)
                     | Control::Ruby(_)
                     | Control::CharOverlap(_)
                     | Control::Unknown(_)
-            )
+            ) || (!numbers && matches!(control, Control::AutoNumber(_)))
         })
     {
         return Err(invalid_raw_slots());
@@ -2746,14 +2994,19 @@ pub(crate) fn raw_slot_gaps(para: &Paragraph) -> Result<Vec<(u32, u32)>, HwpErro
     let mut gaps = Vec::with_capacity(para.char_offsets.len() + 1);
     let mut end = 0u32;
     let mut inner = 0;
-    for (&offset, ch) in para.char_offsets.iter().zip(para.text.chars()) {
+    for (idx, (&offset, ch)) in para.char_offsets.iter().zip(para.text.chars()).enumerate() {
         let units = offset
             .checked_sub(end)
             .filter(|units| units % 8 == 0)
             .ok_or_else(invalid_raw_slots)?;
         inner += (units / 8) as usize;
         gaps.push((end, offset));
-        end = offset + if ch == '\t' { 8 } else { ch.len_utf16() as u32 };
+        // 자동 번호 자리표는 다음 갭의 첫 슬롯이다.
+        end = if placeholders.contains(&idx) {
+            offset
+        } else {
+            offset + if ch == '\t' { 8 } else { ch.len_utf16() as u32 }
+        };
     }
     // 문단 끝 갭에는 남은 슬롯이 온다. 합성 문단은 char_count가 어긋나 있기도 해서 쓰지 않는다.
     let ranges = &para.field_ranges;

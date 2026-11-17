@@ -856,7 +856,7 @@ fn path_paragraphs(control: &Control, cell_idx: usize) -> Option<&[Paragraph]> {
 }
 
 /// 컨트롤이 품은 문단 목록들(표 셀·글상자·캡션·머리말·꼬리말·각주·미주)과 그 경로 셀 번호.
-fn child_lists(control: &Control) -> Vec<(usize, &[Paragraph])> {
+pub(crate) fn child_lists(control: &Control) -> Vec<(usize, &[Paragraph])> {
     let cells: Vec<usize> = match control {
         Control::Table(table) => (0..table.cells.len()).chain([65534]).collect(),
         Control::Shape(shape) => (0..shape.textbox_shape_count()).chain([65534]).collect(),

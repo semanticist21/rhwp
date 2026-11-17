@@ -1963,65 +1963,16 @@ impl DocumentCore {
         char_idx: usize,
         number_type: AutoNumberType,
     ) -> Result<(), HwpError> {
-        let char_idx = self
-            .document
-            .sections
-            .get(sec)
-            .and_then(|s| s.paragraphs.get(para_idx))
-            .ok_or_else(|| HwpError::InvalidField(format!("문단 {sec}/{para_idx} 없음")))?
-            .text
-            .chars()
-            .count()
-            .min(char_idx);
         let stored_end_for_reset = crate::renderer::composer::paragraph_flow_end(
-            &self.document.sections[sec].paragraphs[para_idx],
+            self.document
+                .sections
+                .get(sec)
+                .and_then(|s| s.paragraphs.get(para_idx))
+                .ok_or_else(|| HwpError::InvalidField(format!("문단 {sec}/{para_idx} 없음")))?,
         );
         {
-            let section = self
-                .document
-                .sections
-                .get_mut(sec)
-                .ok_or_else(|| HwpError::InvalidField(format!("구역 {} 없음", sec)))?;
-            let para = section
-                .paragraphs
-                .get_mut(para_idx)
-                .ok_or_else(|| HwpError::InvalidField(format!("문단 {} 없음", para_idx)))?;
-
-            // 컨트롤은 문단 안에서 **글자 차례대로** 놓인다 — 앞선 컨트롤 수가 끼울 자리다.
-            let control_index = para
-                .control_text_positions()
-                .iter()
-                .filter(|p| **p < char_idx)
-                .count();
-            // 파서처럼 자리표 글자 한 칸이 컨트롤 자리(8칸)의 첫 칸을 쓴다. 자리표 글자는 문단이
-            // 스스로 넣게 두어 `char_offsets`·`char_shapes`·`line_segs` 를 함께 갱신하고, 남은
-            // 일곱 칸만큼 뒤 글자를 민다. 밀지 않으면 갭이 없어 저장할 때 번호가 문단 끝으로 간다.
-            para.insert_text_at(char_idx, " ");
-            if let Some(&next) = para.char_offsets.get(char_idx + 1) {
-                for offset in &mut para.char_offsets[char_idx + 1..] {
-                    *offset += (EXTENDED_CTRL_UNITS - 1) as u32;
-                }
-                para.shift_position_metadata_for_stream_insertion(
-                    next,
-                    (EXTENDED_CTRL_UNITS - 1) as u32,
-                );
-            }
-            for range in &mut para.field_ranges {
-                if range.control_idx >= control_index {
-                    range.control_idx += 1;
-                }
-            }
-            para.align_ctrl_data_records();
-            para.controls.insert(
-                control_index,
-                Control::AutoNumber(AutoNumber {
-                    number_type,
-                    ..Default::default()
-                }),
-            );
-            para.ctrl_data_records.insert(control_index, None);
-            // 글자 한 칸은 `insert_text_at` 이 이미 셌다 — 컨트롤 몫 일곱만 더한다(합 8칸).
-            para.char_count += (EXTENDED_CTRL_UNITS - 1) as u32;
+            let section = &mut self.document.sections[sec];
+            insert_auto_number_in_para(&mut section.paragraphs[para_idx], char_idx, number_type);
             section.raw_stream = None;
         }
 
@@ -2038,6 +1989,26 @@ impl DocumentCore {
         );
         self.recompose_section(sec);
         self.paginate();
+        Ok(())
+    }
+
+    /// 표 셀·글상자·머리말·꼬리말·각주·미주 문단(경로는 [`Self::insert_text_in_cell_by_path`]와 같은
+    /// 꼴)의 글자 자리에 쪽 번호·전체 쪽수 자동 번호를 넣는다. 한컴 입력 > 상용구는 이 자리들에도 넣는다.
+    pub fn insert_auto_number_by_path(
+        &mut self,
+        sec: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        char_idx: usize,
+        number_type: AutoNumberType,
+    ) -> Result<(), HwpError> {
+        if path.is_empty() {
+            return self.insert_auto_number_at(sec, parent_para_idx, char_idx, number_type);
+        }
+        let para = self.get_cell_paragraph_mut_by_path(sec, parent_para_idx, path)?;
+        insert_auto_number_in_para(para, char_idx, number_type);
+        self.document.sections[sec].raw_stream = None;
+        self.reflow_field_path_paragraph(sec, parent_para_idx, path, None);
         Ok(())
     }
 
@@ -2514,6 +2485,43 @@ pub(crate) fn toggle_shape_text_box(
         drawing.sync_text_box_storage_bit();
     }
     Ok(changed)
+}
+
+/// 문단 글자 자리 `char_idx`에 자동 번호 컨트롤과 그 자리표 글자 한 칸을 넣는다.
+fn insert_auto_number_in_para(para: &mut Paragraph, char_idx: usize, number_type: AutoNumberType) {
+    let char_idx = para.text.chars().count().min(char_idx);
+    // 컨트롤은 문단 안에서 **글자 차례대로** 놓인다 — 앞선 컨트롤 수가 끼울 자리다.
+    let control_index = para
+        .control_text_positions()
+        .iter()
+        .filter(|p| **p < char_idx)
+        .count();
+    // 파서처럼 자리표 글자 한 칸이 컨트롤 자리(8칸)의 첫 칸을 쓴다. 자리표 글자는 문단이
+    // 스스로 넣게 두어 `char_offsets`·`char_shapes`·`line_segs` 를 함께 갱신하고, 남은
+    // 일곱 칸만큼 뒤 글자를 민다. 밀지 않으면 갭이 없어 저장할 때 번호가 문단 끝으로 간다.
+    para.insert_text_at(char_idx, " ");
+    if let Some(&next) = para.char_offsets.get(char_idx + 1) {
+        for offset in &mut para.char_offsets[char_idx + 1..] {
+            *offset += (EXTENDED_CTRL_UNITS - 1) as u32;
+        }
+        para.shift_position_metadata_for_stream_insertion(next, (EXTENDED_CTRL_UNITS - 1) as u32);
+    }
+    for range in &mut para.field_ranges {
+        if range.control_idx >= control_index {
+            range.control_idx += 1;
+        }
+    }
+    para.align_ctrl_data_records();
+    para.controls.insert(
+        control_index,
+        Control::AutoNumber(AutoNumber {
+            number_type,
+            ..Default::default()
+        }),
+    );
+    para.ctrl_data_records.insert(control_index, None);
+    // 글자 한 칸은 `insert_text_at` 이 이미 셌다 — 컨트롤 몫 일곱만 더한다(합 8칸).
+    para.char_count += (EXTENDED_CTRL_UNITS - 1) as u32;
 }
 
 #[cfg(test)]
