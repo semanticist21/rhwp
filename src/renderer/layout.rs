@@ -6307,6 +6307,22 @@ impl LayoutEngine {
                         let mut comp =
                             crate::renderer::composer::compose_paragraph_in_context(para, styles);
                         self.substitute_hf_field_markers(&mut comp, page_number);
+                        // 바탕쪽 글 문단의 쪽 번호·전체 쪽수 자동 번호도 머리말처럼 그 쪽 값으로 그린다
+                        // (한컴 입력 > 상용구는 바탕쪽에도 넣는다).
+                        if para.controls.iter().any(|ctrl| {
+                            matches!(ctrl, Control::AutoNumber(an) if matches!(
+                                an.number_type,
+                                crate::model::control::AutoNumberType::Page
+                                    | crate::model::control::AutoNumberType::TotalPage
+                            ))
+                        }) {
+                            self.substitute_auto_numbers_in_composed(
+                                para,
+                                &mut comp,
+                                page_number,
+                                self.total_pages.get(),
+                            );
+                        }
                         // 바탕쪽 탭은 레이아웃 위치 지정용이므로 탭 리더를 그리지 않음
                         comp.tab_extended.clear();
                         // LINE_SEG vpos로 문단 시작 y 결정 (빈 문단 건너뜀 보상)

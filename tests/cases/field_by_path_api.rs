@@ -196,6 +196,11 @@ fn master_page_takes_codes_and_numbers() {
         .unwrap();
     doc.insert_auto_number_in_header_footer_native(0, true, apply_to, 0, 3, AutoNumberType::Page)
         .unwrap();
+    // 바탕쪽 글 문단의 쪽 번호·전체 쪽수는 그 쪽 값으로 그린다("쪽 1 1 …").
+    let tree = doc.build_page_render_tree(0).unwrap();
+    let mut texts = String::new();
+    collect_text(&tree.root, &mut texts);
+    assert!(texts.contains("쪽 11"), "{texts:?}");
     let (start, end) = doc
         .insert_field_in_header_footer_native(
             0,
@@ -276,5 +281,15 @@ fn typing_after_code_at_paragraph_end_still_takes_codes() {
                 (1, "$author".into(), "나".into()),
             ]
         );
+    }
+}
+
+fn collect_text(node: &rhwp::renderer::render_tree::RenderNode, out: &mut String) {
+    if let rhwp::renderer::render_tree::RenderNodeType::TextRun(run) = &node.node_type {
+        // 자동 번호는 자리표 글자에 표시 글(display_text)로 번호를 그린다.
+        out.push_str(run.display_text.as_deref().unwrap_or(&run.text));
+    }
+    for child in &node.children {
+        collect_text(child, out);
     }
 }
