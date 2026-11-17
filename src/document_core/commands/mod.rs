@@ -25,9 +25,11 @@ mod source_line_ladder;
 mod cell_format_origin;
 mod footnote_ops;
 mod foreign_paste;
+// 숨은 설명 넣기·지우기와 따로 문서로 편집하기.
 mod formatting;
 mod formatting_runs;
 mod header_footer_ops;
+mod hidden_comment;
 mod html_import;
 mod master_page_ops;
 mod meta_tag;

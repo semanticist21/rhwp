@@ -3025,6 +3025,7 @@ fn collect_shape_marker_labels(show_ctrl: bool, para: Option<&Paragraph>) -> Vec
                             Some((pos, "[표]".to_string()))
                         }
                         Control::PageHide(_) => Some((pos, "[감추기]".to_string())),
+                        Control::HiddenComment(_) => Some((pos, "[숨은 설명]".to_string())),
                         Control::PageNumberPos(_) => Some((pos, "[쪽 번호 위치]".to_string())),
                         Control::Header(h) => {
                             let apply = match h.apply_to {

@@ -8111,6 +8111,90 @@ impl HwpDocument {
         Ok(format!("{{\"ok\":true,\"count\":{count}}}"))
     }
 
+    /// 캐럿 자리에 빈 숨은 설명을 넣는다. `path_json`이 빈 배열이면 본문 문단이다.
+    /// 반환: `{"ok":true,"controlIdx":N}`.
+    #[wasm_bindgen(js_name = insertHiddenComment)]
+    pub fn insert_hidden_comment(
+        &mut self,
+        section_idx: u32,
+        para_idx: u32,
+        path_json: &str,
+        char_offset: u32,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        self.core
+            .insert_hidden_comment_native(
+                section_idx as usize,
+                para_idx as usize,
+                &path,
+                char_offset as usize,
+            )
+            .map_err(|e| e.into())
+    }
+
+    /// 숨은 설명을 그 내용째 지운다.
+    #[wasm_bindgen(js_name = deleteHiddenComment)]
+    pub fn delete_hidden_comment(
+        &mut self,
+        section_idx: u32,
+        para_idx: u32,
+        path_json: &str,
+        control_idx: u32,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        self.core
+            .delete_hidden_comment_native(
+                section_idx as usize,
+                para_idx as usize,
+                &path,
+                control_idx as usize,
+            )
+            .map_err(|e| e.into())
+    }
+
+    /// 숨은 설명의 문단만 든 따로 문서(한컴 "<<숨은 설명>>" 편집 화면). 고친 뒤 `setHiddenComment`로 되돌린다.
+    #[wasm_bindgen(js_name = hiddenCommentDocument)]
+    pub fn hidden_comment_document_api(
+        &self,
+        section_idx: u32,
+        para_idx: u32,
+        path_json: &str,
+        control_idx: u32,
+    ) -> Result<HwpDocument, JsValue> {
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        self.core
+            .hidden_comment_document(
+                section_idx as usize,
+                para_idx as usize,
+                &path,
+                control_idx as usize,
+            )
+            .map(|core| HwpDocument { core })
+            .map_err(|e| e.into())
+    }
+
+    /// `source`(숨은 설명 편집 문서)의 문단으로 숨은 설명 내용을 바꾼다.
+    #[wasm_bindgen(js_name = setHiddenComment)]
+    pub fn set_hidden_comment(
+        &mut self,
+        section_idx: u32,
+        para_idx: u32,
+        path_json: &str,
+        control_idx: u32,
+        source: &HwpDocument,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        self.core
+            .set_hidden_comment_from(
+                section_idx as usize,
+                para_idx as usize,
+                &path,
+                control_idx as usize,
+                &source.core.document,
+            )
+            .map_err(|e| e.into())
+    }
+
     /// 컨트롤 하나를 지운다 — 웹한글컨트롤 `DeleteCtrl`.
     #[wasm_bindgen(js_name = deleteControlAt)]
     pub fn delete_control_at_api(

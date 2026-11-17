@@ -696,7 +696,7 @@ impl DocumentCore {
         None
     }
 
-    fn code_paragraph_mut(
+    pub(crate) fn code_paragraph_mut(
         &mut self,
         section: usize,
         para: usize,
@@ -717,7 +717,7 @@ impl DocumentCore {
     }
 
     /// 지운 문단의 줄을 다시 짜고 구역을 다시 조판한다.
-    fn reflow_after_code_erase(
+    pub(crate) fn reflow_after_code_erase(
         &mut self,
         mut body: Vec<(usize, usize)>,
         mut nested: Vec<(usize, usize, Vec<Step>)>,

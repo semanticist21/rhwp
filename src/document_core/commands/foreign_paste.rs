@@ -1025,3 +1025,40 @@ fn parts_to_document(
     }
     Ok(doc)
 }
+
+impl crate::document_core::DocumentCore {
+    /// 다른 문서의 본문 문단을 이 문서의 서식표로 옮겨 돌려준다(문서에 넣지는 않는다).
+    ///
+    /// 붙여넣기의 ①서식표 이식·②참조 재작성과 같고, 구역·단 정의와 메모 필드를 뗀다.
+    /// 숨은 설명 편집 화면(그 문단만 든 따로 문서)에서 고친 문단을 숨은 설명에 되돌릴 때 쓴다.
+    pub(crate) fn import_foreign_paragraphs(&mut self, foreign: &Document) -> Vec<Paragraph> {
+        let mut paras: Vec<Paragraph> = foreign
+            .sections
+            .iter()
+            .flat_map(|section| section.paragraphs.iter().cloned())
+            .collect();
+        let mut pool = BinPool::take(&mut self.document);
+        let id_map = merge_foreign_doc_info(&mut self.document, foreign, &mut pool);
+        {
+            let mut ctx = RemapCtx {
+                map: &id_map,
+                foreign,
+                pool: &mut pool,
+                next_field_id: next_free_field_id(&self.document),
+            };
+            ctx.paragraphs(&mut paras);
+        }
+        for para in &mut paras {
+            strip_section_scoped_controls(para);
+        }
+        crate::document_core::queries::memo_query::drop_memo_fields(&mut paras);
+        let imported_bin = pool.imported();
+        pool.restore(&mut self.document);
+        self.document.doc_info.raw_stream_dirty = true;
+        if imported_bin {
+            self.bump_bin_data_epoch();
+        }
+        self.rebuild_resolved_styles();
+        paras
+    }
+}
