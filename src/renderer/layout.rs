@@ -5739,8 +5739,8 @@ impl LayoutEngine {
         let hide_fill = hide_fill
             || (self.page_border_fill_first_page_only.get().1 && !first)
             || (self.page_border_fill_hide_first.get().1 && first);
-        let (page_bg_color, page_bg_gradient, page_bg_image) = if hide_fill {
-            (Some(0x00FFFFFF), None, None)
+        let (page_bg_color, page_bg_gradient, page_bg_image, page_bg_pattern) = if hide_fill {
+            (Some(0x00FFFFFF), None, None, None)
         } else if let Some(pbf) = page_border_fill {
             if pbf.border_fill_id > 0 {
                 let bf_idx = (pbf.border_fill_id - 1) as usize;
@@ -5764,15 +5764,20 @@ impl LayoutEngine {
                             )
                         })
                     };
-                    (bs.fill_color.or(Some(0x00FFFFFF)), bs.gradient.clone(), img)
+                    (
+                        bs.fill_color.or(Some(0x00FFFFFF)),
+                        bs.gradient.clone(),
+                        img,
+                        bs.pattern,
+                    )
                 } else {
-                    (Some(0x00FFFFFF), None, None)
+                    (Some(0x00FFFFFF), None, None, None)
                 }
             } else {
-                (Some(0x00FFFFFF), None, None)
+                (Some(0x00FFFFFF), None, None, None)
             }
         } else {
-            (Some(0x00FFFFFF), None, None)
+            (Some(0x00FFFFFF), None, None, None)
         };
 
         let fill_area = if hide_fill {
@@ -5810,6 +5815,23 @@ impl LayoutEngine {
             bg_bbox,
         );
         tree.root.children.push(bg_node);
+        // 한/글 쪽 배경의 무늬(면 색 위 가로줄·빗금 등)는 셀 배경처럼 무늬 채우기 사각형으로 덮는다.
+        if let Some(pattern) = page_bg_pattern {
+            let id = tree.next_id();
+            tree.root.children.push(RenderNode::new(
+                id,
+                RenderNodeType::Rectangle(RectangleNode::new(
+                    0.0,
+                    ShapeStyle {
+                        fill_color: page_bg_color,
+                        pattern: Some(pattern),
+                        ..Default::default()
+                    },
+                    None,
+                )),
+                bg_bbox,
+            ));
+        }
     }
 
     /// 자동 쪽번호의 최종 글자 기준선(96dpi 등의 레이아웃 좌표)이다.

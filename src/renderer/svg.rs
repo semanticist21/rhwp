@@ -1553,6 +1553,32 @@ impl SvgRenderer {
                 pattern.push_str("</pattern>\n");
                 pattern
             }
+            3 if bbox.2 > 0.0 && bbox.3 > 0.0 => {
+                // 원뿔형: 한/글 12.30 PDF처럼 중심에서 기울임 방향(화면 반시계)이 시작 색, 반대쪽이 끝 색이고
+                // 두 반쪽이 대칭이다. SVG에는 원뿔 그러데이션이 없어 1° 부채꼴로 칠한다.
+                let (bx, by, bw, bh) = bbox;
+                let (cx, cy, radius, _, _) = super::square_gradient_geometry(grad, bx, by, bw, bh);
+                let reach = radius * 1.5;
+                let base = f64::from(grad.angle).to_radians();
+                let step = std::f64::consts::TAU / 360.0;
+                let ramp = super::linear_gradient_color_stops(grad, bx, by, bw, bh);
+                let mut pattern = format!("<pattern id=\"{id}\" patternUnits=\"userSpaceOnUse\" x=\"{bx}\" y=\"{by}\" width=\"{bw}\" height=\"{bh}\" viewBox=\"{bx} {by} {bw} {bh}\">\n");
+                for index in 0..360 {
+                    let start = index as f64 * step;
+                    let turn = (start + step / 2.0 - base).rem_euclid(std::f64::consts::TAU);
+                    let t = turn.min(std::f64::consts::TAU - turn) / std::f64::consts::PI;
+                    let color = color_to_svg(super::sample_ramp(&ramp.0, &ramp.1, t));
+                    // 이웃 부채꼴과 겹쳐 안티에일리어싱 틈을 막는다.
+                    let point = |angle: f64| (cx + reach * angle.cos(), cy - reach * angle.sin());
+                    let (ax, ay) = point(start);
+                    let (ex, ey) = point(start + step * 1.5);
+                    pattern.push_str(&format!(
+                        "<path d=\"M{cx} {cy}L{ax} {ay}L{ex} {ey}Z\" fill=\"{color}\"/>\n"
+                    ));
+                }
+                pattern.push_str("</pattern>\n");
+                pattern
+            }
             2 => {
                 // 원형 (Radial)
                 if let Some((cx, cy, radius)) =
@@ -1570,7 +1596,7 @@ impl SvgRenderer {
                 }
             }
             _ => {
-                // 선형 (Linear) — 원뿔과 치수를 알 수 없는 채우기는 기존 선형 근사.
+                // 선형 (Linear). 치수를 알 수 없는 원뿔형도 선형으로 근사한다.
                 //
                 // [#6845] 축은 **사용자 좌표계**로 낸다. `objectBoundingBox` 백분율은
                 // 상자의 가로·세로를 각각 0~1 로 정규화하므로 가로세로비가 1 이 아니면

@@ -214,3 +214,82 @@ fn header_and_footer_inside_widen_the_page_based_border() {
     let info = doc.get_page_border_fill_native(0).unwrap();
     assert!(info.contains(r#""headerInside":true"#), "{info}");
 }
+
+/// 한/글 12.30 편집 용지 배경 탭의 색(면 색·무늬)·그러데이션·그림 채우기.
+/// 조회는 세부 값을 알리고, 그린 SVG와 두 형식 왕복이 그 값을 지킨다.
+#[test]
+fn pattern_gradient_and_picture_backgrounds_round_trip() {
+    const PNG: &[u8] = &[
+        0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00, 0x00, 0x0d, 0x49, 0x48, 0x44,
+        0x52, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x02, 0x08, 0x02, 0x00, 0x00, 0x00, 0xfd,
+        0xd4, 0x9a, 0x73, 0x00, 0x00, 0x00, 0x14, 0x49, 0x44, 0x41, 0x54, 0x78, 0x9c, 0x63, 0xf8,
+        0xcf, 0xc0, 0xc0, 0x00, 0xc2, 0x0c, 0xff, 0xff, 0xff, 0x67, 0x00, 0x00, 0x1e, 0xef, 0x04,
+        0xfc, 0xa3, 0xc8, 0xb4, 0xf7, 0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4e, 0x44, 0xae, 0x42,
+        0x60, 0x82,
+    ];
+    let mut doc = HwpDocument::create_empty();
+    doc.create_blank_document_native().unwrap();
+    let image = doc.register_image_data(PNG, "png");
+    let fills = [
+        r##"{"borderFillId":1,"fillType":"solid","fillColor":"#ffff99","patternType":5,"patternColor":"#ff0000"}"##.to_string(),
+        r##"{"borderFillId":1,"fillType":"gradient","gradientType":3,"gradientAngle":45,"gradientCenterX":50,"gradientCenterY":50,"gradientBlur":255,"gradientStepCenter":50,"gradientStartColor":"#ff0000","gradientEndColor":"#0000ff"}"##.to_string(),
+        format!(
+            r#"{{"borderFillId":1,"fillType":"image","imageBinDataId":{image},"imageFillMode":"tileAll","imageEffect":1,"imageBrightness":0,"imageContrast":0}}"#
+        ),
+    ];
+    let expect = [
+        [r#""patternType":5"#, r##""patternColor":"#ff0000""##],
+        [r#""gradientType":3"#, r##""gradientEndColor":"#0000ff""##],
+        [r#""imageFillMode":"tileAll""#, r#""imageEffect":1"#],
+    ];
+    let check = |doc: &HwpDocument, label: &str| {
+        let info = doc.get_page_border_fill_native(0).unwrap();
+        let entry = &info[..info.find(r#""hideBorder""#).unwrap()];
+        let svg = doc.render_page_svg_native(0).unwrap();
+        (entry.to_string(), svg, label.to_string())
+    };
+    for (fill, keys) in fills.iter().zip(expect) {
+        doc.set_page_border_fill_native(0, fill).unwrap();
+        let mut docs = vec![check(&doc, "편집")];
+        for bytes in [
+            doc.export_hwpx_native().unwrap(),
+            doc.export_hwp_native().unwrap(),
+        ] {
+            docs.push(check(&HwpDocument::from_bytes(&bytes).unwrap(), "왕복"));
+        }
+        for (entry, svg, label) in docs {
+            for key in keys {
+                assert!(entry.contains(key), "{label} {key}: {entry}");
+            }
+            if fill.contains("patternType") {
+                // 면 색 위에 빨간 무늬를 칠한다.
+                assert!(svg.contains("<pattern"), "{label} 무늬: {svg:.400}");
+                assert!(svg.contains(r##"stroke="#ff0000""##), "{label} 무늬 색");
+            }
+            if fill.contains("gradientType") {
+                // 원뿔형은 기울임(45°, 오른쪽 위) 쪽이 시작 색(빨강), 반대쪽이 끝 색(파랑)인 부채꼴이다.
+                let wedges: Vec<&str> = svg.split("<path d=\"M").skip(1).take(360).collect();
+                assert_eq!(wedges.len(), 360, "{label} 부채꼴");
+                let fill = |wedge: &str| {
+                    let at = &wedge[wedge.find("fill=\"#").unwrap() + 7..];
+                    u32::from_str_radix(&at[..6], 16).unwrap()
+                };
+                assert!(
+                    fill(wedges[45]) >> 16 > 0xf0 && fill(wedges[45]) & 0xff < 0x10,
+                    "{label} 시작: {}",
+                    wedges[45]
+                );
+                assert!(
+                    fill(wedges[225]) >> 16 < 0x10 && fill(wedges[225]) & 0xff > 0xf0,
+                    "{label} 끝: {}",
+                    wedges[225]
+                );
+                assert!(
+                    fill(wedges[135]) >> 16 > 0x60 && fill(wedges[135]) & 0xff > 0x60,
+                    "{label} 가운데: {}",
+                    wedges[135]
+                );
+            }
+        }
+    }
+}

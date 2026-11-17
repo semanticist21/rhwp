@@ -2126,6 +2126,12 @@ impl WebCanvasRenderer {
         if grad.gradient_type == 4 {
             return self.apply_square_gradient_fill(grad, x, y, w, h);
         }
+        if grad.gradient_type == 3 {
+            if let Some(conic) = self.conic_gradient(grad, x, y, w, h) {
+                self.ctx.set_fill_style_canvas_gradient(&conic);
+                return true;
+            }
+        }
 
         let canvas_grad = match grad.gradient_type {
             2..=3 => {
@@ -2165,6 +2171,47 @@ impl WebCanvasRenderer {
 
         self.ctx.set_fill_style_canvas_gradient(&canvas_grad);
         true
+    }
+
+    /// 원뿔형: 기울임 방향(화면 반시계)이 시작 색, 반대쪽이 끝 색인 대칭 원뿔(한/글 12.30 PDF).
+    /// `createConicGradient`가 없는 웹 보기에서는 None을 돌려 기존 원형 근사를 쓴다.
+    fn conic_gradient(
+        &self,
+        grad: &GradientFillInfo,
+        x: f64,
+        y: f64,
+        w: f64,
+        h: f64,
+    ) -> Option<web_sys::CanvasGradient> {
+        if !(w > 0.0 && h > 0.0) {
+            return None;
+        }
+        let (cx, cy, _, _, _) = super::square_gradient_geometry(grad, x, y, w, h);
+        let create = js_sys::Reflect::get(&self.ctx, &JsValue::from_str("createConicGradient"))
+            .ok()?
+            .dyn_into::<js_sys::Function>()
+            .ok()?;
+        // Canvas 각은 시계 방향이다.
+        let start = -f64::from(grad.angle).to_radians();
+        let gradient: web_sys::CanvasGradient = create
+            .call3(
+                &self.ctx,
+                &JsValue::from_f64(start),
+                &JsValue::from_f64(cx),
+                &JsValue::from_f64(cy),
+            )
+            .ok()?
+            .dyn_into()
+            .ok()?;
+        let (colors, positions) = super::linear_gradient_color_stops(grad, x, y, w, h);
+        let stops: Vec<_> = colors.iter().zip(&positions).collect();
+        for (&color, &position) in &stops {
+            let _ = gradient.add_color_stop((position / 2.0) as f32, &color_to_css(color));
+        }
+        for (&color, &position) in stops.iter().rev() {
+            let _ = gradient.add_color_stop((1.0 - position / 2.0) as f32, &color_to_css(color));
+        }
+        Some(gradient)
     }
 
     /// Canvas2D에는 사각 거리 shader가 없으므로 현재 물리 해상도의 제한된

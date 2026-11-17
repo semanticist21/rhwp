@@ -3638,7 +3638,7 @@ impl DocumentCore {
     /// 쪽 테두리/배경 항목 하나의 JSON 필드(중괄호 없이).
     fn page_border_fill_entry_json(&self, pbf: &crate::model::page::PageBorderFill) -> String {
         use crate::document_core::helpers::{
-            border_line_type_to_u8_val, color_ref_to_css, fill_json_values,
+            border_line_type_to_u8_val, color_ref_to_css, fill_detail_json, fill_json_values,
         };
         use crate::model::page::PageBorderUiBasis;
 
@@ -3685,9 +3685,15 @@ impl DocumentCore {
                     .join(",");
                 let (fill_type, fill_color, pattern_color, pattern_type) =
                     fill_json_values(&bf.fill);
+                // 그러데이션·그림의 세부 값도 알려 배경 탭이 지금 값을 보이고 그대로 다시 쓰게 한다.
                 border_json = format!(
-                    "{},\"fillType\":\"{}\",\"fillColor\":\"{}\",\"patternColor\":\"{}\",\"patternType\":{}",
-                    borders, fill_type, fill_color, pattern_color, pattern_type
+                    "{},\"fillType\":\"{}\",\"fillColor\":\"{}\",\"patternColor\":\"{}\",\"patternType\":{}{}",
+                    borders,
+                    fill_type,
+                    fill_color,
+                    pattern_color,
+                    pattern_type,
+                    fill_detail_json(&bf.fill)
                 );
             }
         }
