@@ -91,6 +91,12 @@ pub(crate) fn recompose_stored_lines_in_frame_with_known_square_band_with_storag
                 || (!stored_geometry_policy.preserve_hwp3_origins
                     && line_breaking::supports_tac_table_band_frame_controls(para)))
             && crate::renderer::para_has_no_stored_line_segs(para)
+            // 너비가 다른 단마다 그 단 너비로 접은 편집 줄(`reflow_line_segs_after`)은
+            // 단 경계가 권위다. 한 단 너비로 다시 짜면 다음 단이 엉뚱한 글자에서 시작한다.
+            && para
+                .line_segs
+                .windows(2)
+                .all(|pair| pair[0].segment_width == pair[1].segment_width)
         {
             let mut body = storage.clone_paragraph(para)?;
             body.replace_line_segs(Vec::new());

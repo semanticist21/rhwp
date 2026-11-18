@@ -18,7 +18,8 @@ use crate::model::paragraph::{normalize_text_newlines, LineSeg, ParaMeta, Paragr
 use crate::model::shape::{ShapeObject, TextWrap, VertRelTo};
 use crate::model::style::Alignment;
 use crate::renderer::composer::{
-    compose_paragraph, control_owns_body_band, layout_picture_band, reflow_line_segs, ParagraphBox,
+    compose_paragraph, control_owns_body_band, layout_picture_band, reflow_line_segs,
+    reflow_line_segs_after, ParagraphBox,
 };
 use crate::renderer::page_layout::PageLayoutInfo;
 use crate::renderer::pagination::PageItem;
@@ -2139,12 +2140,52 @@ impl DocumentCore {
         // 본문: 열 상자를 그대로 넘긴다. 이 자리가 대화형 편집의 관문이고,
         // 종전에 두 끝점을 버려 `column_start=0` 을 발행했던 지점이다.
         let column_width = col_area.width;
+        // 너비가 다른 단에 걸친 문단은 한컴처럼 단마다 그 단 너비로, 문단이 그 단에
+        // 들어선 줄부터 접는다. 단마다 담기는 줄 수는 앞 쪽 나눔의 것을 쓴다(줄 높이는
+        // 단 너비와 무관하다). 쪽 나눔이 문단을 다른 단으로 옮기면 호출부의 수렴 루프가
+        // 새 쪽 나눔으로 다시 접는다.
+        let pieces = self.paragraph_column_pieces(section_idx, para_idx);
+        let width_of = |column: usize| {
+            layout
+                .column_areas
+                .get(column)
+                .unwrap_or(&layout.column_areas[0])
+                .width
+        };
+        let mixed = pieces
+            .windows(2)
+            .any(|pair| (width_of(pair[0].0) - width_of(pair[1].0)).abs() > 0.5);
+        let para = &mut self.document.sections[section_idx].paragraphs[para_idx];
         reflow_line_segs(
-            &mut self.document.sections[section_idx].paragraphs[para_idx],
-            ParagraphBox::body_for_style(column_width, para_style, self.dpi),
+            para,
+            ParagraphBox::body_for_style(
+                if mixed {
+                    width_of(pieces[0].0)
+                } else {
+                    column_width
+                },
+                para_style,
+                self.dpi,
+            ),
             &self.styles,
             self.dpi,
         );
+        if mixed {
+            let mut kept = 0;
+            for pair in pieces.windows(2) {
+                kept += pair[0].1;
+                let width = width_of(pair[1].0);
+                if (width - width_of(pair[0].0)).abs() > 0.5 {
+                    reflow_line_segs_after(
+                        para,
+                        kept,
+                        ParagraphBox::body_for_style(width, para_style, self.dpi),
+                        &self.styles,
+                        self.dpi,
+                    );
+                }
+            }
+        }
         // 원고지 구역: 칸 수로 줄을 다시 나누고, 문단 세로 위치를 셈하는 줄 간격을 격자에 맞춘다.
         let document = &mut self.document;
         crate::renderer::cell_grid::fit_body_paragraph(
@@ -2155,6 +2196,113 @@ impl DocumentCore {
             &self.styles,
             self.dpi,
         );
+    }
+
+    /// 편집 뒤 쪽 나눔이 너비가 다른 단에 걸친 문단을 접은 줄과 다른 자리에서 다음 단으로
+    /// 넘겼으면 새 단 너비로 다시 접는다. 한컴 12.30은 앞 문단에서 Enter를 쳐 밀려난 문단도
+    /// 새 단 경계에서 다시 접는다. 단 경계 앞뒤 줄의 너비가 같으면 어긋난 것이다.
+    /// 줄이 바뀐 문단이 있으면 `true`다(호출부가 쪽을 다시 나눈다).
+    pub(crate) fn refold_unequal_column_paragraphs(&mut self, sections: &[usize]) -> bool {
+        let mut changed = false;
+        for &section_idx in sections {
+            let Some(result) = self.pagination.get(section_idx) else {
+                continue;
+            };
+            let mut pieces: std::collections::BTreeMap<usize, Vec<(usize, usize)>> =
+                std::collections::BTreeMap::new();
+            for column in result.pages.iter().flat_map(|page| &page.column_contents) {
+                for item in &column.items {
+                    if let PageItem::PartialParagraph {
+                        para_index,
+                        start_line,
+                        ..
+                    } = item
+                    {
+                        pieces
+                            .entry(*para_index)
+                            .or_default()
+                            .push((column.column_index as usize, *start_line));
+                    }
+                }
+            }
+            let section = &self.document.sections[section_idx];
+            let stale: Vec<usize> = pieces
+                .into_iter()
+                .filter(|(para_idx, list)| {
+                    let Some(para) = section.paragraphs.get(*para_idx) else {
+                        return false;
+                    };
+                    let column_def =
+                        Self::find_column_def_for_paragraph(&section.paragraphs, *para_idx);
+                    let layout = PageLayoutInfo::from_page_def(
+                        &section.section_def.page_def,
+                        &column_def,
+                        self.dpi,
+                    );
+                    let width_of = |column: usize| layout.column_areas.get(column).map(|a| a.width);
+                    list.windows(2).any(|pair| {
+                        let start = pair[1].1;
+                        width_of(pair[0].0)
+                            .zip(width_of(pair[1].0))
+                            .is_some_and(|(a, b)| (a - b).abs() > 0.5)
+                            && start > 0
+                            && start < para.line_segs.len()
+                            && para.line_segs[start].segment_width
+                                == para.line_segs[start - 1].segment_width
+                    })
+                })
+                .map(|(para_idx, _)| para_idx)
+                .collect();
+            for para_idx in stale {
+                let before = self.document.sections[section_idx].paragraphs[para_idx]
+                    .line_segs
+                    .clone();
+                let stored_end_for_reset = crate::renderer::composer::paragraph_flow_end(
+                    &self.document.sections[section_idx].paragraphs[para_idx],
+                );
+                self.reflow_paragraph(section_idx, para_idx);
+                let doc_hwp3_layout = self.document.layout_profile().hwp3_layout();
+                crate::renderer::composer::recalculate_section_vpos(
+                    &mut self.document.sections[section_idx].paragraphs,
+                    para_idx,
+                    None,
+                    stored_end_for_reset,
+                    &self.styles,
+                    self.dpi,
+                    doc_hwp3_layout,
+                );
+                if self.document.sections[section_idx].paragraphs[para_idx].line_segs != before {
+                    self.recompose_paragraph(section_idx, para_idx);
+                    changed = true;
+                }
+            }
+        }
+        changed
+    }
+
+    /// 앞 쪽 나눔에서 문단이 걸친 단과 단마다의 줄 수. 한 단에 다 있으면 비어 있다.
+    fn paragraph_column_pieces(&self, section_idx: usize, para_idx: usize) -> Vec<(usize, usize)> {
+        let Some(result) = self.pagination.get(section_idx) else {
+            return Vec::new();
+        };
+        result
+            .pages
+            .iter()
+            .flat_map(|page| &page.column_contents)
+            .flat_map(|column| {
+                column.items.iter().filter_map(move |item| match item {
+                    PageItem::PartialParagraph {
+                        para_index,
+                        start_line,
+                        end_line,
+                    } if *para_index == para_idx => Some((
+                        column.column_index as usize,
+                        end_line.saturating_sub(*start_line),
+                    )),
+                    _ => None,
+                })
+            })
+            .collect()
     }
 
     /// 본문 문단을 다시 짠 서식 편집 뒤에 원고지 구역이면 칸 수로 다시 나눈다.

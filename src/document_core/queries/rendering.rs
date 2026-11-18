@@ -5532,7 +5532,18 @@ impl DocumentCore {
             out
         };
         self.body_page_field_error = None;
+        // 편집으로 일부 문단만 바뀐 구역: 너비가 다른 단에 걸친 문단이 새 쪽 나눔에서 다른
+        // 줄로 단을 넘기면 그 단 너비로 다시 접고 한 번 더 나눈다. 불러온 문서는 저장 줄대로 둔다.
+        let edited_sections: Vec<usize> = (0..self.document.sections.len())
+            .filter(|&index| {
+                self.dirty_sections.get(index) == Some(&true)
+                    && matches!(self.dirty_paragraphs.get(index), Some(Some(_)))
+            })
+            .collect();
         self.paginate_pass_with_storage(&empty_breaks, storage)?;
+        if self.refold_unequal_column_paragraphs(&edited_sections) {
+            self.paginate_pass_with_storage(&empty_breaks, storage)?;
+        }
         self.settle_body_page_fields(&empty_breaks);
         // [#2424] full path가 최신 dirty state를 반영했으므로 deferred target을 소비한다.
         // 이후 resumable job도 shadow result commit 성공 시 같은 수명 규칙을 적용한다.

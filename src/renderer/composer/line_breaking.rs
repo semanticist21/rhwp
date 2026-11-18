@@ -6024,6 +6024,55 @@ pub(crate) fn reflow_line_segs(
     super::equation_line_metrics::publish_regenerated_rows(para, styles);
 }
 
+/// 앞 `kept`줄은 그대로 두고, 그 뒤 줄을 `paragraph_box` 너비로 다시 접는다.
+///
+/// 너비가 다른 단에 걸친 본문 문단은 한컴 12.30처럼 단마다 그 단의 너비로, 문단이 그
+/// 단에 들어선 글자부터 줄을 나눈다(`DocumentCore::reflow_paragraph`). 프레임이 받지
+/// 않는 문단이면 줄을 바꾸지 않고 `false`를 돌려준다.
+pub(crate) fn reflow_line_segs_after(
+    para: &mut Paragraph,
+    kept: usize,
+    paragraph_box: ParagraphBox,
+    styles: &ResolvedStyleSet,
+    dpi: f64,
+) -> bool {
+    if kept == 0 || kept >= para.line_segs.len() || !paragraph_box.is_usable() {
+        return false;
+    }
+    let start = para.line_seg_text_start(kept);
+    let mut frame = paragraph_box.frame(para.line_segs[kept].vertical_pos);
+    let tail = match try_layout_paragraph_in_frame_impl(
+        para,
+        &mut frame,
+        styles,
+        dpi,
+        true,
+        FrameStart::SourceUtf16(start),
+        FramePurpose::Body,
+        &Unbounded,
+    ) {
+        Ok(Some(tail)) if !tail.is_empty() => tail,
+        Ok(_) => return false,
+        Err(never) => match never {},
+    };
+    let tail_metrics = match frame.try_project_space_metrics_since(0, &Unbounded) {
+        Ok(metrics) => metrics,
+        Err(never) => match never {},
+    };
+    let mut lines = para.line_segs[..kept].to_vec();
+    lines.extend(tail);
+    let mut metrics: Vec<_> = para
+        .layout_space_metrics
+        .iter()
+        .filter(|(position, _)| *position < start)
+        .cloned()
+        .collect();
+    metrics.extend(tail_metrics);
+    para.replace_line_segs_with_space_metrics(lines, metrics);
+    super::equation_line_metrics::publish_regenerated_rows(para, styles);
+    true
+}
+
 /// "한 줄로 입력"(`lineWrap=SQUEEZE`) 칸의 문단은 강제 줄 나눔에서만 줄을 나눈다.
 ///
 /// 한컴 12.30은 이 칸에서 넘치는 글을 다음 줄로 보내지 않고 한 줄에 둔 채 글자 사이를
