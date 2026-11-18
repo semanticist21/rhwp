@@ -510,6 +510,18 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     ),
     (
         "commands/clipboard.rs",
+        "save_internal_clipboard_native",
+        Exempt::SessionState,
+        "내부 클립보드와 붙이기 횟수를 비켜 두는 편집 세션 상태만 바꾼다.",
+    ),
+    (
+        "commands/clipboard.rs",
+        "restore_internal_clipboard_native",
+        Exempt::SessionState,
+        "비켜 둔 내부 클립보드와 붙이기 횟수만 되돌린다.",
+    ),
+    (
+        "commands/clipboard.rs",
         "copy_selection_native",
         Exempt::SessionState,
         "복사 — 읽기 후 `self.clipboard` 에만 기록.",

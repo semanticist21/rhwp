@@ -446,6 +446,27 @@ impl DocumentCore {
         self.clipboard = None;
     }
 
+    /// 내부 클립보드(조각·떠 있는 개체 붙이기 횟수)를 비켜 두고 비운다. 복사·붙이기를 작업 자리로
+    /// 쓰는 편집 앞에서 부르고, 끝나면 `restore_internal_clipboard_native`로 되돌린다. 겹쳐 부르면
+    /// 쌓인다. 행/열 바꿈 버퍼는 그 명령만 쓰므로 그대로 둔다.
+    pub fn save_internal_clipboard_native(&mut self) {
+        let saved = super::super::SavedClipboard {
+            clipboard: self.clipboard.take(),
+            paste_cascade_count: std::mem::take(&mut self.paste_cascade_count),
+        };
+        self.saved_clipboards.push(saved);
+    }
+
+    /// 마지막으로 비켜 둔 내부 클립보드로 되돌린다. 그 사이의 복사는 버린다. 비켜 둔 것이 없으면 false.
+    pub fn restore_internal_clipboard_native(&mut self) -> bool {
+        let Some(saved) = self.saved_clipboards.pop() else {
+            return false;
+        };
+        self.clipboard = saved.clipboard;
+        self.paste_cascade_count = saved.paste_cascade_count;
+        true
+    }
+
     /// 선택 영역을 내부 클립보드에 복사한다.
     ///
     /// 같은 구역 내 start ~ end 범위의 문단을 클립보드에 저장.

@@ -135,6 +135,14 @@ pub(crate) struct TableTransposeClipboard {
     pub(crate) data: TableTransposeData,
 }
 
+/// 잠깐 비켜 둔 내부 클립보드(조각·떠 있는 개체 붙이기 횟수).
+/// 편집이 클립보드를 작업 자리로 빌릴 때 사용자의 마지막 복사를 지킨다. 행/열 바꿈 버퍼는
+/// 그 복사·붙이기 명령만 쓰므로 비켜 두지 않는다.
+pub(crate) struct SavedClipboard {
+    pub(crate) clipboard: Option<ClipboardData>,
+    pub(crate) paste_cascade_count: u32,
+}
+
 /// [#2424] deferred cell edit가 이후 pagination job에 넘기는 최소 target descriptor.
 ///
 /// resumable engine이 붙기 전까지 실제 flush는 기존 동기 `paginate()`를 사용하며,
@@ -253,6 +261,8 @@ pub struct DocumentCore {
     /// [Task #1161] 떠 있는 개체(treat_as_char=false) 반복 붙여넣기 cascade 카운터.
     /// 새 컨트롤 복사 시 0 으로 리셋, 붙여넣기마다 +1 하여 위치 오프셋 누적(한컴 정합).
     pub(crate) paste_cascade_count: u32,
+    /// `saveInternalClipboard`가 비켜 둔 클립보드. 겹친 빌림을 위해 쌓는다.
+    pub(crate) saved_clipboards: Vec<SavedClipboard>,
     /// 문단부호(¶) 표시 여부
     pub(crate) show_paragraph_marks: bool,
     /// [#4709] SVG 출력에 배치 메트릭 face 주석(data-metric-font) 부착 여부 (옵트인)
@@ -621,6 +631,7 @@ impl DocumentCore {
             clipboard: None,
             table_transpose_clipboard: None,
             paste_cascade_count: 0,
+            saved_clipboards: Vec::new(),
             show_paragraph_marks: false,
             annotate_metric_font: false,
             show_control_codes: false,

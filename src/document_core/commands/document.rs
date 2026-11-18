@@ -448,6 +448,7 @@ impl DocumentCore {
             clipboard: None,
             table_transpose_clipboard: None,
             paste_cascade_count: 0,
+            saved_clipboards: Vec::new(),
             show_paragraph_marks: false,
             annotate_metric_font: false,
             show_control_codes: false,
@@ -2580,6 +2581,7 @@ impl DocumentCore {
         self.composed = composed;
         self.clipboard = None;
         self.table_transpose_clipboard = None;
+        self.saved_clipboards.clear();
         self.dirty_sections = vec![true; sec_count];
         self.measured_tables = Vec::new();
         self.measured_sections = Vec::new();

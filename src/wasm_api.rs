@@ -11372,6 +11372,18 @@ impl HwpDocument {
         self.clear_clipboard_native()
     }
 
+    /// 내부 클립보드를 비켜 두고 비운다. 복사·붙이기를 작업 자리로 쓰는 편집 앞에서 부른다.
+    #[wasm_bindgen(js_name = saveInternalClipboard)]
+    pub fn save_internal_clipboard(&mut self) {
+        self.save_internal_clipboard_native()
+    }
+
+    /// 마지막으로 비켜 둔 내부 클립보드로 되돌린다. 비켜 둔 것이 없으면 false.
+    #[wasm_bindgen(js_name = restoreInternalClipboard)]
+    pub fn restore_internal_clipboard(&mut self) -> bool {
+        self.restore_internal_clipboard_native()
+    }
+
     /// 선택 영역을 내부 클립보드에 복사한다.
     ///
     /// 반환값: JSON `{"ok":true,"text":"<plain_text>"}`
