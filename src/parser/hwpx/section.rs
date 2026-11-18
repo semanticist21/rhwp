@@ -1201,6 +1201,12 @@ fn parse_paragraph_body(
     para.nb_space_control_indices = Some(nb_space_control_indices);
     para.char_count = utf16_pos + 1; // +1 for 끝 마커
 
+    // 형광펜 표지를 HWP5 RangeTag 로도 싣는다. 렌더러와 편집 명령은 RangeTag 를 읽으므로
+    // HWP 적재(`import_markpen_range_tags`)와 같은 상태여야 HWPX 형광펜도 그려진다.
+    if !para.markpen_marks.is_empty() {
+        para.range_tags = para.effective_markpen_range_tags();
+    }
+
     // [#5961] 저장 lineseg 가 HWP5 축보다 얼마나 짧은지 기록한다.
     //
     // 위에서 만든 `char_offsets`·`char_count`·`char_shapes` 는 확장 제어마다 8유닛을 주는

@@ -130,7 +130,8 @@ impl<'a> Scan<'a, '_> {
     fn para(&mut self, p: &'a Paragraph) -> Result<(), Error> {
         // RangeTag's kind/data namespace can carry extension semantics. No
         // identity remap contract exists for it in the initial strict profile.
-        if !p.range_tags.is_empty() {
+        // 형광펜(종류 2)은 색만 담아 다시 매길 ID가 없고, HWPX 형광펜 표지도 이 범위로 실린다.
+        if p.range_tags.iter().any(|r| r.tag >> 24 != 2) {
             return Err(self.unsupported("unvalidated paragraph range tags"));
         }
         if p.ctrl_data_records.len()

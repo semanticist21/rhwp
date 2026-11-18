@@ -1035,6 +1035,12 @@ fn shift_axis(p: &mut Paragraph, boundary: u32, delta: i32) -> Result<(), HwpErr
         shift(&mut range.start)?;
         shift(&mut range.end)?;
     }
+    // 형광펜 표지는 저장의 정본이라 그려지는 RangeTag 와 함께 옮긴다.
+    for mark in &mut p.markpen_marks {
+        if let Some(pos) = &mut mark.utf16_pos {
+            shift(pos)?;
+        }
+    }
     // 기존 저장 줄 경계는 HWPX 별도 축일 수 있으므로 재조판한다.
     p.stored_text_partition_dirty = true;
     p.char_count = p

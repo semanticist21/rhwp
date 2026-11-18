@@ -292,7 +292,7 @@ fn reject_boundary_metadata(
         ];
     }
     core.set_document(document);
-    // HWPX는 범위 태그 없이 형광펜 표지만 읽으므로 두 보호 조건을 독립 검증한다.
+    // HWP는 범위 태그로, HWPX는 형광펜 표지로 저장한다. HWPX를 읽으면 그리기용 범위 태그도 함께 만든다.
     let bytes = if tag.is_some() {
         core.export_hwp_native().unwrap()
     } else {
@@ -304,7 +304,7 @@ fn reject_boundary_metadata(
         assert_eq!(paragraph.range_tags.len(), 1);
         assert!(core.document().sections[0].raw_stream.is_some());
     } else {
-        assert!(paragraph.range_tags.is_empty());
+        assert_eq!(paragraph.range_tags.len(), 1);
         assert_eq!(paragraph.markpen_marks.len(), 2);
     }
     core.copy_selection_native(0, 0, 0, 0, 1).unwrap();

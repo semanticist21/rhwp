@@ -9741,13 +9741,31 @@ impl LayoutEngine {
                         } else {
                             0.0
                         };
+                        // 배치 위치가 없으면 캐럿과 같은 글자 위치로 잰다. 고른 폭(char_w)은
+                        // 선행 공백을 뺀 폭을 공백까지 든 글자 수로 나눠 앞 공백 뒤 형광펜을
+                        // 글자 하나쯤 앞에 그린다.
+                        let char_count = run.text.chars().count();
+                        let positions = layout_positions
+                            .clone()
+                            .filter(|positions| positions.len() == char_count + 1)
+                            .unwrap_or_else(|| compute_char_positions(&run.text, &text_style));
                         for rt in &p.range_tags {
                             let rt_type = (rt.tag >> 24) & 0xFF;
                             if rt_type != 2 {
                                 continue;
                             }
-                            let rt_start = rt.start as usize;
-                            let rt_end = rt.end as usize;
+                            // RangeTag 위치는 컨트롤마다 8유닛을 세는 HWP5 UTF-16 축이고
+                            // run 위치는 `text` 글자 인덱스다. 구역 정의·필드 같은 컨트롤이
+                            // 앞에 있으면 축이 달라 형광펜이 뒤 글자로 밀린다.
+                            let to_char = |pos: u32| {
+                                if p.char_offsets.is_empty() {
+                                    pos as usize
+                                } else {
+                                    p.char_offsets.partition_point(|&offset| offset < pos)
+                                }
+                            };
+                            let rt_start = to_char(rt.start);
+                            let rt_end = to_char(rt.end);
                             // run과 RangeTag가 겹치는 문자 범위
                             let overlap_start = rt_start.max(run_char_pos);
                             let overlap_end = rt_end.min(run_char_end);
@@ -9757,15 +9775,10 @@ impl LayoutEngine {
                             let hl_color = rt.tag & 0x00FFFFFF;
                             let relative_start = overlap_start - run_char_pos;
                             let relative_end = overlap_end - run_char_pos;
-                            let exact_range = layout_positions.as_deref().and_then(|positions| {
-                                if positions.len() != run.text.chars().count().saturating_add(1) {
-                                    return None;
-                                }
-                                Some((
-                                    *positions.get(relative_start)?,
-                                    *positions.get(relative_end)?,
-                                ))
-                            });
+                            let exact_range = positions
+                                .get(relative_start)
+                                .zip(positions.get(relative_end))
+                                .filter(|_| positions.len() == char_count + 1);
                             let (hl_x, hl_w) = if let Some((start, end)) = exact_range {
                                 (x + start, end - start)
                             } else {
