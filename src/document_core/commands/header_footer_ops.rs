@@ -475,7 +475,8 @@ impl DocumentCore {
                     hf_para_idx
                 )));
             }
-            let mut new_para = paragraphs[hf_para_idx].split_at(char_offset);
+            let mut new_para =
+                paragraphs[hf_para_idx].split_at_with(char_offset, restore_meta.is_none());
             if let Some(meta) = restore_meta {
                 restore_para_meta(&mut new_para, meta, &para_shapes);
             }

@@ -4901,8 +4901,8 @@ impl DocumentCore {
         self.document.sections[section_idx].raw_stream = None;
 
         // 문단 분리
-        let mut new_para =
-            self.document.sections[section_idx].paragraphs[para_idx].split_at(char_offset);
+        let mut new_para = self.document.sections[section_idx].paragraphs[para_idx]
+            .split_at_with(char_offset, restore_meta.is_none());
         if let Some(meta) = restore_meta {
             restore_para_meta(&mut new_para, meta, &self.document.doc_info.para_shapes);
         }
@@ -5719,7 +5719,7 @@ impl DocumentCore {
             cell_para_idx,
         )?;
         let original_vpos = cell_para.line_segs.first().map(|seg| seg.vertical_pos);
-        let mut new_para = cell_para.split_at(char_offset);
+        let mut new_para = cell_para.split_at_with(char_offset, restore_meta.is_none());
         if let Some(meta) = restore_meta {
             restore_para_meta(&mut new_para, meta, &self.document.doc_info.para_shapes);
         }
@@ -7267,7 +7267,10 @@ impl DocumentCore {
                 .line_segs
                 .first()
                 .map(|seg| seg.vertical_pos);
-            (vpos, paras[cell_para_idx].split_at(char_offset))
+            (
+                vpos,
+                paras[cell_para_idx].split_at_with(char_offset, restore_meta.is_none()),
+            )
         };
         if let Some(meta) = restore_meta {
             restore_para_meta(&mut new_para, meta, &self.document.doc_info.para_shapes);

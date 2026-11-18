@@ -1381,6 +1381,103 @@ mod tests {
     }
 
     #[test]
+    fn copying_up_to_an_emptied_block_leaves_the_block_out() {
+        // 빈 블록에서 끝나는 범위를 복사해 붙여도 짝 없는 블록 시작이 따라오지 않는다.
+        // 문단 나누기의 빈 블록 규칙은 Enter에만 쓰고, 복사의 조각 자르기는 범위 밖 블록을 뺀다.
+        let mut core = two_blocks();
+        core.delete_text_native(0, 0, 2, 3).unwrap();
+        let before = listed(&core);
+        core.copy_selection_native(0, 0, 0, 0, 2).unwrap();
+        core.paste_internal_native(0, 1, 7).unwrap();
+        assert_eq!(
+            core.document.sections[0].paragraphs[1].text,
+            "아자차카타파하가나"
+        );
+        assert_eq!(listed(&core), before);
+        survives_save(&core);
+    }
+
+    #[test]
+    fn plain_split_keeps_an_emptied_block_whole() {
+        // 복사·지우기·합치기 되돌리기가 쓰는 공용 나누기는 빈 블록을 통째로 뒤 조각에 둔다.
+        let mut core = two_blocks();
+        core.delete_text_native(0, 0, 2, 3).unwrap();
+        let at = logical(&core, 0, 2);
+        let mut para = core.document.sections[0].paragraphs[0].clone();
+        let tail = para.split_at(at);
+        assert!(para.field_ranges.is_empty(), "{:?}", para.field_ranges);
+        assert!(para.orphan_field_ends.is_empty());
+        assert_eq!(tail.field_ranges.len(), 1, "{:?}", tail.field_ranges);
+        assert_eq!(tail.field_ranges[0].start_char_idx, 0);
+        assert_eq!(tail.field_ranges[0].end_char_idx, 0);
+    }
+
+    #[test]
+    fn enter_between_two_adjacent_emptied_blocks_keeps_them_whole() {
+        // 붙은 빈 블록 둘은 저장 스트림에서 [시작1][끝1][시작2][끝2]로 놓여 한쪽 끝만 넘길 수 없다.
+        // 둘 다 통째로 새 문단으로 보내 두 문단과 저장본이 같은 블록을 가리키게 한다.
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().unwrap();
+        core.insert_text_native(0, 0, 0, "가나다라").unwrap();
+        let body = super::BookmarkPlace {
+            section: 0,
+            para: 0,
+            cell_path: Vec::new(),
+            header_footer: None,
+        };
+        for (start, end, name) in [(1, 2, "앞"), (2, 3, "뒤")] {
+            let r = core
+                .add_block_bookmark_native(&body, start, 0, end, name)
+                .unwrap();
+            assert!(r.contains(r#""ok":true"#), "{r}");
+        }
+        core.delete_text_native(0, 0, 1, 2).unwrap();
+        core.split_paragraph_native(0, 0, logical(&core, 0, 1), None)
+            .unwrap();
+        let texts: Vec<String> = core.document.sections[0]
+            .paragraphs
+            .iter()
+            .map(|p| p.text.clone())
+            .collect();
+        assert_eq!(texts, ["가", "라"]);
+        assert_eq!(
+            listed(&core),
+            vec![block("앞", 1, 0, 1, 0), block("뒤", 1, 0, 1, 0)]
+        );
+        survives_save(&core);
+    }
+
+    #[test]
+    fn undoing_a_merge_at_an_emptied_block_keeps_it_whole() {
+        // 합치기를 되돌리는 나누기(지운 문단 정보를 넘긴다)는 Enter가 아니므로 빈 블록이 문단 나누기를
+        // 품게 하지 않고, 예전처럼 통째로 한 문단에 둔다.
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().unwrap();
+        core.insert_text_native(0, 0, 0, "가나다").unwrap();
+        core.split_paragraph_native(0, 0, logical(&core, 0, 3), None)
+            .unwrap();
+        core.insert_text_native(0, 1, 0, "라마").unwrap();
+        let body = super::BookmarkPlace {
+            section: 0,
+            para: 0,
+            cell_path: Vec::new(),
+            header_footer: None,
+        };
+        let r = core
+            .add_block_bookmark_native(&body, 2, 0, 3, "끝")
+            .unwrap();
+        assert!(r.contains(r#""ok":true"#), "{r}");
+        core.delete_text_native(0, 0, 2, 1).unwrap();
+        let merged = core.merge_paragraph_native(0, 1).unwrap();
+        assert_eq!(listed(&core), vec![block("끝", 0, 2, 0, 2)]);
+        let meta = crate::document_core::helpers::removed_para_meta_of(&merged);
+        core.split_paragraph_native(0, 0, logical(&core, 0, 2), Some(meta))
+            .unwrap();
+        assert_eq!(listed(&core), vec![block("끝", 1, 0, 1, 0)]);
+        survives_save(&core);
+    }
+
+    #[test]
     fn typing_after_a_spanning_block_that_ends_the_paragraph_stays_outside() {
         let mut core = two_blocks();
         let body = super::BookmarkPlace {

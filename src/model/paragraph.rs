@@ -2365,7 +2365,15 @@ impl Paragraph {
     /// 새 문단의 문단 모양·스타일·번호 시작 방식 등은 `self` 에서 상속된다 — Enter
     /// 분할의 시맨틱이다. 병합의 역연산으로 쓰는 호출부는 `apply_meta` 로 사라진
     /// 문단의 원래 값을 되돌려야 한다 (Task #2342).
+    /// 문단을 나눈다. 복사·지우기·붙이기·합치기 되돌리기가 쓰는 공용 자르기다.
     pub fn split_at(&mut self, char_offset: usize) -> Paragraph {
+        self.split_at_with(char_offset, false)
+    }
+
+    /// 문단을 나눈다. `enter`는 사용자가 Enter로 나눌 때다. 공용 자르기에 더해, 한컴 12.30처럼 글을
+    /// 모두 지운 블록 책갈피가 나누는 자리에 있으면 시작은 앞 문단 끝에 남기고 끝 표지만 새 문단 맨
+    /// 앞으로 보내 블록이 문단 나누기를 품게 한다.
+    pub fn split_at_with(&mut self, char_offset: usize, enter: bool) -> Paragraph {
         self.layout_object_projection = false;
         self.layout_float_band = false;
         let control_positions = self.split_logical_control_positions();
@@ -2397,17 +2405,29 @@ impl Paragraph {
             .then(|| self.trailing_auto_number(&text_positions))
             .flatten();
 
-        // 글을 모두 지운 블록 책갈피가 나누는 자리에 있으면 한컴 12.30처럼 시작은 앞 문단 끝에 남고
-        // 끝 표지만 새 문단 맨 앞으로 가 블록이 문단 나누기를 품는다.
-        let empty_blocks: Vec<usize> = self
-            .field_ranges
-            .iter()
-            .filter(|fr| {
-                fr.start_char_idx == split_pos
-                    && fr.end_char_idx == split_pos
-                    && self.spanning_field_id(fr.control_idx).is_some()
+        // Enter: 글을 모두 지운 블록 책갈피가 나누는 자리에 있으면 시작은 앞 문단 끝에 남고 끝 표지만
+        // 새 문단 맨 앞으로 가 블록이 문단 나누기를 품는다. 저장 스트림을 한 자리에서 자르려면 그 갭에
+        // 이 블록의 [시작][끝]만 있어야 한다. 안에 각주 같은 개체가 있거나, 붙은 빈 블록·다른 개체·
+        // 제목 차례 표시가 같은 갭에 있으면 시작과 끝 사이에 다른 슬롯이 끼므로 예전처럼 통째로 옮긴다.
+        // ponytail: 갭에 이 블록만 있을 때만 걸친다. 섞인 갭은 슬롯 순서를 모델에 들여야 다룰 수 있다.
+        let empty_blocks: Vec<usize> = enter
+            .then(|| {
+                let mut here = self.field_ranges.iter().filter(|fr| {
+                    fr.start_char_idx == split_pos
+                        && fr.end_char_idx == split_pos
+                        && fr.inner_slot_count == 0
+                        && self.spanning_field_id(fr.control_idx).is_some()
+                });
+                let block = here.next().filter(|_| here.next().is_none())?.control_idx;
+                let alone = text_positions
+                    .iter()
+                    .enumerate()
+                    .all(|(ci, &at)| at != split_pos || ci == block)
+                    && !self.title_marks.iter().any(|m| m.char_idx == split_pos);
+                alone.then_some(block)
             })
-            .map(|fr| fr.control_idx)
+            .flatten()
+            .into_iter()
             .collect();
 
         // 새 문단으로 옮길 컨트롤.

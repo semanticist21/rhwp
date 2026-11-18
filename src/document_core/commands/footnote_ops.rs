@@ -599,7 +599,8 @@ impl DocumentCore {
         char_offset: usize,
         restore_meta: Option<ParaMeta>,
     ) -> Result<String, HwpError> {
-        // 문단 분할
+        // 문단 분할. 지운 문단 정보가 없으면 사용자의 Enter다.
+        let enter = restore_meta.is_none();
         let mut new_para = {
             let section = self.document.sections.get_mut(section_idx).ok_or_else(|| {
                 HwpError::RenderError(format!("구역 인덱스 {} 범위 초과", section_idx))
@@ -618,7 +619,7 @@ impl DocumentCore {
                             fn_para_idx
                         )));
                     }
-                    f.paragraphs[fn_para_idx].split_at(char_offset)
+                    f.paragraphs[fn_para_idx].split_at_with(char_offset, enter)
                 }
                 Control::Endnote(e) => {
                     if fn_para_idx >= e.paragraphs.len() {
@@ -627,7 +628,7 @@ impl DocumentCore {
                             fn_para_idx
                         )));
                     }
-                    e.paragraphs[fn_para_idx].split_at(char_offset)
+                    e.paragraphs[fn_para_idx].split_at_with(char_offset, enter)
                 }
                 _ => {
                     return Err(HwpError::RenderError(
