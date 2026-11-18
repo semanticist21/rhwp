@@ -2662,10 +2662,11 @@ impl LayoutEngine {
                         );
                     }
                     if textbox_offset > 0 {
+                        // 묶음 단계는 글상자 경로(표 셀 안 묶음이면 그 셀 단계 뒤)의 끝에 붙는다.
                         for rendered in &mut group_node.children[first_child..] {
                             offset_group_textbox_sources(
                                 rendered,
-                                parent_cell_path.len(),
+                                textbox_parent_path.len(),
                                 textbox_offset,
                             );
                         }
