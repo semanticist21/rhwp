@@ -26895,6 +26895,8 @@ fn issue_4576_rebuild_derived_state_recomputes_composition_and_pagination() {
 #[test]
 fn page_control_layout_reports_textbox_shape_cell_path() {
     let mut doc = HwpDocument::create_empty();
+    // 빈 문서의 구역·단 정의가 첫 문단 컨트롤 0·1이라 사각형은 컨트롤 2다.
+    doc.create_blank_document_native().expect("빈 문서");
     doc.insert_text_native(0, 0, 0, "A").expect("글 넣기");
     doc.create_shape_control_native(
         0,
