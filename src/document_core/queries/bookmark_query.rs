@@ -1217,12 +1217,19 @@ mod tests {
     #[test]
     fn splitting_inside_a_block_makes_it_span_both_paragraphs() {
         let mut core = two_blocks();
+        // 한컴 HWPX의 끝 표지 fieldid는 나누고 합쳐도 남는다.
+        let paragraphs = &mut core.document.sections[0].paragraphs;
+        paragraphs[0].field_ranges[0].end_field_id = 777;
         // "가나다|라마바사": 한(2..5)은 두 문단에 걸치고, 여러는 둘째 문단으로 간다.
         core.split_paragraph_native(0, 0, logical(&core, 0, 3), None)
             .unwrap();
         assert_eq!(
             listed(&core),
             vec![block("한", 0, 2, 1, 2), block("여러", 1, 3, 2, 3)]
+        );
+        assert_eq!(
+            core.document.sections[0].paragraphs[1].orphan_field_ends[0].field_id,
+            777
         );
         survives_save(&core);
         // 나눈 문단을 다시 합치면 처음 범위로 돌아온다.
@@ -1231,6 +1238,10 @@ mod tests {
             listed(&core),
             vec![block("한", 0, 2, 0, 5), block("여러", 0, 6, 1, 3)]
         );
+        assert!(core.document.sections[0].paragraphs[0]
+            .field_ranges
+            .iter()
+            .any(|range| range.end_field_id == 777));
         survives_save(&core);
     }
 
@@ -1284,6 +1295,40 @@ mod tests {
             listed(&core),
             vec![block("한", 0, 2, 0, 2), block("여러", 0, 3, 1, 2)]
         );
+        survives_save(&core);
+    }
+
+    #[test]
+    fn typing_into_an_emptied_block_fills_it_and_keeps_later_edges() {
+        let mut core = two_blocks();
+        core.delete_text_native(0, 0, 2, 3).unwrap();
+        // 한컴 12.30처럼 블록 글을 모두 지운 자리에 친 글은 그 블록에 든다. 뒤 블록 시작도 글과 함께 민다.
+        core.insert_text_native(0, 0, 2, "새").unwrap();
+        assert_eq!(core.document.sections[0].paragraphs[0].text, "가나새바사");
+        assert_eq!(
+            listed(&core),
+            vec![block("한", 0, 2, 0, 3), block("여러", 0, 4, 1, 3)]
+        );
+        survives_save(&core);
+
+        // 문단 끝의 빈 블록도 친 글을 품는다.
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().unwrap();
+        core.insert_text_native(0, 0, 0, "가나다").unwrap();
+        let body = super::BookmarkPlace {
+            section: 0,
+            para: 0,
+            cell_path: Vec::new(),
+            header_footer: None,
+        };
+        let r = core
+            .add_block_bookmark_native(&body, 1, 0, 3, "끝")
+            .unwrap();
+        assert!(r.contains(r#""ok":true"#), "{r}");
+        core.delete_text_native(0, 0, 1, 2).unwrap();
+        core.insert_text_native(0, 0, 1, "새").unwrap();
+        assert_eq!(core.document.sections[0].paragraphs[0].text, "가새");
+        assert_eq!(listed(&core), vec![block("끝", 0, 1, 0, 2)]);
         survives_save(&core);
     }
 

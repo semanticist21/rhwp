@@ -1948,9 +1948,52 @@ impl Paragraph {
         } else {
             self.char_offsets[char_offset - 1] + Self::char_stream_len(text_chars[char_offset - 1])
         };
-        let begin_units = outside_starts * 8;
+        // 글을 모두 지운 블록 책갈피(아래 5-1에서 친 글을 품는 빈 범위)는 원시 스트림에서도 끝 슬롯 앞에
+        // 넣는다. 끝 슬롯 뒤에 넣으면 범위와 원시 슬롯이 어긋나 같은 갭의 뒤 컨트롤(다른 블록 시작 따위)
+        // 자리를 잘못 센다. 누름틀 같은 다른 필드는 기존 원시 입력점의 서식을 잇도록 그대로 둔다.
+        let absorbing_ends = self
+            .field_ranges
+            .iter()
+            .filter(|range| {
+                range.start_char_idx == char_offset
+                    && range.end_char_idx == char_offset
+                    && matches!(self.controls.get(range.control_idx),
+                        Some(Control::Field(field)) if field.field_type == FieldType::Bookmark)
+            })
+            .count() as u32;
+        let utf16_insert_pos = if absorbing_ends > 0
+            && char_offset == text_len
+            && !self.char_offsets.is_empty()
+            && !inserts_before_inline_control
+        {
+            // 문단 끝 빈 범위: 끝 갭의 모든 슬롯 뒤에서 그 범위 끝 슬롯만큼 앞이다.
+            let trailing_slots = control_positions
+                .iter()
+                .enumerate()
+                .filter(|&(ci, &pos)| pos >= text_len && Some(ci) != trailing_number)
+                .count()
+                + self
+                    .field_ranges
+                    .iter()
+                    .filter(|range| range.end_char_idx >= text_len)
+                    .count()
+                + self
+                    .orphan_field_ends
+                    .iter()
+                    .filter(|end| end.char_idx >= text_len)
+                    .count()
+                + self
+                    .title_marks
+                    .iter()
+                    .filter(|mark| mark.char_idx >= text_len)
+                    .count();
+            char_end(self.char_offsets.len() - 1) + trailing_slots as u32 * 8
+        } else {
+            utf16_insert_pos
+        };
+        let begin_units = (outside_starts + absorbing_ends) * 8;
         let utf16_insert_pos =
-            if outside_starts > 0 && utf16_insert_pos >= preceding_text_end + begin_units {
+            if begin_units > 0 && utf16_insert_pos >= preceding_text_end + begin_units {
                 utf16_insert_pos - begin_units
             } else {
                 utf16_insert_pos
@@ -2624,6 +2667,7 @@ impl Paragraph {
                 new_orphan_ends.push(OrphanFieldEnd {
                     char_idx: fr.end_char_idx - split_pos,
                     begin_id_ref: field_id,
+                    field_id: fr.end_field_id,
                     begin_ctrl_id: crate::parser::tags::FIELD_BOOKMARK,
                     ..Default::default()
                 });
