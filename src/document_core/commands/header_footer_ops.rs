@@ -1364,6 +1364,12 @@ impl DocumentCore {
             }),
         );
         hf_para.ctrl_data_records.insert(control_index, None);
+        // 끼운 자리 뒤 누름틀은 컨트롤 번호가 하나 밀린다.
+        for range in &mut hf_para.field_ranges {
+            if range.control_idx >= control_index {
+                range.control_idx += 1;
+            }
+        }
 
         self.reflow_hf_paragraph(section_idx, is_header, apply_to, hf_para_idx);
         self.sync_master_page_edit(section_idx, apply_to);
