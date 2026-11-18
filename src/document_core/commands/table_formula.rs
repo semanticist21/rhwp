@@ -346,6 +346,7 @@ impl DocumentCore {
                 text,
                 false,
                 field_control,
+                false,
             );
         }
         let full = formula_cell_path(path, cell, para);

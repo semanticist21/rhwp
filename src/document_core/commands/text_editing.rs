@@ -2305,10 +2305,12 @@ impl DocumentCore {
             text,
             paginate_immediately,
             None,
+            false,
         )
     }
 
     /// 셀 글 교체. `field_control`을 주면 넣는 글을 그 필드가 품는다(계산식 결과).
+    /// `after_inline_control`이면 `char_offset` 자리에 놓인 개체(수식 등) 뒤에 넣는다.
     pub(crate) fn replace_text_in_cell_field_impl(
         &mut self,
         section_idx: usize,
@@ -2321,6 +2323,7 @@ impl DocumentCore {
         text: &str,
         paginate_immediately: bool,
         field_control: Option<usize>,
+        after_inline_control: bool,
     ) -> Result<String, HwpError> {
         let normalized = normalize_text_newlines(text);
         let text = normalized.as_ref();
@@ -2384,11 +2387,16 @@ impl DocumentCore {
                 delete_count,
                 text,
                 Some(control),
-                false,
+                after_inline_control,
             ),
-            None => {
-                replace_paragraph_text(cell_para, char_offset, delete_count, text, active, false)
-            }
+            None => replace_paragraph_text(
+                cell_para,
+                char_offset,
+                delete_count,
+                text,
+                active,
+                after_inline_control,
+            ),
         };
         debug_assert_eq!(deleted_count, delete_count);
 
@@ -6869,20 +6877,45 @@ impl DocumentCore {
         char_offset: usize,
         text: &str,
     ) -> Result<String, HwpError> {
+        self.insert_text_in_cell_by_path_at(
+            section_idx,
+            parent_para_idx,
+            path,
+            char_offset,
+            text,
+            false,
+        )
+    }
+
+    /// path 기반 셀 텍스트 삽입. `after_inline_control`이면 `char_offset` 자리에 놓인
+    /// 글자처럼 취급한 개체(수식 등) 뒤에 넣는다 — 본문 `insertTextLogical`의 개체 뒤 자리와 같다.
+    pub fn insert_text_in_cell_by_path_at(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        char_offset: usize,
+        text: &str,
+        after_inline_control: bool,
+    ) -> Result<String, HwpError> {
         let normalized = normalize_text_newlines(text);
         let text = normalized.as_ref();
         // 깊이 1 표는 일반 셀 삽입 경로가 셀 폭 리플로우와 vpos 재계산을 이미 담당한다.
         // IME가 cellPath를 항상 전달하더라도 같은 편집 계약을 사용해야 한다.
         if path.len() == 1 {
             let (control_idx, cell_idx, cell_para_idx) = path[0];
-            return self.insert_text_in_cell_native(
+            return self.replace_text_in_cell_field_impl(
                 section_idx,
                 parent_para_idx,
                 control_idx,
                 cell_idx,
                 cell_para_idx,
                 char_offset,
+                0,
                 text,
+                true,
+                None,
+                after_inline_control,
             );
         }
 
@@ -6894,7 +6927,14 @@ impl DocumentCore {
             Some(path),
         );
         let cell_para = self.get_cell_paragraph_mut_by_path(section_idx, parent_para_idx, path)?;
-        replace_paragraph_text(cell_para, char_offset, 0, text, active, false);
+        replace_paragraph_text(
+            cell_para,
+            char_offset,
+            0,
+            text,
+            active,
+            after_inline_control,
+        );
 
         let inner_cell_para_idx = path.last().map(|entry| entry.2).unwrap_or(0);
         self.reflow_cell_paragraph_by_path_after_edit(
@@ -7509,6 +7549,56 @@ mod tests {
         assert!(
             result.is_err(),
             "범위 밖 para_idx 는 에러를 반환해야 한다 (패닉 대신)"
+        );
+    }
+
+    /// 셀 문단 `가⇥[수식]다`의 수식 자리(글자 2)에 넣은 글이 개체 앞·뒤 어느 쪽에 서는지.
+    fn cell_equation_after_insert(after: bool) -> (String, usize) {
+        use crate::model::control::Control;
+        use crate::model::table::{Cell, Table};
+
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().unwrap();
+        core.split_paragraph_native(0, 0, 0, None).unwrap();
+        core.insert_text_native(0, 1, 0, "가\t다").unwrap();
+        core.insert_equation_native(0, 1, 2, "a over b", 1000, 0)
+            .unwrap();
+        let cell_para = core.document.sections[0].paragraphs.remove(1);
+        let table = Table {
+            cells: vec![Cell {
+                paragraphs: vec![cell_para],
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+        core.document.sections[0].paragraphs[0]
+            .controls
+            .push(Control::Table(Box::new(table)));
+        let ctrl_idx = core.document.sections[0].paragraphs[0].controls.len() - 1;
+
+        core.insert_text_in_cell_by_path_at(0, 0, &[(ctrl_idx, 0, 0)], 2, "X", after)
+            .unwrap();
+
+        let Control::Table(t) = &core.document.sections[0].paragraphs[0].controls[ctrl_idx] else {
+            panic!("expected table");
+        };
+        let para = &t.cells[0].paragraphs[0];
+        let equation = para
+            .controls
+            .iter()
+            .position(|c| matches!(c, Control::Equation(_)))
+            .expect("수식이 셀 문단에 남아야 한다");
+        (para.text.clone(), para.control_text_positions()[equation])
+    }
+
+    #[test]
+    fn insert_text_in_cell_by_path_at_places_text_after_inline_equation() {
+        // 수식 뒤 캐럿에서 친 글은 수식 뒤에 서고, 수식은 제 글자 자리에 남는다.
+        assert_eq!(cell_equation_after_insert(true), ("가\tX다".to_string(), 2));
+        // 수식 앞 캐럿(기존 셀 입력)은 수식을 뒤로 민다.
+        assert_eq!(
+            cell_equation_after_insert(false),
+            ("가\tX다".to_string(), 3)
         );
     }
 

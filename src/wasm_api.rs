@@ -2315,6 +2315,30 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 셀 경로 문단의 글자 자리에 글을 넣는다. `after_inline_control`이면 그 자리에 놓인
+    /// 글자처럼 취급한 개체(수식 등) 뒤에, 아니면 앞에 넣는다. 반환은 `insertTextInCellByPath`와 같다.
+    #[wasm_bindgen(js_name = insertTextInCellByPathAt)]
+    pub fn insert_text_in_cell_by_path_at_api(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+        char_offset: u32,
+        text: &str,
+        after_inline_control: bool,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        self.insert_text_in_cell_by_path_at(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            char_offset as usize,
+            text,
+            after_inline_control,
+        )
+        .map_err(|e| e.into())
+    }
+
     #[wasm_bindgen(js_name = deleteTextInCellByPath)]
     pub fn delete_text_in_cell_by_path_api(
         &mut self,

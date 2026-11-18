@@ -1,5 +1,5 @@
 // 검사 유형: 관계형 소스 가드의 위임 분류. PDF 일치율·실물 px 기대값은 비해당이다.
-// 주석 갱신: 2026-11-17 01:05 KST.
+// 주석 갱신: 2026-11-18 18:20 KST.
 /// 무효화하지 않는 `pub fn (&mut self)` 전수 목록 — (파일, 함수, 분류, 근거).
 ///
 /// 파일 경로는 [`SCAN_ROOT`] 기준 상대 경로다. 병합 `devel` 기준 46건(2026-08-30 동결).
@@ -846,6 +846,12 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "insert_text_in_cell_native",
         Exempt::DelegatesTo("replace_text_in_cell_native_impl"),
         "얇은 래퍼 — 실제 삽입·무효화는 `_impl` 이 수행.",
+    ),
+    (
+        "commands/text_editing.rs",
+        "insert_text_in_cell_by_path",
+        Exempt::DelegatesTo("insert_text_in_cell_by_path_at"),
+        "얇은 래퍼 — 개체 뒤 여부만 false 로 넘기고 삽입·무효화는 `_at` 이 수행.",
     ),
     (
         "commands/page_extract.rs",
