@@ -2397,6 +2397,19 @@ impl Paragraph {
             .then(|| self.trailing_auto_number(&text_positions))
             .flatten();
 
+        // 글을 모두 지운 블록 책갈피가 나누는 자리에 있으면 한컴 12.30처럼 시작은 앞 문단 끝에 남고
+        // 끝 표지만 새 문단 맨 앞으로 가 블록이 문단 나누기를 품는다.
+        let empty_blocks: Vec<usize> = self
+            .field_ranges
+            .iter()
+            .filter(|fr| {
+                fr.start_char_idx == split_pos
+                    && fr.end_char_idx == split_pos
+                    && self.spanning_field_id(fr.control_idx).is_some()
+            })
+            .map(|fr| fr.control_idx)
+            .collect();
+
         // 새 문단으로 옮길 컨트롤.
         //
         // TAC 그림/표/수식 등은 본문에서 한 글자처럼 취급되므로 문단 분할 시
@@ -2417,7 +2430,11 @@ impl Paragraph {
                     || self
                         .field_ranges
                         .iter()
-                        .any(|fr| fr.control_idx == ci && fr.start_char_idx >= split_pos)
+                        .any(|fr| {
+                            fr.control_idx == ci
+                                && fr.start_char_idx >= split_pos
+                                && !empty_blocks.contains(&ci)
+                        })
                     // 다른 문단에서 끝나는 블록 책갈피의 시작은 놓인 글자 자리를 따라간다.
                     || (self.spanning_field_id(ci).is_some()
                         && !self.field_ranges.iter().any(|fr| fr.control_idx == ci)
@@ -2449,7 +2466,9 @@ impl Paragraph {
                 .iter()
                 .filter(|m| m.char_idx == split_pos)
                 .count();
-            self.char_offsets[split_pos] - 8 * (moved_controls + moved_marks).min(gap_slots) as u32
+            // 빈 블록의 끝 표지는 그 갭 맨 뒤 슬롯이며 새 문단 맨 앞으로 간다.
+            self.char_offsets[split_pos]
+                - 8 * (moved_controls + moved_marks + empty_blocks.len()).min(gap_slots) as u32
         } else if !self.char_offsets.is_empty() {
             self.char_stream_end(&text_chars, self.char_offsets.len() - 1, kept_number)
         } else {
@@ -2649,7 +2668,17 @@ impl Paragraph {
             }
         }
         for fr in &self.field_ranges {
-            if fr.start_char_idx >= split_pos {
+            if empty_blocks.contains(&fr.control_idx) {
+                if let Some(field_id) = self.spanning_field_id(fr.control_idx) {
+                    new_orphan_ends.push(OrphanFieldEnd {
+                        char_idx: 0,
+                        begin_id_ref: field_id,
+                        field_id: fr.end_field_id,
+                        begin_ctrl_id: crate::parser::tags::FIELD_BOOKMARK,
+                        ..Default::default()
+                    });
+                }
+            } else if fr.start_char_idx >= split_pos {
                 // 완전히 새 문단 쪽 → 인덱스 조정 후 이관 (control_idx는 5-2에서 리매핑)
                 new_field_ranges.push(FieldRange {
                     start_char_idx: fr.start_char_idx - split_pos,

@@ -1333,6 +1333,54 @@ mod tests {
     }
 
     #[test]
+    fn splitting_at_an_emptied_block_spans_the_paragraph_break() {
+        // 한컴 12.30: 블록 글을 모두 지운 자리(또는 블록 전체를 고른 채)에서 Enter를 치면
+        // 블록 시작은 앞 문단 끝에 남고 끝은 새 문단 맨 앞으로 가 블록이 문단 나누기를 품는다.
+        let mut core = two_blocks();
+        core.delete_text_native(0, 0, 2, 3).unwrap();
+        core.split_paragraph_native(0, 0, logical(&core, 0, 2), None)
+            .unwrap();
+        let texts: Vec<String> = core.document.sections[0]
+            .paragraphs
+            .iter()
+            .map(|p| p.text.clone())
+            .collect();
+        assert_eq!(texts, ["가나", "바사", "아자차카타파하"]);
+        assert_eq!(
+            listed(&core),
+            vec![block("한", 0, 2, 1, 0), block("여러", 1, 1, 2, 3)]
+        );
+        survives_save(&core);
+        // 다시 합치면 빈 블록으로 돌아온다.
+        core.merge_paragraph_native(0, 1).unwrap();
+        assert_eq!(
+            listed(&core),
+            vec![block("한", 0, 2, 0, 2), block("여러", 0, 3, 1, 3)]
+        );
+        survives_save(&core);
+
+        // 문단 끝의 빈 블록도 같다.
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().unwrap();
+        core.insert_text_native(0, 0, 0, "가나다").unwrap();
+        let body = super::BookmarkPlace {
+            section: 0,
+            para: 0,
+            cell_path: Vec::new(),
+            header_footer: None,
+        };
+        let r = core
+            .add_block_bookmark_native(&body, 1, 0, 3, "끝")
+            .unwrap();
+        assert!(r.contains(r#""ok":true"#), "{r}");
+        core.delete_text_native(0, 0, 1, 2).unwrap();
+        core.split_paragraph_native(0, 0, logical(&core, 0, 1), None)
+            .unwrap();
+        assert_eq!(listed(&core), vec![block("끝", 0, 1, 1, 0)]);
+        survives_save(&core);
+    }
+
+    #[test]
     fn typing_after_a_spanning_block_that_ends_the_paragraph_stays_outside() {
         let mut core = two_blocks();
         let body = super::BookmarkPlace {
