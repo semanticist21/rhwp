@@ -26929,7 +26929,8 @@ fn page_control_layout_reports_textbox_shape_cell_path() {
         &[],
     )
     .expect("글상자 넣기");
-    doc.copy_selection_native(0, 0, 1, 0, 2).expect("사각형 복사");
+    doc.copy_selection_native(0, 0, 1, 0, 2)
+        .expect("사각형 복사");
     doc.paste_internal_in_cell_by_path_native(0, 1, &[(0, 0, 0)], 0)
         .expect("글상자에 사각형 붙이기");
     doc.delete_control_at(0, 0, 2).expect("본문 사각형 지우기");
@@ -26944,7 +26945,10 @@ fn page_control_layout_reports_textbox_shape_cell_path() {
         .filter(|control| control["type"] == "shape")
         .collect();
     assert_eq!(shapes.len(), 2, "글상자와 그 안 사각형: {layout}");
-    assert!(shapes[0].get("cellPath").is_none(), "본문 글상자는 경로가 없다");
+    assert!(
+        shapes[0].get("cellPath").is_none(),
+        "본문 글상자는 경로가 없다"
+    );
     assert_eq!(
         shapes[1]["cellPath"],
         serde_json::json!([{ "controlIndex": 0, "cellIndex": 0, "cellParaIndex": 0 }]),
@@ -26954,5 +26958,8 @@ fn page_control_layout_reports_textbox_shape_cell_path() {
     assert_eq!(shapes[1]["controlIdx"], 0);
     // 개체 경로·겹침 순서가 쓰는 stableIndex도 글상자와 겹치지 않는다.
     assert_eq!(shapes[0]["stableIndex"], serde_json::json!([0, 1, 0]));
-    assert_eq!(shapes[1]["stableIndex"], serde_json::json!([0, 1, 0, 0, 0, 0]));
+    assert_eq!(
+        shapes[1]["stableIndex"],
+        serde_json::json!([0, 1, 0, 0, 0, 0])
+    );
 }
