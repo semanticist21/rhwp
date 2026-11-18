@@ -26952,4 +26952,7 @@ fn page_control_layout_reports_textbox_shape_cell_path() {
     );
     assert_eq!(shapes[1]["paraIdx"], 1);
     assert_eq!(shapes[1]["controlIdx"], 0);
+    // 개체 경로·겹침 순서가 쓰는 stableIndex도 글상자와 겹치지 않는다.
+    assert_eq!(shapes[0]["stableIndex"], serde_json::json!([0, 1, 0]));
+    assert_eq!(shapes[1]["stableIndex"], serde_json::json!([0, 1, 0, 0, 0, 0]));
 }

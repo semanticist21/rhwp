@@ -2037,7 +2037,7 @@ pub type InlineShapeKey = (usize, usize, usize, Vec<(usize, usize, usize)>);
 ///
 /// 두 경우 모두 `sort_paper_render_nodes` 의 `sort_by_key`(std 안정 정렬)가 동률
 /// 노드의 삽입 순서를 보존한다.
-pub(crate) type DocPath = Vec<u32>;
+pub type DocPath = Vec<u32>;
 
 fn push_cell_path(path: &mut DocPath, cell_path: &[crate::renderer::layout::CellPathEntry]) {
     for entry in cell_path {
@@ -2092,7 +2092,25 @@ fn doc_path_single_cell_level(
 /// `TextLine`/`Body` 같은 구조 노드), 필드는 있지만 값이 없으면(#4334 stage3 가 실측한
 /// 42개 노드류) `None` — 호출부가 무엇으로 대체할지 결정한다(`node.id` 로 되돌아가지
 /// 않는 것이 이 이슈의 목적이다).
-pub(crate) fn doc_path_for_node(node: &RenderNode) -> Option<DocPath> {
+pub fn doc_path_for_node(node: &RenderNode) -> Option<DocPath> {
+    let path = doc_path_from_fields(node)?;
+    // 글상자 안·중첩 표 칸 도형은 칸 스칼라만으로는 글상자 자신과 주소가 겹친다.
+    // 레이아웃이 남긴 전체 컨테이너 경로로 주소를 다시 만든다.
+    if node.container_path.is_empty()
+        || matches!(
+            node.node_type,
+            RenderNodeType::Table(_) | RenderNodeType::Image(_) | RenderNodeType::Equation(_)
+        )
+    {
+        return Some(path);
+    }
+    let mut full: DocPath = path[..2].to_vec();
+    push_cell_path(&mut full, &node.container_path);
+    full.push(*path.last()?);
+    Some(full)
+}
+
+fn doc_path_from_fields(node: &RenderNode) -> Option<DocPath> {
     match &node.node_type {
         RenderNodeType::Table(t) => doc_path_full(
             t.section_index,
