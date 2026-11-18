@@ -880,6 +880,26 @@ impl HatchStyle {
         self as i32
     }
 
+    /// 무늬 한 주기를 이루는 점 타일의 한 변.
+    pub const TILE_DOTS: i32 = 8;
+
+    /// 8×8 점 타일에서 무늬색으로 칠할 점인지. 선은 타일 가장자리(0번 점)를 지난다.
+    /// Studio CanvasKit(`drawPatternFill`)과 같은 표다.
+    pub fn inks(self, x: i32, y: i32) -> bool {
+        let horizontal = y == 0;
+        let vertical = x == 0;
+        let rising = (x + y) % Self::TILE_DOTS == 0;
+        let falling = x == y;
+        match self {
+            Self::Horizontal => horizontal,
+            Self::Vertical => vertical,
+            Self::Falling => falling,
+            Self::Rising => rising,
+            Self::Cross => horizontal || vertical,
+            Self::DiagonalCross => rising || falling,
+        }
+    }
+
     /// 한컴이 HWP를 HWPX로 저장할 때 쓰는 `hatchStyle` 값.
     pub fn owpml_name(self) -> &'static str {
         match self {

@@ -1979,147 +1979,92 @@ impl WebCanvasRenderer {
     }
 
     /// PatternFillInfo → Canvas createPattern으로 패턴 채우기 적용
-    /// 오프스크린 캔버스에 6×6 타일 생성 후 반복 패턴으로 설정
+    /// 오프스크린 캔버스에 8×8 점 타일을 그린 뒤 반복 패턴으로 설정
     /// 반환값: true이면 패턴이 적용됨
     fn apply_pattern_fill(&self, info: &PatternFillInfo) -> bool {
-        let window = match web_sys::window() {
-            Some(w) => w,
-            None => return false,
-        };
-        let document = match window.document() {
-            Some(d) => d,
-            None => return false,
-        };
-
-        // 오프스크린 캔버스 생성 (100dpi의 8×8 타일)
-        let tile_canvas = match document.create_element("canvas") {
-            Ok(el) => match el.dyn_into::<HtmlCanvasElement>() {
-                Ok(c) => c,
-                Err(_) => return false,
-            },
-            Err(_) => return false,
-        };
-        let sz: u32 = 8;
-        tile_canvas.set_width(sz);
-        tile_canvas.set_height(sz);
-
-        let tile_ctx = match tile_canvas.get_context("2d") {
-            Ok(Some(ctx)) => match ctx.dyn_into::<CanvasRenderingContext2d>() {
-                Ok(c) => c,
-                Err(_) => return false,
-            },
-            _ => return false,
-        };
-
-        let bg = color_to_css(info.background_color);
-        let fg = color_to_css(info.pattern_color);
-        let s = sz as f64;
-
-        // 배경 채우기
-        tile_ctx.set_fill_style_str(&bg);
-        tile_ctx.fill_rect(0.0, 0.0, s, s);
-
-        // 패턴 선 그리기
-        tile_ctx.set_stroke_style_str(&fg);
-        tile_ctx.set_line_width(1.0);
-
         use crate::model::style::HatchStyle;
-        match HatchStyle::from_pattern_type(info.pattern_type) {
-            Some(HatchStyle::Horizontal) => {
-                // 가로줄 (- - - -)
-                tile_ctx.begin_path();
-                tile_ctx.move_to(0.0, 0.0);
-                tile_ctx.line_to(s, 0.0);
-                tile_ctx.move_to(0.0, s);
-                tile_ctx.line_to(s, s);
-                tile_ctx.stroke();
-            }
-            Some(HatchStyle::Vertical) => {
-                // 세로줄 (|||||)
-                tile_ctx.begin_path();
-                tile_ctx.move_to(0.0, 0.0);
-                tile_ctx.line_to(0.0, s);
-                tile_ctx.move_to(s, 0.0);
-                tile_ctx.line_to(s, s);
-                tile_ctx.stroke();
-            }
-            Some(HatchStyle::Rising) => {
-                // 대각선 (/////)
-                tile_ctx.begin_path();
-                tile_ctx.move_to(s, 0.0);
-                tile_ctx.line_to(0.0, s);
-                tile_ctx.stroke();
-            }
-            Some(HatchStyle::Falling) => {
-                // 역대각선 (\\\\\)
-                tile_ctx.begin_path();
-                tile_ctx.move_to(0.0, 0.0);
-                tile_ctx.line_to(s, s);
-                tile_ctx.stroke();
-            }
-            Some(HatchStyle::Cross) => {
-                // 십자 (+++++)
-                tile_ctx.begin_path();
-                tile_ctx.move_to(0.0, 0.0);
-                tile_ctx.line_to(0.0, s);
-                tile_ctx.move_to(s, 0.0);
-                tile_ctx.line_to(s, s);
-                tile_ctx.stroke();
-                tile_ctx.begin_path();
-                tile_ctx.move_to(0.0, 0.0);
-                tile_ctx.line_to(s, 0.0);
-                tile_ctx.move_to(0.0, s);
-                tile_ctx.line_to(s, s);
-                tile_ctx.stroke();
-            }
-            Some(HatchStyle::DiagonalCross) => {
-                // 격자 (xxxxx)
-                tile_ctx.begin_path();
-                tile_ctx.move_to(0.0, 0.0);
-                tile_ctx.line_to(s, s);
-                tile_ctx.stroke();
-                tile_ctx.begin_path();
-                tile_ctx.move_to(s, 0.0);
-                tile_ctx.line_to(0.0, s);
-                tile_ctx.stroke();
-            }
-            None => {
-                // 무늬 없음: 배경색만 (이미 채움)
-            }
-        }
+        use crate::paint::RenderProfile;
+        let Some(document) = web_sys::window().and_then(|w| w.document()) else {
+            return false;
+        };
+        let Some(tile_canvas) = document
+            .create_element("canvas")
+            .ok()
+            .and_then(|el| el.dyn_into::<HtmlCanvasElement>().ok())
+        else {
+            return false;
+        };
+        let dots = HatchStyle::TILE_DOTS;
+        tile_canvas.set_width(dots as u32);
+        tile_canvas.set_height(dots as u32);
+        let Some(tile_ctx) = tile_canvas
+            .get_context("2d")
+            .ok()
+            .flatten()
+            .and_then(|ctx| ctx.dyn_into::<CanvasRenderingContext2d>().ok())
+        else {
+            return false;
+        };
 
-        // createPattern으로 반복 패턴 생성
-        match self
-            .ctx
-            .create_pattern_with_html_canvas_element(&tile_canvas, "repeat")
-        {
-            Ok(Some(pattern)) => {
-                // 현재 web-sys의 SVGMatrix 시그니처 대신 표준 DOMMatrix2DInit을
-                // 전달해 소수 DPI에서도 물리 반복 주기를 보존한다.
-                let matrix = js_sys::Object::new();
-                let scale = info.tile_size / s;
-                for (key, value) in [("a", scale), ("d", scale)] {
-                    if js_sys::Reflect::set(
-                        &matrix,
-                        &JsValue::from_str(key),
-                        &JsValue::from_f64(value),
-                    )
-                    .is_err()
-                    {
-                        return false;
+        // 배경을 칠하고, 무늬 점을 하나씩 찍어 번지지 않는 타일을 만든다.
+        let s = dots as f64;
+        tile_ctx.set_fill_style_str(&color_to_css(info.background_color));
+        tile_ctx.fill_rect(0.0, 0.0, s, s);
+        if let Some(hatch) = HatchStyle::from_pattern_type(info.pattern_type) {
+            tile_ctx.set_fill_style_str(&color_to_css(info.pattern_color));
+            for y in 0..dots {
+                for x in 0..dots {
+                    if hatch.inks(x, y) {
+                        tile_ctx.fill_rect(x as f64, y as f64, 1.0, 1.0);
                     }
                 }
-                let transform = js_sys::Reflect::get(&pattern, &JsValue::from_str("setTransform"))
-                    .ok()
-                    .and_then(|method| method.dyn_into::<js_sys::Function>().ok());
-                if transform.is_none_or(|method| method.call1(&pattern, &matrix).is_err()) {
-                    return false;
-                }
-                self.ctx.set_fill_style_canvas_pattern(&pattern);
-                true
             }
-            _ => false,
         }
+
+        let Ok(Some(pattern)) = self
+            .ctx
+            .create_pattern_with_html_canvas_element(&tile_canvas, "repeat")
+        else {
+            return false;
+        };
+        // 화면은 한컴처럼 무늬 한 점을 기기 픽셀 하나로 그린다. 인쇄 등가 출력은
+        // 한 주기를 tile_size(800HU)로 늘리고, 점을 선 위치(타일 가장자리)에 가운데 맞춘다.
+        let matrix = match self.render_profile {
+            RenderProfile::Screen | RenderProfile::FastPreview => {
+                self.ctx.get_transform().ok().and_then(|m| {
+                    super::screen_pattern_matrix([m.a(), m.b(), m.c(), m.d(), m.e(), m.f()])
+                })
+            }
+            RenderProfile::Print | RenderProfile::HighQuality => {
+                let scale = info.tile_size / s;
+                (scale.is_finite() && scale > 0.0).then_some([
+                    scale,
+                    scale,
+                    -scale / 2.0,
+                    -scale / 2.0,
+                ])
+            }
+        };
+        let Some([a, d, e, f]) = matrix else {
+            return false;
+        };
+        // 현재 web-sys의 SVGMatrix 시그니처 대신 표준 DOMMatrix2DInit을 전달한다.
+        let init = js_sys::Object::new();
+        for (key, value) in [("a", a), ("d", d), ("e", e), ("f", f)] {
+            if js_sys::Reflect::set(&init, &JsValue::from_str(key), &JsValue::from_f64(value))
+                .is_err()
+            {
+                return false;
+            }
+        }
+        let transform = js_sys::Reflect::get(&pattern, &JsValue::from_str("setTransform"))
+            .ok()
+            .and_then(|method| method.dyn_into::<js_sys::Function>().ok());
+        if transform.is_none_or(|method| method.call1(&pattern, &init).is_err()) {
+            return false;
+        }
+        self.ctx.set_fill_style_canvas_pattern(&pattern);
+        true
     }
 
     /// GradientFillInfo → Canvas CanvasGradient 생성 및 fillStyle 설정

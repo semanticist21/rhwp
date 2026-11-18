@@ -1005,12 +1005,33 @@ impl Default for TextStyle {
     }
 }
 
+/// 인쇄 무늬의 반복 주기(HWPUNIT). 한컴 12.30 Mac은 셀·도형·쪽 배경 무늬를 모두 8×8점
+/// 타일 하나를 8pt마다 되풀이해 PDF로 저장한다. 용지 크기와 배율에 관계없다.
+pub const PATTERN_TILE_HU: i32 = 800;
+
+/// 화면 캔버스의 무늬 행렬 `[a, d, e, f]`. 한컴 12.30 Mac 화면은 무늬 한 점을 기기 픽셀
+/// 하나로 그려, 배율과 관계없이 8픽셀마다 되풀이한다. `ctx`는 그리는 순간의 캔버스 행렬
+/// `[a, b, c, d, e, f]`이고, 무늬 원점을 기기 픽셀 경계에 맞춰 점이 번지지 않게 한다.
+pub fn screen_pattern_matrix(ctx: [f64; 6]) -> Option<[f64; 4]> {
+    let sx = ctx[0].hypot(ctx[1]);
+    let sy = ctx[2].hypot(ctx[3]);
+    if !(sx.is_finite() && sy.is_finite() && sx > 0.0 && sy > 0.0) {
+        return None;
+    }
+    Some([
+        1.0 / sx,
+        1.0 / sy,
+        (ctx[4].round() - ctx[4]) / sx,
+        (ctx[5].round() - ctx[5]) / sy,
+    ])
+}
+
 /// 패턴 채우기 정보
 #[derive(Debug, Clone, Copy, Serialize)]
 pub struct PatternFillInfo {
     /// HWP 무늬 종류 0~5 (`crate::model::style::HatchStyle`). 0=─, 1=│, 2=＼, 3=／, 4=＋, 5=×
     pub pattern_type: i32,
-    /// 한컴 인쇄 무늬의 576HU 반복 주기를 현재 출력 DPI로 변환한 값.
+    /// 인쇄 무늬의 반복 주기(`PATTERN_TILE_HU`)를 현재 출력 DPI로 변환한 값.
     pub tile_size: f64,
     /// 무늬색
     pub pattern_color: ColorRef,
@@ -4514,6 +4535,22 @@ mod tests {
     use crate::renderer::render_tree::ImageNode;
     use image::{DynamicImage, ImageFormat, Rgb, RgbImage};
     use std::io::Cursor;
+
+    /// 한/글 12.30 Mac 화면은 배율과 관계없이 무늬 한 점을 기기 픽셀 하나로 그린다.
+    #[test]
+    fn screen_pattern_dot_is_one_device_pixel() {
+        // 배율 2, 원점이 기기 (10.5, 4) → 무늬 한 점은 사용자 단위 0.5, 원점은 기기 (11, 4)
+        assert_eq!(
+            screen_pattern_matrix([2.0, 0.0, 0.0, 2.0, 10.5, 4.0]),
+            Some([0.5, 0.5, 0.25, 0.0])
+        );
+        // 90° 돌려도 한 점의 크기는 같다.
+        assert_eq!(
+            screen_pattern_matrix([0.0, 3.0, -3.0, 0.0, 0.0, 0.0]).map(|m| [m[0], m[1]]),
+            Some([1.0 / 3.0, 1.0 / 3.0])
+        );
+        assert_eq!(screen_pattern_matrix([0.0; 6]), None);
+    }
 
     #[test]
     fn positive_distribution_spacing_is_not_part_of_glyph_fit_advance() {

@@ -293,3 +293,72 @@ fn pattern_gradient_and_picture_backgrounds_round_trip() {
         }
     }
 }
+
+/// 만든 개체 JSON의 `"key":N` 값.
+fn json_index(json: &str, key: &str) -> usize {
+    let at = &json[json.find(&format!("\"{key}\":")).unwrap() + key.len() + 3..];
+    at[..at.find(|c: char| !c.is_ascii_digit()).unwrap()]
+        .parse()
+        .unwrap()
+}
+
+/// 한/글 12.30 Mac PDF는 쪽 배경·셀·도형 무늬를 모두 8×8점 타일 하나로 8pt(800HU)마다
+/// 되풀이한다(A4·A5 쪽이 같다, 2026-11-18 맥미니). 576HU(100dpi 8점)로 그리면 무늬가 촘촘하다.
+#[test]
+fn hatch_patterns_repeat_every_8pt_like_hancom_print() {
+    let mut doc = HwpDocument::create_empty();
+    doc.create_blank_document_native().unwrap();
+    doc.insert_text_native(0, 0, 0, "무늬").unwrap();
+    let fill =
+        r##""fillType":"solid","fillColor":"#ffffff","patternType":4,"patternColor":"#ff0000""##;
+    doc.set_page_border_fill_native(0, &format!(r#"{{"borderFillId":1,{fill}}}"#))
+        .unwrap();
+    let table = doc.create_table_native(0, 0, 2, 1, 1).unwrap();
+    doc.set_cell_properties_native(
+        0,
+        json_index(&table, "paraIdx"),
+        json_index(&table, "controlIdx"),
+        0,
+        &format!("{{{fill}}}"),
+    )
+    .unwrap();
+    let shape = doc
+        .create_shape_control_native(
+            0,
+            0,
+            2,
+            20000,
+            10000,
+            0,
+            0,
+            true,
+            "Square",
+            "rectangle",
+            false,
+            false,
+            &[],
+        )
+        .unwrap();
+    doc.set_shape_properties_native(
+        0,
+        json_index(&shape, "paraIdx"),
+        json_index(&shape, "controlIdx"),
+        r#"{"fillType":"solid","fillBgColor":16777215,"fillPatColor":255,"fillPatType":4}"#,
+    )
+    .unwrap();
+
+    let svg = doc.render_page_svg_native(0).unwrap();
+    let tiles: Vec<&str> = svg
+        .split("<pattern id=\"pat")
+        .skip(1)
+        .map(|def| &def[..def.find('>').unwrap()])
+        .collect();
+    // 쪽 배경·셀·도형 (96dpi에서 800HU = 10.67px)
+    assert_eq!(tiles.len(), 3, "{tiles:?}");
+    for tile in tiles {
+        assert!(
+            tile.contains(r#"width="10.666666666666666" height="10.666666666666666""#),
+            "{tile}"
+        );
+    }
+}

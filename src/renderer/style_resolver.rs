@@ -3,7 +3,7 @@
 //! DocInfo 참조 테이블을 렌더링에서 바로 사용할 수 있는
 //! 해소된 스타일 목록(ResolvedStyleSet)으로 변환한다.
 
-use super::{hwpunit_to_px, GradientFillInfo, PatternFillInfo, TabStop};
+use super::{hwpunit_to_px, GradientFillInfo, PatternFillInfo, TabStop, PATTERN_TILE_HU};
 use crate::model::document::{DocInfo, Document};
 use crate::model::image::ImageEffect;
 use crate::model::style::{
@@ -1966,7 +1966,7 @@ fn try_resolve_single_border_style<S: storage::Storage>(
         FillType::Solid => bf.fill.solid.as_ref().and_then(|s| {
             s.hatch().map(|hatch| PatternFillInfo {
                 pattern_type: hatch.pattern_type(),
-                tile_size: hwpunit_to_px(576, dpi),
+                tile_size: hwpunit_to_px(PATTERN_TILE_HU, dpi),
                 pattern_color: s.pattern_color,
                 background_color: s.background_color,
             })

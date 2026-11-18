@@ -449,7 +449,7 @@ pub(crate) fn drawing_to_shape_style(
     let pattern = drawing.fill.solid.and_then(|s| {
         s.hatch().map(|hatch| super::super::PatternFillInfo {
             pattern_type: hatch.pattern_type(),
-            tile_size: super::super::hwpunit_to_px(576, dpi),
+            tile_size: super::super::hwpunit_to_px(super::super::PATTERN_TILE_HU, dpi),
             pattern_color: s.pattern_color,
             background_color: s.background_color,
         })

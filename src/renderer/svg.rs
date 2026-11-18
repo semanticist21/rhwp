@@ -1633,7 +1633,7 @@ impl SvgRenderer {
         let fg = color_to_svg(info.pattern_color);
         let sz = info.tile_size;
         let stroke = sz / 8.0;
-        // 독립 Print의 0~5 hatch: 쪽 원점에 고정한 8-dot/100dpi 무늬.
+        // 0~5 hatch: 쪽 원점에 고정한 8점 타일을 한컴 Mac 인쇄처럼 8pt(800HU)마다 되풀이한다.
         let horizontal = format!("<path d=\"M0 0H{sz}M0 {sz}H{sz}\"/>");
         let vertical = format!("<path d=\"M0 0V{sz}M{sz} 0V{sz}\"/>");
         let rising = format!("<path d=\"M{sz} 0L0 {sz}\"/>");
