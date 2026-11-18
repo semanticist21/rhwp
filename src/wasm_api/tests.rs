@@ -26889,3 +26889,67 @@ fn issue_4576_rebuild_derived_state_recomputes_composition_and_pagination() {
         "페이지 트리가 기준선과 같아야 한다 (옛 코드 잔재 없음)"
     );
 }
+
+/// 글상자 안 도형은 쪽 개체 목록에 글상자 경로를 단 cellPath로 나와야 한다.
+/// 경로가 없으면 그 도형이 글상자와 같은 본문 주소(문단·컨트롤)로 나와 앱이 고르지 못한다.
+#[test]
+fn page_control_layout_reports_textbox_shape_cell_path() {
+    let mut doc = HwpDocument::create_empty();
+    doc.insert_text_native(0, 0, 0, "A").expect("글 넣기");
+    doc.create_shape_control_native(
+        0,
+        0,
+        1,
+        8_504,
+        6_750,
+        3_000,
+        3_000,
+        false,
+        "InFrontOfText",
+        "rectangle",
+        false,
+        false,
+        &[],
+    )
+    .expect("사각형 넣기");
+    doc.insert_paragraph_native(0, 1).expect("문단 넣기");
+    doc.create_shape_control_native(
+        0,
+        1,
+        0,
+        30_000,
+        20_000,
+        0,
+        20_000,
+        false,
+        "InFrontOfText",
+        "textbox",
+        false,
+        false,
+        &[],
+    )
+    .expect("글상자 넣기");
+    doc.copy_selection_native(0, 0, 1, 0, 2).expect("사각형 복사");
+    doc.paste_internal_in_cell_by_path_native(0, 1, &[(0, 0, 0)], 0)
+        .expect("글상자에 사각형 붙이기");
+    doc.delete_control_at(0, 0, 2).expect("본문 사각형 지우기");
+
+    let layout: Value =
+        serde_json::from_str(&doc.get_page_control_layout_native(0).expect("개체 목록"))
+            .expect("개체 목록 JSON");
+    let shapes: Vec<&Value> = layout["controls"]
+        .as_array()
+        .expect("controls")
+        .iter()
+        .filter(|control| control["type"] == "shape")
+        .collect();
+    assert_eq!(shapes.len(), 2, "글상자와 그 안 사각형: {layout}");
+    assert!(shapes[0].get("cellPath").is_none(), "본문 글상자는 경로가 없다");
+    assert_eq!(
+        shapes[1]["cellPath"],
+        serde_json::json!([{ "controlIndex": 0, "cellIndex": 0, "cellParaIndex": 0 }]),
+        "글상자 안 사각형은 글상자 경로를 준다: {layout}"
+    );
+    assert_eq!(shapes[1]["paraIdx"], 1);
+    assert_eq!(shapes[1]["controlIdx"], 0);
+}

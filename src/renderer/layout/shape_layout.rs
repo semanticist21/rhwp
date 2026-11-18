@@ -1611,6 +1611,24 @@ impl LayoutEngine {
         }
     }
 
+    /// 도형이 든 컨테이너의 전체 경로. 표 셀 도형은 상위 경로 대신 table_cell_ref로 온다(#1138).
+    fn shape_container_path(
+        parent_cell_path: &[CellPathEntry],
+        table_cell_ref: Option<(usize, usize, usize)>,
+    ) -> Vec<CellPathEntry> {
+        match table_cell_ref {
+            Some((cell_index, cell_para_index, control_index)) if parent_cell_path.is_empty() => {
+                vec![CellPathEntry {
+                    control_index,
+                    cell_index,
+                    cell_para_index,
+                    text_direction: 0,
+                }]
+            }
+            _ => parent_cell_path.to_vec(),
+        }
+    }
+
     /// 개별 ShapeObject를 렌더 노드로 변환한다.
     /// base_x/y는 도형의 절대 좌표, w/h는 도형 크기.
     /// parent_cell_path: 중첩 글상자/표에서 상위 경로 (최상위 도형이면 빈 슬라이스)
@@ -1637,6 +1655,8 @@ impl LayoutEngine {
         // ShapeComponentAttr의 flip/rotation을 다시 SVG transform으로 적용하지 않는다.
         matrix_positioned: bool,
     ) {
+        let container_path = Self::shape_container_path(parent_cell_path, table_cell_ref);
+        let first_child = parent.children.len();
         self.layout_shape_object_with_group_origin(
             tree,
             parent,
@@ -1656,6 +1676,11 @@ impl LayoutEngine {
             matrix_positioned,
             None,
         );
+        if !container_path.is_empty() {
+            for node in &mut parent.children[first_child..] {
+                node.container_path.clone_from(&container_path);
+            }
+        }
     }
 
     /// 일반/연결 직선의 한 점을 HWP5 `renderingInfo` 좌표계로 변환한다.
@@ -1818,19 +1843,8 @@ impl LayoutEngine {
         let cell_index = table_cell_ref.map(|(ci, _, _)| ci);
         let cell_para_index = table_cell_ref.map(|(_, cpi, _)| cpi);
         let outer_table_control_index = table_cell_ref.map(|(_, _, otci)| otci);
-        // 표 셀 도형은 상위 경로 대신 table_cell_ref로 온다(#1138). 글상자 글의 경로는 그 셀부터
-        // 시작해야 커서·히트·경로 편집 API가 같은 문단을 가리킨다.
-        let textbox_parent_path: Vec<CellPathEntry> = match table_cell_ref {
-            Some((cell_idx, cell_para_idx, outer_ctrl)) if parent_cell_path.is_empty() => {
-                vec![CellPathEntry {
-                    control_index: outer_ctrl,
-                    cell_index: cell_idx,
-                    cell_para_index: cell_para_idx,
-                    text_direction: 0,
-                }]
-            }
-            _ => parent_cell_path.to_vec(),
-        };
+        // 글상자 글의 경로는 이 도형이 든 셀부터 시작해야 커서·히트·경로 편집 API가 같은 문단을 가리킨다.
+        let textbox_parent_path = Self::shape_container_path(parent_cell_path, table_cell_ref);
 
         // 회전/대칭이 있으면 current 크기로 중앙 배치
         // 그렇지 않으면 호출자가 전달한 w, h를 그대로 사용

@@ -240,6 +240,10 @@ pub struct RenderNode {
     /// 실제 글상자가 있는 도형의 편집 소유 주소. 장식 도형의 외곽은 글상자 클릭 영역이 아니다.
     #[serde(skip)]
     pub(crate) textbox_source: Option<(usize, CellContext)>,
+    /// 표 셀·글상자 안 도형의 전체 컨테이너 경로(본문 문단부터 도형이 든 문단까지).
+    /// 쪽 개체 목록이 중첩 도형의 `cellPath`로 내보낸다. 본문 도형은 비어 있다.
+    #[serde(skip)]
+    pub(crate) container_path: Vec<super::layout::CellPathEntry>,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize)]
@@ -290,6 +294,7 @@ impl RenderNode {
             control_code: ControlCode::Automatic,
             header_footer_source: None,
             textbox_source: None,
+            container_path: Vec::new(),
             paint_clip: None,
         }
     }

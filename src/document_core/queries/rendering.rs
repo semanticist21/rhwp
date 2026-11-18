@@ -4207,15 +4207,37 @@ impl DocumentCore {
         cell_index: Option<usize>,
         cell_para_index: Option<usize>,
         outer_table_control_index: Option<usize>,
+        container_path: &[crate::renderer::layout::CellPathEntry],
     ) -> String {
-        let (Some(cei), Some(cpi), Some(otci)) =
-            (cell_index, cell_para_index, outer_table_control_index)
-        else {
-            return String::new();
+        let scalars = match (cell_index, cell_para_index, outer_table_control_index) {
+            (Some(cei), Some(cpi), Some(otci)) => Some((
+                format!(",\"cellIdx\":{cei},\"cellParaIdx\":{cpi},\"outerTableControlIdx\":{otci}"),
+                format!("{{\"controlIndex\":{otci},\"cellIndex\":{cei},\"cellParaIndex\":{cpi}}}"),
+            )),
+            _ => None,
+        };
+        // 글상자 안 도형과 중첩 표 칸 도형은 칸 스칼라만으로 주소가 되지 않는다.
+        // 레이아웃이 남긴 전체 컨테이너 경로가 있으면 그것을 cellPath로 낸다.
+        let path = if container_path.is_empty() {
+            match &scalars {
+                Some((_, entry)) => entry.clone(),
+                None => return String::new(),
+            }
+        } else {
+            container_path
+                .iter()
+                .map(|e| {
+                    format!(
+                        "{{\"controlIndex\":{},\"cellIndex\":{},\"cellParaIndex\":{}}}",
+                        e.control_index, e.cell_index, e.cell_para_index
+                    )
+                })
+                .collect::<Vec<_>>()
+                .join(",")
         };
         format!(
-            ",\"cellIdx\":{cei},\"cellParaIdx\":{cpi},\"outerTableControlIdx\":{otci}\
-             ,\"cellPath\":[{{\"controlIndex\":{otci},\"cellIndex\":{cei},\"cellParaIndex\":{cpi}}}]"
+            "{},\"cellPath\":[{path}]",
+            scalars.map(|(fields, _)| fields).unwrap_or_default()
         )
     }
 
@@ -4611,9 +4633,11 @@ impl DocumentCore {
                         group_node.control_index,
                     ) {
                         controls.push(format!(
-                            "{{\"type\":\"group\",\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1},\"secIdx\":{},\"paraIdx\":{},\"controlIdx\":{}{}}}",
+                            "{{\"type\":\"group\",\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1},\"secIdx\":{},\"paraIdx\":{},\"controlIdx\":{}{}{}}}",
                             node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height,
-                            si, public_para(pi), ci, layer_str
+                            si, public_para(pi), ci,
+                            DocumentCore::shape_cell_context_json(None, None, None, &node.container_path),
+                            layer_str
                         ));
                         return; // 자식 개별 수집하지 않음 — 묶음 전체가 하나의 컨트롤
                     }
@@ -4630,6 +4654,7 @@ impl DocumentCore {
                             rect_node.cell_index,
                             rect_node.cell_para_index,
                             rect_node.outer_table_control_index,
+                            &node.container_path,
                         );
                         controls.push(format!(
                             "{{\"type\":\"shape\",\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1},\"secIdx\":{},\"paraIdx\":{},\"controlIdx\":{}{}{}}}",
@@ -4653,6 +4678,7 @@ impl DocumentCore {
                             line_node.cell_index,
                             line_node.cell_para_index,
                             line_node.outer_table_control_index,
+                            &node.container_path,
                         );
                         controls.push(format!(
                             "{{\"type\":\"line\",\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1},\"x1\":{:.1},\"y1\":{:.1},\"x2\":{:.1},\"y2\":{:.1},\"secIdx\":{},\"paraIdx\":{},\"controlIdx\":{}{}{}}}",
@@ -4674,6 +4700,7 @@ impl DocumentCore {
                             ell_node.cell_index,
                             ell_node.cell_para_index,
                             ell_node.outer_table_control_index,
+                            &node.container_path,
                         );
                         controls.push(format!(
                             "{{\"type\":\"shape\",\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1},\"secIdx\":{},\"paraIdx\":{},\"controlIdx\":{}{}{}}}",
@@ -4694,6 +4721,7 @@ impl DocumentCore {
                             path_node.cell_index,
                             path_node.cell_para_index,
                             path_node.outer_table_control_index,
+                            &node.container_path,
                         );
                         if let Some((x1, y1, x2, y2)) = path_node.connector_endpoints {
                             // 연결선: 선 선택 방식 (시작/끝 좌표 포함)
