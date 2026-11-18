@@ -3455,11 +3455,15 @@ impl DocumentCore {
         if let Some(v) = json_bool(json, "hideMasterPage") {
             sd.hide_master_page = v;
         }
+        // 한컴 12.30 구역 설정의 '첫 쪽에만 테두리/배경 감추기'는 HWPX `border`·`fill`을
+        // `HIDE_FIRST`로 쓴다. 한 속성이라 첫 쪽만(`SHOW_FIRST`)과 함께 둘 수 없다.
         if let Some(v) = json_bool(json, "hideBorder") {
             sd.hide_border = v;
+            sd.first_page_border &= !v;
         }
         if let Some(v) = json_bool(json, "hideFill") {
             sd.hide_fill = v;
+            sd.first_page_fill &= !v;
         }
         if let Some(v) = json_bool(json, "hideEmptyLine") {
             sd.hide_empty_line = v;
@@ -3489,6 +3493,8 @@ impl DocumentCore {
         set_bit(flags, 0x0004, sd.hide_master_page); // bit 2 (HWP5 스펙, 첫쪽 바탕쪽 감춤)
         set_bit(flags, 0x0008, sd.hide_border); // bit 3
         set_bit(flags, 0x0010, sd.hide_fill); // bit 4
+        set_bit(flags, 0x0100, sd.first_page_border); // bit 8
+        set_bit(flags, 0x0200, sd.first_page_fill); // bit 9
         set_bit(flags, 0x00080000, sd.hide_empty_line); // bit 19
                                                         // bit 20-21: 쪽 번호 종류
         *flags &= !0x00300000; // clear bits 20-21
@@ -3511,6 +3517,8 @@ impl DocumentCore {
                     s.hide_master_page = updated_sd.hide_master_page;
                     s.hide_border = updated_sd.hide_border;
                     s.hide_fill = updated_sd.hide_fill;
+                    s.first_page_border = updated_sd.first_page_border;
+                    s.first_page_fill = updated_sd.first_page_fill;
                     s.hide_empty_line = updated_sd.hide_empty_line;
                     s.outline_numbering_id = updated_sd.outline_numbering_id;
                     s.line_grid = updated_sd.line_grid;
@@ -3547,11 +3555,26 @@ impl DocumentCore {
             .get(section_idx)
             .and_then(|section| section.section_def.cell_grid());
         self.apply_section_def_json(section_idx, json)?;
+        Self::renumber_objects_for_section_def(&mut self.document, json);
         // 구역 기본 탭은 composition/측정/배치가 현재 SectionDef에서 읽는다.
         // 공통 문단·글꼴 스타일을 다시 해소할 필요가 없다.
         self.refit_cell_grid(section_idx, grid_before);
         let page_count = self.recompose_and_paginate();
         Ok(format!("{{\"ok\":true,\"pageCount\":{}}}", page_count))
+    }
+
+    /// 구역의 그림·표·수식 시작 번호가 바뀌면 캡션 번호를 문서 순서로 다시 매긴다.
+    /// 한컴 12.30은 시작 번호를 준 구역의 첫 개체부터 그 번호로 매기고 뒤 개체는 잇는다.
+    fn renumber_objects_for_section_def(
+        document: &mut crate::model::document::Document,
+        json: &str,
+    ) {
+        if ["pictureNum", "tableNum", "equationNum"]
+            .iter()
+            .any(|key| super::super::helpers::json_u16(json, key).is_some())
+        {
+            crate::parser::assign_auto_numbers(document);
+        }
     }
 
     /// 원고지 격자가 바뀐 구역의 문단 줄을 새 칸 수로 다시 나누고 문단 세로 위치를 처음부터 잇는다.
@@ -3592,6 +3615,7 @@ impl DocumentCore {
         for idx in 0..count {
             self.apply_section_def_json(idx, json)?;
         }
+        Self::renumber_objects_for_section_def(&mut self.document, json);
         for (idx, grid_before) in grids_before.into_iter().enumerate() {
             self.refit_cell_grid(idx, grid_before);
         }
@@ -6089,20 +6113,29 @@ impl DocumentCore {
             // `page_num > 0`)가 있으면 구역 첫 쪽을 그 번호로 매긴다. 없으면 NewNumber(Page)
             // 컨트롤이 없을 때 이전 구역에서 이어짐.
             let start_page_num = u32::from(section.section_def.page_num);
+            let has_new_number = {
+                use crate::model::control::{AutoNumberType, Control};
+                section.paragraphs.iter().any(|p|
+                    p.controls.iter().any(|c| matches!(c, Control::NewNumber(nn) if nn.number_type == AutoNumberType::Page))
+                )
+            };
             let page_number_offset = if start_page_num > 0 {
                 start_page_num - 1
-            } else if idx > 0 {
-                use crate::model::control::{AutoNumberType, Control};
-                let has_new_number = section.paragraphs.iter().any(|p|
-                    p.controls.iter().any(|c| matches!(c, Control::NewNumber(nn) if nn.number_type == AutoNumberType::Page))
-                );
-                if has_new_number {
-                    0
-                } else {
-                    carry_last_page_number
-                }
-            } else {
+            } else if has_new_number {
                 0
+            } else {
+                let carried = if idx > 0 { carry_last_page_number } else { 0 };
+                // 시작 쪽 번호 홀수(1)·짝수(2): 한컴 12.30은 빈 쪽을 넣지 않고, 이어 받을 번호가
+                // 그 홀짝이 아니면 번호를 하나 건너뛴다(첫 구역은 1에서 2로).
+                let wants_odd = match section.section_def.page_num_type {
+                    1 => Some(true),
+                    2 => Some(false),
+                    _ => None,
+                };
+                match wants_odd {
+                    Some(odd) if ((carried + 1) % 2 == 1) != odd => carried + 1,
+                    _ => carried,
+                }
             };
             if page_number_offset > 0 {
                 // [Issue #6206] 표 셀 안 `newNum` 은 위 최상위 스캔(`has_new_number`)에
