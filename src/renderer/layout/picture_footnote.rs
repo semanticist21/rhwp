@@ -690,15 +690,27 @@ impl LayoutEngine {
                     ctx
                 })
                 .or_else(|| {
+                    // 머리말·꼬리말 그림 캡션은 머리말 단계(셀 0, 머리말 문단) 뒤의 그림 캡션 마디다.
+                    // 셀 경로 API·머리말 누르기가 표 칸처럼 이 주소로 캡션 글에 닿는다.
+                    let hf = header_footer_ref.as_ref();
                     para_index.map(|pi| super::CellContext {
                         in_textbox: false,
-                        parent_para_index: pi,
-                        path: vec![super::CellPathEntry {
-                            control_index: control_index.unwrap_or(0),
-                            cell_index: 0,
-                            cell_para_index: 0,
-                            text_direction: 0,
-                        }],
+                        parent_para_index: hf.map_or(pi, |hf| hf.outer_para_index),
+                        path: hf
+                            .map(|hf| super::CellPathEntry {
+                                control_index: hf.outer_control_index,
+                                cell_index: 0,
+                                cell_para_index: pi,
+                                text_direction: 0,
+                            })
+                            .into_iter()
+                            .chain([super::CellPathEntry {
+                                control_index: control_index.unwrap_or(0),
+                                cell_index: 0,
+                                cell_para_index: 0,
+                                text_direction: 0,
+                            }])
+                            .collect(),
                     })
                 });
             let caption_first = parent_node.children.len();

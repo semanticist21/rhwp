@@ -395,4 +395,112 @@ fn cell_picture_caption_lines_address_the_caption() {
         .map(|entry| (entry.control_index, entry.cell_index, entry.cell_para_index))
         .collect();
     assert_eq!(steps, vec![(table_ctrl, 0, 0), (inner, 0, 0)]);
+
+    // 한컴 12.30처럼 셀이 아래 캡션까지 커져 캡션 글줄이 셀 안에 든다.
+    let cell_box = first_cell_box(&core);
+    let last = lines.last().expect("캡션 글줄").0;
+    assert!(
+        last.y + last.height <= cell_box.y + cell_box.height + 0.5,
+        "{last:?} {cell_box:?}"
+    );
+    // 캡션 글줄을 누르면 그 그림 캡션 자리가 된다.
+    let hit = core
+        .hit_test_native(0, last.x + 2.0, last.y + last.height / 2.0)
+        .expect("누르기");
+    let hit: serde_json::Value = serde_json::from_str(&hit).expect("JSON");
+    let path = hit["cellPath"].as_array().expect("셀 경로");
+    assert_eq!(path.len(), 2, "{hit}");
+    assert_eq!(path[1]["controlIndex"], inner);
+}
+
+fn first_cell_box(core: &DocumentCore) -> BoundingBox {
+    fn walk(node: &RenderNode) -> Option<BoundingBox> {
+        if matches!(node.node_type, RenderNodeType::TableCell(_)) {
+            return Some(node.bbox);
+        }
+        node.children.iter().find_map(walk)
+    }
+    walk(&core.build_page_tree(0).expect("쪽 트리").root).expect("셀")
+}
+
+#[test]
+fn header_picture_caption_line_hits_its_caption() {
+    let mut core = blank();
+    let (para, ctrl) = floating_picture(
+        &mut core,
+        r#"{"hasCaption":true,"captionDirection":"Bottom","captionVertAlign":"Top","captionWidth":8504,"captionSpacing":850}"#,
+    );
+    let picture = core.document.sections[0].paragraphs[para].controls[ctrl].clone();
+    core.create_header_footer_native(0, true, 0)
+        .expect("머리말");
+    let info: serde_json::Value = serde_json::from_str(
+        &core
+            .get_header_footer_native(0, true, 0)
+            .expect("머리말 정보"),
+    )
+    .expect("JSON");
+    let host = info["paraIndex"].as_u64().expect("paraIndex") as usize;
+    let hf = info["controlIndex"].as_u64().expect("controlIndex") as usize;
+    // 한컴 12.30에서 머리말에 넣은 그림처럼, 캡션 달린 그림을 머리말 첫 문단 맨 앞 컨트롤로 둔다.
+    let Control::Header(header) = &mut core.document.sections[0].paragraphs[host].controls[hf]
+    else {
+        panic!("머리말이 아니다");
+    };
+    let first = &mut header.paragraphs[0];
+    first.controls.insert(0, picture);
+    first.shift_for_inline_control_insert(0, 0);
+    first.char_count += 8;
+    core.document.sections[0].raw_stream = None;
+    core.mark_section_dirty(0);
+    core.paginate_if_needed();
+
+    // 머리말 캡션 글줄의 셀 문맥은 머리말 문단 기준 [(머리말, 0, 문단), (그림, 0, 0)]이다.
+    // 머리말 글줄은 본문 캡션 소유자(caption_owner)를 싣지 않으므로 글자 조각의 셀 문맥으로 찾는다.
+    fn header_caption(node: &RenderNode) -> Option<(BoundingBox, CellContext)> {
+        if matches!(node.node_type, RenderNodeType::TextLine(_)) {
+            let ctx = node
+                .children
+                .iter()
+                .find_map(|child| match &child.node_type {
+                    RenderNodeType::TextRun(run) => run.cell_context.clone(),
+                    _ => None,
+                });
+            if let Some(ctx) = ctx.filter(|ctx| ctx.path.len() == 2) {
+                return Some((node.bbox, ctx));
+            }
+        }
+        node.children.iter().find_map(header_caption)
+    }
+    let tree = core.build_page_tree(0).expect("쪽 트리");
+    let header_node = tree
+        .root
+        .children
+        .iter()
+        .find(|child| matches!(child.node_type, RenderNodeType::Header))
+        .expect("머리말 노드");
+    let (line, ctx) = header_caption(header_node).expect("머리말 캡션 글줄");
+    assert_eq!(ctx.parent_para_index, host);
+    let steps: Vec<_> = ctx
+        .path
+        .iter()
+        .map(|entry| (entry.control_index, entry.cell_index, entry.cell_para_index))
+        .collect();
+    assert_eq!(steps, vec![(hf, 0, 0), (0, 0, 0)]);
+
+    // 머리말 편집에서 그 글줄을 누르면 그림 캡션 자리가 된다.
+    let hit = core
+        .hit_test_in_header_footer_target_native(
+            0,
+            0,
+            true,
+            0,
+            line.x + 2.0,
+            line.y + line.height / 2.0,
+        )
+        .expect("누르기");
+    let hit: serde_json::Value = serde_json::from_str(&hit).expect("JSON");
+    let path = hit["cellPath"].as_array().expect("셀 경로");
+    assert_eq!(path.len(), 2, "{hit}");
+    assert_eq!(path[0]["controlIndex"], hf);
+    assert_eq!(path[1]["controlIndex"], 0);
 }

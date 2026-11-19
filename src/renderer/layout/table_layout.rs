@@ -8962,8 +8962,26 @@ impl LayoutEngine {
                                 let cell_bottom = (content_cell_y + cell_h)
                                     .min(inner_area.y + inner_area.height)
                                     .max(cell_top);
-                                if pic_h <= (cell_bottom - cell_top) + 0.5 {
-                                    pic_y.clamp(cell_top, (cell_bottom - pic_h).max(cell_top))
+                                // 한컴 12.30처럼 위·아래 캡션도 칸 안에 들도록 캡션 띠까지 함께 묶는다.
+                                let caption_band = pic.caption.as_ref().map_or(0.0, |caption| {
+                                    self.calculate_caption_height(&pic.caption, styles)
+                                        + hwpunit_to_px(caption.spacing as i32, self.dpi)
+                                });
+                                let (above, below) = match pic.caption.as_ref().map(|c| c.direction)
+                                {
+                                    Some(crate::model::shape::CaptionDirection::Top) => {
+                                        (caption_band, 0.0)
+                                    }
+                                    Some(crate::model::shape::CaptionDirection::Bottom) => {
+                                        (0.0, caption_band)
+                                    }
+                                    _ => (0.0, 0.0),
+                                };
+                                if pic_h + above + below <= (cell_bottom - cell_top) + 0.5 {
+                                    pic_y.clamp(
+                                        cell_top + above,
+                                        (cell_bottom - pic_h - below).max(cell_top + above),
+                                    )
                                 } else {
                                     pic_y
                                 }

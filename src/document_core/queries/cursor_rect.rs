@@ -5714,6 +5714,27 @@ impl DocumentCore {
         {
             return Ok(hit);
         }
+        if let Some(hit) = (!is_master)
+            .then(|| {
+                let (host, control) = self.find_header_footer_control(
+                    section_idx,
+                    is_header,
+                    crate::document_core::header_footer_apply_from_u8(apply_to),
+                )?;
+                header_footer_caption_hit(
+                    hf_node,
+                    (host, control),
+                    page_num,
+                    section_idx,
+                    apply_to,
+                    x,
+                    y,
+                )
+            })
+            .flatten()
+        {
+            return Ok(hit);
+        }
 
         // TextRun 정보 수집
         struct HfRunInfo {
@@ -7182,6 +7203,85 @@ fn header_footer_edit_node(
     } else {
         matches!(node_type, RenderNodeType::Footer)
     }
+}
+
+/// 머리말·꼬리말 그림 캡션 글줄을 누른 자리. 캡션 글줄의 셀 문맥은 [머리말(셀 0, 머리말 문단),
+/// 그림(셀 0, 캡션 문단)]이다. 누른 y가 든 캡션 줄의 가장 가까운 글자 자리를 표 칸 히트와 같은
+/// JSON으로 준다.
+fn header_footer_caption_hit(
+    hf_node: &crate::renderer::render_tree::RenderNode,
+    (host, control): (usize, usize),
+    page_num: u32,
+    section_idx: usize,
+    apply_to: u8,
+    x: f64,
+    y: f64,
+) -> Option<String> {
+    use crate::renderer::render_tree::{RenderNode, RenderNodeType};
+    // 머리말 안 표 칸 글은 머리말 문단이 뿌리라 이 머리말 컨트롤을 뿌리로 둔 경로만 고른다.
+    fn collect<'a>(node: &'a RenderNode, root: (usize, usize), out: &mut Vec<&'a RenderNode>) {
+        if let RenderNodeType::TextRun(ref run) = node.node_type {
+            if run.char_start.is_some()
+                && run.cell_context.as_ref().is_some_and(|ctx| {
+                    ctx.path.len() == 2
+                        && ctx.parent_para_index == root.0
+                        && ctx.path[0].control_index == root.1
+                        && ctx.path[0].cell_index == 0
+                })
+            {
+                out.push(node);
+            }
+            return;
+        }
+        for child in &node.children {
+            collect(child, root, out);
+        }
+    }
+    let mut runs = Vec::new();
+    collect(hf_node, (host, control), &mut runs);
+    let node = runs
+        .into_iter()
+        .filter(|node| y >= node.bbox.y && y <= node.bbox.y + node.bbox.height)
+        .min_by(|a, b| {
+            let dx = |node: &RenderNode| {
+                if x < node.bbox.x {
+                    node.bbox.x - x
+                } else {
+                    (x - (node.bbox.x + node.bbox.width)).max(0.0)
+                }
+            };
+            dx(a).total_cmp(&dx(b))
+        })?;
+    let RenderNodeType::TextRun(ref run) = node.node_type else {
+        return None;
+    };
+    let ctx = run.cell_context.as_ref()?;
+    let positions = run.replay_positions_for(&run.text).into_owned();
+    let local = x - node.bbox.x;
+    let index = positions
+        .iter()
+        .enumerate()
+        .min_by(|a, b| (a.1 - local).abs().total_cmp(&(b.1 - local).abs()))
+        .map_or(0, |(i, _)| i);
+    let cursor_x = node.bbox.x + positions.get(index).copied().unwrap_or(0.0);
+    let (root, inner) = (&ctx.path[0], &ctx.path[1]);
+    Some(format!(
+        "{{\"hit\":true,\"sectionIndex\":{},\"applyTo\":{},\"paraIndex\":{},\"charOffset\":{},\"parentParaIndex\":{},\"cellPath\":[{{\"controlIndex\":{},\"cellIndex\":0,\"cellParaIndex\":{}}},{{\"controlIndex\":{},\"cellIndex\":{},\"cellParaIndex\":{}}}],\"cursorRect\":{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"height\":{:.1}}}}}",
+        section_idx,
+        apply_to,
+        inner.cell_para_index,
+        run.char_start? + index,
+        ctx.parent_para_index,
+        root.control_index,
+        root.cell_para_index,
+        inner.control_index,
+        inner.cell_index,
+        inner.cell_para_index,
+        page_num,
+        cursor_x,
+        node.bbox.y,
+        node.bbox.height
+    ))
 }
 
 #[cfg(test)]
