@@ -537,3 +537,43 @@ fn header_picture_caption(treat_as_char: bool, new_caption: bool) {
     assert_eq!(path[0]["controlIndex"], hf);
     assert_eq!(path[1]["controlIndex"], 0);
 }
+
+/// 한컴 12.30은 캡션 글에 캡션 달린 그림을 넣을 수 있다. HWP로 저장해 다시 열어도 안쪽 그림은
+/// 그림과 그 캡션으로 남는다(바깥 그림의 캡션이 안쪽 그림의 SHAPE_COMPONENT 앞에서 잘리면 안쪽
+/// 그림이 사각형 글상자가 되고, 한컴은 그 파일을 열지 못한다).
+#[test]
+fn captioned_picture_inside_a_caption_survives_hwp_round_trip() {
+    let caption = r#"{"hasCaption":true,"captionDirection":"Bottom","captionVertAlign":"Top","captionWidth":8504,"captionSpacing":850}"#;
+    let mut core = blank();
+    let (para, ctrl) = floating_picture(&mut core, caption);
+    let mut inner = core.document.sections[0].paragraphs[para].controls[ctrl].clone();
+    if let Control::Picture(pic) = &mut inner {
+        pic.common.treat_as_char = true;
+    }
+    let Control::Picture(outer) = &mut core.document.sections[0].paragraphs[para].controls[ctrl]
+    else {
+        panic!("그림이 아니다");
+    };
+    let first = &mut outer.caption.as_mut().expect("캡션").paragraphs[0];
+    let end = first.text.chars().count();
+    let at = first.controls.len();
+    first.controls.push(inner);
+    first.shift_for_inline_control_insert(at, end);
+    first.char_count += 8;
+    core.document.sections[0].raw_stream = None;
+
+    let reopened = DocumentCore::from_bytes(&core.export_hwp_native().expect("HWP")).expect("열기");
+    let Control::Picture(outer) = &reopened.document.sections[0].paragraphs[para].controls[ctrl]
+    else {
+        panic!("바깥 그림이 아니다");
+    };
+    let controls = &outer.caption.as_ref().expect("바깥 캡션").paragraphs[0].controls;
+    let inner = controls
+        .iter()
+        .find_map(|control| match control {
+            Control::Picture(pic) => Some(pic),
+            _ => None,
+        })
+        .expect("캡션 안 그림");
+    assert!(inner.caption.is_some(), "안쪽 그림 캡션");
+}
