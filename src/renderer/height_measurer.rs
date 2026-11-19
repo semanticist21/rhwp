@@ -2162,16 +2162,10 @@ impl HeightMeasurer {
                         0.0
                     }
                 };
-                // 한컴 12.30은 셀 안 떠 있는 그림의 위·아래 캡션까지 셀 높이에 넣는다.
+                // 한컴 12.30은 셀 안 떠 있는 그림의 아래 캡션까지 셀 높이에 넣는다.
                 let caption_extra = |caption: &Option<crate::model::shape::Caption>| -> f64 {
                     match caption {
-                        Some(c)
-                            if matches!(
-                                c.direction,
-                                crate::model::shape::CaptionDirection::Top
-                                    | crate::model::shape::CaptionDirection::Bottom
-                            ) =>
-                        {
+                        Some(c) if c.direction == crate::model::shape::CaptionDirection::Bottom => {
                             self.measure_caption(caption, styles)
                                 + hwpunit_to_px(c.spacing as i32, self.dpi)
                         }

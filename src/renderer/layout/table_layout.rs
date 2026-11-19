@@ -8962,25 +8962,22 @@ impl LayoutEngine {
                                 let cell_bottom = (content_cell_y + cell_h)
                                     .min(inner_area.y + inner_area.height)
                                     .max(cell_top);
-                                // 한컴 12.30처럼 위·아래 캡션도 칸 안에 들도록 캡션 띠까지 함께 묶는다.
-                                let caption_band = pic.caption.as_ref().map_or(0.0, |caption| {
-                                    self.calculate_caption_height(&pic.caption, styles)
-                                        + hwpunit_to_px(caption.spacing as i32, self.dpi)
-                                });
-                                let (above, below) = match pic.caption.as_ref().map(|c| c.direction)
-                                {
-                                    Some(crate::model::shape::CaptionDirection::Top) => {
-                                        (caption_band, 0.0)
+                                // 한컴 12.30처럼 아래 캡션도 칸 안에 들도록 캡션 띠까지 함께 묶는다.
+                                // 위 캡션은 저장 세로 오프셋이 자리를 정하므로 건드리지 않는다.
+                                let below = match pic.caption.as_ref() {
+                                    Some(caption)
+                                        if caption.direction
+                                            == crate::model::shape::CaptionDirection::Bottom =>
+                                    {
+                                        self.calculate_caption_height(&pic.caption, styles)
+                                            + hwpunit_to_px(caption.spacing as i32, self.dpi)
                                     }
-                                    Some(crate::model::shape::CaptionDirection::Bottom) => {
-                                        (0.0, caption_band)
-                                    }
-                                    _ => (0.0, 0.0),
+                                    _ => 0.0,
                                 };
-                                if pic_h + above + below <= (cell_bottom - cell_top) + 0.5 {
+                                if pic_h + below <= (cell_bottom - cell_top) + 0.5 {
                                     pic_y.clamp(
-                                        cell_top + above,
-                                        (cell_bottom - pic_h - below).max(cell_top + above),
+                                        cell_top,
+                                        (cell_bottom - pic_h - below).max(cell_top),
                                     )
                                 } else {
                                     pic_y
