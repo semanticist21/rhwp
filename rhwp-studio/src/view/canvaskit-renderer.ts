@@ -146,7 +146,7 @@ import { projectedSubstituteTargets } from '@/core/font-rule-runtime';
 import type { CanvasKitBundledFontSource } from '@/core/font-loader';
 import type { FontDecisionTraceRecordV1 } from '@/core/font-decision-trace';
 import { readBoundedResponseArrayBuffer } from './canvaskit/bounded-response';
-import { localFontFaceStyle } from './canvaskit/local-font-style';
+import { closestLocalFontStyle, localFontFaceStyle } from './canvaskit/local-font-style';
 import { canvasKitEffectCrop, canvasKitImageEffectKey, makeCanvasKitEffectImage } from './canvaskit/image-effects';
 import { BoundedReplayLog, emptyImageEffectDiagnostics,
   type CanvasKitEquationReplayDiagnostic, type CanvasKitImageRecoveryDiagnostic,
@@ -832,7 +832,10 @@ export class CanvasKitLayerRenderer {
 
     let registered = 0;
     try {
-      const bytesByFace = await loadLocalFontBytesFor([...pendingRecords.values()].map(record => record.fullName));
+      // 표시 이름이 같은 분할 프로그램도 선택한 고유 face 그대로 읽는다.
+      const bytesByFace = await loadLocalFontBytesFor(
+        [...pendingRecords.values()].map(record => record.postscriptName || record.fullName),
+      );
       for (const [faceKey, record] of pendingRecords) {
         const bytes = bytesByFace.get(faceKey);
         if (this.disposed || generation !== this.documentGeneration || epoch !== this.localFontPreparationEpoch) return registered;
@@ -3177,13 +3180,6 @@ export class CanvasKitLayerRenderer {
       replayCodePoints.push(character);
     }
     const style = op.style ?? {};
-    // 줄 방향 문맥을 가진 legacy run은 기존 complex-script fallback을 사용한다.
-    // 명시적 glyphRun의 위치는 producer가 이미 해소하므로 이 분기를 거치지 않는다.
-    if (style.bidiLayout) {
-      this.unsupportedOps.add('textRun:scriptTextRequiresShaping');
-      return;
-    }
-    if (this.recordTextRunCoverageGaps(op, replayCodePoints)) return;
     const ratio = style.ratio ?? 1;
     const outlineType = style.outlineType ?? 0;
     const shadowType = style.shadowType ?? 0;
@@ -3193,13 +3189,17 @@ export class CanvasKitLayerRenderer {
     const baseFontSize = style.fontSize ?? Math.max(1, op.bbox.height || 12);
     const baseline = op.baseline ?? baseFontSize;
     const rotation = op.rotation ?? 0;
+    // 원문·caret 상자는 남지만 크기와 모든 전진이 0이면 그릴 잉크가 없다.
+    // 크기가 있는 장평 0, 음수·비유한 값과 비어 있지 않은 전진은 이 경로로 구제하지 않는다.
+    const zeroSizeNoInk = baseFontSize === 0 && ratio >= 0 && op.bbox.width === 0
+      && replayPositions?.length === replayCodePoints.length + 1
+      && replayPositions.every(position => position === 0);
     if (![op.bbox.x, op.bbox.y, op.bbox.width, op.bbox.height, ratio, outlineType,
       shadowType, shadowOffsetX, shadowOffsetY, baseFontSize, baseline, rotation]
       .every(Number.isFinite)
       || op.bbox.width < 0
       || op.bbox.height < 0
-      || ratio <= 0
-      || baseFontSize <= 0
+      || (!zeroSizeNoInk && (ratio <= 0 || baseFontSize <= 0))
       || !Number.isInteger(outlineType)
       || outlineType < 0
       || !Number.isInteger(shadowType)
@@ -3220,6 +3220,14 @@ export class CanvasKitLayerRenderer {
         return;
       }
     }
+    if (zeroSizeNoInk) return;
+    // 줄 방향 문맥을 가진 legacy run은 기존 complex-script fallback을 사용한다.
+    // 명시적 glyphRun의 위치는 producer가 이미 해소하므로 이 분기를 거치지 않는다.
+    if (style.bidiLayout) {
+      this.unsupportedOps.add('textRun:scriptTextRequiresShaping');
+      return;
+    }
+    if (this.recordTextRunCoverageGaps(op, replayCodePoints)) return;
     const verticalPresentationText = op.isVertical
       && op.orientation !== 'vertical-sideways'
       ? VERTICAL_PRESENTATION_BASE_TEXT.get(replayText)
@@ -4644,12 +4652,28 @@ export class CanvasKitLayerRenderer {
     const candidates = [primary];
     const seen = new Set<Typeface | null>([primary.typeface]);
     for (const family of ordinaryTextFontFamilies(fontFamily ?? '')) {
-      const candidate = this.findPreparedTypeface(family, style);
-      if (!candidate?.typeface || seen.has(candidate.typeface)) continue;
-      seen.add(candidate.typeface);
-      candidates.push(candidate);
+      for (const candidate of [...this.preparedLocalTypefaces(family, style), this.findPreparedTypeface(family, style)]) {
+        if (!candidate?.typeface || seen.has(candidate.typeface)) continue;
+        seen.add(candidate.typeface);
+        candidates.push(candidate);
+      }
     }
     return candidates;
+  }
+
+  /** 원본 family/style 분할 후보 중 실제 준비를 마친 프로그램만 같은 순서로 소비한다. */
+  private preparedLocalTypefaces(family: string, style?: LayerTextStyle): CanvasKitLocalTypeface[] {
+    return resolveRendererLocalFontCandidates(family, hostFontStyle(style)).flatMap(record => {
+      const prepared = this.localTypefaces.get(localFontFaceKey(record));
+      return prepared ? [prepared] : [];
+    });
+  }
+
+  private preparedLocalFamily(family: string, style?: LayerTextStyle): CanvasKitLocalTypeface | null {
+    const candidates = this.preparedLocalTypefaces(family, style);
+    if (candidates.length === 0) return null;
+    return candidates.length === 1 ? candidates[0] : { ...candidates[0],
+      paragraphTypefaces: candidates.map(candidate => candidate.typeface) };
   }
 
   private resolvePreparedTypeface(fontFamily: string | undefined, style?: LayerTextStyle): CanvasKitLocalTypeface | null {
@@ -4658,8 +4682,7 @@ export class CanvasKitLayerRenderer {
       // A document substitute is an actual font candidate. Do not truncate it
       // before local/host preparation and silently choose a bundled primary alias.
       for (const family of families) {
-        const record = resolveRendererLocalFont(family, hostFontStyle(style));
-        const prepared = record ? this.localTypefaces.get(localFontFaceKey(record)) : null;
+        const prepared = this.preparedLocalFamily(family, style);
         if (prepared) return prepared;
       }
       for (const family of families) {
@@ -4670,17 +4693,12 @@ export class CanvasKitLayerRenderer {
     }
     const key = normalizedFontFamily(fontFamily);
     if (!key) return null;
-    const record = resolveRendererLocalFont(primaryFontFamily(fontFamily), hostFontStyle(style));
-    let local = record ? this.localTypefaces.get(localFontFaceKey(record)) ?? null : null;
+    let local = this.preparedLocalFamily(primaryFontFamily(fontFamily), style);
     if (!hasHostFontProvider()) {
-      let bestScore = Number.POSITIVE_INFINITY;
-      for (const candidate of this.localTypefaces.values()) {
-        if (!candidate.record?.aliases.some(alias => normalizedFontFamily(alias) === key)) continue;
-        const physical = localFontFaceStyle(candidate.record);
-        const score = (physical.italic === (style?.italic === true) ? 0 : 2000)
-          + Math.abs(physical.weight - (style?.bold === true ? 700 : 400));
-        if (score < bestScore) { local = candidate; bestScore = score; }
-      }
+      local = closestLocalFontStyle(local,
+        [...this.localTypefaces.values()].filter(candidate =>
+          candidate.record?.aliases.some(alias => normalizedFontFamily(alias) === key)),
+        style?.bold === true, style?.italic === true);
     }
     const bundled = this.findBundledTypeface(key, style);
     if (key === normalizedFontFamily(OLD_HANGUL_FONT_FAMILY)) {
@@ -4704,11 +4722,14 @@ export class CanvasKitLayerRenderer {
   private findPreparedFamilyFallbacks(fontFamily: string | undefined, style?: LayerTextStyle): CanvasKitLocalTypeface[] {
     const selected: CanvasKitLocalTypeface[] = [];
     const visited = new Set<Typeface>();
-    for (const family of parseCssFontFamilyList(fontFamily ?? '').slice(1)) {
-      const prepared = this.findPreparedTypeface(family, style);
-      if (!prepared?.typeface || visited.has(prepared.typeface)) continue;
-      visited.add(prepared.typeface);
-      selected.push(prepared);
+    const primary = this.findPreparedTypeface(fontFamily, style)?.typeface;
+    if (primary) visited.add(primary);
+    for (const family of parseCssFontFamilyList(fontFamily ?? '')) {
+      for (const prepared of [...this.preparedLocalTypefaces(family, style), this.findPreparedTypeface(family, style)]) {
+        if (!prepared?.typeface || visited.has(prepared.typeface)) continue;
+        visited.add(prepared.typeface);
+        selected.push(prepared);
+      }
     }
     return selected;
   }
@@ -5671,9 +5692,15 @@ export class CanvasKitLayerRenderer {
       }
     }
     if (gradientType >= 2 && gradientType <= 3) {
-      const cx = bounds.x + bounds.width * ((gradient.centerX ?? 50) / 100);
-      const cy = bounds.y + bounds.height * ((gradient.centerY ?? 50) / 100);
-      const radius = Math.max(bounds.width, bounds.height) / 2;
+      // 원형은 Native·Canvas와 같은 생산 결과를 소비한다. 원뿔/구형 JSON의 근사는 유지한다.
+      const circle = gradientType === 2 ? gradient.radialCircle : undefined;
+      if (circle && (circle.length !== 3 || !circle.every(Number.isFinite) || circle[2] <= 0)) {
+        this.unsupportedOps.add('gradientFill:invalidRadialCircle');
+        return null;
+      }
+      const cx = circle?.[0] ?? bounds.x + bounds.width * ((gradient.centerX ?? 50) / 100);
+      const cy = circle?.[1] ?? bounds.y + bounds.height * ((gradient.centerY ?? 50) / 100);
+      const radius = circle?.[2] ?? Math.max(bounds.width, bounds.height) / 2;
       return shaderApi.MakeRadialGradient?.(
         [cx, cy],
         radius,
@@ -5866,7 +5893,9 @@ export class CanvasKitLayerRenderer {
       this.unsupportedOps.add(`strokeDash:${String(dash)}`);
       return;
     }
-    if (intervals === null) {
+    // 일반 선 패턴의 빈 배열은 Canvas/SVG와 같이 실선이다.
+    // 명시적 물리 패턴의 빈 배열은 위 검증에서 계속 거부한다.
+    if (intervals === null || intervals.length === 0) {
       draw();
       return;
     }

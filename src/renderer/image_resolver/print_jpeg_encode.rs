@@ -54,7 +54,11 @@ pub(crate) fn print_jpeg_payload(
             return None;
         }
     }
-    let target = image.transform.effective_image_bbox(&bbox);
+    let target = if image.source_rect.is_some() {
+        image.transformed_paint_bbox(&bbox)
+    } else {
+        image.transform.effective_image_bbox(&bbox)
+    };
     let nominal_width = (target.width * crate::renderer::DEFAULT_DPI / dpi).floor();
     if !nominal_width.is_finite() || nominal_width <= 0.0 {
         return None;
@@ -62,7 +66,12 @@ pub(crate) fn print_jpeg_payload(
     let quality = (75.0 * nominal_width / f64::from(width))
         .floor()
         .clamp(35.0, 75.0) as u8;
-    let expand = image.hancom2024_print_bitmap;
+    // 32비트 BI_RGB DIB도 Hancom PDF의 불투명 전송에서 RGB555를 거친다.
+    // 저장 형식이 같은 그림만 이 규칙을 공유하고, 기존 PNG·GIF 경로는 유지한다.
+    let expand = image.hancom2024_print_bitmap
+        || (data.starts_with(b"BM")
+            && data.get(14..18) == Some(&40_u32.to_le_bytes())
+            && data.get(28..34) == Some(&[32, 0, 0, 0, 0, 0]));
     let bytes = encode_print_jpeg(data, quality, expand)?;
     Some(ResolvedImagePayload {
         data: bytes,

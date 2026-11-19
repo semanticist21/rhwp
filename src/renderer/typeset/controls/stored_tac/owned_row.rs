@@ -173,7 +173,7 @@ fn horizontal_pen(
     // 표의 가로 pen만 확인한 결과로 그 prefix까지 소비했다고 선언하면
     // before_text가 0이 되어 측정·배치 모두 표를 앞 줄 위에 놓는다.
     // 이미 앞 TAC가 소비한 개체 줄들은 각자의 기존 소유 경로를 유지한다.
-    if crate::renderer::composer::ordinary_tac_prefix_rows(para, owner)
+    if crate::renderer::composer::owned_tac_prefix_rows(para, owner)
         && !para.controls.iter().enumerate().any(|(ci, item)| {
             matches!(item, Control::Table(candidate) if candidate.common.treat_as_char)
                 && crate::renderer::composer::control_slot_line_index(para, ci)
@@ -221,7 +221,9 @@ fn horizontal_pen(
     let alignment = para_style.alignment;
     let horizontal_pen = match alignment {
         crate::model::style::Alignment::Center => {
-            left + (available - leading - width) / 2.0 + leading
+            // 줄보다 넓은 표는 줄의 왼쪽 펜에서 시작한다. 가운데 정렬은
+            // 실제로 남는 공간만 나누므로 표의 바깥 왼쪽 여백도 보존된다.
+            left + (available - leading - width).max(0.0) / 2.0 + leading
         }
         crate::model::style::Alignment::Right => left + available - width,
         _ => left + leading,

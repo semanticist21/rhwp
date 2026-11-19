@@ -410,6 +410,19 @@ pub(super) fn place_split_paragraph_with_storage<S: crate::storage::Storage>(
             end_line,
             cumulative,
         } = boundary;
+        // 본문 항목이 아직 없는 쪽을 앞 쪽에서 이어받은 각주가 채웠고, 그 각주만 없으면
+        // 이 조각이 들어갈 자리라면 본문은 다음 쪽에서 시작한다(한/글 2020 Print #9014 2쪽).
+        // 쪽마다 이어받은 각주 줄이 한 줄 이상 소비되므로 이월은 끝난다.
+        let carried_notes_hold_body = st.current_items.is_empty()
+            && st.current_footnote_height > 0.0
+            && cumulative
+                <= (st.base_available_height()
+                    - reserve
+                    - st.current_height
+                    - st.current_zone_y_offset
+                    - st.current_bottom_fixed_exclusion
+                    - sp_b)
+                    + 0.5;
 
         let Some(fragment) = placement::plan_fragment(
             fmt,
@@ -425,12 +438,22 @@ pub(super) fn place_split_paragraph_with_storage<S: crate::storage::Storage>(
             used_saved_tail_vpos_fit,
             require_full_advance,
             &st.current_items,
+            carried_notes_hold_body,
         ) else {
             st.advance_column_or_new_page_with_storage(storage)?;
             if cursor_line == 0
                 && try_absorb_empty_page_start_with_storage(st, para_idx, para, storage)?
             {
                 return Ok(());
+            }
+            if cursor_line == 0 {
+                // 첫 줄을 새 쪽으로 넘겼으면 그 쪽의 자기 개체 밴드로 시작을 다시 짚는다.
+                st.register_own_page_anchored_topbottom_bands(para_idx, para);
+                st.apply_visible_float_exclusions_absorbing(
+                    fit::exclusion_probe_height(fmt),
+                    page_band_absorbed_spacing_before(st, para, fmt),
+                    Some(para_idx),
+                );
             }
             on_entry_page = false;
             continue;
@@ -555,6 +578,7 @@ pub(super) fn plan_stored_float_text_prefix(
         false,
         false,
         &[],
+        false,
     )
 }
 
@@ -607,6 +631,13 @@ pub(super) fn place_fitted_paragraph_with_storage<S: crate::storage::Storage>(
     let fmt = confirmed.as_ref().unwrap_or(fmt);
     let defer_preceding_float =
         placement::defer_preceding_float(&st.current_items, paragraphs, para_idx, para);
+    // [#8859] 표 위 틈을 채운 본문 뒤의 흐름은 표 아래에서 이어진다. 조판은 이 표를 host 줄
+    // 바로 뒤에 예약했으므로(양수 오프셋 미가산), 실제 표 아래끝은 그 예약 끝보다
+    // `오프셋 − host 줄 전진` 만큼 아래다. 틈의 본문이 그보다 짧으면 표 아래끝이 하한이다.
+    let deferred_float_floor = defer_preceding_float
+        .then(|| placement::deferred_float_flow_floor(&st.current_items, paragraphs, para, dpi))
+        .flatten()
+        .map(|extra| st.current_height + extra);
     let split_float_spacing_before = match st.current_items.last() {
         _ if confirmed.is_some() => None,
         Some(PageItem::PartialTable {
@@ -734,6 +765,27 @@ pub(super) fn place_fitted_paragraph_with_storage<S: crate::storage::Storage>(
             fmt.line_tail_spacing(fmt.line_count()),
             storage,
         )?;
+        // 단일 텍스트 영역을 닫는 재조판 줄은 같은 확정 구성을 다음 배치에 전달한다.
+        // 일반 본문의 재조판 선택을 바꾸지 않고, 실제 영역 전환에서만 꼬리 간격을 인증한다.
+        let next_index = para_idx + 1;
+        if st.col_count == 1
+            && paragraphs.get(next_index).is_some_and(|next| {
+                next.column_type == crate::model::paragraph::ColumnBreakType::MultiColumn
+                    || next.controls.iter().any(|control| {
+                        matches!(control, crate::model::control::Control::ColumnDef(_))
+                    })
+            })
+            && crate::renderer::plain_text_column_zone(
+                paragraphs,
+                next_index,
+                crate::renderer::declared_column_type_at(paragraphs, para_idx),
+                styles,
+            )
+        {
+            if let Some(composed) = fmt.computed_paragraph.as_ref() {
+                st.record_computed_paragraph(para_idx, composed, storage)?;
+            }
+        }
     }
     st.apply_full_paragraph_flow(
         advance,
@@ -786,6 +838,9 @@ pub(super) fn place_fitted_paragraph_with_storage<S: crate::storage::Storage>(
         let compacted_lines_height = fmt.line_advances_sum(0..fmt.line_heights.len());
         st.record_compacted_stored_rows(stored_lines_height - compacted_lines_height);
     };
+    if let Some(floor) = deferred_float_floor.filter(|floor| *floor > st.current_height) {
+        st.align_flow_to(floor);
+    }
     Ok(())
 }
 
@@ -1103,6 +1158,15 @@ pub(super) fn place_after_failed_fit_with_storage<S: crate::storage::Storage>(
         if try_absorb_empty_page_start_with_storage(st, para_idx, para, storage)? {
             return Ok(());
         }
+        // 새 쪽에서도 자기 쪽·종이 기준 자리차지 개체의 밴드가 첫 줄을 민다. 넘기기 전 판정은
+        // 떠나는 쪽 흐름 위치로 했으므로 새 쪽 시작에서 다시 짚는다(6500000-201700118 부록
+        // 271쪽: 앵커 빈 문단 저장 vpos 57964 = 그림 밴드 아래끝).
+        st.register_own_page_anchored_topbottom_bands(para_idx, para);
+        st.apply_visible_float_exclusions_absorbing(
+            fit::exclusion_probe_height(fmt),
+            page_band_absorbed_spacing_before(st, para, fmt),
+            Some(para_idx),
+        );
         safety.entry = safety.continuation;
     }
 
@@ -1126,6 +1190,22 @@ pub(super) fn place_after_failed_fit_with_storage<S: crate::storage::Storage>(
     )?;
 
     Ok(())
+}
+
+/// 띠 아래로 보낸 첫 줄이 띠 안에서 흡수하는 앞 간격. fit 예산과 쪽 넘김 뒤 재판정이
+/// 같은 조건을 쓴다.
+fn page_band_absorbed_spacing_before(
+    st: &TypesetState,
+    para: &Paragraph,
+    fmt: &FormattedParagraph,
+) -> f64 {
+    if st.profile.hwp5_stored_pagination_layout()
+        || crate::renderer::para_has_no_stored_line_segs(para)
+    {
+        fmt.spacing_before.max(0.0)
+    } else {
+        0.0
+    }
 }
 
 /// 문단 진입 조정과 1회성 fit 예산 소비 결과. 실제 분할 경계는 이후에 계산한다.
@@ -1222,6 +1302,20 @@ pub(super) fn prepare_fit_budget_with_storage<S: crate::storage::Storage>(
         st.current_height,
         dpi,
         || st.available_height(),
+        |control| {
+            st.col_count == 1
+                && st
+                    .restricted_object_host_top(para_idx, para, st.current_height, dpi)
+                    .and_then(|host_top| {
+                        crate::renderer::float_placement::overflow_para_object_next_page_placement(
+                            control,
+                            host_top,
+                            st.available_height(),
+                            dpi,
+                        )
+                    })
+                    .is_some()
+        },
     ) {
         st.advance_column_or_new_page_with_storage(storage)?;
     }
@@ -1245,13 +1339,8 @@ pub(super) fn prepare_fit_budget_with_storage<S: crate::storage::Storage>(
     // [#7687] 띠 아래로 보낸 첫 줄은 앞 간격을 띠 안에서 흡수한다 — 저장 사다리가 있는 HWP5
     // (#6761 90/90)와 저장 줄이 없어 재조판하는 문단(합성 H6 정본). 저장 줄이 있는 HWPX 는
     // 생성기별로 갈려 종전(미흡수)을 유지한다. 배치 `band_absorbed_spacing_before` 와 같은 조건.
-    let absorbed_spacing_before = if st.profile.hwp5_stored_pagination_layout()
-        || crate::renderer::para_has_no_stored_line_segs(para)
-    {
-        fmt.spacing_before.max(0.0)
-    } else {
-        0.0
-    };
+    let absorbed_spacing_before = page_band_absorbed_spacing_before(st, para, fmt);
+    st.register_own_page_anchored_topbottom_bands(para_idx, para);
     st.apply_visible_float_exclusions_absorbing(
         exclusion_probe_height,
         absorbed_spacing_before,

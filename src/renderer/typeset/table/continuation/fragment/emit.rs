@@ -111,10 +111,10 @@ impl TypesetEngine {
                 .then_some(frame)
         })
         .flatten();
-        let block_acceptance =
+        let mut block_acceptance =
             self.accept_stored_block_frame(st, continuation, input, budget, &scan);
         let mut fragment_block_frames = mt.fragment_block_frames.clone();
-        let fragment_rows = if let Some(accepted) = &block_acceptance {
+        let mut fragment_rows = if let Some(accepted) = &block_acceptance {
             let range = accepted.range;
             if !fragment_block_frames.contains(&range) {
                 fragment_block_frames.push(range);
@@ -260,6 +260,23 @@ impl TypesetEngine {
         if let Some((height, last_height)) = stored_complete_extent {
             partial_height = height;
             end_row_height_override = Some(last_height);
+            // 내용 컷을 받은 병합 블록도 독립적으로 인증한 첫 물리 상자를 소비한다.
+            // 블록 행 목록은 paint의 권위이므로 끝 행 override만 갱신하면 이전 내용
+            // 높이가 그대로 그려진다. 같은 차이를 다음 조각의 소비 원장에도 반영한다.
+            if let (Some(accepted), Some(rows), Some(last)) = (
+                block_acceptance.as_mut(),
+                fragment_rows.as_mut(),
+                end_row.checked_sub(1),
+            ) {
+                if (accepted.range.0..accepted.range.1).contains(&last) {
+                    let extra = last_height - rows[last];
+                    rows[last] = last_height;
+                    accepted.rows[last] = last_height;
+                    if let Some(frame) = accepted.frame.as_mut() {
+                        frame.accepted += extra;
+                    }
+                }
+            }
         }
         if let Some((_, _, height, current_content)) = stored_row_frame {
             if height > current_content + 0.5 {
@@ -1260,14 +1277,39 @@ impl TypesetEngine {
                         .then(|| st.table_flow_successor(para_idx, input.source.paragraphs_all))
                         .flatten()
                         .and_then(|(_, next)| {
-                            layout_engine.native_text_frame_terminal_successor_gap(
-                                input.source.paragraph,
-                                next,
-                                table,
-                                &st.inline_flow_column(),
-                                st.inline_flow_column().y + st.current_height + occupied,
-                                styles,
-                            )
+                            let fragment_bottom =
+                                st.inline_flow_column().y + st.current_height + occupied;
+                            layout_engine
+                                .native_text_frame_terminal_successor_gap(
+                                    input.source.paragraph,
+                                    next,
+                                    table,
+                                    &st.inline_flow_column(),
+                                    fragment_bottom,
+                                    styles,
+                                )
+                                .or_else(|| {
+                                    // [#9060] 흐름이 소유한 바깥 아래 여백이 아직 조각 하단에
+                                    // 들어 있지 않으면, 뒤 문단의 저장 줄은 그 여백 아래에서
+                                    // 시작한다(한/글 2020 Print·저장 vpos: ODA 보고서 150쪽 문단
+                                    // 79 = 문단 78 표 끝 조각 하단 + 바깥 아래 566HU). 같은 저장
+                                    // 줄 증거로 여백 아래를 조각 하단으로 보고, 전진량에는 그
+                                    // 여백을 함께 넣는다. 호스트 아래 간격은 앵커 쪽 글줄의
+                                    // 몫이라 이 끝에서 다시 더하지 않는다.
+                                    (terminal_flow_outer_bottom > 0.0)
+                                        .then(|| {
+                                            layout_engine.native_text_frame_terminal_successor_gap(
+                                                input.source.paragraph,
+                                                next,
+                                                table,
+                                                &st.inline_flow_column(),
+                                                fragment_bottom + terminal_flow_outer_bottom,
+                                                styles,
+                                            )
+                                        })
+                                        .flatten()
+                                        .map(|gap| gap + terminal_flow_outer_bottom)
+                                })
                         })
                 });
                 let terminal_spacing = terminal_successor_gap
@@ -2074,7 +2116,20 @@ impl TypesetEngine {
                 false,
             );
         }
-        st.advance_column_or_new_page();
+        // 표의 마지막 행 내용을 모두 이 조각에 담았으면, 넘길 빈 꼬리가 있을 때만
+        // 다음 단/쪽으로 넘어간다. 꼬리가 없으면 표는 여기서 끝나고 뒤 본문이
+        // 같은 쪽에서 이어진다 — 종전에는 무조건 넘겨 내용 없는 빈 쪽이 생겼다.
+        // 아래 꼬리 계산이 새 쪽 가용 높이를 읽는 첫 조각 빈 띠 경로는 제외한다.
+        // 앞 표 뒤에 자리가 없어 이 표와 함께 밀린 host 글줄은 표 끝 뒤에 놓여야 하므로
+        // 종전대로 넘긴다(그 글줄 몫의 빈 쪽).
+        let defer_terminal_advance = end_row >= row_count
+            && complete_physical_end_cut
+            && split_block_start.is_none()
+            && !first_fragment_blank_band
+            && !input.prepared.host_line_trails_table;
+        if !defer_terminal_advance {
+            st.advance_column_or_new_page();
+        }
 
         // 커서 전진 — [작업 #993] 컷은 절대 유닛 인덱스이므로 누적 없이 대입.
         let empty_opening_next_height = input
@@ -2590,6 +2645,9 @@ impl TypesetEngine {
             (Some(ordinary), Some(spanning)) => Some(ordinary.max(spanning)),
             (ordinary, spanning) => ordinary.or(spanning),
         };
+        if defer_terminal_advance && next_start_row_height_override.is_some() {
+            st.advance_column_or_new_page();
+        }
         #[cfg(not(target_arch = "wasm32"))]
         if std::env::var_os("RHWP_DIAG_ROW_TAIL").is_some() {
             eprintln!(

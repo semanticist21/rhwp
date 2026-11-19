@@ -15,6 +15,14 @@ pub(crate) fn implicit_symbol_advance_em(character: char) -> Option<f64> {
     }
     match character {
         '\u{F09E}' | '\u{F0A0}' => Some(312.0 / 1000.0),
+        // 웹한글기안기 인쇄는 Wingdings 원문자·흰 원·체크 상자를 문서 글꼴과
+        // 상관없이 Haan Wings로 그린다. 내장 글꼴 폭: 0x80~0x95·0xA1 /W891,
+        // 0xFE /W892 (1000 단위). 표시용 ①·○·☑ 의 전각 폭을 빌리지 않는다.
+        '\u{F080}'..='\u{F095}' | '\u{F0A1}' => Some(891.0 / 1000.0),
+        '\u{F0FE}' => Some(892.0 / 1000.0),
+        // 독립 한컴 2020 Print issue8680: Wingdings-Regular CID9 /W385.
+        // 표시용 U+1F8AD를 공급하는 Noto 글꼴의 356/1000 폭으로 바꾸지 않는다.
+        '\u{F0FA}' => Some(385.0 / 1000.0),
         // 독립 한컴2020 Print의 원본 책괄호는 Haansoft Batang
         // A854/A855 프로그램을 사용한다. /W512, UPEM1024이며 표시용
         // 전각 흰 겹낫표의 폭으로 원본 반각 전진을 덮어쓰지 않는다.
@@ -147,18 +155,25 @@ static ORIGINAL_GLYPH_METRICS: &[OriginalGlyphMetric] = &[
     },
 ];
 
-// samples/hwp3-empty-cell.hwp의 HCI Tulip regular: 독립 한컴 2020 Print
-// pdf/hwp3-empty-cell-2020.pdf /T1의 ToUnicode와 /Widths, FontMatrix 0.001.
-// 한컴 재저장본의 charPr 12도 '1. ' 등 번호 런의 LATIN face를 HCI Tulip로
-// 보존한다. 표시 폴백 HY견명조의 숫자 폭(약 2/3 em)을 원본 폭으로 쓰면
-// 번호 뒤 한글이 밀린다. 확인한 글리프만 사용하고 미확인 문자/굵기/기울임은
-// 기존 폴백에 맡긴다. 전체 face의 메트릭 표로 확장하거나 추정하지 않는다.
+// HCI Tulip regular의 원본 HFT 전진폭(FontMatrix 0.001, /Widths = CharProc d1).
+// 두 독립 한컴 Print의 Type3 ToUnicode·/Widths에서 확인한 글리프만 담는다.
+// - samples/hwp3-empty-cell.hwp, 한컴 2020 pdf/hwp3-empty-cell-2020.pdf /T1:
+//   ( ) , . 0~7 : N O [ ] — 한컴 재저장본 charPr 12의 '1. ' 등 번호 런.
+// - samples/issue677/1480000-200900112-hci-tulip-table.hwp, 한컴 2022
+//   pdf/issue677/1480000-200900112-hci-tulip-table-2022.pdf 7쪽 /T8(obj 132):
+//   [표 3-1] 셀 영문(charPr 27·29~33, LATIN face HCI Tulip HFT) 59자.
+//   겹치는 ( ) , . 0 1 4 5 6 N O는 위 표본과 같은 값이다.
+// 표시 폴백 HY견명조의 영문 폭(M 0.96em 등)을 원본 폭으로 쓰면 숫자 뒤 한글이 밀리고
+// 표 칸의 영문이 한컴보다 1.3배 넓어진다. 미확인 문자(8·9·대문자 J K Q V 등)와
+// 굵기/기울임은 기존 폴백에 맡긴다. 확인하지 않은 글자를 추정해 채우지 않는다.
 // useFontSpace=false의 일반 공백은 문서의 반각 공백 계약이 소유한다.
-// /T1의 공백 글리프 폭 250을 그 문서 전진폭으로 덮어쓰지 않는다.
+// 두 Print의 공백 글리프 폭 250을 그 문서 전진폭으로 덮어쓰지 않는다.
 static HCI_TULIP_REGULAR_ADVANCES: &[(char, u16)] = &[
+    ('%', 832),
     ('(', 332),
     (')', 332),
     (',', 248),
+    ('-', 332),
     ('.', 248),
     ('0', 498),
     ('1', 498),
@@ -169,10 +184,55 @@ static HCI_TULIP_REGULAR_ADVANCES: &[(char, u16)] = &[
     ('6', 498),
     ('7', 498),
     (':', 277),
+    ('>', 564),
+    ('A', 722),
+    ('B', 667),
+    ('C', 667),
+    ('D', 722),
+    ('E', 609),
+    ('F', 554),
+    ('G', 722),
+    ('H', 722),
+    ('I', 332),
+    ('L', 609),
+    ('M', 888),
     ('N', 722),
     ('O', 722),
+    ('P', 554),
+    ('R', 667),
+    ('S', 554),
+    ('T', 609),
+    ('U', 722),
+    ('W', 943),
+    ('X', 722),
+    ('Y', 722),
+    ('Z', 609),
     ('[', 332),
     (']', 332),
+    ('a', 443),
+    ('b', 498),
+    ('c', 443),
+    ('d', 498),
+    ('e', 443),
+    ('f', 332),
+    ('g', 498),
+    ('h', 498),
+    ('i', 277),
+    ('k', 498),
+    ('l', 277),
+    ('m', 777),
+    ('n', 498),
+    ('o', 498),
+    ('p', 498),
+    ('q', 498),
+    ('r', 332),
+    ('s', 388),
+    ('t', 277),
+    ('u', 498),
+    ('v', 498),
+    ('w', 722),
+    ('x', 498),
+    ('y', 498),
 ];
 
 // 독립 Print의 원본 HFT 자연 폭. 호출자가 선언 프로그램을 확인한 경우만 쓴다.
@@ -193,6 +253,19 @@ pub(crate) fn declared_original_glyph_advance_em(
     italic: bool,
     character: char,
 ) -> Option<f64> {
+    // 독립 화학 원본 92쪽의 한양신명조 HFT U+257A는 Type3 T11의
+    // /Widths=1000, FontMatrix=.001, CharProc d1=1000이다. 표시 프로그램의
+    // cmap 결측을 반각 추정으로 재면 fallback 잉크도 절반 폭에 맞춰 눌린다.
+    // 원본 선언을 확인한 regular HFT만 전각으로 소비하며 동명 TTF에는 옮기지 않는다.
+    if face == "한양신명조" && !bold && !italic && character == '\u{257A}' {
+        return Some(1.0);
+    }
+    // 화학 원본의 독립 한컴2020 Print T11 U+2022는 /Widths와 d1이
+    // 모두1000/1000em이다. 표시용 중고딕 프로그램의 cmap 결측 때문에
+    // 이 원본 전진을 반각으로 추정하지 않는다. 동명 TTF·다른 style은 별개다.
+    if face == "한양중고딕" && !bold && !italic && character == '\u{2022}' {
+        return Some(1.0);
+    }
     // 원본 HFT U+2027은 기존 독립 Print의 Type3 /Widths=500/1000em이다.
     // 표시용 OTF의 cmap 결측에서 일반 구두점 폭으로 내려가면 뒤 글자가 당겨진다.
     // glyph 표의 같은 반각 계약을 측정·paint가 함께 소비한다. 명시 TTF/OTF는 비대상이다.

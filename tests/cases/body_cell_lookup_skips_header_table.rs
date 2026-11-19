@@ -109,17 +109,28 @@ fn doc_with_same_address_tables() -> (HwpDocument, usize, usize, usize, usize) {
     (doc, para, control, host, hf)
 }
 
-#[test]
-fn body_cell_caret_selection_and_boxes_stay_in_body_table() {
-    let (doc, para, control, host, hf) = doc_with_same_address_tables();
-    let header = boxes(
-        &doc.get_table_cell_bboxes_by_path(
+/// 머리말 경로 캐럿 줄의 (위, 아래). 머리말 경로 조회는 그 머리말 노드 안에서만 찾는다.
+fn header_caret(doc: &HwpDocument, para: usize, control: usize, host: usize, hf: usize) -> Area {
+    let caret = json(
+        &doc.get_cursor_rect_by_path(
             0,
             host as u32,
             &path_json(&[(hf, 0, para), (control, 0, 0)]),
+            1,
         )
         .unwrap(),
     );
+    let y = caret["y"].as_f64().unwrap();
+    Area {
+        y,
+        bottom: y + caret["height"].as_f64().unwrap(),
+    }
+}
+
+#[test]
+fn body_cell_caret_selection_and_boxes_stay_in_body_table() {
+    let (doc, para, control, host, hf) = doc_with_same_address_tables();
+    let header = header_caret(&doc, para, control, host, hf);
     let body = boxes(
         &doc.get_table_cell_bboxes(0, para as u32, control as u32, None)
             .unwrap(),
@@ -128,7 +139,7 @@ fn body_cell_caret_selection_and_boxes_stay_in_body_table() {
     // 본문 표 칸은 머리말 표 아래에 있다.
     for cell in &body {
         assert!(
-            cell.y >= header[0].bottom,
+            cell.y >= header.bottom,
             "본문 칸 {cell:?} / 머리말 {header:?}"
         );
     }
@@ -170,14 +181,14 @@ fn body_cell_caret_selection_and_boxes_stay_in_body_table() {
 #[test]
 fn header_cell_caret_stays_in_header_table() {
     let (doc, para, control, host, hf) = doc_with_same_address_tables();
-    let path = [(hf, 0, para), (control, 0, 0)];
-    let header = boxes(
-        &doc.get_table_cell_bboxes_by_path(0, host as u32, &path_json(&path))
+    let header = header_caret(&doc, para, control, host, hf);
+    let body = boxes(
+        &doc.get_table_cell_bboxes(0, para as u32, control as u32, None)
             .unwrap(),
     );
-    let caret = json(
-        &doc.get_cursor_rect_by_path(0, host as u32, &path_json(&path), 1)
-            .unwrap(),
+    // 머리말 칸 캐럿은 본문 표 위, 머리말에 있다.
+    assert!(
+        header.bottom <= body[0].y,
+        "머리말 {header:?} / 본문 {body:?}"
     );
-    inside(caret["y"].as_f64().unwrap(), header[0]);
 }

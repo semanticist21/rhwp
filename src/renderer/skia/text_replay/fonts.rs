@@ -1,6 +1,6 @@
 //! 선택한 실제 face와 본문 스타일로 동일한 글자 폰트를 만든다.
 use super::super::font_lookup::{
-    select_typeface_for_character, supplied_family_names, TypefaceCandidate,
+    font_style_for_text, resolve_typeface_for_character, supplied_family_names, TypefaceCandidate,
 };
 use super::super::synthetic_typeface::{unemboldened_typeface, unobliqued_typeface};
 use crate::renderer::{internal_font_family_members, TextStyle};
@@ -199,19 +199,38 @@ pub(super) fn for_text(
     style: &TextStyle,
     font_mgr: &FontMgr,
     geometric_text: bool,
+    observer: Option<&super::super::font_observation::FontFallbackObserver>,
 ) -> Option<Font> {
     if let Some(ch) = sample
         .chars()
         .find(|ch| !crate::renderer::text_glyph_visibility::is_nonprinting_character(*ch))
     {
-        return select_typeface_for_character(chain, ch).map(|candidate| {
-            finish(
-                candidate_typeface(candidate, font_mgr, sample),
+        let selected =
+            resolve_typeface_for_character(chain, ch, font_mgr, font_style_for_text(style));
+        if selected.is_none() {
+            if let Some(observer) = observer {
+                observer.missing(&style.font_family);
+            }
+        }
+        return selected.map(|candidate| {
+            let font = finish(
+                candidate_typeface(&candidate, font_mgr, sample),
                 size,
                 style,
                 font_mgr,
                 geometric_text,
-            )
+            );
+            if !candidate.declared {
+                if let Some(observer) = observer {
+                    observer.selected(
+                        &style.font_family,
+                        font.typeface().family_name(),
+                        candidate.source,
+                        style,
+                    );
+                }
+            }
+            font
         });
     }
     if let Some(candidate) = chain.first() {

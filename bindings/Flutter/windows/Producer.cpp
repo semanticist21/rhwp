@@ -21,6 +21,13 @@ struct NativeFailure : std::runtime_error {
   NativeFailure(std::string code, const std::string& message) : std::runtime_error(message), code(std::move(code)) {}
 };
 void checked(HRESULT result, const char* message) { if (FAILED(result)) throw std::runtime_error(message); }
+void checked_device(HRESULT result, const char* message) {
+  // Only an explicit unsupported device/interface is an availability failure.
+  // Allocation, driver and contract errors remain visible diagnostics.
+  if (result == DXGI_ERROR_UNSUPPORTED || result == E_NOINTERFACE)
+    throw NativeFailure("backendUnavailable", message);
+  checked(result, message);
+}
 bool same_luid(const LUID& left, const LUID& right) { return left.HighPart == right.HighPart && left.LowPart == right.LowPart; }
 void mark_frame(const std::shared_ptr<State>& state) {
   // Registrar access is serialized with plugin destruction. This public call
@@ -48,23 +55,37 @@ bool producer_proof(const std::string& text, const Job& job) {
       frame.field("origin").text() == "topLeft";
 }
 
+rhwp::metrics::CacheMetrics cache_metrics(const std::shared_ptr<NativeApi>& api, uint64_t presenter) noexcept {
+  try {
+    static const uint8_t command[] = "{\"op\":\"info\"}";
+    const auto response = api->read(api->request(presenter, command, sizeof(command) - 1));
+    NativeReply reply(response);
+    if (!reply.field("ok").boolean()) return {};
+    auto info = reply.field("info");
+    return rhwp::metrics::capture([&](bool target, const char* key) -> std::optional<uint64_t> {
+      return info.field(target ? "managedTargets" : "tileCache").field(key).integer();
+    });
+  } catch (...) { return {}; }
+}
+
 struct Device {
   ComPtr<ID3D12Device> device12;
   ComPtr<ID3D12CommandQueue> queue12;
   ComPtr<ID3D11Device1> device11;
   ComPtr<ID3D11DeviceContext> context11;
+  PrivateTargetPool<PrivatePixels> private_pool;
   explicit Device(IDXGIAdapter1* adapter) {
     DXGI_ADAPTER_DESC1 expected{}; checked(adapter->GetDesc1(&expected), "engine adapter description failed");
-    checked(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device12)), "D3D12 device unavailable");
+    checked_device(D3D12CreateDevice(adapter, D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&device12)), "D3D12 device unavailable");
     if (!same_luid(expected.AdapterLuid, device12->GetAdapterLuid()) || device12->GetNodeCount() != 1)
       throw std::runtime_error("D3D12 device adapter LUID/node mismatch");
     D3D12_COMMAND_QUEUE_DESC queue{}; queue.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
     checked(device12->CreateCommandQueue(&queue, IID_PPV_ARGS(&queue12)), "D3D12 direct queue unavailable");
     ComPtr<ID3D11Device> base11;
     const D3D_FEATURE_LEVEL levels[] = {D3D_FEATURE_LEVEL_11_1, D3D_FEATURE_LEVEL_11_0};
-    checked(D3D11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
+    checked_device(D3D11CreateDevice(adapter, D3D_DRIVER_TYPE_UNKNOWN, nullptr, D3D11_CREATE_DEVICE_BGRA_SUPPORT,
         levels, 2, D3D11_SDK_VERSION, &base11, nullptr, &context11), "D3D11 bridge device unavailable");
-    checked(base11.As(&device11), "D3D11.1 OpenSharedResource1 unavailable");
+    checked_device(base11.As(&device11), "D3D11.1 OpenSharedResource1 unavailable");
     ComPtr<IDXGIDevice> dxgi; ComPtr<IDXGIAdapter> actual;
     checked(device11.As(&dxgi), "D3D11 DXGI device unavailable");
     checked(dxgi->GetAdapter(&actual), "D3D11 adapter query failed");
@@ -73,25 +94,36 @@ struct Device {
   }
   std::shared_ptr<Pixels> allocate(const std::shared_ptr<NativeApi>& api, const Job& job) {
     auto pixels = std::make_shared<Pixels>(); pixels->api = api;
-    pixels->device12 = device12; pixels->queue12 = queue12;
     pixels->device11 = device11; pixels->context11 = context11;
-    D3D12_RESOURCE_DESC desc{};
-    desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D; desc.Width = job.width; desc.Height = job.height;
-    desc.DepthOrArraySize = 1; desc.MipLevels = 1; desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
-    desc.SampleDesc.Count = 1; desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-    desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
-    const auto allocation = device12->GetResourceAllocationInfo(0, 1, &desc);
-    if (!allocation.SizeInBytes || allocation.SizeInBytes == UINT64_MAX || allocation.SizeInBytes > job.credit->bytes() / 2)
-      throw std::runtime_error("D3D12 allocation exceeds the reserved two-surface frame budget");
-    D3D12_HEAP_PROPERTIES heap{}; heap.Type = D3D12_HEAP_TYPE_DEFAULT;
-    heap.CreationNodeMask = heap.VisibleNodeMask = 1;
-    checked(device12->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_SHARED, &desc,
-        D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&pixels->resource12)), "shared D3D12 target allocation failed");
-    checked(device12->CreateSharedHandle(pixels->resource12.Get(), nullptr, GENERIC_ALL, nullptr,
-        &pixels->nt_handle), "D3D12 shared NT handle creation failed");
-    checked(device11->OpenSharedResource1(pixels->nt_handle, IID_PPV_ARGS(&pixels->opened11)),
-        "D3D11 could not open the shared D3D12 resource");
-    D3D11_TEXTURE2D_DESC opened{}; pixels->opened11->GetDesc(&opened);
+    const PrivateGeometry geometry{job.stamp.device, job.width, job.height};
+    pixels->producer = private_pool.take(geometry, job.credit);
+    if (!pixels->producer) {
+      auto credit = job.credit->split_private(frame_charge(job.width, job.height) / 2);
+      if (!credit) throw std::runtime_error("private D3D12 target reservation is unavailable");
+      auto input = std::make_shared<PrivatePixels>();
+      input->device12 = device12; input->queue12 = queue12;
+      input->device11 = device11; input->context11 = context11;
+      D3D12_RESOURCE_DESC desc{};
+      desc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D; desc.Width = job.width; desc.Height = job.height;
+      desc.DepthOrArraySize = 1; desc.MipLevels = 1; desc.Format = DXGI_FORMAT_B8G8R8A8_UNORM;
+      desc.SampleDesc.Count = 1; desc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+      desc.Flags = D3D12_RESOURCE_FLAG_ALLOW_RENDER_TARGET | D3D12_RESOURCE_FLAG_ALLOW_SIMULTANEOUS_ACCESS;
+      const auto allocation = device12->GetResourceAllocationInfo(0, 1, &desc);
+      if (!allocation.SizeInBytes || allocation.SizeInBytes == UINT64_MAX || allocation.SizeInBytes > credit->bytes())
+        throw std::runtime_error("D3D12 allocation exceeds its independently retained private target budget");
+      D3D12_HEAP_PROPERTIES heap{}; heap.Type = D3D12_HEAP_TYPE_DEFAULT;
+      heap.CreationNodeMask = heap.VisibleNodeMask = 1;
+      checked(device12->CreateCommittedResource(&heap, D3D12_HEAP_FLAG_SHARED, &desc,
+          D3D12_RESOURCE_STATE_COMMON, nullptr, IID_PPV_ARGS(&input->resource12)), "shared D3D12 target allocation failed");
+      checked(device12->CreateSharedHandle(input->resource12.Get(), nullptr, GENERIC_ALL, nullptr,
+          &input->nt_handle), "D3D12 shared NT handle creation failed");
+      checked(device11->OpenSharedResource1(input->nt_handle, IID_PPV_ARGS(&input->opened11)),
+          "D3D11 could not open the shared D3D12 resource");
+      D3D11_QUERY_DESC query{D3D11_QUERY_EVENT, 0};
+      checked(device11->CreateQuery(&query, &input->completion11), "D3D11 copy completion query unavailable");
+      pixels->producer = std::make_shared<PrivateTarget<PrivatePixels>>(geometry, std::move(credit), std::move(input));
+    }
+    D3D11_TEXTURE2D_DESC opened{}; pixels->producer->resource->opened11->GetDesc(&opened);
     if (opened.Width != job.width || opened.Height != job.height || opened.Format != DXGI_FORMAT_B8G8R8A8_UNORM ||
         opened.ArraySize != 1 || opened.MipLevels != 1 || opened.SampleDesc.Count != 1 || opened.SampleDesc.Quality ||
         opened.Usage != D3D11_USAGE_DEFAULT || !(opened.BindFlags & D3D11_BIND_SHADER_RESOURCE))
@@ -103,8 +135,6 @@ struct Device {
     ComPtr<IDXGIResource> resource; checked(pixels->legacy11.As(&resource), "legacy DXGI resource query failed");
     checked(resource->GetSharedHandle(&pixels->legacy_handle), "legacy DXGI shared handle unavailable");
     if (!pixels->legacy_handle) throw std::runtime_error("legacy shared handle is null");
-    D3D11_QUERY_DESC query{D3D11_QUERY_EVENT, 0};
-    checked(device11->CreateQuery(&query, &pixels->completion11), "D3D11 copy completion query unavailable");
     pixels->descriptor.struct_size = sizeof(FlutterDesktopGpuSurfaceDescriptor);
     pixels->descriptor.handle = pixels->legacy_handle;
     pixels->descriptor.width = pixels->descriptor.visible_width = job.width;
@@ -115,19 +145,29 @@ struct Device {
     return pixels;
   }
   void copy_and_wait(const std::shared_ptr<Pixels>& pixels) {
-    context11->CopyResource(pixels->legacy11.Get(), pixels->opened11.Get());
-    context11->End(pixels->completion11.Get()); context11->Flush();
+    if (!pixels->producer->begin_copy()) throw std::runtime_error("private copy started before Native completion");
+    const auto& input = pixels->producer->resource;
+    context11->CopyResource(pixels->legacy11.Get(), input->opened11.Get());
+    context11->End(input->completion11.Get()); context11->Flush();
     const auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(5);
     for (;;) {
       BOOL completed = FALSE;
-      const auto result = context11->GetData(pixels->completion11.Get(), &completed, sizeof(completed), 0);
+      const auto result = context11->GetData(input->completion11.Get(), &completed, sizeof(completed), 0);
       if (FAILED(device11->GetDeviceRemovedReason()))
         throw NativeFailure("deviceLost", "D3D11 device removal reported; frame quarantined");
       if (FAILED(result) || std::chrono::steady_clock::now() >= deadline)
         throw NativeFailure("submissionFailed", "D3D11 producer copy completion unknown; frame quarantined");
-      if (result == S_OK && completed) return;
+      if (result == S_OK && completed) {
+        if (!pixels->producer->copy_complete()) throw std::runtime_error("private copy completion phase mismatch");
+        return;
+      }
       std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
+  }
+  void recycle_private(const std::shared_ptr<Pixels>& pixels) {
+    // recycle leaves the caller's pin intact on rejection. Only a proved
+    // producer-complete private input is ever removed from this frame bundle.
+    private_pool.recycle(pixels->producer);
   }
 };
 }  // namespace
@@ -227,7 +267,7 @@ void State::close() {
   std::shared_ptr<Job> previous; std::shared_ptr<Published> old_frame;
   {
     std::lock_guard<std::mutex> lock(mutex);
-    closed = true; ready = false; gate.close(); previous = std::move(pending); old_frame = std::move(current);
+    closed = true; ready = false; gate.close(); cache_trim.cancel(); previous = std::move(pending); old_frame = std::move(current);
   }
   changed.notify_one();
 }
@@ -243,13 +283,18 @@ void run_producer(const std::shared_ptr<State>& state) noexcept {
     api = load_api(state->path);
     const auto capabilities = api->read(api->capabilities());
     NativeReply caps(capabilities);
-    if (!caps.field("ok").boolean() || !caps.field("available").boolean() || caps.field("abiVersion").integer() != 1)
-      throw std::runtime_error("native-skia-d3d is unavailable; select the CPU reference renderer");
+    if (!caps.field("ok").boolean())
+      throw NativeFailure(caps.field("code").text(), caps.field("error").text());
+    if (caps.field("abiVersion").integer() != 1)
+      throw NativeFailure("unsupported", "native D3D ABI is unsupported; select the CPU reference renderer");
+    if (!caps.field("available").boolean())
+      throw NativeFailure("featureDisabled", "native-skia-d3d is unavailable; select the CPU reference renderer");
     Device device(state->adapter.Get());
     const auto created = api->read(api->create(state->adapter.Get(), device.device12.Get(), device.queue12.Get(),
         state->generation, nullptr, 0));
     NativeReply creation(created);
-    if (!creation.field("ok").boolean()) throw std::runtime_error("native D3D presenter creation failed");
+    if (!creation.field("ok").boolean())
+      throw NativeFailure(creation.field("code").text(), creation.field("error").text());
     presenter = creation.field("presenter").integer();
     if (!presenter) throw std::runtime_error("native D3D presenter handle is zero");
     {
@@ -257,45 +302,72 @@ void run_producer(const std::shared_ptr<State>& state) noexcept {
     }
     for (;;) {
       std::shared_ptr<Job> job;
+      std::optional<rhwp::cache::TrimReceipt> trim;
       {
         std::unique_lock<std::mutex> lock(state->mutex);
-        state->changed.wait(lock, [&] { return state->closed || state->pending; });
+        state->changed.wait(lock, [&] { return state->closed || state->pending || state->cache_trim.queued(); });
         if (state->closed) break;
-        job = std::move(state->pending); state->in_flight = true;
+        trim = state->cache_trim.take();
+        if (!trim) { job = std::move(state->pending); state->in_flight = true; }
       }
-      bool completed = false;
+      if (trim) {
+        try {
+          const std::string request = "{\"op\":\"trimCache\",\"targetBytes\":" + std::to_string(trim->target) + "}";
+          const auto text = api->read(api->request(presenter, reinterpret_cast<const uint8_t*>(request.data()), request.size()));
+          NativeReply reply(text);
+          if (!reply.field("ok").boolean() || reply.field("targetBytes").integer() != trim->target)
+            throw std::runtime_error("invalid Native cache trim identity");
+          state->cache_trim.finish(trim->request, reply.field("before").integer(), reply.field("after").integer(),
+              reply.field("trimmed").integer(), reply.field("busy").boolean());
+        } catch (...) { state->cache_trim.fail(trim->request); }
+        continue;
+      }
+      bool completed = false, published = false;
       try {
         if (!api->current(job->check_json)) {
           std::lock_guard<std::mutex> lock(state->mutex); ++state->stale_drops;
         } else {
           auto pixels = device.allocate(api, *job);
           if (!job->credit->begin_gpu(pixels)) throw std::runtime_error("frame resource reservation is invalid");
-          const auto rendered = api->read(api->render(presenter, pixels->resource12.Get(),
+          if (!pixels->producer->begin_native()) throw std::runtime_error("private Native target phase is invalid");
+          const auto rendered = api->read(api->render(presenter, pixels->producer->resource->resource12.Get(),
               reinterpret_cast<const uint8_t*>(job->render_json.data()), job->render_json.size()));
           NativeReply reply(rendered);
           if (!reply.field("ok").boolean()) {
             const bool stale = reply.field("code").text() == "staleFrame" &&
                 reply.field("unpublishedTargetSafeToDiscard").boolean();
-            if (stale) { completed = true; job->credit->producer_complete(); }
+            if (stale) {
+              if (!pixels->producer->native_complete() || !pixels->producer->skip_copy())
+                throw std::runtime_error("private stale target completion phase mismatch");
+              completed = true; job->credit->producer_complete(); device.recycle_private(pixels);
+            }
             else throw NativeFailure(reply.field("code").text(), reply.field("error").text());
           } else {
             if (!producer_proof(rendered, *job)) throw std::runtime_error("native D3D frame proof/metadata mismatch");
+            const auto measured = cache_metrics(api, presenter);
+            if (!pixels->producer->native_complete()) throw std::runtime_error("private Native completion phase mismatch");
             completed = true;  // D3D12 is complete; D3D11 copy has not started.
             if (api->current(job->check_json)) {
               completed = false; device.copy_and_wait(pixels); completed = true;
               job->credit->producer_complete();
+              device.recycle_private(pixels);
               if (api->current(job->check_json)) {
                 auto frame = std::make_shared<Published>(); frame->job = job; frame->pixels = pixels;
+                frame->cache_metrics = measured;
                 {
                   std::lock_guard<std::mutex> lock(state->mutex);
                   if (state->gate.current(job->serial, job->stamp)) {
                     if (!job->credit->publish_immutable()) throw std::runtime_error("frame was not producer-complete");
                     state->current = std::move(frame); state->error.clear(); state->error_code.clear(); state->device_failure = false;
+                    published = true;
                   } else ++state->stale_drops;
                 }
                 mark_frame(state);
               }
-            } else job->credit->producer_complete();
+            } else {
+              if (!pixels->producer->skip_copy()) throw std::runtime_error("private skipped copy phase mismatch");
+              job->credit->producer_complete(); device.recycle_private(pixels);
+            }
           }
         }
       } catch (const NativeFailure& error) {
@@ -308,8 +380,11 @@ void run_producer(const std::shared_ptr<State>& state) noexcept {
       {
         std::lock_guard<std::mutex> lock(state->mutex); state->in_flight = false;
       }
+      if (published && state->producer_ready) state->producer_ready(job->serial, job->stamp);
     }
-  } catch (const std::exception& error) { try { state->fail(error.what()); } catch (...) {} }
+  } catch (const GpuAbiUnavailable& error) { try { state->fail(error.what(), "unsupported"); } catch (...) {} }
+  catch (const NativeFailure& error) { try { state->fail(error.what(), error.code); } catch (...) {} }
+  catch (const std::exception& error) { try { state->fail(error.what()); } catch (...) {} }
   try {
     if (api && presenter) {
       const std::string release = "{\"op\":\"release\"}";

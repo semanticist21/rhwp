@@ -142,6 +142,12 @@ jobs:
 
             function isAllowedReviewPath(file) {
               const filename = file.filename;
+              if (file.previous_filename && (
+                !file.previous_filename.startsWith('mydocs/')
+                || renderContractPaths.has(file.previous_filename)
+              )) {
+                return false;
+              }
               if (filename === 'AGENTS.md' || filename === 'CLAUDE.md') {
                 return !file.previous_filename
                   && (file.status === 'added' || file.status === 'modified');
@@ -203,6 +209,7 @@ jobs:
               return filename.startsWith('.github/workflows/')
                 || filename.startsWith('.github/actions/')
                 || filename === 'scripts/ci-impact-classifier.cjs'
+                || filename === 'scripts/frontend-canvas-gates.mjs'
                 || filename === 'scripts/ci-impact-policy.cjs'
                 || filename === 'scripts/verify_review_only_merge_resolution.py';
             }
@@ -240,7 +247,7 @@ jobs:
                   const fields = new Map(entries);
                   if (entries.length !== fields.size || entries.some(([key, value]) => !key || !value)) return false;
                   const expectedFields = [
-                    'v', 'cv', 'mode', 'rfp', 'wf', 'rust', 'fe', 'render', 'skia', 'ql', 'b',
+                    'v', 'cv', 'mode', 'rfp', 'wf', 'rust', 'fe', 'fc', 'render', 'skia', 'ql', 'b',
                   ];
                   const target = String(latest.target_url || '').match(/\/actions\/runs\/(\d+)$/);
                   if (
@@ -248,7 +255,7 @@ jobs:
                     && latest.creator?.login === 'github-actions[bot]'
                     && fields.size === expectedFields.length
                     && expectedFields.every((field) => fields.has(field))
-                    && fields.get('v') === '8'
+                    && fields.get('v') === '9'
                     && fields.get('rfp') === '1'
                     && fields.get('b') === pr.base.sha
                     && target
@@ -377,6 +384,14 @@ jobs:
                 pull_number: pr.number,
                 per_page: 100,
               });
+              // REST 목록은 최대 3,000개이므로 전체 변경 수와 맞을 때만 좁게 판정한다.
+              const expectedPrFileCount = pr.changed_files;
+              if (!Number.isSafeInteger(expectedPrFileCount)
+                || expectedPrFileCount < 0
+                || prFiles.length !== expectedPrFileCount) {
+                setResult(false, 'pull-file-list-incomplete');
+                return;
+              }
               const hasCiExecutionSurfaceChange = prFiles.some((file) => (
                 isCiExecutionPath(file.filename)
                 || isCiExecutionPath(file.previous_filename || '')
@@ -406,12 +421,12 @@ jobs:
                 return;
               }
 
-              const latestCommitSha = commits.at(-1).sha;
-              const { data: latestCommit } = await github.rest.repos.getCommit({
-                owner,
-                repo,
-                ref: latestCommitSha,
-              });
+              const latestCommit = commits.at(-1);
+              const latestCommitSha = latestCommit.sha;
+              if (latestCommitSha !== pr.head.sha) {
+                setResult(false, 'review-tail-parent-mismatch');
+                return;
+              }
               if (isCurrentBaseUpdateMerge(latestCommit, pr.base.sha)) {
                 if (prFiles.some((file) => isCiExecutionPath(file.filename))) {
                   setResult(false, 'current-base-source-ci-execution-change');
@@ -446,14 +461,10 @@ jobs:
             let expectedSha = pr.head.sha;
 
             for (let index = commits.length - 1; index >= 0; index -= 1) {
-              const sha = commits[index].sha;
-              const { data: commit } = await github.rest.repos.getCommit({
-                owner,
-                repo,
-                ref: sha,
-              });
+              const commit = commits[index];
+              const sha = commit.sha;
               const parents = commit.parents || [];
-              if (sha !== expectedSha || commit.sha !== sha) {
+              if (sha !== expectedSha) {
                 setResult(false, 'review-tail-parent-mismatch');
                 return;
               }
@@ -474,13 +485,21 @@ jobs:
                 core.info(`including current-base update merge bridge ${sha}`);
                 continue;
               }
-              const files = commit.files || [];
-
-                // The commit endpoint may truncate very large file lists. Fall back to full Render Diff.
-                if (files.length === 0 || files.length >= 300) {
-                  setResult(false, `unusable-file-list:${sha}`);
-                  return;
+              // 300개를 넘는 증적 커밋도 끝까지 읽는다. API 상한에서는 전체 CI로 돌아간다.
+              const files = await github.paginate(github.rest.repos.getCommit, {
+                owner, repo, ref: sha, per_page: 100,
+              }, ({ data }) => {
+                if (data.sha !== sha || !Array.isArray(data.files) || !data.files.length) {
+                  throw new Error(`unusable-commit-file-page:${sha}`);
                 }
+                return data.files;
+              });
+              if (files.length === 0 || files.length >= 3000
+                || files.some((file) => !file?.filename)
+                || new Set(files.map((file) => file.filename)).size !== files.length) {
+                setResult(false, `unusable-file-list:${sha}`);
+                return;
+              }
 
               const reviewOnly = files.every((file) => isAllowedReviewPath(file));
               if (reviewOnly) {
@@ -670,6 +689,13 @@ jobs:
                 pull_number: context.payload.pull_request.number,
                 per_page: 100,
               });
+              // REST 목록은 최대 3,000개이므로 전체 변경 수와 맞을 때만 좁게 판정한다.
+              const expectedPrFileCount = context.payload.pull_request.changed_files;
+              if (!Number.isSafeInteger(expectedPrFileCount)
+                || expectedPrFileCount < 0
+                || files.length !== expectedPrFileCount) {
+                throw new Error('Pull request file inventory incomplete');
+              }
               writeInput({
                 eventName: context.eventName,
                 files: files.map((file) => ({
@@ -710,7 +736,7 @@ jobs:
 
   canvas-visual-diff:
     name: Canvas visual diff
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     needs: preflight
     if: ${{ always() && needs.preflight.outputs.fast_pass != 'true' && needs.preflight.outputs.render_required == 'true' }}
@@ -818,9 +844,9 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             target
-          key: ${{ runner.os }}-render-diff-cargo-v2-${{ steps.wasm_configuration.outputs.cache_variant }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.toml', '**/Cargo.lock', '.cargo/config*', 'scripts/wasm-pack-locked.sh') }}
+          key: ${{ runner.os }}-ubuntu-24.04-render-diff-cargo-v2-${{ steps.wasm_configuration.outputs.cache_variant }}-${{ hashFiles('rust-toolchain.toml', '**/Cargo.toml', '**/Cargo.lock', '.cargo/config*', 'scripts/wasm-pack-locked.sh') }}
           restore-keys: |
-            ${{ runner.os }}-render-diff-cargo-v2-${{ steps.wasm_configuration.outputs.cache_variant }}-
+            ${{ runner.os }}-ubuntu-24.04-render-diff-cargo-v2-${{ steps.wasm_configuration.outputs.cache_variant }}-
 
       - name: Build WASM package
         if: ${{ steps.pdf-raster-runtime.outputs.available == 'true' }}

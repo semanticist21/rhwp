@@ -100,7 +100,7 @@ last_verified: 2026-11-12
   단순 `unwrap_or(0)` 등은 0번 무늬(가로줄)로 오염된다.
 - **이름과 모양**: 스키마 주석은 `BACK_SLASH`를 `\\\\\`, `SLASH`를 `/////`로 적지만 한글은
   `SLASH`(HWP 2)를 ＼, `BACK_SLASH`(HWP 3)를 ／로 그린다. 이름이 아니라 위 대응을 따른다.
-- **근거**: `src/model/style.rs`의 `HatchStyle`, [정오표 39](hwp_spec_errata.md#39-채우기-무늬-종류-표-29--0부터-시작) (#8978).
+- **근거**: `src/model/style.rs`의 `HatchStyle`, [정오표 40](hwp_spec_errata.md#40-채우기-무늬-종류-표-29--0부터-시작) (#8978).
 
 ## 11. 용지 방향 — OWPML `landscape` 값이 이름과 반대로 매핑됨
 

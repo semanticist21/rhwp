@@ -233,6 +233,13 @@ impl DocumentCore {
 
         let mut parsed_rows: Vec<Vec<ParsedCell>> = Vec::new();
 
+        // `<table border="1">` 은 CSS 없이도 칸마다 1px 실선을 그린다 (HTML 표 속성).
+        // 칸의 `border` CSS 가 있으면 그 값이 이긴다.
+        let attr_border_pt = match parse_html_attr_f64(table_html, "border") {
+            Some(width) if width > 0.0 => 0.75,
+            _ => 0.0,
+        };
+
         let mut pos = 0;
         while let Some(tr_start) = table_lower[pos..].find("<tr") {
             let tr_abs = pos + tr_start;
@@ -293,7 +300,7 @@ impl DocumentCore {
                     }
 
                     // 테두리 파싱 (left, right, top, bottom)
-                    let mut border_widths_pt = [0.0f64; 4];
+                    let mut border_widths_pt = [attr_border_pt; 4];
                     let mut border_colors = [0u32; 4]; // black
                     let mut border_styles = [1u8; 4]; // solid default
 
@@ -1752,17 +1759,7 @@ fn parse_floating_outer_margin(
 
 /// 태그에서 속성 문자열을 그대로 뽑는다(따옴표 양쪽 지원).
 pub(crate) fn extract_html_attr(tag: &str, attr: &str) -> Option<String> {
-    let lower = tag.to_ascii_lowercase();
-    for quote in ['"', '\''] {
-        let needle = format!("{}={}", attr, quote);
-        if let Some(start) = lower.find(&needle) {
-            let after = &tag[start + needle.len()..];
-            if let Some(end) = after.find(quote) {
-                return Some(after[..end].to_string());
-            }
-        }
-    }
-    None
+    html_quoted_attribute(tag, attr).map(str::to_owned)
 }
 
 /// PNG·JPEG·BMP·GIF 헤더에서 원본 픽셀 크기를 읽는다.

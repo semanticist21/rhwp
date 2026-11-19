@@ -18,6 +18,10 @@ pub(in crate::renderer::typeset) struct ParagraphFragment {
 
 /// None이면 아직 아무 항목도 배치하지 않았으며 다음 단/쪽에서 같은 시작 줄을 재시도한다.
 /// fit에 쓴 cumulative와 실제 전진 높이를 혼합하지 않는다.
+///
+/// `carried_notes_hold_body` 는 본문 항목이 없는 쪽에서 앞 쪽부터 이어받은 각주가 본문
+/// 자리를 차지해 이 조각이 들어가지 않는 경우다. 빈 쪽의 진행 보장(첫 줄은 넘쳐도 둔다)은
+/// 쪽 자체가 모자랄 때의 규칙이므로 여기에는 적용하지 않고 다음 쪽으로 넘긴다.
 #[allow(clippy::too_many_arguments)]
 pub(in crate::renderer::typeset) fn plan_fragment(
     fmt: &FormattedParagraph,
@@ -30,11 +34,15 @@ pub(in crate::renderer::typeset) fn plan_fragment(
     used_saved_tail_vpos_fit: bool,
     require_full_advance: bool,
     current_items: &[PageItem],
+    carried_notes_hold_body: bool,
 ) -> Option<ParagraphFragment> {
     let SplitBoundary {
         end_line,
         cumulative,
     } = boundary;
+    if carried_notes_hold_body && cumulative > avail_for_lines {
+        return None;
+    }
     let part_line_height = fmt.line_advances_sum(cursor_line..end_line);
     let part_sp_after = if end_line >= line_count {
         fmt.spacing_after
@@ -113,4 +121,32 @@ pub(in crate::renderer::typeset) fn defer_preceding_float(
                 .is_some_and(|(host, control)| matches!(control, Control::Table(table)
                     if empty_offset_float_deferred_text_ladder_hu(host, table, para).is_some()))
     )
+}
+
+/// [#8859] `defer_preceding_float` 이 참일 때, 조판이 예약한 표 끝(현재 흐름)에서 실제 표
+/// 아래끝까지의 거리(px). 조판은 빈 host 의 양수 오프셋 표를 host 줄 바로 뒤에 예약하므로
+/// 그 차이는 `오프셋 − host 줄 전진` 이다.
+pub(in crate::renderer::typeset) fn deferred_float_flow_floor(
+    current_items: &[PageItem],
+    paragraphs: &[Paragraph],
+    para: &Paragraph,
+    dpi: f64,
+) -> Option<f64> {
+    let Some(PageItem::Table {
+        para_index,
+        control_index,
+    }) = current_items.last()
+    else {
+        return None;
+    };
+    let host = paragraphs.get(*para_index)?;
+    let Control::Table(table) = host.controls.get(*control_index)? else {
+        return None;
+    };
+    let (_, host_advance_hu) = empty_offset_float_deferred_text_ladder_hu(host, table, para)?;
+    let offset_hu = crate::renderer::float_placement::signed_hwpunit(table.common.vertical_offset);
+    Some(crate::renderer::hwpunit_to_px(
+        offset_hu.saturating_sub(host_advance_hu).max(0),
+        dpi,
+    ))
 }

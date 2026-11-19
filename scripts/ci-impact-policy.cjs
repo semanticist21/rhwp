@@ -2,7 +2,7 @@
 
 const fs = require('node:fs');
 
-const POLICY_VERSION = '8';
+const POLICY_VERSION = '9';
 const POLICY_CONTEXT = 'CI Impact Policy';
 const WORKFLOW_ORDER = ['CI', 'CodeQL', 'Render Diff'];
 const WORKFLOW_PATHS = {
@@ -220,6 +220,7 @@ function fullClassification(reason) {
   return {
     rust_required: 'true',
     frontend_mode: 'package',
+    frontend_canvas_required: 'true',
     render_required: 'true',
     native_skia_required: 'true',
     codeql_languages: CODEQL_LANGUAGE_ORDER.join(','),
@@ -243,6 +244,7 @@ function normalizeClassification(value, fallbackReason = 'classifier-unavailable
   const normalized = {
     rust_required: String(value.rust_required || ''),
     frontend_mode: String(value.frontend_mode || ''),
+    frontend_canvas_required: String(value.frontend_canvas_required || ''),
     render_required: String(value.render_required || ''),
     native_skia_required: String(value.native_skia_required || ''),
     codeql_languages: normalizedCodeqlLanguages(String(value.codeql_languages || '')),
@@ -253,6 +255,8 @@ function normalizeClassification(value, fallbackReason = 'classifier-unavailable
   if (
     !BOOLEAN_VALUES.has(normalized.rust_required)
     || !FRONTEND_MODES.has(normalized.frontend_mode)
+    || !BOOLEAN_VALUES.has(normalized.frontend_canvas_required)
+    || (normalized.frontend_canvas_required === 'true' && normalized.frontend_mode !== 'package')
     || !BOOLEAN_VALUES.has(normalized.render_required)
     || !BOOLEAN_VALUES.has(normalized.native_skia_required)
     || !CLASSIFICATION_STATUSES.has(normalized.classification_status)
@@ -264,6 +268,7 @@ function normalizeClassification(value, fallbackReason = 'classifier-unavailable
   }
   const fullAxes = normalized.rust_required === 'true'
     && normalized.frontend_mode === 'package'
+    && normalized.frontend_canvas_required === 'true'
     && normalized.render_required === 'true'
     && normalized.native_skia_required === 'true'
     && normalized.codeql_languages === CODEQL_LANGUAGE_ORDER.join(',');
@@ -301,6 +306,7 @@ function changesEnforcementSurface(files) {
     filename.startsWith('.github/workflows/')
     || filename.startsWith('.github/actions/')
     || filename === 'scripts/ci-impact-classifier.cjs'
+    || filename === 'scripts/frontend-canvas-gates.mjs'
     || filename === 'scripts/ci-impact-policy.cjs'
     || filename === 'scripts/ci-workflow-evidence.cjs'
     || filename === 'scripts/collect-postmerge-duration-data.mjs'
@@ -332,6 +338,10 @@ function isReviewReferencePath(filename) {
 
 function isAllowedReviewFile(file) {
   const normalized = normalizeFile(file);
+  if (normalized.previous_filename && (
+    !normalized.previous_filename.startsWith('mydocs/')
+    || RENDER_CONTRACT_DOC_PATHS.has(normalized.previous_filename)
+  )) return false;
   if (normalized.filename === 'AGENTS.md' || normalized.filename === 'CLAUDE.md') {
     return !normalized.previous_filename
       && (normalized.status === 'added' || normalized.status === 'modified');
@@ -394,7 +404,10 @@ function selectReviewOnlyCandidate(commits, currentBaseSha) {
       expectedSha = sourceParentSha;
       continue;
     }
-    if (files.length === 0 || files.length >= 300) {
+    const filenames = files.map((file) => normalizeFile(file).filename);
+    if (files.length === 0 || files.length >= 3000
+      || filenames.some((filename) => !filename)
+      || new Set(filenames).size !== filenames.length) {
       return { eligible: false, reason: `unusable-file-list:${sha}`, candidateSha: '' };
     }
     if (files.every(isAllowedReviewFile)) {
@@ -536,6 +549,7 @@ function statusDescription(policy) {
     `wf=${workflowBits}`,
     `rust=${classification.rust_required === 'true' ? '1' : '0'}`,
     `fe=${classification.frontend_mode}`,
+    `fc=${classification.frontend_canvas_required === 'true' ? '1' : '0'}`,
     `render=${classification.render_required === 'true' ? '1' : '0'}`,
     `skia=${classification.native_skia_required === 'true' ? '1' : '0'}`,
     `ql=${encodeCodeqlLanguages(classification.codeql_languages)}`,
@@ -554,7 +568,7 @@ function parseStatusDescription(description) {
     fields.set(key, value);
   }
   const expected = [
-    'v', 'cv', 'mode', 'rfp', 'wf', 'rust', 'fe', 'render', 'skia', 'ql', 'b',
+    'v', 'cv', 'mode', 'rfp', 'wf', 'rust', 'fe', 'fc', 'render', 'skia', 'ql', 'b',
   ];
   if (fields.size !== expected.length || expected.some((key) => !fields.has(key))) {
     throw new Error('policy status fields are incomplete');
@@ -572,6 +586,7 @@ function parseStatusDescription(description) {
   if (!/^[01]{3}$/.test(fields.get('wf'))) throw new Error('invalid workflow axes');
   if (!new Set(['0', '1']).has(fields.get('rust'))) throw new Error('invalid rust axis');
   if (!FRONTEND_MODES.has(fields.get('fe'))) throw new Error('invalid frontend axis');
+  if (!new Set(['0', '1']).has(fields.get('fc'))) throw new Error('invalid frontend Canvas axis');
   if (!new Set(['0', '1']).has(fields.get('render'))) throw new Error('invalid render axis');
   if (!new Set(['0', '1']).has(fields.get('skia'))) throw new Error('invalid skia axis');
   if (!/^(none|all|(?:js|py|rs|ac)(?:,(?:js|py|rs|ac))*)$/.test(fields.get('ql'))) {
@@ -812,6 +827,16 @@ function auditCi(policy, jobs) {
       frontendExpected[index],
     );
     if (failure) return failure;
+  }
+  if (policy.classification.frontend_canvas_required === 'true') {
+    const frontend = exactJob(byName, CI_FRONTEND_JOBS[1]).job;
+    for (const name of ['Build optimized WASM for frontend Canvas gates', 'Run frontend Canvas gates']) {
+      const selected = (frontend?.steps || []).filter(entry => entry.name === name);
+      if (selected.length === 1 && pendingEvidence(selected[0])) return `pending-step:${name}`;
+      if (selected.length !== 1 || selected[0].status !== 'completed' || selected[0].conclusion !== 'success') {
+        return `frontend-canvas-step-not-success:${name}`;
+      }
+    }
   }
   return '';
 }
@@ -1102,6 +1127,7 @@ function flatOutputs(policy, audit) {
     status_description: policy.status_description,
     rust_required: policy.classification.rust_required,
     frontend_mode: policy.classification.frontend_mode,
+    frontend_canvas_required: policy.classification.frontend_canvas_required,
     render_required: policy.classification.render_required,
     native_skia_required: policy.classification.native_skia_required,
     codeql_languages: policy.classification.codeql_languages,

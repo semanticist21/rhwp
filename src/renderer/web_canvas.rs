@@ -767,8 +767,9 @@ impl WebCanvasRenderer {
             }
         }
 
-        // 자식 노드 재귀 렌더링
-        for child in &node.children {
+        // 레이어·SVG·Native와 같은 단의 앵커 paint 순서를 소비한다.
+        // 문서 순서대로만 그리면 겹친 채우기의 경계가 OS별 AA에서 달라진다.
+        for child in super::paint_order::children(node) {
             self.render_node(child);
         }
 
@@ -3175,11 +3176,7 @@ impl Renderer for WebCanvasRenderer {
             if style.strikethrough {
                 let text_width = decoration_width;
                 let strike_y = y - font_size * 0.3;
-                let st_color = if style.strike_color != 0 {
-                    color_to_css(style.strike_color)
-                } else {
-                    color_to_css(style.color)
-                };
+                let st_color = color_to_css(style.strike_color);
                 self.draw_line_shape_canvas(
                     x,
                     strike_y,
@@ -3437,6 +3434,11 @@ impl Renderer for WebCanvasRenderer {
                 w,
                 h,
             );
+            let _coverage = image_coverage::DestinationCoverage::for_print(
+                &self.ctx,
+                (x, y, w, h),
+                self.render_profile,
+            );
             let _ = self
                 .ctx
                 .draw_image_with_html_canvas_element_and_dw_and_dh(&canvas, x, y, w, h);
@@ -3461,6 +3463,11 @@ impl Renderer for WebCanvasRenderer {
                     f64::from(img.natural_height()),
                     w,
                     h,
+                );
+                let _coverage = image_coverage::DestinationCoverage::for_print(
+                    &self.ctx,
+                    (x, y, w, h),
+                    self.render_profile,
                 );
                 let _ = self
                     .ctx
@@ -3529,6 +3536,11 @@ impl Renderer for WebCanvasRenderer {
                     f64::from(img.natural_height()),
                     w,
                     h,
+                );
+                let _coverage = image_coverage::DestinationCoverage::for_print(
+                    &self.ctx,
+                    (x, y, w, h),
+                    self.render_profile,
                 );
                 let _ = self
                     .ctx
@@ -3658,6 +3670,11 @@ impl WebCanvasRenderer {
             {
                 return;
             }
+            let _coverage = image_coverage::DestinationCoverage::for_print(
+                &self.ctx,
+                (dx, dy, dw, dh),
+                self.render_profile,
+            );
             let _ = self
                 .ctx
                 .draw_image_with_html_canvas_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(
@@ -3677,6 +3694,11 @@ impl WebCanvasRenderer {
 
         if let Some(img) = cached {
             if img.complete() && img.natural_width() > 0 {
+                let _coverage = image_coverage::DestinationCoverage::for_print(
+                    &self.ctx,
+                    (dx, dy, dw, dh),
+                    self.render_profile,
+                );
                 let _ = self
                     .ctx
                     .draw_image_with_html_image_element_and_sw_and_sh_and_dx_and_dy_and_dw_and_dh(

@@ -2,7 +2,7 @@
 kind: guide
 status: active
 canonical: mydocs/manual/pr_review_workflow.md
-last_verified: 2026-11-04
+last_verified: 2026-11-15
 ---
 
 # Review-only fast-pass
@@ -35,6 +35,16 @@ candidate의 결과를 재사용할 때는 PR 번호 배열 유무가 아니라 
 repository id와 PR 생성 이후 실행 여부를 함께 확인한다. 따라서 fork PR의 `listWorkflowRuns` 응답에
 `pull_requests` 배열이 비어 있어도, 다른 PR·다른 fork·PR 생성 전 실행 결과는 재사용하지 않는다.
 
+두 workflow에서 `scripts/rust-test-suite-manifest.mjs` 변경은 문서가 아닌 테스트 목록 입력으로
+취급한다. 목록을 변경한 코드 후보는 본 검증을 실행한다. 그 뒤 review-only tail만 추가되면
+같은 후보 run의 최신 attempt에서 실제 `prop roundtrip` 또는 `adapter inter-diff` worker가
+completed/success인지 확인해 재사용한다. job의 run ID·attempt·head SHA도 일치해야 한다.
+문서 후보의 worker가 skipped이면 앞선 실제 성공 후보를 계속 찾으며, skip 자체를 성공 증거로
+삼지 않는다. 실패·누락·중복·API 오류는 full fallback이다. 후보 이후 목록이 다시 바뀌면 새
+코드 후보의 검증이 필요하다. workflow·runner·harness 실행 정의 변경과 실행 경로를 문서로
+rename하는 변경의 PR 전체 차단은 유지한다. CI 정책을 수정하는 PR의 후속 기록은 계속
+[옵션 2](post_merge.md#711-ci-변경-pr은-옵션-2로-후속-기록)로 처리한다.
+
 ## A. code PR 뒤의 trailing review-only commit
 
 collaborator self PR은 [역할별 기록 순서](collaborator_self_merge.md#821-pr-채번과-오늘할일-생성갱신-시점)에
@@ -47,6 +57,11 @@ contributor code PR의 뒤에 review 문서·오늘할일·허용된 신규 기�
 가장 최근 head**의 결과를 재사용한다. base가 전진했더라도 source·test가 바뀌지 않았다면 문서 기록만을 위해
 Update branch, merge, rebase를 수행하지 않는다. 따라서 직전 green PR head 자체가 review-only commit이어도,
 그 commit의 full CI가 성공했고 그 뒤에 허용된 기록만 추가됐다면 candidate가 될 수 있다.
+
+증적이 300개를 넘는 커밋의 변경 파일은 [GitHub 커밋 API](https://docs.github.com/en/rest/commits/commits#get-a-commit)로
+모든 페이지를 확인한다. 목록 누락·중복·조회 실패 또는 API 한도인 3,000개에 도달하면 전체 검사를
+실행한다. WASM API 변경은 초기 코드 head에서 전체 검사를 요구하며, 이후 허용된 문서만 바뀌었을 때
+같은 PR의 녹색 후보를 아래 조건대로 재사용할 수 있다.
 
 다음 조건을 모두 만족해야 한다.
 

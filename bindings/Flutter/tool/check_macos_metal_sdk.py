@@ -45,6 +45,7 @@ def command_plan(repository, output, sdk, clang, framework, architecture, toolch
     bridge = output / "rhwp_metal_sdk_probe.dylib"
     cv_status = output / "rhwp_cv_closed_status_test"
     animation_policy = output / "rhwp_metal_view_animation_test"
+    tile_group = output / "rhwp_metal_tile_group_test"
     common = [str(clang), "-std=c++17", "-fobjc-arc", "-fblocks", "-Wall", "-Wextra", "-Werror",
               "-isysroot", str(sdk), "-arch", architecture, "-mmacosx-version-min=12.0", "-dynamiclib"]
     flutter_links = ["-F", str(framework.parent), "-Wl,-rpath," + str(framework.parent),
@@ -62,8 +63,11 @@ def command_plan(repository, output, sdk, clang, framework, architecture, toolch
          str(repository / "bindings/Flutter/macos/tests/cv_closed_status_sdk_test.mm"), "-o", str(cv_status)],
         [*[value for value in common if value != "-dynamiclib"], *flutter_links,
          str(repository / "bindings/Flutter/macos/tests/metal_view_animation_sdk_test.mm"), "-o", str(animation_policy)],
+        [*[value for value in common if value != "-dynamiclib"], *flutter_links,
+         str(repository / "bindings/Flutter/macos/tests/metal_tile_group_sdk_test.mm"), "-o", str(tile_group)],
         [str(cv_status)],
         [str(animation_policy)],
+        [str(tile_group)],
         *([] if native_override else [["rustup", "run", toolchain, "cargo", "build", "--locked", "--manifest-path",
          str(repository / "bindings/Native/Cargo.toml"), "--features", "native-skia-metal",
          "--lib", "--target", rust_target, "--target-dir", str(output / "native-target")]]),
@@ -75,7 +79,8 @@ def command_plan(repository, output, sdk, clang, framework, architecture, toolch
          "--output", str(output / "metal-producer.json")],
     ]
     return commands, {"native": native, "plugin": plugin, "bridge": bridge,
-                      "cvCloseStatus": cv_status, "metalViewAnimationPolicy": animation_policy}
+                      "cvCloseStatus": cv_status, "metalViewAnimationPolicy": animation_policy,
+                      "metalTileGroupBridge": tile_group}
 
 
 def source_hashes(repository):
@@ -125,25 +130,88 @@ def stop_process_tree(process, grace=5):
         process.wait()
 
 
-def execute_step(command, *, repository, env, log_path, step, record, timeout, stop_grace=5):
+def _linux_child_exit(process):
+    if process.returncode is not None:
+        raise ChildProcessError("Linux SDK group leader was already reaped")
+    return os.waitid(os.P_PID, process.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)
+
+
+def _wait_linux_child_exit(process, timeout):
+    deadline = time.monotonic() + timeout
+    while True:
+        status = _linux_child_exit(process)
+        if status is not None:
+            return status
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise subprocess.TimeoutExpired(process.args, timeout)
+        time.sleep(min(remaining, .02))
+
+
+def _stop_linux_owned_group(process, grace):
+    def send(signum):
+        try:
+            _linux_child_exit(process)
+        except ChildProcessError:
+            return False
+        try:
+            os.killpg(process.pid, signum)
+        except ProcessLookupError:
+            pass
+        return True
+
+    if not send(signal.SIGTERM):
+        return None
+    try:
+        _wait_linux_child_exit(process, grace)
+    except (ChildProcessError, subprocess.TimeoutExpired):
+        pass
+    finally:
+        # The unreaped child reserves its PID through the last group signal.
+        if send(signal.SIGKILL):
+            process.wait()
+    return process.returncode
+
+
+def execute_step(command, *, repository, env, log_path, step, record, timeout, stop_grace=5,
+                 inherit_process_group=False, stop_failed_group=False):
+    """The outer supervisor owns cleanup when a child inherits its group."""
     if not math.isfinite(timeout) or timeout <= 0 or timeout > 7200:
         raise ValueError("step timeout must be finite and within two hours")
+    if stop_failed_group and (sys.platform != 'linux' or inherit_process_group):
+        raise ValueError("failed-group cleanup requires an owned Linux process group")
     step["timeoutSeconds"] = timeout
     with Path(log_path).open("wb") as log:
         Path(log_path).chmod(0o600)
         process = subprocess.Popen(command, cwd=repository, env=env, stdin=subprocess.DEVNULL,
-                                   stdout=log, stderr=subprocess.STDOUT, start_new_session=True)
+                                   stdout=log, stderr=subprocess.STDOUT,
+                                   start_new_session=not inherit_process_group)
         step["pid"] = process.pid
+
+        def stop():
+            if stop_failed_group:
+                _stop_linux_owned_group(process, stop_grace)
+            elif not inherit_process_group:
+                stop_process_tree(process, grace=stop_grace)
+
         try:
             record()
-            return process.wait(timeout=timeout)
+            if not stop_failed_group:
+                return process.wait(timeout=timeout)
+            status = _wait_linux_child_exit(process, timeout)
+            if status.si_code == os.CLD_EXITED and status.si_status == 0:
+                return process.wait()
+            code = _stop_linux_owned_group(process, stop_grace)
+            if code is None:
+                raise ChildProcessError("Linux SDK group leader ownership was lost during cleanup")
+            return code
         except subprocess.TimeoutExpired as error:
             step["timedOut"] = True
-            stop_process_tree(process, grace=stop_grace)
+            stop()
             raise TimeoutError("SDK step exceeded its deadline: " + str(log_path)) from error
         except BaseException:
             step["interrupted"] = True
-            stop_process_tree(process, grace=stop_grace)
+            stop()
             raise
         finally:
             step.update(exitCode=process.returncode, finished=time.time())
@@ -249,6 +317,7 @@ def main():
             raise ValueError("actual Metal producer did not produce a matching successful receipt")
         state.update(build="passed", targetSdkCompileLinkVerified=True, metalProducerReadbackVerified=True,
                      cvTerminalStatusVerified=True, metalViewAnimationPolicyVerified=True,
+                     metalTileGroupBridgeVerified=True, metalTileGroupGpuPresentationVerified=False,
                      artifacts={key: {"path": str(path), "sha256": digest(path), "bytes": path.stat().st_size}
                                 for key, path in artifacts.items()})
     except BaseException as error:

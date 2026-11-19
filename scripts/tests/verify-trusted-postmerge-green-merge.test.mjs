@@ -44,14 +44,21 @@ async function preflight(name, options = {}) {
     started_at: "2026-09-10T10:01:00Z", status: "completed", conclusion: "success" }];
   const files = [source, docs];
   options.mutate?.({ commits, runs, jobs, checks, files, pr });
+  // 완전한 목록을 반환하는 API 표본이므로 정책 변경 반례에도 실제 변경 수를 제공한다.
+  pr.changed_files = files.length;
   const outputs = {};
   const requested = [];
   const github = { rest: {
     pulls: { listFiles: "files", listCommits: "commits" },
     actions: { listWorkflowRuns: "runs", listJobsForWorkflowRun: "jobs" },
     checks: { listForRef: "checks" },
-    repos: { getCommit: async ({ ref }) => ({ data: commits.find(commit => commit.sha === ref) }) },
-  }, paginate: async (method, args) => {
+    repos: { getCommit: "commitDetail" },
+  }, paginate: async (method, args, mapPage) => {
+    if (method === "commitDetail") {
+      assert.equal(args.per_page, 100);
+      const detail = commits.find(commit => commit.sha === args.ref);
+      return mapPage({ data: detail });
+    }
     if (method === "files") return files;
     if (method === "commits") return commits;
     if (method === "runs") { requested.push(args.head_sha || "all"); return runs.filter(run => !args.head_sha || args.head_sha === run.head_sha); }

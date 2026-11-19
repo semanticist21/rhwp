@@ -3,6 +3,7 @@
 import argparse
 from pathlib import Path
 import subprocess
+import sys
 
 
 def main():
@@ -26,6 +27,19 @@ def main():
     tiles = output / "bounded-tile-group-test"
     run(common + [str(source.parent / "common/bounded_tile_group_test.cc"), "-o", str(tiles)])
     run([str(tiles)])
+    events = output / "producer-ready-test"
+    run(common + [str(source.parent / "common/producer_ready_test.cc"), "-o", str(events)])
+    run([str(events)])
+    metrics = output / "gpu-cache-metrics-test"
+    run(common + [str(source.parent / "common/gpu_cache_metrics_test.cc"), "-o", str(metrics)])
+    run([str(metrics)])
+    trims = output / "cache-trim-test"
+    run(common + [str(source.parent / "common/cache_trim_test.cc"), "-o", str(trims)])
+    run([str(trims)])
+    # These Python checks exercise portable orchestration/provenance fixtures,
+    # not an SDK build or Native/Flutter/GPU execution.
+    for name in ("linux_sdk_runner_contract.py", "native_artifact_provenance_contract.py"):
+        run([sys.executable, "-B", str(source.parent / "test" / name)])
     if not args.flutter_engine:
         return
     includes = ["-I" + str(args.flutter_engine.resolve())]

@@ -495,6 +495,7 @@ struct PageReplayOutput {
 
 pub struct SkiaLayerRenderer {
     viewport_culling: bool,
+    font_fallback_observer: Option<super::font_observation::FontFallbackObserver>,
     font_mgr: FontMgr,
     text_shaper: OnceCell<Option<Shaper>>,
     /// 사용자 지정 경로의 family별 TTC face·스타일 catalog.
@@ -530,6 +531,7 @@ impl SkiaLayerRenderer {
         }
         SKIA_FONT_BASE.with(|(font_mgr, system_families)| Self {
             viewport_culling: true,
+            font_fallback_observer: None,
             font_mgr: font_mgr.clone(),
             text_shaper: OnceCell::new(),
             custom_typefaces: TypefaceCatalog::default(),
@@ -564,6 +566,29 @@ impl SkiaLayerRenderer {
         self
     }
 
+    /// Observe actual text face choices without changing the matching policy.
+    /// Reset recorded pictures when enabling after use so replayed cached ink
+    /// cannot bypass collection in the new observation session.
+    pub fn with_font_fallback_reporting(mut self, enabled: bool) -> Self {
+        self.clear_caches();
+        self.font_fallback_observer =
+            enabled.then(super::font_observation::FontFallbackObserver::default);
+        self
+    }
+
+    pub fn font_fallback_report(&self) -> Option<super::NativeFontFallbackReport> {
+        self.font_fallback_observer
+            .as_ref()
+            .map(|observer| observer.snapshot())
+    }
+
+    fn reset_font_fallback_observations(&mut self) {
+        if self.font_fallback_observer.is_some() {
+            self.font_fallback_observer =
+                Some(super::font_observation::FontFallbackObserver::default());
+        }
+    }
+
     /// Drop all retained native objects and reset cache diagnostics.
     pub fn clear_caches(&self) {
         self.picture_cache.borrow_mut().clear();
@@ -579,20 +604,19 @@ impl SkiaLayerRenderer {
         }
     }
 
-    /// 이미 준비된 native renderer의 font inventory로 decision trace를 보강한다.
+    /// 준비된 native renderer의 명시 공급과 실제 플랫폼 문자 대체로 trace를 보강한다.
     ///
-    /// 이 호출은 새 font path를 읽거나 typeface를 적재하지 않는다. 호출자가
-    /// `with_font_paths`로 구성한 현재 snapshot을 그대로 관측한다.
+    /// 호출자의 font catalog나 문서 공급을 변경하지 않는다. 명시 후보에 글리프가
+    /// 없으면 paint와 같은 FontMgr의 문자별 시스템 typeface 선택을 관측한다.
     pub fn get_font_decision_trace(
         &self,
         core: &crate::document_core::DocumentCore,
         page_num: u32,
         options_json: &str,
     ) -> Result<String, crate::error::HwpError> {
-        let observe =
-            |requested: &str, character: char, bold: bool, italic: bool, source_ttf: bool| {
-                self.font_decision(requested, character, bold, italic, source_ttf)
-            };
+        let observe = |style: &crate::renderer::TextStyle, character: char| {
+            self.font_decision(style, character)
+        };
         core.get_font_decision_trace_with_native_observer(
             page_num,
             options_json,
@@ -607,6 +631,7 @@ impl SkiaLayerRenderer {
         // Static pictures may retain legacy font fallback decisions. A changed
         // renderer font inventory must never reuse those recorded choices.
         self.clear_caches();
+        self.reset_font_fallback_observations();
         // [#2864] 조달 순서는 renderer::font_paths 가 단일 정의한다.
         // [#3300] custom(호출자+환경변수)과 번들 최후-폴백을 분리 적재한다 —
         // 시스템 디렉터리는 어느 쪽에도 넣지 않는다(스타일 매칭은 FontMgr 담당).
@@ -624,6 +649,7 @@ impl SkiaLayerRenderer {
     pub fn try_with_font_data(mut self, sources: &[Vec<u8>]) -> Result<Self, HwpError> {
         let catalog = TypefaceCatalog::try_from_data(&self.font_mgr, sources)?;
         self.clear_caches();
+        self.reset_font_fallback_observations();
         self.custom_typefaces = catalog;
         Ok(self)
     }
@@ -647,52 +673,58 @@ impl SkiaLayerRenderer {
             )));
         }
         self.clear_caches();
+        self.reset_font_fallback_observations();
         Ok(self)
     }
 
     /// 기본 native Skia paint와 동일한 후보 사다리에서 문자별 typeface 결정을 읽는다.
-    /// 렌더링, surface 생성, font 파일 적재를 시작하지 않는다.
+    /// 렌더링·surface 생성·문서의 글꼴 공급 변경 없이 실제 플랫폼 문자 대체까지 관측한다.
     pub(crate) fn font_decision(
         &self,
-        requested: &str,
+        style: &crate::renderer::TextStyle,
         character: char,
-        bold: bool,
-        italic: bool,
-        source_ttf: bool,
     ) -> crate::renderer::font_decision::BackendDecision {
         use super::font_lookup::{
-            select_typeface_for_character, text_typeface_candidates_for_source,
+            font_style_for_text, resolve_typeface_for_character, text_typeface_candidates_for_style,
         };
 
-        let style = font_style_for_text(&crate::renderer::TextStyle {
-            font_family: requested.into(),
-            bold,
-            italic,
-            ..Default::default()
-        });
-        let (candidates, typefaces) = text_typeface_candidates_for_source(
+        let requested = crate::renderer::native_font_family_for_style(style);
+        let (mut candidates, typefaces) = text_typeface_candidates_for_style(
             &self.font_mgr,
             &self.system_families,
             &self.custom_typefaces,
             &self.bundled_typefaces,
-            requested,
             style,
-            source_ttf,
         );
-        let selected = select_typeface_for_character(&typefaces, character);
+        let selected = resolve_typeface_for_character(
+            &typefaces,
+            character,
+            &self.font_mgr,
+            font_style_for_text(style),
+        );
+        if let Some(std::borrow::Cow::Owned(candidate)) = selected.as_ref() {
+            let family = candidate.typeface.family_name();
+            if !candidates.contains(&family) {
+                candidates.push(family);
+            }
+        }
         let mut failures = Vec::new();
-        if typefaces.is_empty() {
-            failures.push("nativeTypefaceUnavailable".into());
-        } else if selected.is_none() {
-            failures.push("nativeGlyphMissingAllCandidates".into());
+        if selected.is_none() {
+            if typefaces.is_empty() {
+                failures.push("nativeTypefaceUnavailable".into());
+            } else {
+                failures.push("nativeGlyphMissingAllCandidates".into());
+            }
         }
         crate::renderer::font_decision::BackendDecision {
             status: "complete".into(),
             certainty: "observed".into(),
-            requested: Some(requested.into()),
+            requested: Some(requested.into_owned()),
             candidates,
-            resolved: selected.map(|candidate| candidate.typeface.family_name()),
-            source: selected.map(|candidate| candidate.source.into()),
+            resolved: selected
+                .as_ref()
+                .map(|candidate| candidate.typeface.family_name()),
+            source: selected.as_ref().map(|candidate| candidate.source.into()),
             capabilities: vec![
                 "nativeTypefaceChainEnumerated".into(),
                 "nativeGlyphCoverageObserved".into(),
@@ -1332,6 +1364,7 @@ impl SkiaLayerRenderer {
         };
         let text_replay = SkiaTextReplay {
             canvas,
+            font_fallback_observer: self.font_fallback_observer.as_ref(),
             raster_target: cache_context.raster_target,
             geometric_text: cache_context.raster_target && cache_context.geometric_text,
             hft_outline_enabled,

@@ -1017,15 +1017,16 @@ const HWP3_SQUARE_WRAP_TEXT_GAP_HU: i32 = 640;
 
 fn hwp3_square_wrap_occupied_width(
     width: i32,
+    left: i32,
     right: i32,
     use_decrypted_layout_contract: bool,
 ) -> i32 {
     if use_decrypted_layout_contract {
         width
     } else {
-        // 배치 단계가 그림 왼쪽 바깥 여백을 원점에 반영한다. 여기서는
-        // 글줄을 막는 오른쪽 바깥 여백만 더해 중복 반영을 피한다.
-        width.saturating_add(right)
+        // 한컴의 HWP5·HWPX 변환본과 같이 저장 줄 시작은 그림의 왼쪽 바깥 여백,
+        // 폭, 오른쪽 바깥 여백을 모두 지난 자리다. 배치는 저장 줄을 그대로 쓴다.
+        width.saturating_add(left).saturating_add(right)
     }
 }
 
@@ -2270,7 +2271,9 @@ fn parse_hwp3_object_dispatch(
         // 상호 참조
         if header_val1 < 1000000 {
             info_buf.resize(header_val1 as usize, 0);
-            let _ = body_cursor.read_exact(info_buf.as_mut_slice());
+            if let Err(_) = body_cursor.read_exact(info_buf.as_mut_slice()) {
+                return Ok(Some(true));
+            }
         }
     } else if ch == 5 {
         // [Task #877] 필드 코드 (spec §10.1, 표 33): 가변 길이 8 + n bytes.
@@ -2426,6 +2429,19 @@ fn parse_object_control_char(
     if let Some(break_char_loop) = early_return {
         return Ok((i, utf16_len, break_char_loop));
     }
+    // 날짜 코드(8, 표 38, 96바이트)는 문단 리스트·별도 정보 없이 문단 글자 배열 안에
+    // 통째로 실린 고정 크기 특수 문자라, 문단 정보의 글자 수(hchar 단위)가 구조체 전체
+    // (48 hchar)를 센다 — 한/글 저장본 41868(국세청 서식)의 머리말 문단이 글자 수 49 =
+    // 날짜 코드 48 + 문단 끝 1 이다. 위 8바이트 머리(4 hchar)만 세면 문단 끝 뒤의 바이트를
+    // 글자로 읽어 본문 전체가 어긋난다. 날짜 형식(7)은 같은 모양이지만 한/글 저장본
+    // 근거가 아직 없어 종전 계산을 둔다.
+    let fixed_hchars = if ch == 8 { 96 / 2 } else { 4 };
+    // 여기서 `i` 는 머리 4 hchar 다음 자리다. 나머지 hchar 도 같은 IR 위치에 묶는다.
+    let rest = fixed_hchars - 4;
+    for slot in hwp3_char_to_utf16_pos.iter_mut().skip(i).take(rest) {
+        *slot = utf16_len;
+    }
+    i += rest;
 
     let is_non_tac_table = ch == 10
         && parsed_table
@@ -3593,6 +3609,7 @@ fn parse_paragraph_list_inner(
                     let h_off = pic.common.horizontal_offset as i32;
                     let pic_w = hwp3_square_wrap_occupied_width(
                         pic.common.width as i32,
+                        pic.common.margin.left as i32,
                         pic.common.margin.right as i32,
                         use_decrypted_layout_contract,
                     );
@@ -4198,6 +4215,7 @@ fn parse_paragraph_list_inner(
                         let h_off = cm.horizontal_offset as i32;
                         let pic_w = hwp3_square_wrap_occupied_width(
                             cm.width as i32,
+                            cm.margin.left as i32,
                             cm.margin.right as i32,
                             use_decrypted_layout_contract,
                         );

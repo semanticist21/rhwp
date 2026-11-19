@@ -1,0 +1,78 @@
+{
+  "schema_version": 1,
+  "purpose": "이미 독립 검증한 과거 경로의 원본/PDF를 바이트 신원으로 고정한다. 일반 canonical 형식·엔진 선택 규칙은 유지한다.",
+  "references": [
+    {
+      "sample": "samples/issue6782/1480000-201900042-chemical-labeling-standards.hwp",
+      "source_sha256": "4382eabadb86cde5730a7e7b972cea1828fea0c1c743a654c2a430cc19ae26c0",
+      "pdf": "pdf/issue7382-regression-review/1480000-201900042-chemical-labeling-standards-2020.pdf",
+      "pdf_sha256": "b5bfc916dae3aff2fa02ea1942f12e84b7623b8753657c7fcead7ffbca3a8047",
+      "pages": 103,
+      "provenance": "desktop_hancom_print",
+      "evidence": "mydocs/pr/assets/issues7733_7738_20261117/input-audit.json"
+    },
+    {
+      "sample": "samples/한글문서파일형식_5.0_revision1.3.hwp",
+      "source_sha256": "f21edf2138e134702366f2fb6a2ab082b05c6dcb42216ec4fa2575ed292efd1d",
+      "pdf": "pdf/한글문서파일형식_5.0_revision1.3-hancom-official.pdf",
+      "pdf_sha256": "1d1da9e6fe22563ae2c5285bbbfc6762974fb7f002278084cbc11e5266bdc782",
+      "pages": 71,
+      "provenance": "official_hancom_specification",
+      "evidence": "mydocs/pr/assets/issues7733_7738_20261117/input-audit.json"
+    },
+    {
+      "sample": "samples/pr4093/outline_navigation_panel_demo.hwpx",
+      "source_sha256": "90e7442874bee1e5f774287b38323ed556e241539c783e100d0b7b93631aa6b4",
+      "pdf": "pdf/issue7382-regression-review/outline_navigation_panel_demo-2020.pdf",
+      "pdf_sha256": "c24e248c56bad280219bbd32f59fc6f07a3895fb5146b225c9ae4f9e4ac662be",
+      "pages": 3,
+      "provenance": "desktop_hancom_print",
+      "evidence": "mydocs/pr/assets/issues7733_7738_20261117/input-audit.json"
+    },
+    {
+      "sample": "samples/issue6776/78494-virtual-convergence-industry-decree.hwpx",
+      "source_sha256": "5090e9d20ce75814febeb4b79e106ea6abfd2546e511f229900d137d42623617",
+      "pdf": "pdf/78494-virtual-convergence-industry-decree-2020.pdf",
+      "pdf_sha256": "367fb3749f571521eef2036fe4327ce5b9cf6b7728966257328c1144f08ff8c9",
+      "pages": 74,
+      "provenance": "desktop_hancom_print",
+      "evidence": "mydocs/pr/assets/issues7733_7738_20261117/input-audit.json"
+    },
+    {
+      "sample": "samples/pr4093/outline_navigation_table_cell_number.hwpx",
+      "source_sha256": "a033627d1c48817201bee8edd1b2d71b8c49a407af97346b6f1c7fb912602b1c",
+      "pdf": "pdf/issue7382-regression-review/outline_navigation_table_cell_number-2020.pdf",
+      "pdf_sha256": "7e92550f0724026b7c88d1f843411b7ace744cce273f614e338cbd55d40eba81",
+      "pages": 1,
+      "provenance": "desktop_hancom_print",
+      "evidence": "mydocs/pr/assets/issues7733_7738_20261117/input-audit.json"
+    },
+    {
+      "sample": "samples/rowbreak-problem-pages.hwpx",
+      "source_sha256": "4ccc321e7eb146f28b768654502a128ba1ae408238fd1ed37d51e963732eb5b0",
+      "pdf": "pdf/rowbreak-problem-pages-hwpx-2020.pdf",
+      "pdf_sha256": "e3dc7bb21707f92e42e83808023bf155f62475fc4eb0e0498709d03986c5afe5",
+      "pages": 18,
+      "provenance": "desktop_hancom_print",
+      "evidence": "mydocs/pr/assets/issues7739_7743_20261119/analysis.md"
+    },
+    {
+      "sample": "samples/issue6782/1480000-201900042-chemical-product-labeling-study.hwp",
+      "source_sha256": "398d03a5d5e4d6e857086be532d6d9ed0cec9c8ad06f95c17bbb7f83056ae860",
+      "pdf": "pdf/1480000-201900042-chemical-product-labeling-study-2020.pdf",
+      "pdf_sha256": "f8e5c0408e221080ede9a9a67b153d02d792d22961c738e46749641f32a32e79",
+      "pages": 103,
+      "provenance": "desktop_hancom_print",
+      "evidence": "mydocs/pr/assets/issues7739_7743_20261119/analysis.md"
+    },
+    {
+      "sample": "mydocs/pr/assets/issue7445/education-curriculum-map/1342000_edu_curriculum_map.hwp",
+      "source_sha256": "623b00d56beffc45d27c5bf23911bdc49d3a541ded8aecbb323d0716a2bc9f4e",
+      "pdf": "mydocs/pr/assets/issue7445/education-curriculum-map/current-source-hancom2020-print.pdf",
+      "pdf_sha256": "82fe8eefecbf3ad5176549976a8cd486ac0bb9c113e7ac34510a69ee6ccbf17f",
+      "pages": 415,
+      "provenance": "desktop_hancom_print",
+      "evidence": "mydocs/pr/assets/issues7739_7743_20261119/analysis.md"
+    }
+  ]
+}

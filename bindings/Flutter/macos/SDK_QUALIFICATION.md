@@ -34,13 +34,14 @@ consumer 정책을 변경하지 않습니다. 이 명시적 옵션이 없거나 
 2. 실제 FlutterMacOS framework와 Metal/CoreVideo/CoreGraphics/IOSurface/QuartzCore를 사용하여
    `RhwpMetalPlugin.mm` 전체를 ARC·C++17·`-Wall -Wextra -Werror`로 컴파일·링크합니다.
 3. 같은 Apple SDK에서 작은 typed Metal probe dylib와 Foundation CV 종료 회귀,
-   AppKit/Core Animation 소유 view의 animation 정책 회귀를 빌드합니다. 두 회귀 실행이
+   AppKit/Core Animation 소유 view의 animation 정책 회귀, 두 타일 method bridge·가림·종료
+   회귀를 빌드합니다. 세 회귀 실행이
    통과해야 다음 단계로 진행합니다. animation 회귀는 실제 CA action lookup과 ambient
    animated transaction에서 소유 layer의 암묵적 action 차단, 즉시 geometry/가림/분리,
    caller context 복원을 검사하며 GPU/화면 수집으로 보고하지 않습니다.
 4. 고유 `native-target`·`native-build`로 실제 Native Metal dylib를 빌드하고 동적 라이브러리
    의존성을 기록합니다. 검증한 Native artifact를 명시적으로 재사용하면 Rust 재빌드는
-   생략하지만 SDK compile/link와 두 회귀·독립 producer 실행은 생략하지 않습니다.
+   생략하지만 SDK compile/link와 세 회귀·독립 producer 실행은 생략하지 않습니다.
 5. 실제 Native worker의 불변 snapshot으로 opaque·premultiplied alpha clear와 편집 후 stale 거절을
    실행합니다. unpublished target이 변경되지 않는지와 최종 source/snapshot/frame/lease 계수 0을
    확인합니다.
@@ -51,6 +52,10 @@ consumer 정책을 변경하지 않습니다. 이 명시적 옵션이 없거나 
 source가 변경되거나 실제 명령이 실패하면 해당 실행은 실패로 기록합니다.
 `cvTerminalStatusVerified`와 `metalViewAnimationPolicyVerified`는 각 실제 SDK 회귀가
 실행되어 통과한 뒤에만 true로 기록하며, Metal producer와 consumer 표시는 구분합니다.
+`metalTileGroupBridgeVerified`도 실제 SDK 회귀가 통과한 뒤에만 true입니다. 이 회귀는
+의도적으로 없는 Native library로 실제 두 AppKit view의 가림·group routing·종료를 검사하므로
+`metalTileGroupGpuPresentationVerified`는 계속 false입니다. 두 타일의 실제 Native 출력과
+ScreenCaptureKit 수집은 [P117 실제 실행 경로](TILE_GROUPS.md#실제-flutternativeappkit-두-타일-실행)에서 별도로 확인합니다.
 
 source identity는 prefix 목록이 아닌 전체 tracked Git 파일의 mode·blob OID manifest입니다.
 매 step 전후 전체 working tree/index의 clean 상태를 검사하므로 `vendor` path 의존성,
@@ -92,6 +97,10 @@ IME/접근성이나 최종 한컴 비교를 완료한 것으로 확대하지 않
 ```bash
 python3 -B bindings/Flutter/macos/tests/sdk_qualification_contract.py
 ```
+
+Linux와 macOS에서는 C++17 컴파일러로 작은 공유 라이브러리를 만들고, 플러그인이 사용하는
+동적 로더에서 필수 owner 심볼과 선택 Metal 심볼 누락을 구분하는지 검사합니다. 라이브러리 열기
+실패와 이미 고정된 라이브러리 경로의 충돌도 확인합니다.
 
 이 검사는 독립 premultiplied 색상, 잘못된 pixel·stamp·backend·완료 근거 거절, stale target 보존,
 격리된 빌드 출력과 비 Apple 플랫폼 거절을 검사합니다. 임시 Git 저장소의 vendor 변경·

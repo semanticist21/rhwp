@@ -249,7 +249,7 @@ CROSS_DIAGONAL -> 5
 ```
 
 이 대응은 한글 2024가 HWP를 HWPX로 저장한 결과다. `SLASH`는 ＼, `BACK_SLASH`는 ／로
-그려진다([정오표 39](hwp_spec_errata.md#39-채우기-무늬-종류-표-29--0부터-시작), #8978).
+그려진다([정오표 40](hwp_spec_errata.md#40-채우기-무늬-종류-표-29--0부터-시작), #8978).
 
 문단/글자 모양이 참조하는 투명 흰색 solid fill은 한컴에서 배경 무늬로 오해될 수 있다.
 다만 표, 셀, page border가 참조하는 BorderFill까지 무작정 바꾸면 안 된다.

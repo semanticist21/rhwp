@@ -24,7 +24,7 @@ pub(in crate::renderer) struct ScanMeasureCache {
         Option<crate::renderer::float_placement::ReflowExternalTableFlow>,
     >,
     cell_paragraphs: std::collections::HashMap<
-        (usize, u64, u8),
+        (usize, u64, u8, bool),
         std::sync::Arc<crate::renderer::composer::ComposedParagraph>,
     >,
 }
@@ -104,6 +104,7 @@ impl LayoutEngine {
         &self,
         para: &Paragraph,
         text_direction: u8,
+        line_wrap_squeeze: bool,
         inner_width: f64,
         styles: &ResolvedStyleSet,
     ) -> std::sync::Arc<crate::renderer::composer::ComposedParagraph> {
@@ -111,6 +112,7 @@ impl LayoutEngine {
             para as *const Paragraph as usize,
             inner_width.to_bits(),
             text_direction,
+            line_wrap_squeeze,
         );
         let cached = self
             .reflow_measure_cache
@@ -123,6 +125,7 @@ impl LayoutEngine {
         let comp = std::sync::Arc::new(self.compose_cell_unit_paragraph(
             para,
             text_direction,
+            line_wrap_squeeze,
             inner_width,
             styles,
         ));
