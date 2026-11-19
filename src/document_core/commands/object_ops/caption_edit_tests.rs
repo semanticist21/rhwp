@@ -425,10 +425,22 @@ fn first_cell_box(core: &DocumentCore) -> BoundingBox {
 
 #[test]
 fn header_picture_caption_line_hits_its_caption() {
+    header_picture_caption(false);
+}
+
+/// 한컴 12.30은 머리말에 넣은 그림을 글자처럼 취급하고 그 아래 캡션을 그림 바로 아래에 그린다.
+#[test]
+fn header_inline_picture_caption_is_drawn_and_hits_its_caption() {
+    header_picture_caption(true);
+}
+
+fn header_picture_caption(treat_as_char: bool) {
     let mut core = blank();
     let (para, ctrl) = floating_picture(
         &mut core,
-        r#"{"hasCaption":true,"captionDirection":"Bottom","captionVertAlign":"Top","captionWidth":8504,"captionSpacing":850}"#,
+        &format!(
+            r#"{{"treatAsChar":{treat_as_char},"hasCaption":true,"captionDirection":"Bottom","captionVertAlign":"Top","captionWidth":8504,"captionSpacing":850}}"#
+        ),
     );
     let picture = core.document.sections[0].paragraphs[para].controls[ctrl].clone();
     core.create_header_footer_native(0, true, 0)
