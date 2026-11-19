@@ -271,3 +271,53 @@ fn nested_table_caption_fits_in_outer_cell() {
         "캐럿 {rect} / 캡션 줄 {y}+{h}"
     );
 }
+
+#[test]
+fn header_table_caption_below_header_area_is_a_header_hit_not_a_body_cell() {
+    let mut doc = HwpDocument::create_empty();
+    doc.create_blank_document().unwrap();
+    doc.create_header_footer_native(0, true, 0).unwrap();
+    let info = json(&doc.get_header_footer_native(0, true, 0).unwrap());
+    let host = info["paraIndex"].as_u64().unwrap() as usize;
+    let hf = info["controlIndex"].as_u64().unwrap() as usize;
+    // 기본 4×4 표에 아래 캡션을 달면 캡션이 머리말 영역 아래 끝을 넘는다.
+    let header = created_path(
+        &doc.create_table_in_cell_by_path_native(
+            0,
+            host,
+            &[(hf, 0, 0)],
+            0,
+            4,
+            4,
+            None,
+            None,
+            false,
+        )
+        .unwrap(),
+    );
+    let before = caption_with_text(&mut doc, host, &header);
+    let ([x, y, w, h], _) = run_and_cell_box(&doc, "AB");
+    let (x, y) = (x + w - 0.5, y + h / 2.0);
+    let area = &json(&doc.get_page_info_native(0).unwrap())["headerArea"];
+    assert!(y > area["y"].as_f64().unwrap() + area["height"].as_f64().unwrap());
+
+    let hit = json(&doc.hit_test_header_footer_native(0, x, y).unwrap());
+    assert_eq!(
+        (&hit["hit"], &hit["isHeader"]),
+        (&json("true"), &json("true"))
+    );
+    // 본문 히트는 머리말 표 캡션을 (머리말 문단, 표 컨트롤, 65534) 본문 주소로 주지 않는다.
+    let body = json(&doc.hit_test_native(0, x, y).unwrap());
+    assert!(body.get("cellPath").is_none(), "{body}");
+    // 머리말 편집 히트는 그 캡션 글 끝이다.
+    let hit = json(
+        &doc.hit_test_in_header_footer_target_native(0, 0, true, 0, x, y)
+            .unwrap(),
+    );
+    assert_eq!(
+        hit["cellPath"],
+        json(&path_json(&caption_path(&header))),
+        "{hit}"
+    );
+    assert_eq!(hit["charOffset"].as_u64(), Some(before as u64 + 2));
+}
