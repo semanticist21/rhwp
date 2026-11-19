@@ -858,20 +858,21 @@ impl DocumentCore {
                         ))
                     })?
                 }
+                // 셀 65534는 도형 캡션이다(가변 경로 해석기와 같은 꼴).
                 Some(Control::Shape(shape)) => {
-                    let text_box = super::super::helpers::get_textbox_at(shape, cell_idx)
+                    let paragraphs = super::super::helpers::shape_cell_paragraphs(shape, cell_idx)
                         .ok_or_else(|| {
                             HwpError::RenderError(format!(
                                 "경로[{}]: controls[{}]가 텍스트 글상자가 아닙니다",
                                 i, ctrl_idx
                             ))
                         })?;
-                    text_box.paragraphs.get(cell_para_idx).ok_or_else(|| {
+                    paragraphs.get(cell_para_idx).ok_or_else(|| {
                         HwpError::RenderError(format!(
                             "경로[{}]: 글상자문단 {} 범위 초과 (총 {}개)",
                             i,
                             cell_para_idx,
-                            text_box.paragraphs.len()
+                            paragraphs.len()
                         ))
                     })?
                 }
@@ -988,11 +989,11 @@ impl DocumentCore {
                         ))
                     })?,
                 Some(Control::Shape(shape)) => {
-                    let text_box = super::super::helpers::get_textbox_at(shape, cell_idx)
+                    let paragraphs = super::super::helpers::shape_cell_paragraphs(shape, cell_idx)
                         .ok_or_else(|| {
                             HwpError::RenderError(format!("경로[{}]: 글상자가 아닙니다", i))
                         })?;
-                    text_box.paragraphs.get(cell_para_idx).ok_or_else(|| {
+                    paragraphs.get(cell_para_idx).ok_or_else(|| {
                         HwpError::RenderError(format!(
                             "경로[{}]: 글상자문단 {} 범위 초과",
                             i, cell_para_idx
@@ -1039,9 +1040,9 @@ impl DocumentCore {
                 Ok(table_step_paragraphs(table, path.len() - 1, last.1)?.len())
             }
             Some(Control::Shape(shape)) => {
-                let text_box = super::super::helpers::get_textbox_at(shape, last.1)
+                let paragraphs = super::super::helpers::shape_cell_paragraphs(shape, last.1)
                     .ok_or_else(|| HwpError::RenderError("글상자가 아닙니다".to_string()))?;
-                Ok(text_box.paragraphs.len())
+                Ok(paragraphs.len())
             }
             Some(Control::Picture(pic)) => {
                 if last.1 != 0 {
@@ -1555,13 +1556,18 @@ impl DocumentCore {
 
         // 글상자인 경우: 문단 간 이동만, 셀 이동 없이 경계에서 본문 탈출
         if let Some(Control::Shape(shape)) = table_para.controls.get(ci) {
-            if let Some(text_box) = super::super::helpers::get_textbox_at(shape, cei) {
+            // 셀 65534는 도형 캡션이다. 캡션은 넘침 연결이 없으므로 문단 수를 그대로 쓴다.
+            if let Some(paragraphs) = super::super::helpers::shape_cell_paragraphs(shape, cei) {
                 // 오버플로우 타겟: 소스의 오버플로우 문단 수 사용
                 // 오버플로우 소스: 렌더 문단 수(overflow_start)만 사용
-                let effective_para_count = self
-                    .overflow_para_count(sec, ppi, ci)
-                    .or_else(|| self.source_rendered_para_count(sec, ppi, ci))
-                    .unwrap_or(text_box.paragraphs.len());
+                let effective_para_count =
+                    if cei == crate::document_core::TABLE_CAPTION_CELL_SENTINEL {
+                        paragraphs.len()
+                    } else {
+                        self.overflow_para_count(sec, ppi, ci)
+                            .or_else(|| self.source_rendered_para_count(sec, ppi, ci))
+                            .unwrap_or(paragraphs.len())
+                    };
 
                 if delta > 0 && cpi + 1 < effective_para_count {
                     let next_cpi = cpi + 1;

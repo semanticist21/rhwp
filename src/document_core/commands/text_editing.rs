@@ -294,6 +294,37 @@ pub(super) fn cell_vpos_resets(previous: &Paragraph, current: &Paragraph) -> boo
     }
 }
 
+/// 개체 캡션 글을 캡션 글 폭(`Caption::text_width`)으로 다시 줄 나눈다. 한컴 12.30은 캡션
+/// 크기·위치·'여백 부분까지 너비 확대'나 개체 폭을 바꾸면 캡션 글을 새 폭으로 다시 줄바꿈하고
+/// 그 폭을 캡션 글 최대 폭(lastWidth)으로 저장한다.
+pub(crate) fn reflow_caption_to_width(
+    caption: &mut crate::model::shape::Caption,
+    width_hu: u32,
+    styles: &ResolvedStyleSet,
+    dpi: f64,
+    is_hwp3_variant: bool,
+) {
+    caption.max_width = width_hu;
+    let width_px = crate::renderer::hwpunit_to_px(width_hu as i32, dpi);
+    for para in &mut caption.paragraphs {
+        let style = styles.para_styles.get(para.para_shape_id as usize);
+        reflow_line_segs(
+            para,
+            ParagraphBox::content_for_style(width_px, style, dpi),
+            styles,
+            dpi,
+        );
+    }
+    recalculate_cell_paragraph_vpos(
+        &mut caption.paragraphs,
+        0,
+        None,
+        styles,
+        dpi,
+        is_hwp3_variant,
+    );
+}
+
 pub(super) fn recalculate_cell_paragraph_vpos(
     paragraphs: &mut [Paragraph],
     start_para: usize,
@@ -3883,15 +3914,15 @@ impl DocumentCore {
                     Some((width, padding.left, padding.right))
                 }
             }
-            Control::Shape(shape) if cell_idx == 65534 => {
-                // 도형 캡션도 표 캡션처럼 Top/Bottom 은 max_width, Left/Right 는 width.
-                let cap = Self::shape_caption_ref(shape)?;
-                use crate::model::shape::CaptionDirection;
-                let w = match cap.direction {
-                    CaptionDirection::Left | CaptionDirection::Right => cap.width,
-                    _ => cap.max_width,
-                };
-                Some((w as i32, 0, 0))
+            // 도형 캡션(셀 65534)과 그림 캡션은 캡션 글 폭으로 줄을 나눈다.
+            Control::Shape(shape) if cell_idx == super::super::TABLE_CAPTION_CELL_SENTINEL => {
+                let common = shape.common();
+                let caption = Self::shape_caption_ref(shape)?;
+                Some((
+                    caption.text_width(common.width, &common.margin) as i32,
+                    0,
+                    0,
+                ))
             }
             Control::Shape(shape) => {
                 let tb = super::super::helpers::get_textbox_at(shape, cell_idx)?;
@@ -3920,7 +3951,13 @@ impl DocumentCore {
                     Some((extent, tb.margin_left, tb.margin_right))
                 }
             }
-            Control::Picture(pic) => Some((pic.common.width as i32, 0, 0)),
+            Control::Picture(pic) => Some((
+                pic.caption.as_ref().map_or(pic.common.width, |caption| {
+                    caption.text_width(pic.common.width, &pic.common.margin)
+                }) as i32,
+                0,
+                0,
+            )),
             _ => None,
         }
     }
@@ -3973,9 +4010,9 @@ impl DocumentCore {
             }
             para = match control {
                 Control::Table(t) => t.cells.get(cell_idx)?.paragraphs.get(cell_para_idx)?,
-                Control::Shape(s) => super::super::helpers::get_textbox_at(s, cell_idx)?
-                    .paragraphs
-                    .get(cell_para_idx)?,
+                Control::Shape(s) => {
+                    super::super::helpers::shape_cell_paragraphs(s, cell_idx)?.get(cell_para_idx)?
+                }
                 Control::Picture(p) => p.caption.as_ref()?.paragraphs.get(cell_para_idx)?,
                 Control::Header(_) | Control::Footer(_) if cell_idx == 0 => {
                     control.header_footer_paragraphs()?.get(cell_para_idx)?

@@ -1207,11 +1207,9 @@ impl DocumentCore {
                         .ok_or_else(|| HwpError::RenderError(format!("셀 {} 범위 초과", cell_idx)))?
                         .paragraphs
                 }
-                Control::Shape(s) => {
-                    &mut super::super::helpers::get_textbox_at_mut(s, cell_idx)
-                        .ok_or_else(|| HwpError::RenderError("글상자 없음".to_string()))?
-                        .paragraphs
-                }
+                // 셀 65534는 도형 캡션이다.
+                Control::Shape(s) => super::super::helpers::shape_cell_paragraphs_mut(s, cell_idx)
+                    .ok_or_else(|| HwpError::RenderError("글상자 없음".to_string()))?,
                 Control::Picture(p) => {
                     &mut p
                         .caption

@@ -200,6 +200,29 @@ pub(crate) fn get_textbox_at_mut(
         .as_mut()
 }
 
+/// 도형 셀 번호가 가리키는 문단 목록. 셀 65534는 표 캡션처럼 도형 캡션이고, 그 밖은 글상자 순번이다.
+pub(crate) fn shape_cell_paragraphs(
+    shape: &crate::model::shape::ShapeObject,
+    index: usize,
+) -> Option<&Vec<Paragraph>> {
+    if index == super::TABLE_CAPTION_CELL_SENTINEL {
+        return super::DocumentCore::shape_caption_ref(shape).map(|caption| &caption.paragraphs);
+    }
+    get_textbox_at(shape, index).map(|text_box| &text_box.paragraphs)
+}
+
+pub(crate) fn shape_cell_paragraphs_mut(
+    shape: &mut crate::model::shape::ShapeObject,
+    index: usize,
+) -> Option<&mut Vec<Paragraph>> {
+    if index == super::TABLE_CAPTION_CELL_SENTINEL {
+        return super::DocumentCore::shape_caption_mut(shape)
+            .as_mut()
+            .map(|caption| &mut caption.paragraphs);
+    }
+    get_textbox_at_mut(shape, index).map(|text_box| &mut text_box.paragraphs)
+}
+
 /// 독립 ShapeObject의 TextBox 가변 참조를 추출한다.
 pub(crate) fn get_textbox_from_shape_mut(
     shape: &mut crate::model::shape::ShapeObject,

@@ -1,6 +1,6 @@
 //! 글자처럼 취급하는 개체의 슬롯과 문단 소유권을 함께 옮긴다.
 
-use super::{header_footer_apply_from_u8, helpers::get_textbox_at_mut, DocumentCore};
+use super::{header_footer_apply_from_u8, DocumentCore};
 use crate::{
     error::HwpError,
     model::{
@@ -210,9 +210,8 @@ fn paragraph_mut<'a>(
                 }
                 cell.paragraphs.get_mut(child)
             }
-            Control::Shape(s) => {
-                get_textbox_at_mut(s, cell).and_then(|t| t.paragraphs.get_mut(child))
-            }
+            Control::Shape(s) => super::helpers::shape_cell_paragraphs_mut(s, cell)
+                .and_then(|paragraphs| paragraphs.get_mut(child)),
             Control::Picture(p) if cell == 0 => {
                 p.caption.as_mut().and_then(|c| c.paragraphs.get_mut(child))
             }
