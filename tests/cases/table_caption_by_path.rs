@@ -170,3 +170,73 @@ fn caption_step_without_caption_is_an_error() {
         .unwrap_err();
     assert!(error.to_string().contains("캡션이 없습니다"), "{error}");
 }
+
+/// 렌더 트리에서 글에 `text`가 든 글자 런 상자 (x, y, w, h)와, 그 런을 품은 가장 안쪽 칸 상자.
+fn run_and_cell_box(doc: &HwpDocument, text: &str) -> ([f64; 4], Option<[f64; 4]>) {
+    use serde_json::Value;
+    fn rect(node: &Value) -> [f64; 4] {
+        let b = |k: &str| node["bbox"][k].as_f64().unwrap();
+        [b("x"), b("y"), b("w"), b("h")]
+    }
+    fn find(
+        node: &Value,
+        text: &str,
+        cell: Option<[f64; 4]>,
+    ) -> Option<([f64; 4], Option<[f64; 4]>)> {
+        if node["type"] == "TextRun" && node["text"].as_str().is_some_and(|t| t.contains(text)) {
+            return Some((rect(node), cell));
+        }
+        let cell = if node["type"] == "Cell" {
+            Some(rect(node))
+        } else {
+            cell
+        };
+        node["children"]
+            .as_array()?
+            .iter()
+            .find_map(|n| find(n, text, cell))
+    }
+    let tree: Value = serde_json::from_str(&doc.get_page_render_tree(0).unwrap()).unwrap();
+    find(&tree, text, None).expect("글자 런")
+}
+
+/// 캡션을 아래에 두고 캡션 글 끝에 "AB"를 넣는다. 넣기 전 캡션 글 길이를 돌려준다.
+fn caption_with_text(doc: &mut HwpDocument, root: usize, cell: &Path) -> usize {
+    doc.set_table_properties_by_path_native(
+        0,
+        root,
+        cell,
+        r#"{"hasCaption":true,"captionDirection":3}"#,
+    )
+    .unwrap();
+    let caption = caption_path(cell);
+    let before = doc
+        .get_cell_paragraph_length_by_path(0, root as u32, &path_json(&caption))
+        .unwrap() as usize;
+    doc.insert_text_in_cell_by_path(0, root, &caption, before, "AB")
+        .unwrap();
+    before
+}
+
+#[test]
+fn header_table_caption_is_hit_in_header_edit() {
+    let (mut doc, _, _, host, header) = doc_with_inner_tables();
+    let before = caption_with_text(&mut doc, host, &header);
+    let ([x, y, w, h], _) = run_and_cell_box(&doc, "AB");
+    // 캡션 글 끝을 누르면 머리말 문단이 아니라 그 캡션 글 끝이다.
+    let hit = json(
+        &doc.hit_test_in_header_footer_target_native(0, 0, true, 0, x + w - 0.5, y + h / 2.0)
+            .unwrap(),
+    );
+    assert_eq!(hit["hit"], true);
+    assert_eq!(hit["parentParaIndex"], host as u64, "{hit}");
+    assert_eq!(
+        hit["cellPath"],
+        json(&path_json(&caption_path(&header))),
+        "{hit}"
+    );
+    assert_eq!(
+        (hit["paraIndex"].as_u64(), hit["charOffset"].as_u64()),
+        (Some(0), Some(before as u64 + 2))
+    );
+}
