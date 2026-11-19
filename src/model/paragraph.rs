@@ -2162,6 +2162,20 @@ impl Paragraph {
         let actual_count = count.min(text_len - char_offset);
         let del_end = char_offset + actual_count;
 
+        // 자동 번호의 공백 자리표시자처럼 컨트롤이 차지한 글자를 지우면 그 컨트롤도 함께 지운다.
+        // 남기면 번호가 글 뒤로 밀려 다시 그려지고, 자리표시자의 8유닛 중 7유닛이 주인 없이 남는다.
+        let owned_controls: Vec<usize> = {
+            let positions = self.control_text_positions();
+            (0..self.controls.len())
+                .filter(|&ci| {
+                    positions.get(ci).is_some_and(|&at| {
+                        (char_offset..del_end).contains(&at)
+                            && self.control_owns_char(ci, at, &text_chars, &self.char_offsets)
+                    })
+                })
+                .collect()
+        };
+
         self.delete_nb_space_origin_range(char_offset, del_end);
 
         // 바이트 범위 계산
@@ -2177,8 +2191,22 @@ impl Paragraph {
         let utf16_delta: u32 = text_chars[char_offset..del_end]
             .iter()
             .map(|c| Self::char_stream_len(*c))
-            .sum();
+            .sum::<u32>()
+            + owned_controls.len() as u32 * (CTRL_CHAR_CODE_UNITS - 1);
         let utf16_end = utf16_start + utf16_delta;
+
+        // 뒤 컨트롤부터 빼야 앞 컨트롤 번호가 그대로다. 문단 길이는 아래에서 utf16_delta로 줄인다.
+        for &ci in owned_controls.iter().rev() {
+            self.controls.remove(ci);
+            if ci < self.ctrl_data_records.len() {
+                self.ctrl_data_records.remove(ci);
+            }
+            for range in &mut self.field_ranges {
+                if range.control_idx > ci {
+                    range.control_idx -= 1;
+                }
+            }
+        }
 
         self.literal_figure_spaces
             .retain(|&position| position < char_offset || position >= del_end);
@@ -2323,6 +2351,11 @@ impl Paragraph {
             } else if end.char_idx > char_offset {
                 end.char_idx = char_offset;
             }
+        }
+
+        if !owned_controls.is_empty() {
+            self.control_mask =
+                Self::compute_control_mask_for(&self.text, &self.controls, &self.field_ranges);
         }
 
         // 6. char_count 갱신
