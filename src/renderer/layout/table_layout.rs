@@ -11561,6 +11561,25 @@ impl LayoutEngine {
             + hwpunit_to_px(table.outer_margin_bottom as i32, self.dpi)
     }
 
+    /// 블록 흐름 계획이 쓰는 칸 안 표의 점유 높이. 위·아래 캡션과 그 간격도 표 바깥 상자처럼
+    /// 흐름을 차지한다(측정기의 `total_height`와 같은 몫).
+    fn stored_block_table_height(
+        &self,
+        table: &crate::model::table::Table,
+        styles: &ResolvedStyleSet,
+    ) -> f64 {
+        let spacing = table
+            .caption
+            .as_ref()
+            .map_or(0.0, |c| hwpunit_to_px(c.spacing as i32, self.dpi));
+        self.calc_nested_table_height(table, styles)
+            + caption_flow_extra(
+                &table.caption,
+                self.calculate_caption_height(&table.caption, styles),
+                spacing,
+            )
+    }
+
     /// Physical body size; the placement plan owns outer margins separately.
     fn nested_table_body_height(
         &self,
@@ -11732,7 +11751,7 @@ impl LayoutEngine {
             paragraphs,
             styles,
             self.dpi,
-            |table| self.calc_nested_table_height(table, styles),
+            |table| self.stored_block_table_height(table, styles),
         ) {
             return Some(SequentialNestedCellLayout {
                 origins: flow.origins,
@@ -26538,15 +26557,19 @@ impl LayoutEngine {
                 )
             });
         let stored_block_frame = saved_nested_frame.or_else(|| {
-            recursive_cut.as_ref().and_then(|cut| {
-                crate::renderer::float_placement::stored_block_cell_flow(
-                    &cell.paragraphs,
-                    styles,
-                    self.dpi,
-                    |child| self.calc_nested_table_height(child, styles),
-                )?;
-                nested.map(|child| self.nested_cut_physical_height(child, cut, styles))
-            })
+            // 조각 높이(nested_cut_physical_height)는 캡션을 세지 않는다. 캡션 달린 표의 조각은 옛 길로 잰다.
+            recursive_cut
+                .as_ref()
+                .filter(|_| nested.is_none_or(|child| child.caption.is_none()))
+                .and_then(|cut| {
+                    crate::renderer::float_placement::stored_block_cell_flow(
+                        &cell.paragraphs,
+                        styles,
+                        self.dpi,
+                        |child| self.stored_block_table_height(child, styles),
+                    )?;
+                    nested.map(|child| self.nested_cut_physical_height(child, cut, styles))
+                })
         });
         let stored_text_frame = nested.zip(recursive_cut.as_ref()).and_then(|(child, cut)| {
             self.stored_nested_text_frame_for_cut(
@@ -28409,7 +28432,7 @@ impl LayoutEngine {
                     &cell.paragraphs,
                     styles,
                     self.dpi,
-                    |child| self.calc_nested_table_height(child, styles),
+                    |child| self.stored_block_table_height(child, styles),
                 )
                 .filter(|flow| flow.closed_before_host)
                 .map_or(content, |flow| flow.bottom)

@@ -7482,7 +7482,6 @@ pub(crate) fn stored_block_cell_flow_with_storage<S: crate::storage::Storage>(
                             // preserve its stored anchor/extent path instead.
                             || t.common.vert_align != VertAlign::Top
                             || signed_hwpunit(t.common.vertical_offset) < 0
-                            || t.caption.is_some()
                     }
                     Control::Field(_) => false,
                     // A single-column definition sets the host context and

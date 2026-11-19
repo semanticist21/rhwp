@@ -240,3 +240,34 @@ fn header_table_caption_is_hit_in_header_edit() {
         (Some(0), Some(before as u64 + 2))
     );
 }
+
+#[test]
+fn nested_table_caption_fits_in_outer_cell() {
+    let (mut doc, body, nested, _, _) = doc_with_inner_tables();
+    let before = caption_with_text(&mut doc, body, &nested);
+    let ([_, y, _, h], cell) = run_and_cell_box(&doc, "AB");
+    let [_, cell_y, _, cell_h] = cell.expect("캡션 글은 바깥 칸 안에 그린다");
+    // 바깥 칸이 안쪽 표 캡션까지 품는다.
+    assert!(
+        cell_y + cell_h >= y + h - 0.5,
+        "칸 {cell:?} / 캡션 줄 {y}+{h}"
+    );
+    // 캡션 캐럿은 칸 상자로 잘리지 않고 그 캡션 줄에 선다.
+    let rect = json(
+        &doc.get_cursor_rect_by_path(
+            0,
+            body as u32,
+            &path_json(&caption_path(&nested)),
+            before as u32 + 2,
+        )
+        .unwrap(),
+    );
+    let (cy, ch) = (
+        rect["y"].as_f64().unwrap(),
+        rect["height"].as_f64().unwrap(),
+    );
+    assert!(
+        cy + ch >= y + h - 1.0 && cy <= y + 1.0,
+        "캐럿 {rect} / 캡션 줄 {y}+{h}"
+    );
+}
