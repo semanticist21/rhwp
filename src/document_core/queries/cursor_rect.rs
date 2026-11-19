@@ -7218,27 +7218,27 @@ fn header_footer_caption_hit(
     y: f64,
 ) -> Option<String> {
     use crate::renderer::render_tree::{RenderNode, RenderNodeType};
-    // 머리말 안 표 칸 글은 머리말 문단이 뿌리라 이 머리말 컨트롤을 뿌리로 둔 경로만 고른다.
-    fn collect<'a>(node: &'a RenderNode, root: (usize, usize), out: &mut Vec<&'a RenderNode>) {
+    // 머리말 그림 캡션 글은 표 칸 글처럼 머리말 문단이 뿌리인 [(그림, 0, 캡션 문단)] 문맥을 갖는다.
+    // 표 칸(TableCell) 밖이고 글상자가 아닌 칸 0 문맥만 그림 캡션이다(표 캡션은 65534로 따로 찾는다).
+    fn collect<'a>(node: &'a RenderNode, in_cell: bool, out: &mut Vec<&'a RenderNode>) {
         if let RenderNodeType::TextRun(ref run) = node.node_type {
-            if run.char_start.is_some()
+            if !in_cell
+                && run.char_start.is_some()
                 && run.cell_context.as_ref().is_some_and(|ctx| {
-                    ctx.path.len() == 2
-                        && ctx.parent_para_index == root.0
-                        && ctx.path[0].control_index == root.1
-                        && ctx.path[0].cell_index == 0
+                    !ctx.in_textbox && ctx.path.len() == 1 && ctx.path[0].cell_index == 0
                 })
             {
                 out.push(node);
             }
             return;
         }
+        let in_cell = in_cell || matches!(node.node_type, RenderNodeType::TableCell(_));
         for child in &node.children {
-            collect(child, root, out);
+            collect(child, in_cell, out);
         }
     }
     let mut runs = Vec::new();
-    collect(hf_node, (host, control), &mut runs);
+    collect(hf_node, false, &mut runs);
     let node = runs
         .into_iter()
         .filter(|node| y >= node.bbox.y && y <= node.bbox.y + node.bbox.height)
@@ -7264,16 +7264,16 @@ fn header_footer_caption_hit(
         .min_by(|a, b| (a.1 - local).abs().total_cmp(&(b.1 - local).abs()))
         .map_or(0, |(i, _)| i);
     let cursor_x = node.bbox.x + positions.get(index).copied().unwrap_or(0.0);
-    let (root, inner) = (&ctx.path[0], &ctx.path[1]);
+    let inner = &ctx.path[0];
     Some(format!(
         "{{\"hit\":true,\"sectionIndex\":{},\"applyTo\":{},\"paraIndex\":{},\"charOffset\":{},\"parentParaIndex\":{},\"cellPath\":[{{\"controlIndex\":{},\"cellIndex\":0,\"cellParaIndex\":{}}},{{\"controlIndex\":{},\"cellIndex\":{},\"cellParaIndex\":{}}}],\"cursorRect\":{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"height\":{:.1}}}}}",
         section_idx,
         apply_to,
         inner.cell_para_index,
         run.char_start? + index,
+        host,
+        control,
         ctx.parent_para_index,
-        root.control_index,
-        root.cell_para_index,
         inner.control_index,
         inner.cell_index,
         inner.cell_para_index,

@@ -454,7 +454,7 @@ fn header_picture_caption_line_hits_its_caption() {
     core.mark_section_dirty(0);
     core.paginate_if_needed();
 
-    // 머리말 캡션 글줄의 셀 문맥은 머리말 문단 기준 [(머리말, 0, 문단), (그림, 0, 0)]이다.
+    // 머리말 캡션 글줄의 셀 문맥은 머리말 표 칸처럼 머리말 문단이 뿌리인 [(그림, 0, 0)]이다.
     // 머리말 글줄은 본문 캡션 소유자(caption_owner)를 싣지 않으므로 글자 조각의 셀 문맥으로 찾는다.
     fn header_caption(node: &RenderNode) -> Option<(BoundingBox, CellContext)> {
         if matches!(node.node_type, RenderNodeType::TextLine(_)) {
@@ -465,7 +465,7 @@ fn header_picture_caption_line_hits_its_caption() {
                     RenderNodeType::TextRun(run) => run.cell_context.clone(),
                     _ => None,
                 });
-            if let Some(ctx) = ctx.filter(|ctx| ctx.path.len() == 2) {
+            if let Some(ctx) = ctx.filter(|ctx| ctx.path.len() == 1) {
                 return Some((node.bbox, ctx));
             }
         }
@@ -479,13 +479,13 @@ fn header_picture_caption_line_hits_its_caption() {
         .find(|child| matches!(child.node_type, RenderNodeType::Header))
         .expect("머리말 노드");
     let (line, ctx) = header_caption(header_node).expect("머리말 캡션 글줄");
-    assert_eq!(ctx.parent_para_index, host);
+    assert_eq!(ctx.parent_para_index, 0);
     let steps: Vec<_> = ctx
         .path
         .iter()
         .map(|entry| (entry.control_index, entry.cell_index, entry.cell_para_index))
         .collect();
-    assert_eq!(steps, vec![(hf, 0, 0), (0, 0, 0)]);
+    assert_eq!(steps, vec![(0, 0, 0)]);
 
     // 머리말 편집에서 그 글줄을 누르면 그림 캡션 자리가 된다.
     let hit = core
@@ -501,6 +501,7 @@ fn header_picture_caption_line_hits_its_caption() {
     let hit: serde_json::Value = serde_json::from_str(&hit).expect("JSON");
     let path = hit["cellPath"].as_array().expect("셀 경로");
     assert_eq!(path.len(), 2, "{hit}");
+    assert_eq!(hit["parentParaIndex"], host);
     assert_eq!(path[0]["controlIndex"], hf);
     assert_eq!(path[1]["controlIndex"], 0);
 }
