@@ -425,22 +425,31 @@ fn first_cell_box(core: &DocumentCore) -> BoundingBox {
 
 #[test]
 fn header_picture_caption_line_hits_its_caption() {
-    header_picture_caption(false);
+    header_picture_caption(false, false);
 }
 
 /// 한컴 12.30은 머리말에 넣은 그림을 글자처럼 취급하고 그 아래 캡션을 그림 바로 아래에 그린다.
 #[test]
 fn header_inline_picture_caption_is_drawn_and_hits_its_caption() {
-    header_picture_caption(true);
+    header_picture_caption(true, false);
 }
 
-fn header_picture_caption(treat_as_char: bool) {
+/// 한컴 12.30처럼 머리말 그림에도 캡션을 새로 단다.
+#[test]
+fn header_picture_gets_a_new_caption() {
+    header_picture_caption(true, true);
+}
+
+fn header_picture_caption(treat_as_char: bool, new_caption: bool) {
+    const CAPTION: &str = r#""hasCaption":true,"captionDirection":"Bottom","captionVertAlign":"Top","captionWidth":8504,"captionSpacing":850"#;
     let mut core = blank();
     let (para, ctrl) = floating_picture(
         &mut core,
-        &format!(
-            r#"{{"treatAsChar":{treat_as_char},"hasCaption":true,"captionDirection":"Bottom","captionVertAlign":"Top","captionWidth":8504,"captionSpacing":850}}"#
-        ),
+        &if new_caption {
+            format!(r#"{{"treatAsChar":{treat_as_char}}}"#)
+        } else {
+            format!(r#"{{"treatAsChar":{treat_as_char},{CAPTION}}}"#)
+        },
     );
     let picture = core.document.sections[0].paragraphs[para].controls[ctrl].clone();
     core.create_header_footer_native(0, true, 0)
@@ -465,6 +474,17 @@ fn header_picture_caption(treat_as_char: bool) {
     core.document.sections[0].raw_stream = None;
     core.mark_section_dirty(0);
     core.paginate_if_needed();
+    if new_caption {
+        core.set_header_footer_picture_properties_native(
+            0,
+            host,
+            hf,
+            0,
+            0,
+            &format!("{{{CAPTION}}}"),
+        )
+        .expect("머리말 그림 캡션 넣기");
+    }
 
     // 머리말 캡션 글줄의 셀 문맥은 머리말 표 칸처럼 머리말 문단이 뿌리인 [(그림, 0, 0)]이다.
     // 머리말 글줄은 본문 캡션 소유자(caption_owner)를 싣지 않으므로 글자 조각의 셀 문맥으로 찾는다.
