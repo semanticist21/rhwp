@@ -151,3 +151,30 @@ fn header_page_number_before_a_code_keeps_the_code() {
         assert_eq!(codes(&reopened), ["새 지은이"]);
     }
 }
+
+/// 쪽 단위 감추기(`set_page_hide_on_page_native`)가 같은 문단의 조판 부호를 넣거나 빼도
+/// 활성 누름틀 끝 입력은 그 누름틀에 든다.
+#[test]
+fn page_hide_on_page_keeps_typing_in_the_active_field() {
+    use rhwp::model::control::PageHide;
+    for hide in [true, false] {
+        let mut doc = doc_with_field("앞  뒤", 2);
+        doc.set_field_value_by_name("남을 필드", "AB").unwrap();
+        if !hide {
+            doc.set_page_hide_native(0, 0, true, false, false, false, false, false)
+                .unwrap();
+        }
+        let fields: Vec<Value> = serde_json::from_str(&doc.get_field_list_json()).unwrap();
+        let end = fields[0]["endCharIdx"].as_u64().unwrap() as usize;
+        assert!(doc.set_active_field(0, 0, end));
+        let ph = PageHide {
+            hide_header: hide,
+            ..Default::default()
+        };
+        doc.set_page_hide_on_page_native(0, 0, &[], 0, ph).unwrap();
+        doc.insert_text_native(0, 0, end, "C").unwrap();
+        let field: Value =
+            serde_json::from_str(&doc.get_field_value_by_name("남을 필드").unwrap()).unwrap();
+        assert_eq!(field["value"], "ABC", "감추기 {hide}");
+    }
+}
