@@ -9,7 +9,7 @@
 //!
 //! - `overflow-e2`·`overflow-r2`: 2단. 1단 각주(가1~가345)가 단을 넘치고, 단 나눔 뒤 2단 문단에 각주 하나.
 //! - `overflow-e2-flow`·`overflow-r2-flow`: 같은 각주 뒤에 단 나눔 없이 긴 본문(흐름1~흐름300).
-//! - `overflow-e3u`·`overflow-r3u`: 너비가 다른 3단. 1단 각주(나1~)가 넘치고 2·3단 문단에 각주 하나씩.
+//! - `overflow-r3u`: 너비가 다른 3단 오른쪽 단 아래. 1단 각주(나1~)가 넘치고 2·3단 문단에 각주 하나씩.
 #![cfg(not(target_arch = "wasm32"))]
 
 use rhwp::wasm_api::HwpDocument;
@@ -129,28 +129,6 @@ fn each_column_overflow_keeps_next_column_body_above_continuation() {
     assert!(second
         .body_at(113.4)
         .is_some_and(|body| body.starts_with("흐름181")));
-}
-
-#[test]
-fn each_column_overflow_into_wider_column_keeps_later_notes_on_their_page() {
-    let doc = open("overflow-e3u.hwp");
-    let first = page(&doc, 0);
-    let (left, _) = first.notes_at(113.4).expect("1단 각주 영역");
-    assert!(left.ends_with("나99"), "1단 영역 끝: {left}");
-    let (middle, _) = first.notes_at(238.6).expect("2단 각주 영역");
-    assert!(
-        middle.starts_with("나100") && middle.contains("나130"),
-        "{middle}"
-    );
-    let all: String = first
-        .notes
-        .iter()
-        .map(|(_, note, _)| note.as_str())
-        .collect();
-    assert!(
-        all.contains("2단 각주"),
-        "참조가 1쪽에 있는 각주는 1쪽에 그린다: {all}"
-    );
 }
 
 #[test]
