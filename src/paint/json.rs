@@ -1922,8 +1922,8 @@ fn write_text_style(buf: &mut String, style: &TextStyle) {
         style.font_size,
         style.superscript,
         style.subscript,
-        // 원본 글자 위치는 run 상자가 이미 옮겼다.
-        None,
+        // run 상자가 이미 옮긴 글자 위치는 다시 싣지 않는다.
+        style.drawn_font_position(),
     );
     super::text_shadow::write_offsets_json(
         buf,
@@ -1974,8 +1974,8 @@ fn write_paint_text_style(buf: &mut String, style: &PaintTextStyle) {
         style.font_size,
         style.superscript,
         style.subscript,
-        // 원본 글자 위치는 run 상자가 이미 옮겼다.
-        None,
+        // 그리기가 소비하는 글자 위치다(run 상자가 옮긴 run은 없다).
+        style.font_position,
     );
     super::text_shadow::write_offsets_json(
         buf,

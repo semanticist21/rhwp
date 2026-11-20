@@ -1761,15 +1761,24 @@ impl Paragraph {
     /// 정의로 다시 잰다. 편집 뒤 첫 탭(`next`)은 앞 글이 바뀌어 폭이 달라지고, 편집 앞 마지막
     /// 탭(`before - 1`)은 오른쪽·가운데·소수점이면 뒤 조각이 바뀌어 폭이 달라진다(왼쪽 탭은 그대로).
     fn drop_stale_tab_widths(&mut self, before: usize, next: usize) {
+        // 오른쪽 탭은 정렬·채움을 두고 전진 폭만 비운다(devel #7727). 다른 탭은 자리표로 되돌린다.
+        let drop_width = |ext: &mut [u16; 7]| {
+            if ext[2] >> 8 == 2 {
+                ext[0] = 0;
+                ext[1] = 0;
+            } else {
+                *ext = TAB_EXT_PLACEHOLDER;
+            }
+        };
         if let Some(ext) = self.tab_extended.get_mut(next) {
-            *ext = TAB_EXT_PLACEHOLDER;
+            drop_width(ext);
         }
         if let Some(ext) = before
             .checked_sub(1)
             .and_then(|index| self.tab_extended.get_mut(index))
         {
             if !tab_ext_is_placeholder(ext) && ext[2] >> 8 != 1 {
-                *ext = TAB_EXT_PLACEHOLDER;
+                drop_width(ext);
             }
         }
     }

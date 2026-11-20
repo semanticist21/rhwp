@@ -23,13 +23,18 @@ type ParaKey = (
 );
 
 /// 폭이 정해지지 않은 탭이 있는 문단. 셀·글상자·머리말·꼬리말 안까지 본다.
+/// 저장 폭을 조판으로 채워야 하는 탭: 자리표, 그리고 편집으로 폭만 비운 오른쪽 탭.
+fn width_unknown(ext: &[u16; 7]) -> bool {
+    tab_ext_is_placeholder(ext) || (ext[0] == 0 && ext[1] == 0 && ext[2] >> 8 == 2)
+}
+
 fn has_unlaid_tab(para: &Paragraph) -> bool {
     let own = para
         .text
         .chars()
         .filter(|&ch| ch == '\t')
         .enumerate()
-        .any(|(k, _)| para.tab_extended.get(k).is_none_or(tab_ext_is_placeholder));
+        .any(|(k, _)| para.tab_extended.get(k).is_none_or(width_unknown));
     own || para.controls.iter().any(|control| match control {
         Control::Table(table) => table
             .cells
@@ -153,7 +158,7 @@ impl DocumentCore {
                 if para
                     .tab_extended
                     .get(k)
-                    .is_some_and(|stored| !tab_ext_is_placeholder(stored))
+                    .is_some_and(|stored| !width_unknown(stored))
                 {
                     continue;
                 }

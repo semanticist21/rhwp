@@ -59,9 +59,10 @@ fn inserted_tab_does_not_take_existing_tab_widths() {
         ..para_with_tabs()
     };
     para.insert_text_at(2, "Y");
+    // 오른쪽 탭은 정렬·채움을 두고 전진 폭만 비운다(devel #7727).
     assert_eq!(
         para.tab_extended,
-        vec![TAB_EXT_PLACEHOLDER, TAB_EXT_PLACEHOLDER]
+        vec![[0, 0, 0x0200, 0, 0, 0, 9], TAB_EXT_PLACEHOLDER]
     );
 }
 
@@ -98,7 +99,7 @@ fn split_remeasures_tabs_of_new_paragraph() {
         ..para_with_tabs()
     };
     para.split_at(3);
-    assert_eq!(para.tab_extended, vec![TAB_EXT_PLACEHOLDER]);
+    assert_eq!(para.tab_extended, vec![[0, 0, 0x0200, 0, 0, 0, 9]]);
 }
 
 #[test]

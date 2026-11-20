@@ -274,7 +274,9 @@ impl RenderNode {
         }
         let char_offset_y = if let RenderNodeType::TextRun(run) = &mut node_type {
             // 줄 진행은 유지하고 출력·캐럿·선택이 공유하는 run 상자만 옮긴다.
-            std::mem::take(&mut run.style.char_offset)
+            let offset = std::mem::take(&mut run.style.char_offset);
+            run.style.position_in_box |= offset != 0.0;
+            offset
         } else {
             0.0
         };

@@ -1115,6 +1115,7 @@ fn try_char_style_to_text_style<S: crate::renderer::style_resolver::storage::Sto
             font_position: (cs.font_position_for_lang(lang_index) != 0)
                 .then(|| cs.font_position_for_lang(lang_index)),
             char_offset: cs.font_size * f64::from(cs.font_position_for_lang(lang_index)) / 100.0,
+            position_in_box: false,
             color: cs.text_color,
             bold: cs.bold,
             italic: cs.italic,

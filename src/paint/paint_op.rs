@@ -2132,7 +2132,8 @@ impl From<&TextStyle> for PaintTextStyle {
             script_metrics: style.script_metrics,
             font_family: style.font_family.clone(),
             font_size: style.effective_font_size(),
-            font_position: style.font_position,
+            // run 상자가 이미 옮긴 글자 위치는 그리기 기준선에 다시 싣지 않는다.
+            font_position: style.drawn_font_position(),
             color: style.color,
             bold: style.bold,
             italic: style.italic,

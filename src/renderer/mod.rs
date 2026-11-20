@@ -437,6 +437,9 @@ pub struct TextStyle {
     /// run 상자를 만들 때 한 번 소비하는 기준 크기 기준 세로 이동량(px).
     #[serde(skip)]
     pub char_offset: f64,
+    /// run 상자가 글자 위치를 이미 옮겼는가. 옮긴 run은 그리기 기준선에서 다시 옮기지 않는다.
+    #[serde(skip)]
+    pub position_in_box: bool,
     /// 유지된 원본 HFT의 인쇄 paint 좌표 계약. 논리 조판/전진 폭과 별개다.
     #[serde(skip_serializing)]
     pub hft_print_frame: bool,
@@ -634,7 +637,7 @@ pub struct TextStyle {
     #[serde(skip_serializing)]
     pub ascii_punct_latin: Option<Box<LatinSlotMetrics>>,
 }
-crate::storage::clone_fields!(TextStyle, {literal_soft_hyphen, text_paint, continuous_shadow, inherited_half_space_em, script_metrics, shadow_offset_percent, space_compression, literal_figure_space, literal_figure_space_em, native_pua_metrics, native_otf_metrics, bidi_layout, emphasis_skip_first_cluster, top_underline_font_size, top_underline_phase, supplemental_metrics, isolated_jamo_font, font_family, font_size, char_offset, fixed_glyph_advances, source_font_is_hft, source_font_is_ttf, selected_primary_font_program, source_verified_hft_bold_tracking, source_hwp3_hft_bold, resolved_font_size, print_ink_font_size, font_position, hft_print_frame, print_text_device_frame, preserve_glyph_ink, natural_program_metrics, color, bold, italic, underline, strikethrough, kerning, letter_spacing, ratio, default_tab_width, tab_stops, auto_tab_right, auto_left_tab_position, available_width, line_x_offset, text_start_offset, right_tab_block_width_override, tab_leaders, inline_tabs, extra_word_spacing, unjustified_leading_spaces, extra_char_spacing, extra_dash_advance, outline_type, shadow_type, shadow_color, shadow_offset_x, shadow_offset_y, emboss, engrave, superscript, subscript, emphasis_dot, underline_shape, strike_shape, underline_color, strike_color, shade_color, font_metric_trusted, glyph_fallback_advance_explicit, metric_font_family, original_glyph_metric_family, font_space_em, layout_half_space, layout_half_space_em, regenerated_font_metrics, hft_hangul_face, hft_font_face, hft_fullwidth_dot, ascii_punct_latin});
+crate::storage::clone_fields!(TextStyle, {literal_soft_hyphen, text_paint, continuous_shadow, inherited_half_space_em, script_metrics, shadow_offset_percent, space_compression, literal_figure_space, literal_figure_space_em, native_pua_metrics, native_otf_metrics, bidi_layout, emphasis_skip_first_cluster, top_underline_font_size, top_underline_phase, supplemental_metrics, isolated_jamo_font, font_family, font_size, char_offset, position_in_box, fixed_glyph_advances, source_font_is_hft, source_font_is_ttf, selected_primary_font_program, source_verified_hft_bold_tracking, source_hwp3_hft_bold, resolved_font_size, print_ink_font_size, font_position, hft_print_frame, print_text_device_frame, preserve_glyph_ink, natural_program_metrics, color, bold, italic, underline, strikethrough, kerning, letter_spacing, ratio, default_tab_width, tab_stops, auto_tab_right, auto_left_tab_position, available_width, line_x_offset, text_start_offset, right_tab_block_width_override, tab_leaders, inline_tabs, extra_word_spacing, unjustified_leading_spaces, extra_char_spacing, extra_dash_advance, outline_type, shadow_type, shadow_color, shadow_offset_x, shadow_offset_y, emboss, engrave, superscript, subscript, emphasis_dot, underline_shape, strike_shape, underline_color, strike_color, shade_color, font_metric_trusted, glyph_fallback_advance_explicit, metric_font_family, original_glyph_metric_family, font_space_em, layout_half_space, layout_half_space_em, regenerated_font_metrics, hft_hangul_face, hft_font_face, hft_fullwidth_dot, ascii_punct_latin});
 
 /// [#7418] 영문 슬롯의 기본 메트릭 — [`TextStyle::ascii_punct_latin`] 참조.
 #[derive(Debug, Clone, PartialEq)]
@@ -735,16 +738,21 @@ impl TextStyle {
     /// 모은 것이다 (#2771). 레이아웃 advance 는 본문 run 기준을 유지하고 실제
     /// 글리프 크기와 baseline 만 조정한다는 계약은 종전과 같다.
     ///
-    /// 원본의 글자 위치는 run 상자(`char_offset`)에서 한 번만 옮긴다. 캐럿·선택도
-    /// 같은 상자를 쓰므로 그리기 기준선에서 다시 옮기지 않는다.
+    /// 원본의 글자 위치는 줄 기준선에 한 번만 적용한다. 조판이 run 상자(`char_offset`)를
+    /// 옮겨 캐럿·선택이 따라가게 한 run은 그리기 기준선에서 다시 옮기지 않는다.
     pub fn script_draw_metrics(&self, base_font_size: f64, baseline_y: f64) -> (f64, f64) {
         self.script_metrics.draw_metrics(
             base_font_size,
             baseline_y,
             self.superscript,
             self.subscript,
-            None,
+            self.drawn_font_position(),
         )
+    }
+
+    /// 그리기 기준선이 소비할 글자 위치. run 상자가 이미 옮겼으면 없다.
+    pub(crate) fn drawn_font_position(&self) -> Option<i8> {
+        self.font_position.filter(|_| !self.position_in_box)
     }
 
     /// 글자폭 맞춤(fit) 대상 advance 에 적용할 배율 (#2771, #5756).
@@ -860,6 +868,7 @@ impl Default for TextStyle {
             print_ink_font_size: None,
             font_position: None,
             char_offset: 0.0,
+            position_in_box: false,
             hft_print_frame: false,
             print_text_device_frame: false,
             preserve_glyph_ink: false,
