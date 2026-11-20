@@ -131,6 +131,12 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "논리 캐럿을 글자 위치로 바꾼 뒤 캐럿 붙이기 공통 함수에 위임한다. 공통 함수가 raw_stream을 무효화한다.",
     ),
     (
+        "commands/clipboard.rs",
+        "paste_internal_logical_native",
+        Exempt::DelegatesTo("paste_internal_at_caret_native"),
+        "논리 캐럿을 조각에 맞는 자리로 바꾼 뒤 캐럿 붙이기 공통 함수에 위임한다. 공통 함수가 raw_stream을 무효화한다.",
+    ),
+    (
         "commands/html_import.rs",
         "paste_html_native",
         Exempt::DelegatesTo("paste_html_at_caret_native"),
