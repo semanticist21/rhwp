@@ -236,8 +236,9 @@ fn effect_origin_shift(image: &ImageNode, frame: BoundingBox, dpi: f64) -> (f64,
 /// - 테두리가 있으면 그림 틀을 (굵기 + 79)만큼 넓힌 상자에서 시작한다.
 /// - 네온은 반경만큼 넓힌다. 바깥 그림자는 그 상자를 기울이고 늘여 옮긴 뒤 흐림 반경(96dpi 화소로 올림)만큼
 ///   넓혀 합친다.
-/// - 반사는 그 상자를 테두리 상자 아래 끝에서 뒤집어 거리(화소로 반올림)만큼 내린 모양이고, 흐림 반경만큼
-///   좌우로 넓으며 끝 위치까지 보인다.
+/// - 반사는 그 상자를 테두리 상자 아래 끝에서 뒤집어 거리만큼 내린 모양이고, 흐림 반경만큼 좌우로 넓으며
+///   끝 위치까지 보인다. 거리는 효과 상자가 그림 아래로 나간 만큼의 두 배와 더해 화소로 반올림한다
+///   (반사를 테두리·네온·그림자와 함께 건 견본 71개, 2026-11-21).
 pub(crate) fn inline_effect_outsets_hu(pic: &Picture, w: i32, h: i32) -> [i32; 4] {
     let e = &pic.effects;
     let shadow = e
@@ -289,8 +290,13 @@ pub(crate) fn inline_effect_outsets_hu(pic: &Picture, w: i32, h: i32) -> [i32; 4
             .clamp(0.0, 1.0);
         let axis = frame.y + frame.h;
         let below = k.y + k.h - axis;
-        let length = end * (k.h + if border { 0.0 } else { 2.0 * blur }) - blur;
-        let bottom = axis + (num(r.distance.as_deref()) / PX).round() * PX - below + length;
+        // 테두리가 있으면 흐림이 테두리 안쪽 한 화소만큼 덜 자란다(한컴 흐림 반경 525HU: 450).
+        let grow = if border { (blur - PX).max(0.0) } else { blur };
+        let length = end * (k.h + 2.0 * grow) - blur;
+        // 거리는 그림 아래에서 효과 상자 아래까지의 두 배와 더해 화소로 반올림한다.
+        let ext2 = 2.0 * (k.y + k.h - h);
+        let gap = ((ext2 + num(r.distance.as_deref())) / PX).round() * PX - ext2;
+        let bottom = axis + gap - below + length;
         k = Rect {
             x: k.x - blur,
             y: k.y,
@@ -983,17 +989,38 @@ mod tests {
             None,
         );
         assert_eq!(both, [1176, 2024, 1176, 2024]);
-        // 반사를 다른 효과·테두리와 함께 걸면 한컴과 1px(75HU) 안에서 맞는다(한컴 7258·2825).
-        let framed = inline_outsets(&refl(50, 0, 1.0), Some(850));
-        assert!((framed[2] + framed[3] - 7258).abs() < 75, "{framed:?}");
-        let glowing = inline_outsets(
-            &refl(50, 0, 0.5).replace(
-                r#"}}"#,
-                r##"},"glow":{"alpha":0.5,"radius":1000,"color":"#289b6e"}}"##,
+        // 반사를 테두리·네온·그림자와 함께 건 그림의 위아래 합(한컴 12.30 저장본, 2026-11-21).
+        let glow =
+            |r: i32| format!(r##"}},"glow":{{"alpha":0.5,"radius":{r},"color":"#289b6e"}}}}"##);
+        let room = |json: &str, border: Option<i32>| {
+            let o = inline_outsets(json, border);
+            o[2] + o[3]
+        };
+        for (json, border, hancom) in [
+            (refl(50, 0, 1.0), Some(850), 7258),
+            (refl(50, 800, 0.5), Some(283), 3587),
+            (refl(50, 400, 0.35), Some(567), 3362),
+            (refl(50, 0, 1.0), Some(2834), 15201),
+            (refl(500, 0, 1.0), Some(850), 7708),
+            (refl(50, 0, 0.5).replace(r#"}}"#, &glow(1000)), None, 2825),
+            (refl(50, 800, 0.5).replace(r#"}}"#, &glow(1000)), None, 3575),
+            (
+                refl(50, 0, 1.0).replace(r#"}}"#, &glow(1000)),
+                Some(850),
+                9207,
             ),
-            None,
+        ] {
+            assert!(
+                (room(&json, border) - hancom).abs() <= 1,
+                "{json} {border:?}"
+            );
+        }
+        // 45° 그림자와 함께면 한컴보다 5HU 안에서 크다(한컴 3698).
+        let shadowed = shadow(600, 45, 1200, "").replace(
+            r#"}}"#,
+            &format!(r#"}},"reflection":{{"radius":50,"distance":0,"endPos":1,{REFLECTION}}}}}"#),
         );
-        assert!((glowing[2] + glowing[3] - 2825).abs() < 75, "{glowing:?}");
+        assert!((room(&shadowed, None) - 3698).abs() <= 5);
     }
 
     #[test]
