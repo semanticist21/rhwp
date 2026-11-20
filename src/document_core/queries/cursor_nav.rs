@@ -1060,6 +1060,23 @@ impl DocumentCore {
                 Some(ctrl @ (Control::Header(_) | Control::Footer(_))) => {
                     header_footer_step(ctrl, i, cell_idx, cell_para_idx)?
                 }
+                // 각주·미주는 셀 0이다(`resolve_paragraph_by_path`와 같은 꼴).
+                Some(Control::Footnote(note)) if cell_idx == 0 => {
+                    note.paragraphs.get(cell_para_idx).ok_or_else(|| {
+                        HwpError::RenderError(format!(
+                            "경로[{}]: 각주 문단 {} 범위 초과",
+                            i, cell_para_idx
+                        ))
+                    })?
+                }
+                Some(Control::Endnote(note)) if cell_idx == 0 => {
+                    note.paragraphs.get(cell_para_idx).ok_or_else(|| {
+                        HwpError::RenderError(format!(
+                            "경로[{}]: 미주 문단 {} 범위 초과",
+                            i, cell_para_idx
+                        ))
+                    })?
+                }
                 _ => {
                     return Err(HwpError::RenderError(format!(
                         "경로[{}]: controls[{}]가 표/글상자/그림 캡션이 아닙니다",
@@ -1097,6 +1114,8 @@ impl DocumentCore {
             Some(ctrl @ (Control::Header(_) | Control::Footer(_))) if last.1 == 0 => Ok(ctrl
                 .header_footer_paragraphs()
                 .map_or(0, |paragraphs| paragraphs.len())),
+            Some(Control::Footnote(note)) if last.1 == 0 => Ok(note.paragraphs.len()),
+            Some(Control::Endnote(note)) if last.1 == 0 => Ok(note.paragraphs.len()),
             _ => Err(HwpError::RenderError(format!(
                 "controls[{}]가 표/글상자/그림 캡션이 아닙니다",
                 last.0

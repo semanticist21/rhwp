@@ -4094,11 +4094,23 @@ impl DocumentCore {
         // 커서 좌표를 렌더 트리에서 찾기 ([#2021] 힌트 페이지 우선 탐색)
         // [#4128] 바깥 표 셀 기준으로 후보를 좁힌다. depth 1 이면 char_offset 까지,
         // 중첩 표(depth > 1)면 바깥 셀 행/블록 겹침 수준까지만.
+        // 미주는 문서·구역 끝 쪽에 그려지므로 그 본문 문단의 쪽이 아니라 모든 쪽에서 찾는다.
+        let endnote_root = header_footer.is_none()
+            && matches!(
+                self.document
+                    .sections
+                    .get(section_idx)
+                    .and_then(|section| section.paragraphs.get(parent_para_idx))
+                    .and_then(|para| para.controls.get(path[0].0)),
+                Some(Control::Endnote(_))
+            );
         let pages = if header_footer.is_some() {
             match hint_page {
                 Some(page) => vec![page],
                 None => (0..self.page_count()).collect(),
             }
+        } else if endnote_root {
+            Self::order_pages_by_hint((0..self.page_count()).collect(), hint_page)
         } else {
             let (ctrl0, cell0, cpi0) = path[0];
             let cell_target = if path.len() == 1 {
@@ -6253,6 +6265,16 @@ impl DocumentCore {
             Some(n) => n,
             None => return Ok("{\"hit\":false}".to_string()),
         };
+        // 각주 그림 캡션 글줄을 누르면 그 캡션 글 자리를 본문 문단 뿌리 셀 경로로 준다.
+        if let Some(hit) = footnote_caption_hit(
+            fn_node,
+            page_num,
+            self.find_section_for_page(page_num).0,
+            x,
+            y,
+        ) {
+            return Ok(hit);
+        }
 
         // 각주 TextRun 정보 수집
         struct FnRunInfo {
@@ -7291,6 +7313,79 @@ fn header_footer_edit_node(
     } else {
         matches!(node_type, RenderNodeType::Footer)
     }
+}
+
+/// 각주 그림 캡션 글줄을 누른 자리. 캡션 글줄의 셀 문맥은 본문 문단이 뿌리인
+/// [(각주, 0, 각주 문단), (그림, 0, 캡션 문단)]이다(각주 글은 문단 표지를 쓰고 문맥이 없다).
+/// 누른 y가 든 캡션 줄의 가장 가까운 글자 자리를 셀 히트와 같은 JSON으로 준다.
+fn footnote_caption_hit(
+    fn_node: &crate::renderer::render_tree::RenderNode,
+    page_num: u32,
+    section_idx: usize,
+    x: f64,
+    y: f64,
+) -> Option<String> {
+    use crate::renderer::render_tree::{RenderNode, RenderNodeType};
+    fn collect<'a>(node: &'a RenderNode, out: &mut Vec<&'a RenderNode>) {
+        if let RenderNodeType::TextRun(ref run) = node.node_type {
+            if run.char_start.is_some()
+                && run.cell_context.as_ref().is_some_and(|ctx| {
+                    ctx.path.len() == 2
+                        && ctx.parent_para_index < usize::MAX - 3000
+                        && ctx.path[1].cell_index == 0
+                })
+            {
+                out.push(node);
+            }
+            return;
+        }
+        for child in &node.children {
+            collect(child, out);
+        }
+    }
+    let mut runs = Vec::new();
+    collect(fn_node, &mut runs);
+    let node = runs
+        .into_iter()
+        .filter(|node| y >= node.bbox.y && y <= node.bbox.y + node.bbox.height)
+        .min_by(|a, b| {
+            let dx = |node: &RenderNode| {
+                if x < node.bbox.x {
+                    node.bbox.x - x
+                } else {
+                    (x - (node.bbox.x + node.bbox.width)).max(0.0)
+                }
+            };
+            dx(a).total_cmp(&dx(b))
+        })?;
+    let RenderNodeType::TextRun(ref run) = node.node_type else {
+        return None;
+    };
+    let ctx = run.cell_context.as_ref()?;
+    let positions = run.replay_positions_for(&run.text).into_owned();
+    let local = x - node.bbox.x;
+    let index = positions
+        .iter()
+        .enumerate()
+        .min_by(|a, b| (a.1 - local).abs().total_cmp(&(b.1 - local).abs()))
+        .map_or(0, |(i, _)| i);
+    let cursor_x = node.bbox.x + positions.get(index).copied().unwrap_or(0.0);
+    let (note, inner) = (&ctx.path[0], &ctx.path[1]);
+    Some(format!(
+        "{{\"hit\":true,\"caption\":true,\"sectionIndex\":{},\"paraIndex\":{},\"charOffset\":{},\"parentParaIndex\":{},\"cellPath\":[{{\"controlIndex\":{},\"cellIndex\":0,\"cellParaIndex\":{}}},{{\"controlIndex\":{},\"cellIndex\":0,\"cellParaIndex\":{}}}],\"cursorRect\":{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"height\":{:.1}}}}}",
+        section_idx,
+        inner.cell_para_index,
+        run.char_start? + index,
+        ctx.parent_para_index,
+        note.control_index,
+        note.cell_para_index,
+        inner.control_index,
+        inner.cell_para_index,
+        page_num,
+        cursor_x,
+        node.bbox.y,
+        node.bbox.height
+    ))
 }
 
 /// 머리말·꼬리말 그림 캡션 글줄을 누른 자리. 캡션 글줄의 셀 문맥은 [머리말(셀 0, 머리말 문단),

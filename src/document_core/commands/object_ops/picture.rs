@@ -896,6 +896,23 @@ impl DocumentCore {
         if caption_created {
             crate::parser::assign_auto_numbers(&mut self.document);
         }
+        // 글자처럼 취급 그림의 위·아래 캡션은 그 머리말 줄 높이에 든다. 캡션이 바뀌면 그 문단을 다시 나눈다.
+        let hf = match self.document.sections[section_idx].paragraphs[outer_para_idx]
+            .controls
+            .get(outer_control_idx)
+        {
+            Some(Control::Header(h)) => Some((true, h.apply_to)),
+            Some(Control::Footer(f)) => Some((false, f.apply_to)),
+            _ => None,
+        };
+        if let Some((is_header, apply_to)) = hf {
+            self.reflow_hf_paragraph(
+                section_idx,
+                is_header,
+                crate::document_core::header_footer_apply_to_u8(apply_to),
+                inner_para_idx,
+            );
+        }
         let section = &mut self.document.sections[section_idx];
         section.raw_stream = None;
         self.recompose_section(section_idx);

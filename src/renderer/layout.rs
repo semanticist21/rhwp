@@ -4067,6 +4067,7 @@ mod fill_background;
 mod fixed_textbox_flow;
 mod floating_equation;
 mod footnote_frames;
+pub(crate) use footnote_frames::address_endnote_controls;
 mod footnote_marker_geometry;
 mod header_footer_layout;
 mod hidden_paragraph_marker;

@@ -2215,6 +2215,17 @@ impl LayoutEngine {
                         marker_para,
                         bin_data_content,
                     );
+                    self.layout_footnote_tac_captions(
+                        tree,
+                        fn_node,
+                        first_new_child,
+                        para,
+                        (marker_section, marker_para, p_idx),
+                        &fn_ref.source,
+                        styles,
+                        fn_area,
+                        bin_data_content,
+                    );
                     if is_last_selected_line {
                         // fragment의 마지막 줄은 trailing line-spacing을 쓰지 않는다.
                         let trail_ls = composed
@@ -2233,6 +2244,128 @@ impl LayoutEngine {
             if i + 1 < footnotes.len() {
                 y += hwpunit_to_px(shape.between_notes_margin_hu() as i32, self.dpi);
             }
+        }
+    }
+
+    /// 각주 글줄에 든 글자처럼 취급 그림의 위·아래 캡션을 본문 글자처럼 취급 그림처럼 그린다(한컴 12.30:
+    /// 각주 그림에도 캡션을 단다). 본문 문단 각주의 캡션 글줄은 본문 문단이 뿌리인
+    /// [(각주, 0, 각주 문단), (그림, 0, 캡션 문단)] 문맥을 가져 셀 경로 API가 그 캡션 글에 닿는다.
+    /// 줄 높이는 저장 줄(한컴)과 각주 줄 재조판(`reserve_tac_caption_lines`)이 캡션까지 품는다.
+    #[allow(clippy::too_many_arguments)]
+    fn layout_footnote_tac_captions(
+        &self,
+        tree: &mut PageLayoutContext,
+        fn_node: &mut RenderNode,
+        first_child: usize,
+        para: &Paragraph,
+        (marker_section, marker_para, note_para): (usize, usize, usize),
+        source: &FootnoteSource,
+        styles: &ResolvedStyleSet,
+        fn_area: &LayoutRect,
+        bin_data_content: &[BinDataContent],
+    ) {
+        fn image(node: &RenderNode, at: (usize, usize, usize)) -> Option<(NodeId, BoundingBox)> {
+            if let RenderNodeType::Image(ref img) = node.node_type {
+                if (img.section_index, img.para_index, img.control_index)
+                    == (Some(at.0), Some(at.1), Some(at.2))
+                {
+                    return Some((node.id, node.bbox));
+                }
+            }
+            node.children.iter().find_map(|child| image(child, at))
+        }
+        // 위 캡션 자리만큼 그림과 그 그림 소유의 테두리를 함께 내린다.
+        fn lower(node: &mut RenderNode, owner: NodeId, dy: f64) {
+            if node.id == owner
+                || matches!(&node.node_type, RenderNodeType::Rectangle(rect)
+                    if rect.image_frame_owner == Some(owner))
+            {
+                node.bbox.y += dy;
+            }
+            for child in &mut node.children {
+                lower(child, owner, dy);
+            }
+        }
+        for (ci, ctrl) in para.controls.iter().enumerate() {
+            let Control::Picture(pic) = ctrl else {
+                continue;
+            };
+            let Some(caption) = pic.caption.as_ref() else {
+                continue;
+            };
+            if !pic.common.treat_as_char
+                || !matches!(
+                    caption.direction,
+                    CaptionDirection::Top | CaptionDirection::Bottom
+                )
+            {
+                continue;
+            }
+            let Some((owner, bbox)) = fn_node.children[first_child..]
+                .iter()
+                .find_map(|child| image(child, (marker_section, marker_para, ci)))
+            else {
+                continue;
+            };
+            let spacing = hwpunit_to_px(caption.spacing as i32, self.dpi);
+            let caption_h = self.calculate_caption_height(&pic.caption, styles);
+            let cap_y = match caption.direction {
+                CaptionDirection::Top => {
+                    for child in &mut fn_node.children[first_child..] {
+                        lower(child, owner, caption_h + spacing);
+                    }
+                    bbox.y
+                }
+                _ => bbox.y + bbox.height + spacing,
+            };
+            let ext_left = hwpunit_to_px(
+                caption.margin_extension_left(&pic.common.margin) as i32,
+                self.dpi,
+            );
+            let ext_w = hwpunit_to_px(
+                caption.text_width(pic.common.width, &pic.common.margin) as i32
+                    - pic.common.width as i32,
+                self.dpi,
+            )
+            .max(0.0);
+            let ctx = match source {
+                FootnoteSource::Body {
+                    para_index,
+                    control_index,
+                } => Some(super::CellContext {
+                    in_textbox: false,
+                    parent_para_index: *para_index,
+                    path: vec![
+                        super::CellPathEntry {
+                            control_index: *control_index,
+                            cell_index: 0,
+                            cell_para_index: note_para,
+                            text_direction: 0,
+                        },
+                        super::CellPathEntry {
+                            control_index: ci,
+                            cell_index: 0,
+                            cell_para_index: 0,
+                            text_direction: 0,
+                        },
+                    ],
+                }),
+                // ponytail: 표 셀·글상자 안 각주의 그림 캡션은 그리기만 하고 편집 주소는 아직 없다.
+                _ => None,
+            };
+            self.layout_caption(
+                tree,
+                fn_node,
+                caption,
+                styles,
+                fn_area,
+                bbox.x - ext_left,
+                bbox.width + ext_w,
+                cap_y,
+                bin_data_content,
+                ctx,
+                None,
+            );
         }
     }
 
