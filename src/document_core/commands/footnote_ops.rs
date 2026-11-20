@@ -337,6 +337,36 @@ impl DocumentCore {
         })
     }
 
+    /// 각주 영역 폭이 바뀌면(단 각주 위치·단 수·단 간격·쪽 여백) 구역의 본문 각주 줄을 새 폭으로 나눈다.
+    /// 영역 폭은 쪽 배정을 따르므로 새 조판으로 쪽을 나눈 뒤에 부른다.
+    pub fn reflow_body_footnotes(&mut self, section_idx: usize) {
+        let notes: Vec<(usize, usize, usize)> = self.document.sections[section_idx]
+            .paragraphs
+            .iter()
+            .enumerate()
+            .flat_map(|(para, paragraph)| {
+                paragraph.controls.iter().enumerate().filter_map(
+                    move |(control, ctrl)| match ctrl {
+                        Control::Footnote(note) => Some((para, control, note.paragraphs.len())),
+                        _ => None,
+                    },
+                )
+            })
+            .collect();
+        if notes.is_empty() {
+            return;
+        }
+        for (para, control, count) in notes {
+            for note_para in 0..count {
+                self.reflow_footnote_paragraph(section_idx, para, control, note_para);
+            }
+        }
+        self.document.sections[section_idx].raw_stream = None;
+        self.recompose_section(section_idx);
+        self.paginate_if_needed();
+        self.invalidate_page_tree_cache();
+    }
+
     /// 각주 문단 리플로우
     pub(crate) fn reflow_footnote_paragraph(
         &mut self,

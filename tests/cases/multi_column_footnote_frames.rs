@@ -175,3 +175,53 @@ fn edited_note_wraps_at_column_width() {
     let tree = json(doc.get_page_render_tree(0).unwrap());
     assert!(tree.to_string().contains("넘치는"));
 }
+
+#[test]
+fn column_and_margin_changes_refold_existing_notes() {
+    // 단 수·쪽 여백을 바꾸면 각주 영역 폭이 바뀐다. 한/글 12.30 Mac은 이미 있는 각주도 곧바로 새 폭으로
+    // 다시 나눈다(2단·3단·1단으로 바꿔 확인). 옛 폭의 저장 줄을 그대로 두면 글자를 좁히거나 넓혀 그린다.
+    let mut doc = open("c2-eachColumn.hwp");
+    let control = doc.document().sections[0].paragraphs[0]
+        .controls
+        .iter()
+        .position(|c| matches!(c, rhwp::model::control::Control::Footnote(_)))
+        .unwrap();
+    let at = json(doc.get_note_edit_info_native(0, 0, control).unwrap())["charOffset"]
+        .as_u64()
+        .unwrap() as usize;
+    doc.insert_text_in_footnote_native(0, 0, control, 0, at, &"넘치는 각주 ".repeat(12))
+        .unwrap();
+    let note_lines =
+        |doc: &HwpDocument| match &doc.document().sections[0].paragraphs[0].controls[control] {
+            rhwp::model::control::Control::Footnote(note) => note.paragraphs[0].line_segs.len(),
+            _ => unreachable!(),
+        };
+    let column_lines = note_lines(&doc);
+    doc.set_column_def_native(0, 1, 0, true, 0).unwrap();
+    let body_lines = note_lines(&doc);
+    assert!(
+        column_lines as f64 >= (body_lines - 1) as f64 * 1.8,
+        "1단으로 바꾼 뒤 {body_lines}줄, 2단 {column_lines}줄"
+    );
+    // 본문 폭 영역의 글줄 수가 저장 줄 수와 같다.
+    assert_eq!(areas(&doc, 0)[0].1, body_lines);
+    doc.set_column_def_native(0, 2, 0, true, 2268).unwrap();
+    assert_eq!(note_lines(&doc), column_lines, "다시 2단");
+    doc.set_column_def_native(0, 1, 0, true, 0).unwrap();
+    let mut page = json(doc.get_page_def_native(0).unwrap());
+    let (left, right) = (
+        page["marginLeft"].as_u64().unwrap(),
+        page["marginRight"].as_u64().unwrap(),
+    );
+    let width = page["width"].as_u64().unwrap();
+    // 본문 폭을 반으로 줄이면 1단 각주 줄도 두 배 가까이 는다.
+    let half = (width - left - right) / 4;
+    page["marginLeft"] = (left + half).into();
+    page["marginRight"] = (right + half).into();
+    doc.set_page_def_native(0, &page.to_string()).unwrap();
+    let narrow_lines = note_lines(&doc);
+    assert!(
+        narrow_lines as f64 >= (body_lines - 1) as f64 * 1.8,
+        "여백을 늘린 뒤 {narrow_lines}줄, 본문 폭 {body_lines}줄"
+    );
+}
