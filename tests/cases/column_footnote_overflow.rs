@@ -11,6 +11,9 @@
 //! - `overflow-e2-tail`: 뒤 문단 없이 1단 각주만 넘치는 2단.
 //! - `overflow-e2-flow`·`overflow-r2-flow`: 같은 각주 뒤에 단 나눔 없이 긴 본문(흐름1~흐름300).
 //! - `overflow-r3u`: 너비가 다른 3단 오른쪽 단 아래. 1단 각주(나1~)가 넘치고 2·3단 문단에 각주 하나씩.
+//! - `refold-e3u`·`refold-e3u-chain`: 너비가 다른 3단(8000·14000·20000HU) 각 단 아래. 단 나눔으로 나눈
+//!   `1단`·`2단`·`3단` 문단 끝에 각주가 하나씩 있고, 1단 각주(나1~나130, 나1~나600)가 넘친다.
+//!   한/글 12.30 Mac은 이어받은 각주를 그 단 폭으로 다시 나눈다(2026-11-21 인쇄 대조, 글줄이 모두 같다).
 #![cfg(not(target_arch = "wasm32"))]
 
 use rhwp::wasm_api::HwpDocument;
@@ -225,4 +228,99 @@ fn caret_in_continued_note_follows_the_fragment_that_draws_it() {
         tail["x"].as_f64().unwrap() >= 412.0 && tail["y"].as_f64().unwrap() > 855.0,
         "이어진 줄의 캐럿은 2단 각주 영역에 선다: {tail}"
     );
+}
+
+fn note_offset(doc: &HwpDocument, para: usize, needle: &str) -> (usize, usize) {
+    let paragraph = &doc.document().sections[0].paragraphs[para];
+    let control = paragraph
+        .controls
+        .iter()
+        .position(|control| matches!(control, rhwp::model::control::Control::Footnote(_)))
+        .expect("각주 컨트롤");
+    let rhwp::model::control::Control::Footnote(note) = &paragraph.controls[control] else {
+        unreachable!()
+    };
+    let text = &note.paragraphs[0].text;
+    let byte = text.find(needle).expect("각주 글");
+    (control, text[..byte].chars().count())
+}
+
+#[test]
+fn each_column_overflow_refolds_to_next_column_width() {
+    let doc = open("refold-e3u.hwp");
+    assert_eq!(doc.page_count(), 1);
+    let first = page(&doc, 0);
+    let (left, _) = first.notes_at(113.4).expect("1단 각주 영역");
+    assert!(left.ends_with("나98 나99"), "{left}");
+    let (middle, count) = first.notes_at(238.5).expect("2단 각주 영역");
+    assert!(
+        middle.starts_with("나100 나101 나102 나")
+            && middle.contains("나130")
+            && middle.ends_with("2단 각주"),
+        "{middle}"
+    );
+    assert_eq!(count, 10, "2단 폭으로 다시 나눈 9줄과 2단 각주 1줄");
+
+    // 다시 나눈 조각이 또 넘치면 그 조각의 줄 시작부터 다음 단 폭으로 다시 나눈다.
+    let chain = open("refold-e3u-chain.hwp");
+    assert_eq!(chain.page_count(), 2);
+    let first = page(&chain, 0);
+    let (middle, count) = first.notes_at(238.5).expect("2단 각주 영역");
+    assert!(
+        middle.starts_with("나100 ") && middle.ends_with("나269 나270 나"),
+        "{middle}"
+    );
+    assert_eq!(count, 49);
+    let (right, count) = first.notes_at(436.7).expect("3단 각주 영역");
+    assert!(
+        right.starts_with("271 나272 ") && right.ends_with("나514 나515 나"),
+        "{right}"
+    );
+    assert_eq!(count, 49);
+    assert!(first.body_at(238.5).is_none() && first.body_at(436.7).is_none());
+    let second = page(&chain, 1);
+    let (rest, count) = second.notes_at(113.4).expect("2쪽 1단 각주 영역");
+    assert!(
+        rest.starts_with("516 나517 ") && rest.contains("나600") && rest.ends_with("2단 각주"),
+        "{rest}"
+    );
+    assert_eq!(count, 44, "1단 폭 43줄과 2단 각주 1줄");
+    assert_eq!(second.body_at(113.4), Some("2단"));
+    assert_eq!(second.body_at(238.5), Some("3단"));
+}
+
+#[test]
+fn caret_in_refolded_note_follows_the_refolded_fragment() {
+    let doc = open("refold-e3u-chain.hwp");
+    let caret = |needle: &str| -> Value {
+        let (control, offset) = note_offset(&doc, 0, needle);
+        serde_json::from_str(
+            &doc.get_cursor_rect_in_note_native(0, 0, control, 0, offset)
+                .unwrap(),
+        )
+        .unwrap()
+    };
+    let x = |rect: &Value| rect["x"].as_f64().unwrap();
+    let middle = caret("나200 ");
+    assert!(
+        middle["pageIndex"] == 0 && (238.5..409.1).contains(&x(&middle)),
+        "{middle}"
+    );
+    let right = caret("나400 ");
+    assert!(right["pageIndex"] == 0 && x(&right) >= 436.7, "{right}");
+    let next = caret("나580 ");
+    assert!(next["pageIndex"] == 1 && x(&next) < 238.5, "{next}");
+}
+
+#[test]
+fn reopened_hwpx_splits_overflowing_column_footnote() {
+    // 우리 HWPX 저장은 rhwp가 지은 본문 줄을 내지 않는다. 다시 연 문서도 HWP처럼 나눈다.
+    for name in ["overflow-e2.hwp", "refold-e3u.hwp"] {
+        let saved = open(name).export_hwpx().unwrap();
+        let doc = HwpDocument::from_bytes(&saved).unwrap();
+        assert_eq!(doc.page_count(), 1, "{name}");
+        let reopened = page(&doc, 0);
+        let original = page(&open(name), 0);
+        assert_eq!(reopened.notes, original.notes, "{name}");
+    }
 }

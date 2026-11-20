@@ -6327,11 +6327,37 @@ pub(crate) fn reflow_line_segs_after(
     styles: &ResolvedStyleSet,
     dpi: f64,
 ) -> bool {
-    if kept == 0 || kept >= para.line_segs.len() || !paragraph_box.is_usable() {
+    if kept >= para.line_segs.len() {
         return false;
     }
     let start = para.line_seg_text_start(kept);
-    let mut frame = paragraph_box.frame(para.line_segs[kept].vertical_pos);
+    reflow_line_segs_from(para, kept, start, paragraph_box, styles, dpi)
+}
+
+/// 앞 `kept`줄은 그대로 두고, `start`(UTF-16) 글자부터 뒤를 `paragraph_box` 너비로 다시 접는다.
+///
+/// `start`는 저장 줄의 시작이 아니어도 된다. 너비가 다른 단을 거쳐 다시 나눈 각주 조각을
+/// 또 다른 너비의 단으로 이을 때, 앞 단에서 다시 나눈 줄의 시작부터 접는다
+/// (`footnote_frames::refold_note_paragraphs`). 그때 `kept`째 저장 줄은 `start` 앞에서 끝난다.
+pub(crate) fn reflow_line_segs_from(
+    para: &mut Paragraph,
+    kept: usize,
+    start: u32,
+    paragraph_box: ParagraphBox,
+    styles: &ResolvedStyleSet,
+    dpi: f64,
+) -> bool {
+    if kept == 0 || kept > para.line_segs.len() || !paragraph_box.is_usable() {
+        return false;
+    }
+    let vertical_pos = para.line_segs.get(kept).map_or_else(
+        || {
+            let last = &para.line_segs[kept - 1];
+            last.vertical_pos + last.line_height + last.line_spacing
+        },
+        |line| line.vertical_pos,
+    );
+    let mut frame = paragraph_box.frame(vertical_pos);
     let tail = match try_layout_paragraph_in_frame_impl(
         para,
         &mut frame,
