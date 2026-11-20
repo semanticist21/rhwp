@@ -210,3 +210,30 @@ fn right_column_overflow_queues_later_notes_behind_continuation() {
         "이어받은 조각 뒤에 2·3단 각주: {rest}"
     );
 }
+
+#[test]
+fn caret_in_continued_note_follows_the_fragment_that_draws_it() {
+    let doc = open("overflow-e2.hwp");
+    let control = (0..8)
+        .find(|&index| {
+            doc.get_note_edit_info_native(0, 0, index)
+                .is_ok_and(|info| info.contains("\"kind\":\"footnote\""))
+        })
+        .expect("1단 각주 컨트롤");
+    let caret = |offset: usize| -> Value {
+        serde_json::from_str(
+            &doc.get_cursor_rect_in_note_native(0, 0, control, 0, offset)
+                .unwrap(),
+        )
+        .unwrap()
+    };
+    // 앞 조각(1단)의 첫 글자와 이어진 조각(2단 각주 영역)의 마지막 글자.
+    let head = caret(3);
+    assert!(head["x"].as_f64().unwrap() < 381.7, "{head}");
+    let tail = caret(1440);
+    assert_eq!(tail["pageIndex"], 0, "{tail}");
+    assert!(
+        tail["x"].as_f64().unwrap() >= 412.0 && tail["y"].as_f64().unwrap() > 855.0,
+        "이어진 줄의 캐럿은 2단 각주 영역에 선다: {tail}"
+    );
+}

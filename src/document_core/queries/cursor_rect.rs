@@ -6705,22 +6705,70 @@ impl DocumentCore {
         para_idx: usize,
         control_idx: usize,
     ) -> Option<(u32, usize)> {
+        self.find_body_footnote_fragment_target(section_idx, para_idx, control_idx, None)
+    }
+
+    /// 각주를 그린 조각(쪽, 쪽 각주 번호). `line`이 있으면 그 평탄 줄을 그린 조각을 고른다.
+    /// 넘친 각주는 같은 쪽 다음 단이나 다음 쪽에 조각으로 이어지므로 첫 조각만 보면
+    /// 이어진 줄의 캐럿이 앞 조각 끝에 선다.
+    fn find_body_footnote_fragment_target(
+        &self,
+        section_idx: usize,
+        para_idx: usize,
+        control_idx: usize,
+        line: Option<usize>,
+    ) -> Option<(u32, usize)> {
         use crate::renderer::pagination::FootnoteSource;
 
         let pr = self.pagination.get(section_idx)?;
         let page_base = self.global_page_base_for_section(section_idx);
+        let mut first = None;
         for (local_page_idx, page) in pr.pages.iter().enumerate() {
-            if let Some(footnote_idx) = page.footnotes.iter().position(|fn_ref| {
-                matches!(
+            for (footnote_idx, fn_ref) in page.footnotes.iter().enumerate() {
+                if !matches!(
                     &fn_ref.source,
                     FootnoteSource::Body { para_index, control_index }
                         if *para_index == para_idx && *control_index == control_idx
-                )
-            }) {
-                return Some((page_base + local_page_idx as u32, footnote_idx));
+                ) {
+                    continue;
+                }
+                let target = (page_base + local_page_idx as u32, footnote_idx);
+                let covers = match (line, fn_ref.fragment) {
+                    (Some(line), Some(fragment)) => {
+                        fragment.start_line <= line && line < fragment.end_line
+                    }
+                    _ => true,
+                };
+                if covers {
+                    return Some(target);
+                }
+                first.get_or_insert(target);
             }
         }
-        None
+        first
+    }
+
+    /// 각주 문단 `note_para_idx`의 `char_offset`이 든 각주 전체의 평탄 줄 번호.
+    /// 조각의 줄 번호와 같은 축(문단마다 compose한 줄)을 쓴다.
+    fn footnote_flat_line(
+        footnote: &crate::model::footnote::Footnote,
+        note_para_idx: usize,
+        char_offset: usize,
+    ) -> Option<usize> {
+        let lines = |para: &crate::model::paragraph::Paragraph| {
+            crate::renderer::composer::compose_paragraph(para).lines
+        };
+        let before: usize = footnote
+            .paragraphs
+            .get(..note_para_idx)?
+            .iter()
+            .map(|para| lines(para).len())
+            .sum();
+        let within = lines(footnote.paragraphs.get(note_para_idx)?)
+            .iter()
+            .rposition(|line| line.char_start <= char_offset)
+            .unwrap_or(0);
+        Some(before + within)
     }
 
     fn find_endnote_edit_target(
@@ -6839,9 +6887,10 @@ impl DocumentCore {
         })?;
 
         match ctrl {
-            Control::Footnote(_) => {
+            Control::Footnote(footnote) => {
+                let line = Self::footnote_flat_line(footnote, note_para_idx, char_offset);
                 let (page_num, footnote_index) = self
-                    .find_body_footnote_edit_target(section_idx, para_idx, control_idx)
+                    .find_body_footnote_fragment_target(section_idx, para_idx, control_idx, line)
                     .ok_or_else(|| {
                         HwpError::RenderError("각주 렌더 위치를 찾을 수 없습니다".to_string())
                     })?;
