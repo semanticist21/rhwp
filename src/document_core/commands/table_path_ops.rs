@@ -544,17 +544,11 @@ impl DocumentCore {
         let block = self.table_cell_block_by_path(section_idx, parent_para_idx, path, range)?;
         let mut cells: Vec<_> = block.cells.iter().collect();
         cells.sort_by_key(|cell| (cell.row, cell.col));
-        let mut text = String::new();
-        for (index, cell) in cells.iter().enumerate() {
-            if index > 0 {
-                text.push(if cells[index - 1].row == cell.row {
-                    '\t'
-                } else {
-                    '\n'
-                });
-            }
-            let paragraphs: Vec<&str> = cell.paragraphs.iter().map(|p| p.text.as_str()).collect();
-            text.push_str(&paragraphs.join(" "));
+        // 한컴 12.30처럼 표 앞 줄바꿈 뒤에 셀 문단마다 한 줄씩 CRLF로 끝낸다.
+        let mut text = String::from("\r\n");
+        for paragraph in cells.iter().flat_map(|cell| &cell.paragraphs) {
+            text.push_str(&paragraph.text);
+            text.push_str("\r\n");
         }
         // 클립보드 문단(글자 모양·문단 모양·컨트롤 자료)은 표 복사와 같게 만들고 표만 블록으로 바꾼다.
         let depth = path.len() - 1;

@@ -291,7 +291,7 @@ fn cell_block_commands_by_path_reach_inner_table() {
     let copied = core
         .copy_table_cells_by_path(0, para, &path, (0, 0, 0, 1))
         .unwrap();
-    assert!(copied.contains(r#""text":"가\t나""#), "{copied}");
+    assert!(copied.contains(r#""text":"\r\n가\r\n나\r\n""#), "{copied}");
     let html = core
         .export_table_cells_html_by_path(0, para, &path, (0, 0, 0, 1))
         .unwrap();

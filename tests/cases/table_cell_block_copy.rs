@@ -44,8 +44,8 @@ fn cell_block_copy_pastes_a_table_of_only_the_block() {
 
     let copied: serde_json::Value =
         serde_json::from_str(&core.copy_table_cells_native(0, 1, 0, 1, 1, 2, 2).unwrap()).unwrap();
-    // 합친 칸은 두 칸의 문단을 모두 지니며 문단 사이는 빈칸으로 잇는다.
-    assert_eq!(copied["text"], "11\t12\n21 22");
+    // 한컴 12.30처럼 표 앞 줄바꿈 뒤에 셀 문단마다 한 줄씩 CRLF로 끝낸다. 합친 칸은 두 칸의 문단을 모두 지닌다.
+    assert_eq!(copied["text"], "\r\n11\r\n12\r\n21\r\n22\r\n");
     assert_eq!(
         format!("{:?}", table(&core, 1)),
         before,
@@ -315,4 +315,30 @@ fn cell_paste_refuses_crossing_merges_and_unknown_modes() {
         .paste_table_cells_native(0, 1, 0, 0, 0, "sideways")
         .is_err());
     assert_eq!(format!("{:?}", table(&core, 1)), before);
+}
+
+/// 한컴 12.30 Mac에서 2×3 표 전체를 셀 블록으로 복사한 글(2026-11-21): 셀 문단마다 한 줄, 탭은 그대로, 빈 셀은 빈 줄이다.
+#[test]
+fn cell_block_copy_text_lists_cell_paragraphs_like_hancom() {
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.insert_text_native(0, 0, 0, "위").unwrap();
+    core.split_paragraph_native(0, 0, 1, None).unwrap();
+    core.create_table_native(0, 1, 0, 2, 3).unwrap();
+    core.insert_text_in_cell_native(0, 1, 0, 0, 0, 0, "A1aA1b")
+        .unwrap();
+    core.split_paragraph_in_cell_native(0, 1, 0, 0, 0, 3, None)
+        .unwrap();
+    core.insert_text_in_cell_native(0, 1, 0, 1, 0, 0, "x\ty")
+        .unwrap();
+    for (cell, text) in [(3, "A2"), (4, "B2"), (5, "C2")] {
+        core.insert_text_in_cell_native(0, 1, 0, cell, 0, 0, text)
+            .unwrap();
+    }
+    let copied: serde_json::Value =
+        serde_json::from_str(&core.copy_table_cells_native(0, 1, 0, 0, 0, 1, 2).unwrap()).unwrap();
+    assert_eq!(
+        copied["text"],
+        "\r\nA1a\r\nA1b\r\nx\ty\r\n\r\nA2\r\nB2\r\nC2\r\n"
+    );
 }
