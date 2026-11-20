@@ -189,25 +189,29 @@ fn column_and_margin_changes_refold_existing_notes() {
     let at = json(doc.get_note_edit_info_native(0, 0, control).unwrap())["charOffset"]
         .as_u64()
         .unwrap() as usize;
-    doc.insert_text_in_footnote_native(0, 0, control, 0, at, &"넘치는 각주 ".repeat(12))
+    doc.insert_text_in_footnote_native(0, 0, control, 0, at, &"넘치는 각주 ".repeat(20))
         .unwrap();
     let note_lines =
         |doc: &HwpDocument| match &doc.document().sections[0].paragraphs[0].controls[control] {
             rhwp::model::control::Control::Footnote(note) => note.paragraphs[0].line_segs.len(),
             _ => unreachable!(),
         };
-    let column_lines = note_lines(&doc);
+    // 본문 폭 줄 수의 두 배 가까이 되어야 반 폭으로 다시 나눈 것이다.
+    let refolded_narrow =
+        |narrow: usize, wide: usize| narrow > wide && narrow as f64 >= (wide - 1) as f64 * 1.8;
     doc.set_column_def_native(0, 1, 0, true, 0).unwrap();
     let body_lines = note_lines(&doc);
-    assert!(
-        column_lines as f64 >= (body_lines - 1) as f64 * 1.8,
-        "1단으로 바꾼 뒤 {body_lines}줄, 2단 {column_lines}줄"
-    );
+    assert!(body_lines >= 3, "본문 폭 {body_lines}줄");
     // 본문 폭 영역의 글줄 수가 저장 줄 수와 같다.
     assert_eq!(areas(&doc, 0)[0].1, body_lines);
     doc.set_column_def_native(0, 2, 0, true, 2268).unwrap();
-    assert_eq!(note_lines(&doc), column_lines, "다시 2단");
+    let column_lines = note_lines(&doc);
+    assert!(
+        refolded_narrow(column_lines, body_lines),
+        "2단으로 바꾼 뒤 {column_lines}줄, 1단 {body_lines}줄"
+    );
     doc.set_column_def_native(0, 1, 0, true, 0).unwrap();
+    assert_eq!(note_lines(&doc), body_lines, "다시 1단");
     let mut page = json(doc.get_page_def_native(0).unwrap());
     let (left, right) = (
         page["marginLeft"].as_u64().unwrap(),
@@ -221,7 +225,7 @@ fn column_and_margin_changes_refold_existing_notes() {
     doc.set_page_def_native(0, &page.to_string()).unwrap();
     let narrow_lines = note_lines(&doc);
     assert!(
-        narrow_lines as f64 >= (body_lines - 1) as f64 * 1.8,
+        refolded_narrow(narrow_lines, body_lines),
         "여백을 늘린 뒤 {narrow_lines}줄, 본문 폭 {body_lines}줄"
     );
 }
