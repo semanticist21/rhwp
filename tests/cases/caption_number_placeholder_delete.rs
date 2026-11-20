@@ -103,3 +103,23 @@ fn deleting_text_before_caption_number_keeps_it() {
         .unwrap();
     assert_eq!(caption_numbers(&core, ctrl), 1);
 }
+
+#[test]
+fn plain_text_delete_keeps_auto_number() {
+    // 미주 앞 공백 정리·파서처럼 글자만 다듬는 지우기는 자리표시자를 지워도 번호를 남긴다.
+    let (core, ctrl) = captioned_picture();
+    let Control::Picture(picture) = &core.document().sections[0].paragraphs[0].controls[ctrl]
+    else {
+        panic!("그림이 아닙니다");
+    };
+    let mut para = picture.caption.as_ref().expect("캡션").paragraphs[0].clone();
+    let length = para.text.chars().count();
+    assert_eq!(para.delete_text_at(0, length), length);
+    assert_eq!(
+        para.controls
+            .iter()
+            .filter(|control| matches!(control, Control::AutoNumber(_)))
+            .count(),
+        1
+    );
+}

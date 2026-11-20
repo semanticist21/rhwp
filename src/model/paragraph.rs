@@ -2188,7 +2188,30 @@ impl Paragraph {
     /// char_offset은 Rust 문자(char) 인덱스이다 (바이트 인덱스가 아님).
     /// 삭제 후 char_offsets, char_shapes, line_segs, char_count가 자동 갱신된다.
     /// 반환값: 실제 삭제된 문자 수.
+    ///
+    /// 지운 글자를 차지한 컨트롤(자동 번호 자리표시자, `U+FFFC`)은 남긴다. 렌더링·파서·필드
+    /// 정리처럼 글자만 다듬는 쪽이 쓴다. 사용자 편집 지우기는
+    /// [`Self::delete_text_at_removing_owned_controls`]를 쓴다.
     pub fn delete_text_at(&mut self, char_offset: usize, count: usize) -> usize {
+        self.delete_text_range(char_offset, count, false)
+    }
+
+    /// 사용자 편집 지우기: [`Self::delete_text_at`]과 같되, 지운 글자를 차지한 컨트롤도 함께
+    /// 지운다. 캡션의 "그림 N" 번호 자리표시자를 지우면 그 자동 번호도 사라진다.
+    pub fn delete_text_at_removing_owned_controls(
+        &mut self,
+        char_offset: usize,
+        count: usize,
+    ) -> usize {
+        self.delete_text_range(char_offset, count, true)
+    }
+
+    fn delete_text_range(
+        &mut self,
+        char_offset: usize,
+        count: usize,
+        remove_owned_controls: bool,
+    ) -> usize {
         if count == 0 {
             return 0;
         }
@@ -2206,7 +2229,9 @@ impl Paragraph {
 
         // 자동 번호의 공백 자리표시자처럼 컨트롤이 차지한 글자를 지우면 그 컨트롤도 함께 지운다.
         // 남기면 번호가 글 뒤로 밀려 다시 그려지고, 자리표시자의 8유닛 중 7유닛이 주인 없이 남는다.
-        let owned_controls: Vec<usize> = {
+        let owned_controls: Vec<usize> = if !remove_owned_controls {
+            Vec::new()
+        } else {
             let positions = self.control_text_positions();
             (0..self.controls.len())
                 .filter(|&ci| {
