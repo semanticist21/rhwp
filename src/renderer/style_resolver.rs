@@ -372,11 +372,31 @@ pub(crate) fn resolve_styles_with_environment(
                     {
                         style.font_families_print_text_device_frame[lang] = true;
                     }
+                    // 표시용 TrueType을 명시해도 검증된 옛 face의 폭을 보존할 수 있다.
+                    // 한컴 Print는 HCI Poppy를 TTF로 기록한 문서에서도 대체 face로
+                    // 글리프를 찍고 원 HFT의 숫자·구두점 전진을 사용한다.
+                    let verified_legacy_widths_with_explicit_fallback =
+                        original.requested_face.as_deref().is_some_and(|face| {
+                            hft_program_metric_face(&face)
+                                && has_own_metric_table(&face, style.bold, style.italic)
+                                && original.normalized_face.as_deref() != Some(target)
+                                && environment.is_some_and(|env| {
+                                    env.replacement(face) == Some(target)
+                                        && env
+                                            .canonical_selection_rule_for(
+                                                face,
+                                                lang,
+                                                shape.font_ids[lang],
+                                            )
+                                            .is_none()
+                                })
+                        });
                     // 자동 표시용 선택은 저장된 원본 HFT 메트릭의 변경이 아니다.
                     let keep_source_metrics = !primary_true_type_program
                         && preserve_source_metrics
                         && (original.alt_type == Some(2)
-                            || style.font_families_source_hft[lang])
+                            || style.font_families_source_hft[lang]
+                            || verified_legacy_widths_with_explicit_fallback)
                         && original.embedded != Some(true)
                         && original.requested_face.as_deref().is_some_and(|face| {
                             crate::renderer::font_metrics_data::legacy_hft_metric_face(face).is_some()
@@ -816,6 +836,12 @@ fn resolved_space_advance_em(
                 .get(1)
                 .and_then(Option::as_deref)
                 .and_then(|face| {
+                    // 한양중고딕 고유 프로그램의 굵은 공백은 별도의 작은
+                    // 장치 전진을 쓴다. 독립 한컴 2020 출력에서 연속 음절과
+                    // 1·3개의 공백을 대조했다. 반각 공백·실제 TrueType과 구분한다.
+                    if face == "한양중고딕" && bold && !italic {
+                        return Some(0.052);
+                    }
                     crate::renderer::font_metrics_data::declared_original_glyph_advance_em(
                         face, bold, italic, ' ',
                     )

@@ -22,7 +22,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageFont, features
 
 try:
     from scripts.visual_sweep_workers import ordered_page_map
@@ -542,9 +542,15 @@ def ensure_default_rhwp_binary_is_current(root: Path, rhwp_bin: str) -> None:
         )
 
 
-def image_decoding_provenance() -> dict[str, str]:
+def image_decoding_provenance() -> dict[str, str | None]:
     source = Path(__file__).with_name("visual_sweep_images.py")
-    return {"alpha_background": "#ffffff", "script_sha256": sha256_file(source)}
+    return {
+        "alpha_background": "#ffffff",
+        "script_sha256": sha256_file(source),
+        "pillow_version": Image.__version__,
+        "pillow_core_sha256": sha256_file(Path(Image.core.__file__)),
+        "zlib_version": features.version_codec("zlib"),
+    }
 
 
 def sweep_provenance(
@@ -1632,6 +1638,10 @@ def render_target(
         directory.mkdir(parents=True, exist_ok=True)
 
     environment_args = ["--compat", compat]
+    rgb555_metadata = reference_print_png_rgb555(root, pdf) if rasterizer == "png" else None
+    print_png_rgb555 = rgb555_metadata is not None
+    if print_png_rgb555:
+        environment_args.append("--print-png-rgb555")
     if font_environment is not None:
         font_environment = resolve_input_path(root, font_environment)
         environment_args.extend(["--font-environment", str(font_environment)])
@@ -1650,6 +1660,9 @@ def render_target(
     else:
         provenance["raster_backend"] = "svg-" + svg_rasterizer
     provenance["layout_generation"] = compat
+    if rgb555_metadata is not None:
+        provenance["print_png_rgb555"] = True
+        provenance["print_png_rgb555_reference_metadata"] = rgb555_metadata
     if exclusion_evidence is not None:
         provenance["linked_image_exclusions"] = exclusion_evidence
     if linked_images:
@@ -1711,7 +1724,8 @@ def render_target(
                     png_module.export_wasm_png(sys.modules[__name__], root, hwp, wasm_pkg, base,
                                               selected_pages, font_paths or [], font_environment, compat,
                                               dpi, page_workers, observed_font_receipt,
-                                              linked_images=linked_images or (exclusion_evidence.get("assets", []) if exclusion_evidence else None))
+                                              linked_images=linked_images or (exclusion_evidence.get("assets", []) if exclusion_evidence else None),
+                                              print_png_rgb555=print_png_rgb555)
                 else:
                     png_module.export_native_png(sys.modules[__name__], root, hwp, rhwp_bin, base,
                                                 selected_pages, font_paths or [], environment_args,
@@ -1792,7 +1806,7 @@ def render_target(
             root, sources, rhwp_png_dir, dpi / 96.0, "png" if png_module else svg_rasterizer, workers=page_workers
         ):
             pairs.append((page, rhwp_png_dir / f"rhwp_{page:03d}.png", pdf_path))
-        manifest = write_silhouette_tsv(pairs, base, target.key, document_counts=document_counts,
+        manifest = write_silhouette_tsv(pairs, base, target.key, document_counts=document_counts, dpi=dpi,
                                         workers=page_workers, excluded_regions=excluded_regions,
                                         exclusion_evidence=exclusion_evidence,
                                         resume=resume and (base / "silhouette-metrics").is_dir())
@@ -5523,6 +5537,19 @@ def make_contact_sheet(compare_pages: list[Path], out_path: Path) -> Path:
     return out_path
 
 
+def reference_print_png_rgb555(root: Path, pdf: Path) -> dict[str, str] | None:
+    """한컴 2022 Hancom PDF Print의 이미지 색 전달을 기준 PDF에서 선택한다."""
+    info = run(["pdfinfo", str(pdf)], cwd=root, verbose=False, encoding_errors="replace")
+    values = {
+        key.lower(): value.strip()
+        for key, value in re.findall(r"^(Creator|Producer):[ \t]*([^\r\n]*)", info.stdout, re.MULTILINE)
+    }
+    if (re.fullmatch(r"Hwp 2022(?: [0-9]+(?:\.[0-9]+)*)?", values.get("creator", ""), re.IGNORECASE)
+            and re.fullmatch(r"Hancom PDF(?: [0-9]+(?:\.[0-9]+)*)?", values.get("producer", ""), re.IGNORECASE)):
+        return values
+    return None
+
+
 def document_page_counts(root: Path, pdf: Path, export_metadata: Path) -> dict[str, int]:
     """선택한 래스터 개수와 구별한 원본 두 문서의 전체 쪽수를 읽는다."""
     rhwp_count = load_json_object(export_metadata, "전체 쪽수").get("pageCount")
@@ -5569,7 +5596,7 @@ def write_silhouette_tsv(
     *, document_counts: dict[str, int] | None = None, workers: int = 1,
     excluded_regions: dict[int, list[tuple[int, int, int, int]]] | None = None,
     exclusion_evidence: dict[str, object] | None = None,
-    resume: bool = False,
+    resume: bool = False, dpi: int | None = None,
 ) -> dict[str, object]:
     """이미지 증적을 새로 만들지 않고 같은 2px 보조 지표와 입력 해시만 저장한다."""
     if not pairs:
@@ -5659,7 +5686,8 @@ def write_silhouette_tsv(
         "key": key, "mode": "silhouette_only", "run_state": "complete",
         "requested_pages": [page for page, _, _ in pairs],
         "completed_pages": [page for page, _, _ in pairs],
-        "missing_pages": [], "tsv": str(tsv), "radius_px": 2,
+        "missing_pages": [], "tsv": str(tsv), "tsv_sha256": sha256_file(tsv),
+        "dpi": dpi, "radius_px": 2,
         "inputs": inputs, "metrics": metrics, "silhouette_method": SILHOUETTE_METHOD,
         "image_decoding": image_decoding_provenance(),
         "color_tolerance": DEFAULT_PIXEL_DIFF_THRESHOLD, "pr_review_gate": gate,
