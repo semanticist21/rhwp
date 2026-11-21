@@ -55,13 +55,14 @@ impl LayoutEngine {
             let cap_y = match caption.direction {
                 // 글줄은 위 캡션까지 품은 상자 위끝에 그림을 둔다. 본문처럼 캡션을 그 자리에 두고 그림을 내린다.
                 CaptionDirection::Top => {
+                    let lift = Self::lift_top_caption_line(area_node, image);
                     Self::offset_inline_image_y(
                         area_node,
                         usize::MAX - para_index,
                         ci,
-                        caption_h + spacing,
+                        lift + caption_h + spacing,
                     );
-                    image.y
+                    image.y + lift
                 }
                 _ => image.y + image.height + spacing,
             };
@@ -98,11 +99,48 @@ impl LayoutEngine {
                 None,
             );
             bottom = bottom.max(match caption.direction {
-                CaptionDirection::Top => image.y + caption_h + spacing + image.height,
+                CaptionDirection::Top => cap_y + caption_h + spacing + image.height,
                 _ => cap_y + caption_h,
             });
         }
         bottom
+    }
+
+    /// 위 캡션이 든 글자처럼 취급 그림의 상자(위 캡션 포함) 위끝이 그 글줄 위끝보다 위에 놓이면, 캡션이
+    /// 줄 위끝에서 시작하도록 그 줄의 글자를 내리고 내린 거리를 돌려준다. 호출부가 그림도 같은 거리만큼
+    /// 더 내린다(한컴 12.30: 위 캡션은 줄 위끝, 글자 기준선은 그림 아래 끝).
+    pub(super) fn lift_top_caption_line(node: &mut RenderNode, image: BoundingBox) -> f64 {
+        fn holds(node: &RenderNode, image: &BoundingBox) -> bool {
+            (matches!(node.node_type, RenderNodeType::Image(_))
+                && node.bbox.x == image.x
+                && node.bbox.y == image.y)
+                || node.children.iter().any(|child| holds(child, image))
+        }
+        // 그림과 그 테두리는 호출부가 소유 ID로 옮긴다.
+        fn shift_text(node: &mut RenderNode, dy: f64) {
+            for child in &mut node.children {
+                let owned = matches!(child.node_type, RenderNodeType::Image(_))
+                    || matches!(&child.node_type, RenderNodeType::Rectangle(rect)
+                        if rect.image_frame_owner.is_some());
+                if !owned {
+                    child.bbox.y += dy;
+                    shift_text(child, dy);
+                }
+            }
+        }
+        fn walk(node: &mut RenderNode, image: &BoundingBox) -> Option<f64> {
+            if matches!(node.node_type, RenderNodeType::TextLine(_)) && holds(node, image) {
+                let lift = (node.bbox.y - image.y).max(0.0);
+                if lift > 0.0 {
+                    shift_text(node, lift);
+                }
+                return Some(lift);
+            }
+            node.children
+                .iter_mut()
+                .find_map(|child| walk(child, image))
+        }
+        walk(node, &image).unwrap_or(0.0)
     }
 
     pub(super) fn layout_header_footer_paragraphs(
