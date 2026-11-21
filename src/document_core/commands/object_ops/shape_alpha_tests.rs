@@ -1,13 +1,24 @@
-//! 도형 개체 속성의 선(투명도·화살표 채움)·호 테두리·채우기 투명도를 검사한다. 선 투명도(HWP 인스턴스 ID 다음 바이트, HWPX `lineShape@alpha`)와 HWPX 채우기 투명도를
-//! 한컴 12.30처럼 0~255 정수로 읽고 쓰는지 검사한다. 한컴 12.30에서 선 투명도 50%·채우기 30%를
-//! 준 사각형은 HWPX에 `lineShape alpha="128"`·`winBrush alpha="77"`로, HWP에 같은 바이트로 저장된다.
+//! 도형 개체 속성의 선(투명도·화살표 채움)·호 테두리·가로 정렬과 채우기 투명도를 검사한다.
+//! 선 투명도(HWP 인스턴스 ID 다음 바이트, HWPX `lineShape@alpha`)와 HWPX 채우기 투명도는 한/글
+//! 12.30처럼 0~255 정수다. 한/글에서 선 투명도 50%·채우기 30%를 준 사각형은 HWPX에
+//! `lineShape alpha="128"`·`winBrush alpha="77"`로, HWP에 같은 바이트로 저장된다.
 
 use crate::document_core::DocumentCore;
 
+/// 빈 문서 첫 문단의 첫 도형(구역·단 정의 다음) 컨트롤 번호.
+fn shape_control(core: &DocumentCore) -> usize {
+    core.document.sections[0].paragraphs[0]
+        .controls
+        .iter()
+        .position(|control| matches!(control, crate::model::control::Control::Shape(_)))
+        .expect("도형")
+}
+
 fn shape_props(core: &DocumentCore) -> serde_json::Value {
+    let control = shape_control(core);
     serde_json::from_str(
         &core
-            .get_shape_properties_native(0, 0, 0)
+            .get_shape_properties_native(0, 0, control)
             .expect("도형 속성"),
     )
     .expect("JSON")
