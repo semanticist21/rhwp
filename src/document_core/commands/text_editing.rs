@@ -4061,7 +4061,7 @@ impl DocumentCore {
                     let width = page_def.width as i32
                         - page_def.margin_left as i32
                         - page_def.margin_right as i32;
-                    return (cell_idx == 0).then_some((width, 0, 0));
+                    return (cell_idx == 0).then_some(CellReflowMetrics::new(width, 0, 0, false));
                 }
                 return Self::cell_metrics_for_control(control, cell_idx);
             }

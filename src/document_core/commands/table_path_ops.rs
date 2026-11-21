@@ -69,11 +69,11 @@ impl DocumentCore {
                     .iter()
                     .enumerate()
                     .filter(|(i, cell)| {
-                        metrics.get(*i).is_some_and(|&(width, _, _)| {
+                        metrics.get(*i).is_some_and(|frame| {
                             cell.paragraphs
                                 .iter()
                                 .flat_map(|p| &p.line_segs)
-                                .any(|seg| i64::from(seg.segment_width) > i64::from(width))
+                                .any(|seg| i64::from(seg.segment_width) > i64::from(frame.width))
                         })
                     })
                     .map(|(i, cell)| (i, cell.paragraphs.len()))

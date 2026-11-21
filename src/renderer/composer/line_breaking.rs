@@ -3027,7 +3027,7 @@ fn fill_one_interval(
                             };
                             cursor.line_start_idx = *start_idx;
                             cursor.lw = w_hwp;
-                            cursor.line_space_savings = 0;
+                            cursor.line_condense_budget = 0;
                             cursor.line_max_fs = *max_font_size;
                             cursor.is_first_line = false;
                             cursor.last_break_token_idx = None;

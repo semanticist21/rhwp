@@ -2004,14 +2004,28 @@ impl DocumentCore {
         }
 
         if wrap_changed {
-            self.recalculate_cell_paragraph_vpos_native(
-                section_idx,
-                parent_para_idx,
-                control_idx,
-                cell_idx,
-                0,
-                None,
-            );
+            match site {
+                CellTable::Body(control_idx) => self.recalculate_cell_paragraph_vpos_native(
+                    section_idx,
+                    parent_para_idx,
+                    control_idx,
+                    cell_idx,
+                    0,
+                    None,
+                ),
+                CellTable::Path(path) => {
+                    let mut inner = path.to_vec();
+                    let last = inner.len() - 1;
+                    inner[last] = (inner[last].0, cell_idx, 0);
+                    self.recalculate_cell_paragraph_vpos_by_path(
+                        section_idx,
+                        parent_para_idx,
+                        &inner,
+                        0,
+                        None,
+                    );
+                }
+            }
         }
 
         if has_border_fill_change {
