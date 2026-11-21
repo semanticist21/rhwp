@@ -708,6 +708,9 @@ fn header_inline_picture_top_caption_sits_above_the_picture() {
     );
     let picture = core.document.sections[0].paragraphs[para].controls[ctrl].clone();
     let (host, hf) = put_in_header(&mut core, picture);
+    // 한컴에서처럼 그림 앞에 글을 둔다. 글줄은 그림 상자 위끝을 줄 위끝보다 위에 놓을 수 있다.
+    core.insert_text_in_header_footer_native(0, true, 0, 0, 0, "머리")
+        .expect("머리말 글");
     // 앱처럼 머리말 그림 setter로 캡션을 위로 옮기면 그 머리말 줄이 캡션까지 품는다.
     core.set_header_footer_picture_properties_native(
         0,
@@ -735,11 +738,28 @@ fn header_inline_picture_top_caption_sits_above_the_picture() {
         node.children.iter().find_map(image)
     }
     let image = image(header).expect("머리말 그림");
-    // 캡션은 머리말 첫 줄 위끝(머리말 영역 안)에서 시작한다.
+    // 캡션은 그림이 든 글줄 위끝에서 시작하고, 그 줄의 글 기준선은 그림 아래 끝이다.
+    fn image_line(node: &RenderNode) -> Option<&RenderNode> {
+        if matches!(node.node_type, RenderNodeType::TextLine(_))
+            && node
+                .children
+                .iter()
+                .any(|child| matches!(child.node_type, RenderNodeType::Image(_)))
+        {
+            return Some(node);
+        }
+        node.children.iter().find_map(image_line)
+    }
+    let text_line = image_line(header).expect("그림이 든 머리말 글줄");
     assert!(
-        line.y >= header.bbox.y - 0.5,
-        "캡션 {line:?} 머리말 {:?}",
-        header.bbox
+        line.y >= text_line.bbox.y - 0.5,
+        "캡션 {line:?} 글줄 {:?}",
+        text_line.bbox
+    );
+    assert!(
+        image.y + image.height <= text_line.bbox.y + text_line.bbox.height + 0.5,
+        "그림 {image:?} 글줄 {:?}",
+        text_line.bbox
     );
     // 캡션 글줄 아래 3mm(850HU) 간격 뒤에 그림이 온다.
     let gap = crate::renderer::hwpunit_to_px(850, core.dpi);

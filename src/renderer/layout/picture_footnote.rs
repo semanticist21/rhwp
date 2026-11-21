@@ -2311,10 +2311,14 @@ impl LayoutEngine {
             let caption_h = self.calculate_caption_height(&pic.caption, styles);
             let cap_y = match caption.direction {
                 CaptionDirection::Top => {
+                    let lift: f64 = fn_node.children[first_child..]
+                        .iter_mut()
+                        .map(|child| Self::lift_top_caption_line(child, bbox))
+                        .sum();
                     for child in &mut fn_node.children[first_child..] {
-                        lower(child, owner, caption_h + spacing);
+                        lower(child, owner, lift + caption_h + spacing);
                     }
-                    bbox.y
+                    bbox.y + lift
                 }
                 _ => bbox.y + bbox.height + spacing,
             };
