@@ -4473,18 +4473,19 @@ fn parse_line_shape_attr(e: &quick_xml::events::BytesStart) -> ShapeBorderLine {
             b"tailStyle" => {
                 bl.attr = (bl.attr & !(0x3F << 16)) | (arrow_shape(&attr_str(&attr)) << 16);
             }
+            // HWP5 선 속성처럼 시작 채움은 bit 30, 끝 채움은 bit 31이다.
             b"headfill" => {
-                if parse_bool(&attr) {
-                    bl.attr |= 0x8000_0000;
-                } else {
-                    bl.attr &= !0x8000_0000;
-                }
-            }
-            b"tailfill" => {
                 if parse_bool(&attr) {
                     bl.attr |= 0x4000_0000;
                 } else {
                     bl.attr &= !0x4000_0000;
+                }
+            }
+            b"tailfill" => {
+                if parse_bool(&attr) {
+                    bl.attr |= 0x8000_0000;
+                } else {
+                    bl.attr &= !0x8000_0000;
                 }
             }
             b"headSz" => {

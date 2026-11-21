@@ -323,11 +323,13 @@ impl DocumentCore {
                 ",\"borderColor\":{},\"borderWidth\":{},\"borderAttr\":{},\"borderOutlineStyle\":{},\"lineAlpha\":{}\
                 ,\"lineType\":{},\"lineEndShape\":{}\
                 ,\"arrowStart\":{},\"arrowEnd\":{},\"arrowStartSize\":{},\"arrowEndSize\":{}\
+                ,\"arrowStartFill\":{},\"arrowEndFill\":{}\
                 ,\"rotationAngle\":{},\"horzFlip\":{},\"vertFlip\":{}\
                 ,\"fillType\":\"{}\"",
                 bl.color, bl.width, bl.attr, bl.outline_style, bl.alpha,
                 line_type, line_end_shape,
                 arrow_start, arrow_end, arrow_start_size, arrow_end_size,
+                bl.attr & 0x4000_0000 != 0, bl.attr & 0x8000_0000 != 0,
                 sa.rotation_angle, sa.horz_flip, sa.vert_flip,
                 fill_type
             );
@@ -364,6 +366,9 @@ impl DocumentCore {
             format!(",\"roundRate\":{}", rect.round_rate)
         } else if let crate::model::shape::ShapeObject::Ellipse(ref ellipse) = shape {
             ellipse_arc_json(ellipse)
+        } else if let crate::model::shape::ShapeObject::Arc(ref arc) = shape {
+            // 호 테두리: 0 호·1 부채꼴·2 활(한컴 개체 속성 > 호 테두리)
+            format!(",\"arcType\":{}", arc.arc_type)
         } else {
             String::new()
         };
@@ -526,6 +531,15 @@ impl DocumentCore {
                 if let Some(v) = json_i32(props_json, "arrowEndSize") {
                     attr = (attr & !(0x0F << 26)) | (((v as u32) & 0x0F) << 26);
                 }
+                // 화살표 채움: 시작 bit 30, 끝 bit 31(HWPX headfill·tailfill)
+                for (key, bit) in [
+                    ("arrowStartFill", 0x4000_0000),
+                    ("arrowEndFill", 0x8000_0000),
+                ] {
+                    if let Some(fill) = json_bool(props_json, key) {
+                        attr = if fill { attr | bit } else { attr & !bit };
+                    }
+                }
                 d.border_line.attr = attr;
             }
 
@@ -651,6 +665,12 @@ impl DocumentCore {
         if let crate::model::shape::ShapeObject::Ellipse(ref mut ellipse) = shape {
             apply_ellipse_arc(ellipse, props_json);
         }
+        // 호 테두리(0 호·1 부채꼴·2 활)
+        if let crate::model::shape::ShapeObject::Arc(ref mut arc) = shape {
+            if let Some(v) = crate::document_core::helpers::json_i32(props_json, "arcType") {
+                arc.arc_type = v.clamp(0, 2) as u8;
+            }
+        }
 
         // 꼭짓점은 original 좌표계로 보존한다. current/common 크기로 덮으면
         // 저장 시 current/original 배율이 두 번 적용된다.
@@ -754,11 +774,13 @@ impl DocumentCore {
                 ",\"borderColor\":{},\"borderWidth\":{},\"borderAttr\":{},\"borderOutlineStyle\":{},\"lineAlpha\":{}\
                 ,\"lineType\":{},\"lineEndShape\":{}\
                 ,\"arrowStart\":{},\"arrowEnd\":{},\"arrowStartSize\":{},\"arrowEndSize\":{}\
+                ,\"arrowStartFill\":{},\"arrowEndFill\":{}\
                 ,\"rotationAngle\":{},\"horzFlip\":{},\"vertFlip\":{}\
                 ,\"fillType\":\"{}\"",
                 bl.color, bl.width, bl.attr, bl.outline_style, bl.alpha,
                 line_type, line_end_shape,
                 arrow_start, arrow_end, arrow_start_size, arrow_end_size,
+                bl.attr & 0x4000_0000 != 0, bl.attr & 0x8000_0000 != 0,
                 sa.rotation_angle, sa.horz_flip, sa.vert_flip,
                 fill_type
             );
@@ -789,6 +811,8 @@ impl DocumentCore {
 
         let round_json = if let crate::model::shape::ShapeObject::Rectangle(ref rect) = shape {
             format!(",\"roundRate\":{}", rect.round_rate)
+        } else if let crate::model::shape::ShapeObject::Arc(ref arc) = shape {
+            format!(",\"arcType\":{}", arc.arc_type)
         } else {
             String::new()
         };
@@ -922,6 +946,15 @@ impl DocumentCore {
                 }
                 if let Some(v) = json_i32(props_json, "arrowEndSize") {
                     attr = (attr & !(0x0F << 26)) | (((v as u32) & 0x0F) << 26);
+                }
+                // 화살표 채움: 시작 bit 30, 끝 bit 31(HWPX headfill·tailfill)
+                for (key, bit) in [
+                    ("arrowStartFill", 0x4000_0000),
+                    ("arrowEndFill", 0x8000_0000),
+                ] {
+                    if let Some(fill) = json_bool(props_json, key) {
+                        attr = if fill { attr | bit } else { attr & !bit };
+                    }
                 }
                 d.border_line.attr = attr;
             }

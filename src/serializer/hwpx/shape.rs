@@ -1151,8 +1151,9 @@ where
         2 => "SQUARE",
         _ => "ROUND",
     };
-    let head_fill_b = bl.attr & 0x8000_0000 != 0;
-    let tail_fill_b = bl.attr & 0x4000_0000 != 0;
+    // HWP5와 렌더러처럼 시작(head) 채움은 bit 30, 끝(tail) 채움은 bit 31이다.
+    let head_fill_b = bl.attr & 0x4000_0000 != 0;
+    let tail_fill_b = bl.attr & 0x8000_0000 != 0;
     let headfill = bool01(head_fill_b);
     let tailfill = bool01(tail_fill_b);
     let head_style = arrow_style_str((bl.attr >> 10) & 0x3F, head_fill_b);
