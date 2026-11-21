@@ -532,13 +532,19 @@ impl DocumentCore {
                     attr = (attr & !(0x0F << 26)) | (((v as u32) & 0x0F) << 26);
                 }
                 // 화살표 채움: 시작 bit 30, 끝 bit 31(HWPX headfill·tailfill)
-                for (key, bit) in [
-                    ("arrowStartFill", 0x4000_0000),
-                    ("arrowEndFill", 0x8000_0000),
-                ] {
-                    if let Some(fill) = json_bool(props_json, key) {
-                        attr = if fill { attr | bit } else { attr & !bit };
-                    }
+                if let Some(fill) = json_bool(props_json, "arrowStartFill") {
+                    attr = if fill {
+                        attr | 0x4000_0000
+                    } else {
+                        attr & !0x4000_0000
+                    };
+                }
+                if let Some(fill) = json_bool(props_json, "arrowEndFill") {
+                    attr = if fill {
+                        attr | 0x8000_0000
+                    } else {
+                        attr & !0x8000_0000
+                    };
                 }
                 d.border_line.attr = attr;
             }
@@ -948,13 +954,19 @@ impl DocumentCore {
                     attr = (attr & !(0x0F << 26)) | (((v as u32) & 0x0F) << 26);
                 }
                 // 화살표 채움: 시작 bit 30, 끝 bit 31(HWPX headfill·tailfill)
-                for (key, bit) in [
-                    ("arrowStartFill", 0x4000_0000),
-                    ("arrowEndFill", 0x8000_0000),
-                ] {
-                    if let Some(fill) = json_bool(props_json, key) {
-                        attr = if fill { attr | bit } else { attr & !bit };
-                    }
+                if let Some(fill) = json_bool(props_json, "arrowStartFill") {
+                    attr = if fill {
+                        attr | 0x4000_0000
+                    } else {
+                        attr & !0x4000_0000
+                    };
+                }
+                if let Some(fill) = json_bool(props_json, "arrowEndFill") {
+                    attr = if fill {
+                        attr | 0x8000_0000
+                    } else {
+                        attr & !0x8000_0000
+                    };
                 }
                 d.border_line.attr = attr;
             }
