@@ -47,7 +47,7 @@ const U32: PropKind = PropKind::Int(0, u32::MAX as i64);
 const VERT_REL_TO: &[&str] = &["Paper", "Page", "Para"];
 const HORZ_REL_TO: &[&str] = &["Paper", "Page", "Column", "Para"];
 const VERT_ALIGN: &[&str] = &["Top", "Center", "Bottom"];
-const HORZ_ALIGN: &[&str] = &["Left", "Center", "Right"];
+const HORZ_ALIGN: &[&str] = &["Left", "Center", "Right", "Inside", "Outside"];
 const TEXT_WRAP: &[&str] = &[
     "Square",
     "Tight",

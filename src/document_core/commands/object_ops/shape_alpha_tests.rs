@@ -170,3 +170,20 @@ fn arc_border_kind_is_read_and_set() {
         assert_eq!(props["arcType"], 1);
     }
 }
+
+/// 한/글 개체 속성 > 배치의 가로 정렬 안쪽·바깥쪽을 도형·그림 속성으로 바꾸고 HWP·HWPX에 남긴다.
+#[test]
+fn horizontal_inside_and_outside_alignment_is_set() {
+    let mut core = shape_core("rectangle");
+    set(&mut core, r#"{"horzRelTo":"Page","horzAlign":"Outside"}"#);
+    assert_eq!(shape_props(&core)["horzAlign"], "Outside");
+    for bytes in [
+        core.export_hwp_native().expect("HWP"),
+        core.export_hwpx_native().expect("HWPX"),
+    ] {
+        let props = shape_props(&DocumentCore::from_bytes(&bytes).expect("다시 열기"));
+        assert_eq!(props["horzAlign"], "Outside");
+    }
+    set(&mut core, r#"{"horzAlign":"Inside"}"#);
+    assert_eq!(shape_props(&core)["horzAlign"], "Inside");
+}
