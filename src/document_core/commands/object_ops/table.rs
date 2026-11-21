@@ -199,6 +199,23 @@ impl DocumentCore {
                             ))
                         })?
                 }
+                // 각주·미주는 셀 0이다(읽기 해석기 `resolve_paragraph_by_path`와 같은 꼴).
+                crate::model::control::Control::Footnote(note) if cell_idx == 0 => {
+                    note.paragraphs.get_mut(cell_para_idx).ok_or_else(|| {
+                        HwpError::RenderError(format!(
+                            "경로[{}]: 각주 문단 {} 범위 초과",
+                            i, cell_para_idx
+                        ))
+                    })?
+                }
+                crate::model::control::Control::Endnote(note) if cell_idx == 0 => {
+                    note.paragraphs.get_mut(cell_para_idx).ok_or_else(|| {
+                        HwpError::RenderError(format!(
+                            "경로[{}]: 미주 문단 {} 범위 초과",
+                            i, cell_para_idx
+                        ))
+                    })?
+                }
                 _ => {
                     return Err(HwpError::RenderError(format!(
                         "경로[{}]: controls[{}] 가 표/글상자/그림 캡션이 아닙니다",
@@ -1810,6 +1827,21 @@ impl DocumentCore {
             &path,
             inner_control_idx,
         )?;
+        // 각주·미주 바로 안 그림은 그 주석 문단을 다시 나눠 캡션을 줄 높이에 넣는다.
+        if let [(note_ctrl, 0, note_para)] = path.as_slice() {
+            if matches!(
+                section.paragraphs[parent_para_idx].controls.get(*note_ctrl),
+                Some(Control::Footnote(_) | Control::Endnote(_))
+            ) {
+                self.reflow_footnote_paragraph(
+                    section_idx,
+                    parent_para_idx,
+                    *note_ctrl,
+                    *note_para,
+                );
+            }
+        }
+        let section = &mut self.document.sections[section_idx];
         section.raw_stream = None;
         self.recompose_section(section_idx);
         self.paginate_if_needed();

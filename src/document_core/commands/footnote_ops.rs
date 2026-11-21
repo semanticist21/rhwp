@@ -358,6 +358,7 @@ impl DocumentCore {
                         &styles,
                         self.dpi,
                     );
+                    reserve_tac_caption_lines(para, self.dpi);
                 }
             }
             Control::Endnote(e) => {
@@ -887,5 +888,47 @@ mod delete_footnote_char_shape_tests {
             Some(9),
             "각주 삭제 후 char_shapes.start_pos 가 되돌아가지 않아 글자모양 run 이 텍스트와 어긋남"
         );
+    }
+}
+
+/// 한컴 12.30처럼 각주·머리말 글줄에 든 글자처럼 취급 그림의 위·아래 캡션을 그 줄 높이에 넣는다.
+/// 각주·머리말 영역은 줄 상자만 쌓으므로 캡션이 줄 안에 있어야 다음 글과 겹치지 않는다.
+/// 위 캡션은 그림이 그만큼 내려가므로 기준선도 함께 내린다(한컴 저장 줄과 같은 꼴).
+pub(crate) fn reserve_tac_caption_lines(para: &mut Paragraph, dpi: f64) {
+    use crate::model::shape::CaptionDirection;
+    for ci in 0..para.controls.len() {
+        let Control::Picture(pic) = &para.controls[ci] else {
+            continue;
+        };
+        let Some(caption) = pic.caption.as_ref().filter(|caption| {
+            pic.common.treat_as_char
+                && matches!(
+                    caption.direction,
+                    CaptionDirection::Top | CaptionDirection::Bottom
+                )
+        }) else {
+            continue;
+        };
+        let top = caption.direction == CaptionDirection::Top;
+        let extra = crate::renderer::px_to_hwpunit(
+            crate::renderer::composer::caption_height_px(&pic.caption, dpi),
+            dpi,
+        ) + i32::from(caption.spacing);
+        let needed = crate::renderer::composer::inline_picture_occupied_size_hu(pic).1 + extra;
+        let Some(line) = crate::renderer::layout::control_line_seg_index(para, ci) else {
+            continue;
+        };
+        let delta = needed - para.line_segs[line].line_height;
+        if delta <= 0 {
+            continue;
+        }
+        let seg = &mut para.line_segs[line];
+        seg.line_height += delta;
+        if top {
+            seg.baseline_distance += delta;
+        }
+        for later in &mut para.line_segs[line + 1..] {
+            later.vertical_pos += delta;
+        }
     }
 }

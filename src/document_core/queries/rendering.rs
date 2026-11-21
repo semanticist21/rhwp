@@ -8705,6 +8705,16 @@ impl DocumentCore {
             outline_num_id,
             wrap_around_paras,
         );
+        // 미주 바로 안 그림·그 캡션 글줄은 미주 경로로 고르고 고친다.
+        if !en_paras.is_empty() {
+            if let Some(pr) = self.pagination.get(sec_idx) {
+                crate::renderer::layout::address_endnote_controls(
+                    &mut tree.root,
+                    paragraphs.len(),
+                    &pr.endnote_para_sources,
+                );
+            }
+        }
         // 확장 바탕쪽 추가 렌더링
         for ext_mp in &extra_mps {
             self.layout_engine.build_master_page_into(

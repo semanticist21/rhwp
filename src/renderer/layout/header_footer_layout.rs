@@ -4,10 +4,11 @@ use super::*;
 
 impl LayoutEngine {
     #[allow(clippy::too_many_arguments)]
-    /// 머리말·꼬리말 문단 글줄에 든 글자처럼 취급 그림의 아래 캡션을 그 그림 바로 아래에 그린다
-    /// (한컴 12.30). 캡션 글줄은 머리말 표 칸처럼 머리말 문단이 뿌리인 [(그림, 0, 캡션 문단)] 문맥을
-    /// 가져 머리말 히트·셀 경로 API가 그 캡션 글에 닿는다. 그린 캡션의 바닥을 돌려준다.
-    /// ponytail: 아래 캡션만 그린다. 위·옆 캡션은 그림을 옮겨야 해 아직 그리지 않는다.
+    /// 머리말·꼬리말 문단 글줄에 든 글자처럼 취급 그림의 위·아래 캡션을 본문 글자처럼 취급 그림처럼
+    /// 그린다(한컴 12.30: 아래 캡션은 그림 바로 아래, 위 캡션은 줄 위끝에 두고 그림을 그만큼 내린다).
+    /// 캡션 글줄은 머리말 표 칸처럼 머리말 문단이 뿌리인 [(그림, 0, 캡션 문단)] 문맥을 가져 머리말
+    /// 히트·셀 경로 API가 그 캡션 글에 닿는다. 그린 캡션·그림의 바닥을 돌려준다.
+    /// ponytail: 옆 캡션은 본문처럼 줄 배치가 캡션 폭을 개체 폭에 넣지 않아 아직 그리지 않는다.
     fn layout_header_footer_tac_captions(
         &self,
         tree: &mut PageLayoutContext,
@@ -36,14 +37,33 @@ impl LayoutEngine {
             let Some(caption) = pic.caption.as_ref() else {
                 continue;
             };
+            use crate::model::shape::CaptionDirection;
             if !pic.common.treat_as_char
-                || caption.direction != crate::model::shape::CaptionDirection::Bottom
+                || !matches!(
+                    caption.direction,
+                    CaptionDirection::Top | CaptionDirection::Bottom
+                )
             {
                 continue;
             }
             // 글줄 배치는 머리말 문단 번호를 usize::MAX - i 로 적는다(머리말 노드 후처리가 되돌린다).
             let Some(image) = image_box(area_node, usize::MAX - para_index, ci) else {
                 continue;
+            };
+            let spacing = hwpunit_to_px(caption.spacing as i32, self.dpi);
+            let caption_h = self.calculate_caption_height(&pic.caption, styles);
+            let cap_y = match caption.direction {
+                // 글줄은 위 캡션까지 품은 상자 위끝에 그림을 둔다. 본문처럼 캡션을 그 자리에 두고 그림을 내린다.
+                CaptionDirection::Top => {
+                    Self::offset_inline_image_y(
+                        area_node,
+                        usize::MAX - para_index,
+                        ci,
+                        caption_h + spacing,
+                    );
+                    image.y
+                }
+                _ => image.y + image.height + spacing,
             };
             let ext_left = hwpunit_to_px(
                 caption.margin_extension_left(&pic.common.margin) as i32,
@@ -55,7 +75,6 @@ impl LayoutEngine {
                 self.dpi,
             )
             .max(0.0);
-            let cap_y = image.y + image.height + hwpunit_to_px(caption.spacing as i32, self.dpi);
             self.layout_caption(
                 tree,
                 area_node,
@@ -78,7 +97,10 @@ impl LayoutEngine {
                 }),
                 None,
             );
-            bottom = bottom.max(cap_y + self.calculate_caption_height(&pic.caption, styles));
+            bottom = bottom.max(match caption.direction {
+                CaptionDirection::Top => image.y + caption_h + spacing + image.height,
+                _ => cap_y + caption_h,
+            });
         }
         bottom
     }

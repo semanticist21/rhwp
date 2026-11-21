@@ -1450,9 +1450,13 @@ impl LayoutEngine {
         // 캡션 렌더링
         if let Some(caption) = caption {
             use crate::model::shape::CaptionVertAlign;
+            // 머리말·꼬리말 도형 캡션은 머리말 표 캡션처럼 머리말 문단이 뿌리인 같은 주소를 갖는다.
             let body_caption = matches!(
                 parent.node_type,
-                RenderNodeType::Column(_) | RenderNodeType::Body { .. }
+                RenderNodeType::Column(_)
+                    | RenderNodeType::Body { .. }
+                    | RenderNodeType::Header
+                    | RenderNodeType::Footer
             );
             // '여백 부분까지 너비 확대'면 위·아래 캡션이 왼쪽·오른쪽 바깥 여백까지 넓어진다(한컴 12.30).
             let ext_left = hwpunit_to_px(
@@ -1503,7 +1507,7 @@ impl LayoutEngine {
                 cap_y,
                 bin_data_content,
                 // 표 캡션처럼 셀 65534 주소를 달아 캡션 글의 캐럿·누르기가 셀 API로 이어지게 한다.
-                // 머리말·꼬리말·바탕쪽 개체에는 본문 주소를 만들지 않는다.
+                // 바탕쪽 개체에는 주소를 만들지 않는다.
                 body_caption.then(|| super::CellContext {
                     in_textbox: false,
                     parent_para_index: para_index,

@@ -89,7 +89,96 @@ impl LayoutEngine {
                 &indices,
                 images,
             );
+            address_footnote_images(&mut node, &page.footnotes, page.section_index);
             tree.root.children.push(node);
         }
     }
+}
+
+/// 각주 글줄 배치는 그림에 (각주 순번, `usize::MAX - 2000 - 각주 문단`) 표지를 단다. 본문 문단 각주
+/// 바로 안 그림은 쪽 개체 목록·셀 경로 API가 고를 수 있게 [(각주, 0, 각주 문단)] 문서 주소로 바꾼다.
+fn address_footnote_images(node: &mut RenderNode, notes: &[FootnoteRef], section: usize) {
+    if let RenderNodeType::Image(ref mut img) = node.node_type {
+        if let (Some(index), Some(marker), None) =
+            (img.section_index, img.para_index, img.cell_context.as_ref())
+        {
+            let source = (usize::MAX - 3000..usize::MAX - 1000)
+                .contains(&marker)
+                .then(|| notes.get(index))
+                .flatten()
+                .map(|note| &note.source);
+            if let Some(crate::renderer::pagination::FootnoteSource::Body {
+                para_index,
+                control_index,
+            }) = source
+            {
+                img.section_index = Some(section);
+                img.para_index = Some(*para_index);
+                img.cell_context = Some(CellContext {
+                    in_textbox: false,
+                    parent_para_index: *para_index,
+                    path: vec![CellPathEntry {
+                        control_index: *control_index,
+                        cell_index: 0,
+                        cell_para_index: usize::MAX - 2000 - marker,
+                        text_direction: 0,
+                    }],
+                });
+            }
+        }
+    }
+    for child in &mut node.children {
+        address_footnote_images(child, notes, section);
+    }
+}
+
+/// 미주 글줄 배치는 미주 문단을 본문 문단 뒤 번호(`base + 차례`)로 그린다. 본문 문단 미주 바로 안
+/// 그림과 그 캡션 글줄은 쪽 개체 목록·셀 경로 API가 고를 수 있게 [(미주, 0, 미주 문단)] 문서 주소로
+/// 바꾼다. 표 셀 안 미주는 그 경로를 아직 나타내지 않는다.
+pub(crate) fn address_endnote_controls(
+    node: &mut RenderNode,
+    base: usize,
+    sources: &[EndnoteParaSource],
+) {
+    fn walk(node: &mut RenderNode, base: usize, sources: &[EndnoteParaSource], caption: bool) {
+        let source = |para: usize| {
+            para.checked_sub(base)
+                .and_then(|index| sources.get(index))
+                .filter(|source| source.cell_path.is_empty())
+        };
+        let note_step = |source: &EndnoteParaSource| CellPathEntry {
+            control_index: source.control_index,
+            cell_index: 0,
+            cell_para_index: source.note_para_index,
+            text_direction: 0,
+        };
+        let mut caption = caption;
+        match node.node_type {
+            RenderNodeType::Image(ref mut img) if img.cell_context.is_none() => {
+                if let Some(source) = img.para_index.and_then(source) {
+                    img.section_index = Some(source.section_index);
+                    img.para_index = Some(source.para_index);
+                    img.cell_context = Some(CellContext {
+                        in_textbox: false,
+                        parent_para_index: source.para_index,
+                        path: vec![note_step(source)],
+                    });
+                }
+            }
+            RenderNodeType::TextLine(ref line) => caption = line.caption_owner.is_some(),
+            RenderNodeType::TextRun(ref mut run) if caption => {
+                if let Some(ctx) = run.cell_context.as_mut() {
+                    if let Some(source) = source(ctx.parent_para_index) {
+                        ctx.path.insert(0, note_step(source));
+                        ctx.parent_para_index = source.para_index;
+                    }
+                }
+            }
+            _ => {}
+        }
+        for child in &mut node.children {
+            walk(child, base, sources, caption);
+        }
+    }
+    walk(node, base, sources, false);
 }

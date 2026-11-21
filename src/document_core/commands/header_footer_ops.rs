@@ -1159,6 +1159,7 @@ impl DocumentCore {
                     &styles,
                     dpi,
                 );
+                super::footnote_ops::reserve_tac_caption_lines(para, dpi);
             }
         }
     }
