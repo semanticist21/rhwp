@@ -896,19 +896,27 @@ impl DocumentCore {
                     })?
                 }
                 Some(Control::Shape(shape)) => {
-                    let text_box = super::super::helpers::get_textbox_at(shape, cell_idx)
-                        .ok_or_else(|| {
-                            HwpError::RenderError(format!(
-                                "경로[{}]: controls[{}]가 텍스트 글상자가 아닙니다",
-                                i, ctrl_idx
-                            ))
-                        })?;
-                    text_box.paragraphs.get(cell_para_idx).ok_or_else(|| {
+                    // 셀 65534는 도형 캡션이다(셀 번호 API·가변 경로 해석기와 같은 약속).
+                    let paragraphs = if cell_idx
+                        == crate::document_core::TABLE_CAPTION_CELL_SENTINEL
+                    {
+                        DocumentCore::shape_caption_ref(shape).map(|caption| &caption.paragraphs)
+                    } else {
+                        super::super::helpers::get_textbox_at(shape, cell_idx)
+                            .map(|text_box| &text_box.paragraphs)
+                    }
+                    .ok_or_else(|| {
+                        HwpError::RenderError(format!(
+                            "경로[{}]: controls[{}]가 텍스트 글상자가 아닙니다",
+                            i, ctrl_idx
+                        ))
+                    })?;
+                    paragraphs.get(cell_para_idx).ok_or_else(|| {
                         HwpError::RenderError(format!(
                             "경로[{}]: 글상자문단 {} 범위 초과 (총 {}개)",
                             i,
                             cell_para_idx,
-                            text_box.paragraphs.len()
+                            paragraphs.len()
                         ))
                     })?
                 }
@@ -936,6 +944,23 @@ impl DocumentCore {
                 }
                 Some(ctrl @ (Control::Header(_) | Control::Footer(_))) => {
                     header_footer_step(ctrl, i, cell_idx, cell_para_idx)?
+                }
+                // 각주·미주는 셀 0이다(가변 경로 해석기 `get_cell_paragraphs_mut_by_path`와 같은 꼴).
+                Some(Control::Footnote(note)) if cell_idx == 0 => {
+                    note.paragraphs.get(cell_para_idx).ok_or_else(|| {
+                        HwpError::RenderError(format!(
+                            "경로[{}]: 각주 문단 {} 범위 초과",
+                            i, cell_para_idx
+                        ))
+                    })?
+                }
+                Some(Control::Endnote(note)) if cell_idx == 0 => {
+                    note.paragraphs.get(cell_para_idx).ok_or_else(|| {
+                        HwpError::RenderError(format!(
+                            "경로[{}]: 미주 문단 {} 범위 초과",
+                            i, cell_para_idx
+                        ))
+                    })?
                 }
                 _ => {
                     return Err(HwpError::RenderError(format!(
