@@ -1861,13 +1861,14 @@ mod tests {
         assert_eq!(line_shape_style(none_with_flat_end_cap), "NONE");
     }
 
-    /// #2956: attr 에 파싱된 화살표 끝 모양(bit 16~21, 채움 bit 30)이 저장 시
-    /// "NORMAL" 로 하드코딩되지 않고 보존돼야 한다.
+    /// #2956: attr 에 파싱된 화살표 끝 모양(bit 16~21, 채움 bit 31)이 저장 시
+    /// "NORMAL" 로 하드코딩되지 않고 보존돼야 한다. 끝 채움은 HWP5·렌더러처럼 bit 31이다
+    /// (한/글 12.30이 채운 시작·빈 끝 화살표를 HWP에 bit 30만 켜서 저장한다).
     #[test]
     fn task2956_line_shape_arrow_style_preserved() {
         use crate::model::style::ShapeBorderLine;
-        // tail = FILLED_DIAMOND(4) + tail_fill(bit30)
-        let attr = (4u32 << 16) | (1 << 30);
+        // tail = FILLED_DIAMOND(4) + tail_fill(bit31)
+        let attr = (4u32 << 16) | (1 << 31);
         let bl = ShapeBorderLine {
             attr,
             ..Default::default()
