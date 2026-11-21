@@ -1922,11 +1922,6 @@ impl DocumentCore {
                 cell.text_direction = v;
                 changed
             });
-            // 줄바꿈 방식(0 일반, 1 한 줄로 입력, 2 유지). 바뀌면 칸 문단을 다시 짠다.
-            if let Some(v) = top_u8("lineWrap").filter(|v| *v <= 2) {
-                needs_reflow |= cell.line_wrap != v;
-                cell.line_wrap = v;
-            }
             if let Some(v) = top_bool("isHeader") {
                 cell.set_header(v);
             }

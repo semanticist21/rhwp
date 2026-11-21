@@ -368,12 +368,11 @@ pub(crate) use line_breaking::{
     control_owns_body_band, is_line_end_forbidden, is_line_start_forbidden,
     layout_container_picture_band, layout_paragraph_in_frame,
     layout_paragraph_in_frame_with_storage, layout_picture_anchor_in_frame, layout_picture_band,
-    merge_soft_wrapped_line_segs, paragraph_flow_end, paragraph_flow_state,
-    rebreak_vertical_line_segs, recalculate_section_vpos, reflow_line_segs, reflow_line_segs_after,
-    reflow_line_segs_after_cell_split, reflow_line_segs_after_cell_text_edit,
-    reflow_line_segs_from, reflow_line_segs_in_stored_section, restamp_indentation,
-    row_is_carved_from_box, supports_picture_band_frame_controls, tokenize_paragraph, BreakToken,
-    StoredRowMissPolicy,
+    paragraph_flow_end, paragraph_flow_state, rebreak_vertical_line_segs, recalculate_section_vpos,
+    reflow_line_segs, reflow_line_segs_after, reflow_line_segs_after_cell_split,
+    reflow_line_segs_after_cell_text_edit, reflow_line_segs_from,
+    reflow_line_segs_in_stored_section, restamp_indentation, row_is_carved_from_box,
+    supports_picture_band_frame_controls, tokenize_paragraph, BreakToken, StoredRowMissPolicy,
 };
 
 #[cfg(test)]

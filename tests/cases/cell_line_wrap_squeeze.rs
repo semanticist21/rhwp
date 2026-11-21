@@ -102,7 +102,24 @@ fn squeeze_and_upright_latin_survive_hwpx_and_hwp() {
         let reopened = HwpDocument::from_bytes(&bytes).unwrap();
         let cells = &table(&reopened).cells;
         assert_eq!(cells[1].line_wrap, 1);
-        assert_eq!(cells[1].paragraphs[0].line_segs.len(), 1);
+        // 줄바꿈 방식을 바꾼 문단은 HWPX가 줄 캐시를 내지 않고 여는 쪽이 다시 짠다(devel #9207).
+        // 저장 줄이 있으면 하나이고, 다시 연 문서에서 그 칸 글은 한 줄에 그려진다.
+        assert!(cells[1].paragraphs[0].line_segs.len() <= 1);
+        let layout: serde_json::Value =
+            serde_json::from_str(&reopened.get_page_text_layout_native(0).unwrap()).unwrap();
+        let rows: std::collections::BTreeSet<String> = layout["runs"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .filter(|r| r["parentParaIdx"] == 0 && r["controlIdx"] == 2 && r["cellIdx"] == 1)
+            .map(|r| r["y"].to_string())
+            .collect();
+        assert_eq!(
+            rows.len(),
+            1,
+            "한 줄로 입력 칸 글이 {}줄로 그려졌다",
+            rows.len()
+        );
         assert_eq!(cells[0].text_direction, 2, "영문 세움");
     }
 }
