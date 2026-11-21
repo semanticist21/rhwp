@@ -3686,14 +3686,7 @@ impl DocumentCore {
                             reflow_line_segs(cell_para, paragraph_box.clone(), &styles, self.dpi);
                         }
                     }
-                }
-            }
-            Some(Control::Shape(shape)) if cell_idx == 65534 => {
-                if let Some(cell_para) = Self::shape_caption_mut(shape)
-                    .as_mut()
-                    .and_then(|caption| caption.paragraphs.get_mut(cell_para_idx))
-                {
-                    reflow_line_segs(cell_para, paragraph_box.clone(), &styles, self.dpi);
+                    cell_para.cell_lines_edited = true;
                 }
             }
             Some(Control::Shape(shape)) if cell_idx == 65534 => {
@@ -4158,6 +4151,7 @@ impl DocumentCore {
             }
             None => reflow_line_segs(cell_para, paragraph_box, &styles, dpi),
         }
+        cell_para.cell_lines_edited = true;
         if vertical != 0 {
             crate::renderer::composer::rebreak_vertical_line_segs(
                 cell_para,

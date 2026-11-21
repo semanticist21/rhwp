@@ -2296,7 +2296,8 @@ impl WebCanvasRenderer {
         style: &ShapeStyle,
         gradient: Option<&GradientFillInfo>,
     ) {
-        let need_opacity = style.opacity < 1.0;
+        // 한컴처럼 채우기 투명도는 면에만, 선 투명도는 선에만 건다.
+        let need_opacity = style.opacity < 1.0 || style.stroke_alpha > 0;
         if need_opacity {
             self.ctx.save();
             self.ctx.set_global_alpha(style.opacity);
@@ -2341,6 +2342,10 @@ impl WebCanvasRenderer {
             }
             self.clear_shadow(style); // stroke 전에 그림자 해제
             if let Some(stroke) = style.stroke_color {
+                if need_opacity {
+                    self.ctx
+                        .set_global_alpha(super::alpha_to_opacity(style.stroke_alpha));
+                }
                 self.ctx.set_stroke_style_str(&color_to_css(stroke));
                 self.ctx
                     .set_line_width(style.stroke_dash.canvas_width(style.stroke_width));
@@ -2369,6 +2374,10 @@ impl WebCanvasRenderer {
             }
             self.clear_shadow(style); // stroke 전에 그림자 해제
             if let Some(stroke) = style.stroke_color {
+                if need_opacity {
+                    self.ctx
+                        .set_global_alpha(super::alpha_to_opacity(style.stroke_alpha));
+                }
                 self.ctx.set_stroke_style_str(&color_to_css(stroke));
                 self.ctx
                     .set_line_width(style.stroke_dash.canvas_width(style.stroke_width));
@@ -2395,6 +2404,12 @@ impl WebCanvasRenderer {
         style: &ShapeStyle,
         gradient: Option<&GradientFillInfo>,
     ) {
+        // 한컴처럼 채우기 투명도는 면에만, 선 투명도는 선에만 건다.
+        let need_opacity = style.opacity < 1.0 || style.stroke_alpha > 0;
+        if need_opacity {
+            self.ctx.save();
+            self.ctx.set_global_alpha(style.opacity);
+        }
         self.apply_shadow(style);
         self.ctx.begin_path();
         let _ = self
@@ -2423,6 +2438,10 @@ impl WebCanvasRenderer {
         }
 
         if let Some(stroke) = style.stroke_color {
+            if need_opacity {
+                self.ctx
+                    .set_global_alpha(super::alpha_to_opacity(style.stroke_alpha));
+            }
             self.ctx.set_stroke_style_str(&color_to_css(stroke));
             self.ctx
                 .set_line_width(style.stroke_dash.canvas_width(style.stroke_width));
@@ -2433,6 +2452,9 @@ impl WebCanvasRenderer {
             self.ctx.set_line_cap("butt");
         }
         self.clear_shadow(style);
+        if need_opacity {
+            self.ctx.restore();
+        }
     }
 
     /// 그라데이션을 포함한 패스 그리기
@@ -2442,6 +2464,12 @@ impl WebCanvasRenderer {
         style: &ShapeStyle,
         gradient: Option<&GradientFillInfo>,
     ) {
+        // 한컴처럼 채우기 투명도는 면에만, 선 투명도는 선에만 건다.
+        let need_opacity = style.opacity < 1.0 || style.stroke_alpha > 0;
+        if need_opacity {
+            self.ctx.save();
+            self.ctx.set_global_alpha(style.opacity);
+        }
         self.apply_shadow(style);
         self.ctx.begin_path();
         let mut min_x = f64::MAX;
@@ -2547,6 +2575,10 @@ impl WebCanvasRenderer {
         }
 
         if let Some(stroke) = style.stroke_color {
+            if need_opacity {
+                self.ctx
+                    .set_global_alpha(super::alpha_to_opacity(style.stroke_alpha));
+            }
             self.ctx.set_stroke_style_str(&color_to_css(stroke));
             self.ctx
                 .set_line_width(style.stroke_dash.canvas_width(style.stroke_width));
@@ -2563,6 +2595,9 @@ impl WebCanvasRenderer {
             self.ctx.set_shadow_offset_x(0.0);
             self.ctx.set_shadow_offset_y(0.0);
             self.ctx.set_shadow_blur(0.0);
+        }
+        if need_opacity {
+            self.ctx.restore();
         }
     }
 
@@ -3333,6 +3368,12 @@ impl Renderer for WebCanvasRenderer {
     }
 
     fn draw_line(&mut self, x1: f64, y1: f64, x2: f64, y2: f64, style: &LineStyle) {
+        // 선 투명도는 선과 화살표를 함께 옅게 한다.
+        if style.alpha > 0 {
+            self.ctx.save();
+            self.ctx
+                .set_global_alpha(super::alpha_to_opacity(style.alpha));
+        }
         self.draw_line_with_resolved_width(
             x1,
             y1,
@@ -3341,6 +3382,9 @@ impl Renderer for WebCanvasRenderer {
             style,
             style.dash.canvas_width(style.width),
         );
+        if style.alpha > 0 {
+            self.ctx.restore();
+        }
     }
 
     fn draw_ellipse(&mut self, cx: f64, cy: f64, rx: f64, ry: f64, style: &ShapeStyle) {
