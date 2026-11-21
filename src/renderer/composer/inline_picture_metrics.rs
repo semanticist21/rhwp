@@ -11,11 +11,22 @@ pub(crate) fn inline_picture_size_hu(picture: &Picture) -> (i32, i32) {
 
 /// 글자처럼 그림의 바깥 여백 [왼쪽, 오른쪽, 위, 아래] (HWPUNIT).
 /// 개체 바깥 여백에 한컴 12.30처럼 그림 효과(그림자·네온·반사)가 덮는 만큼을 더한다.
+/// 왼쪽·오른쪽 캡션도 한컴 12.30처럼 캡션 폭과 간격만큼 그 쪽 자리를 차지한다: 왼쪽 캡션이면
+/// 그림이 그만큼 오른쪽으로 옮겨 가고, 오른쪽 캡션이면 뒤 글이 그만큼 밀린다.
 pub(crate) fn inline_picture_margins_hu(picture: &Picture) -> [i32; 4] {
+    use crate::model::shape::CaptionDirection;
     let (width, height) = inline_picture_size_hu(picture);
     let effect = crate::renderer::image_resolver::inline_effect_outsets_hu(picture, width, height);
     let m = &picture.common.margin;
-    let margin = [m.left, m.right, m.top, m.bottom].map(i32::from);
+    let mut margin = [m.left, m.right, m.top, m.bottom].map(i32::from);
+    if let Some(caption) = picture.caption.as_ref() {
+        let side = (caption.width as i32).saturating_add(i32::from(caption.spacing));
+        match caption.direction {
+            CaptionDirection::Left => margin[0] = margin[0].saturating_add(side),
+            CaptionDirection::Right => margin[1] = margin[1].saturating_add(side),
+            _ => {}
+        }
+    }
     std::array::from_fn(|i| margin[i].saturating_add(effect[i]))
 }
 

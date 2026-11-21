@@ -1139,6 +1139,33 @@ impl LayoutEngine {
         super::super::composer::caption_height_px_in_context(caption, Some(styles), self.dpi)
     }
 
+    /// 글자처럼 취급 그림의 왼쪽·오른쪽 캡션 자리 (x, 폭, y). 줄 배치가 캡션 폭과 간격을 그림 바깥
+    /// 여백에 넣어 비워 두므로(`inline_picture_margins_hu`) 그린 그림 상자 옆에 두고, 그림 높이 안에서
+    /// 위·가운데·아래로 맞춘다(한컴 12.30). 위·아래 캡션이면 `None`.
+    pub(crate) fn inline_side_caption_place(
+        &self,
+        caption: &Caption,
+        image: BoundingBox,
+        caption_height: f64,
+    ) -> Option<(f64, f64, f64)> {
+        use crate::model::shape::CaptionVertAlign;
+        let width = hwpunit_to_px(caption.width as i32, self.dpi);
+        let spacing = hwpunit_to_px(caption.spacing as i32, self.dpi);
+        let x = match caption.direction {
+            CaptionDirection::Left => image.x - spacing - width,
+            CaptionDirection::Right => image.x + image.width + spacing,
+            _ => return None,
+        };
+        let room = (image.height - caption_height).max(0.0);
+        let y = image.y
+            + match caption.vert_align {
+                CaptionVertAlign::Top => 0.0,
+                CaptionVertAlign::Center => room / 2.0,
+                CaptionVertAlign::Bottom => room,
+            };
+        Some((x, width, y))
+    }
+
     /// 한컴 12.30은 왼쪽·오른쪽 캡션을 개체 높이에서 잘라 그린다(넘친 줄은 개체 아래 경계에서
     /// 잘린다). `first`부터 덧붙은 캡션 노드에 그 높이의 자름 상자를 단다.
     pub(crate) fn clip_side_caption(
@@ -2284,8 +2311,8 @@ impl LayoutEngine {
         }
     }
 
-    /// 각주 글줄에 든 글자처럼 취급 그림의 위·아래 캡션을 본문 글자처럼 취급 그림처럼 그린다(한컴 12.30:
-    /// 각주 그림에도 캡션을 단다). 본문 문단 각주의 캡션 글줄은 본문 문단이 뿌리인
+    /// 각주 글줄에 든 글자처럼 취급 그림의 캡션을 본문 글자처럼 취급 그림처럼 그린다(한컴 12.30:
+    /// 각주 그림에도 캡션을 단다). 왼쪽·오른쪽 캡션은 줄 배치가 비워 둔 그림 옆 자리에 둔다. 본문 문단 각주의 캡션 글줄은 본문 문단이 뿌리인
     /// [(각주, 0, 각주 문단), (그림, 0, 캡션 문단)] 문맥을 가져 셀 경로 API가 그 캡션 글에 닿는다.
     /// 줄 높이는 저장 줄(한컴)과 각주 줄 재조판(`reserve_tac_caption_lines`)이 캡션까지 품는다.
     #[allow(clippy::too_many_arguments)]
@@ -2330,12 +2357,7 @@ impl LayoutEngine {
             let Some(caption) = pic.caption.as_ref() else {
                 continue;
             };
-            if !pic.common.treat_as_char
-                || !matches!(
-                    caption.direction,
-                    CaptionDirection::Top | CaptionDirection::Bottom
-                )
-            {
+            if !pic.common.treat_as_char {
                 continue;
             }
             let Some((owner, bbox)) = fn_node.children[first_child..]
@@ -2394,18 +2416,31 @@ impl LayoutEngine {
                 // ponytail: 표 셀·글상자 안 각주의 그림 캡션은 그리기만 하고 편집 주소는 아직 없다.
                 _ => None,
             };
+            let (cap_x, cap_w, cap_y) = self
+                .inline_side_caption_place(caption, bbox, caption_h)
+                .unwrap_or((bbox.x - ext_left, bbox.width + ext_w, cap_y));
+            let caption_first = fn_node.children.len();
             self.layout_caption(
                 tree,
                 fn_node,
                 caption,
                 styles,
                 fn_area,
-                bbox.x - ext_left,
-                bbox.width + ext_w,
+                cap_x,
+                cap_w,
                 cap_y,
                 bin_data_content,
                 ctx,
                 None,
+            );
+            Self::clip_side_caption(
+                fn_node,
+                caption_first,
+                caption,
+                cap_x,
+                cap_w,
+                bbox.y,
+                bbox.y + bbox.height,
             );
         }
     }

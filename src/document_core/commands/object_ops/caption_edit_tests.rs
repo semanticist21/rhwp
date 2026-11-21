@@ -1017,3 +1017,252 @@ fn endnote_inline_picture_caption_is_addressed_and_hit() {
     )
     .expect("미주 캡션 캐럿");
 }
+
+/// 앞글·그림·뒷글 문단의 글자처럼 취급 그림에 캡션을 달고 (그림 상자, 캡션 글줄, '뒷' 글자 x)를 잰다.
+fn body_inline_side_caption(
+    caption: Option<(&str, &str)>,
+) -> (BoundingBox, Option<BoundingBox>, f64) {
+    let mut core = blank();
+    core.insert_text_native(0, 0, 0, "앞글뒷글").expect("본문");
+    let result = core
+        .insert_picture_native(
+            0,
+            0,
+            2,
+            &[],
+            &png(),
+            6000,
+            6000,
+            1,
+            1,
+            "png",
+            "",
+            None,
+            None,
+        )
+        .expect("그림");
+    let ctrl = json_usize(&result, "controlIdx");
+    core.set_picture_properties_native(0, 0, ctrl, r#"{"treatAsChar":true}"#)
+        .expect("글자처럼 취급");
+    if let Some((direction, align)) = caption {
+        core.set_picture_properties_native(
+            0,
+            0,
+            ctrl,
+            &format!(
+                r#"{{"hasCaption":true,"captionDirection":"{direction}","captionVertAlign":"{align}","captionWidth":8504,"captionSpacing":850}}"#
+            ),
+        )
+        .expect("캡션");
+    }
+    fn after_x(node: &RenderNode) -> Option<f64> {
+        if let RenderNodeType::TextRun(run) = &node.node_type {
+            if run.cell_context.is_none() && run.text.starts_with('뒷') {
+                return Some(node.bbox.x);
+            }
+        }
+        node.children.iter().find_map(after_x)
+    }
+    let tree = core.build_page_tree(0).expect("쪽 트리");
+    let after = after_x(&tree.root).expect("뒷글");
+    let line = caption_lines(&core).first().map(|(line, _)| *line);
+    (image_boxes(&core)[0], line, after)
+}
+
+/// 한컴 12.30은 글자처럼 취급 그림의 왼쪽 캡션 폭과 간격만큼 그림을 오른쪽으로 옮겨 캡션을 그 앞에
+/// 두고, 오른쪽 캡션은 그림 뒤에 두어 뒷글을 그만큼 민다. 캡션은 그림 높이 안에서 위·아래로 맞춘다.
+#[test]
+fn inline_picture_side_captions_take_room_beside_the_picture() {
+    let room = crate::renderer::hwpunit_to_px(8504 + 850, crate::renderer::DEFAULT_DPI);
+    let width = crate::renderer::hwpunit_to_px(8504, crate::renderer::DEFAULT_DPI);
+    let (plain, _, plain_after) = body_inline_side_caption(None);
+
+    let (image, line, after) = body_inline_side_caption(Some(("Left", "Top")));
+    let line = line.expect("왼쪽 캡션 글줄");
+    assert!(
+        (image.x - (plain.x + room)).abs() < 0.5,
+        "{image:?} {plain:?}"
+    );
+    assert!(
+        (after - (plain_after + room)).abs() < 0.5,
+        "{after} {plain_after}"
+    );
+    assert!(
+        (line.x - plain.x).abs() < 0.5,
+        "캡션 {line:?} 그림 {plain:?}"
+    );
+    assert!(line.width <= width + 0.5, "{line:?}");
+    assert!(
+        (line.y - image.y).abs() < 0.5,
+        "캡션 {line:?} 그림 {image:?}"
+    );
+
+    let (image, line, after) = body_inline_side_caption(Some(("Right", "Bottom")));
+    let line = line.expect("오른쪽 캡션 글줄");
+    assert!((image.x - plain.x).abs() < 0.5, "{image:?} {plain:?}");
+    assert!(
+        (after - (plain_after + room)).abs() < 0.5,
+        "{after} {plain_after}"
+    );
+    let gap = crate::renderer::hwpunit_to_px(850, crate::renderer::DEFAULT_DPI);
+    assert!(
+        (line.x - (image.x + image.width + gap)).abs() < 0.5,
+        "캡션 {line:?} 그림 {image:?}"
+    );
+    assert!(
+        (line.y + line.height - (image.y + image.height)).abs() < 0.5,
+        "캡션 {line:?} 그림 {image:?}"
+    );
+}
+
+/// 머리말·각주의 글자처럼 취급 그림도 본문처럼 왼쪽 캡션 자리를 비워 그림을 옮기고 그 앞에 캡션을 그린다.
+#[test]
+fn header_and_footnote_inline_pictures_draw_side_captions() {
+    let room = crate::renderer::hwpunit_to_px(8504 + 850, crate::renderer::DEFAULT_DPI);
+    fn first(node: &RenderNode, caption: bool) -> Option<BoundingBox> {
+        match &node.node_type {
+            RenderNodeType::Image(_) if !caption => return Some(node.bbox),
+            RenderNodeType::TextLine(line) if caption && line.caption_owner.is_none() => {
+                let captioned = node.children.iter().any(|child| {
+                    matches!(&child.node_type, RenderNodeType::TextRun(run)
+                    if run.cell_context.as_ref().is_some_and(|ctx| {
+                        ctx.path.last().is_some_and(|step| step.cell_index == 0)
+                            && run.text.contains("그림")
+                    }))
+                });
+                if captioned {
+                    return Some(node.bbox);
+                }
+            }
+            _ => {}
+        }
+        node.children.iter().find_map(|child| first(child, caption))
+    }
+    let props = |caption: bool| {
+        if caption {
+            r#"{"treatAsChar":true,"hasCaption":true,"captionDirection":"Left","captionVertAlign":"Top","captionWidth":8504,"captionSpacing":850}"#
+        } else {
+            r#"{"treatAsChar":true}"#
+        }
+    };
+    let header = |caption: bool| {
+        let mut core = blank();
+        let (para, ctrl) = floating_picture(&mut core, props(caption));
+        let picture = core.document.sections[0].paragraphs[para].controls[ctrl].clone();
+        put_in_header(&mut core, picture);
+        core.insert_text_in_header_footer_native(0, true, 0, 0, 0, "머리")
+            .expect("머리말 글");
+        let tree = core.build_page_tree(0).expect("쪽 트리");
+        let area = tree
+            .root
+            .children
+            .iter()
+            .find(|child| matches!(child.node_type, RenderNodeType::Header))
+            .expect("머리말 노드");
+        (first(area, false).expect("머리말 그림"), first(area, true))
+    };
+    let footnote = |caption: bool| {
+        let mut core = blank();
+        let (para, ctrl) = floating_picture(&mut core, props(caption));
+        let picture = core.document.sections[0].paragraphs[para].controls[ctrl].clone();
+        let note: serde_json::Value =
+            serde_json::from_str(&core.insert_footnote_native(0, para, 0).expect("각주"))
+                .expect("JSON");
+        let note = note["controlIdx"].as_u64().expect("controlIdx") as usize;
+        core.insert_text_in_footnote_native(0, para, note, 0, 0, "각주")
+            .expect("각주 글");
+        {
+            let Control::Footnote(footnote) =
+                &mut core.document.sections[0].paragraphs[para].controls[note]
+            else {
+                panic!("각주가 아니다");
+            };
+            let first = &mut footnote.paragraphs[0];
+            let end = first.text.chars().count();
+            let at = first.controls.len();
+            first.controls.push(picture);
+            first.shift_for_inline_control_insert(at, end);
+            first.char_count += 8;
+        }
+        core.document.sections[0].raw_stream = None;
+        core.reflow_footnote_paragraph(0, para, note, 0);
+        core.mark_section_dirty(0);
+        core.paginate_if_needed();
+        let tree = core.build_page_tree(0).expect("쪽 트리");
+        let area = tree
+            .root
+            .children
+            .iter()
+            .find(|child| matches!(child.node_type, RenderNodeType::FootnoteArea))
+            .expect("각주 영역");
+        (first(area, false).expect("각주 그림"), first(area, true))
+    };
+    for (name, (plain, _), (image, line)) in [
+        ("머리말", header(false), header(true)),
+        ("각주", footnote(false), footnote(true)),
+    ] {
+        let line = line.unwrap_or_else(|| panic!("{name} 왼쪽 캡션 글줄"));
+        assert!(
+            (image.x - (plain.x + room)).abs() < 0.5,
+            "{name} {image:?} {plain:?}"
+        );
+        assert!(
+            (line.x - plain.x).abs() < 0.5,
+            "{name} 캡션 {line:?} 그림 {plain:?}"
+        );
+        assert!(
+            (line.y - image.y).abs() < 0.5,
+            "{name} 캡션 {line:?} 그림 {image:?}"
+        );
+    }
+}
+
+/// 표 셀 안 글자처럼 취급 그림의 왼쪽 캡션도 본문처럼 그림 앞 자리에 한 번만 비워 그린다.
+#[test]
+fn cell_inline_picture_left_caption_sits_before_the_picture() {
+    let mut core = blank();
+    let table = core.create_table_native(0, 0, 0, 1, 2).expect("표");
+    let table_ctrl = json_usize(&table, "controlIdx");
+    let table_para = json_usize(&table, "paraIdx");
+    let cell = [(table_ctrl, 0usize, 0usize)];
+    let picture = core
+        .insert_picture_in_cell_native(
+            0,
+            table_para,
+            0,
+            &cell,
+            &png(),
+            6000,
+            6000,
+            1,
+            1,
+            "png",
+            "",
+            None,
+            None,
+        )
+        .expect("셀 그림");
+    let inner = json_usize(&picture, "controlIdx");
+    let path = format!(r#"[{{"controlIndex":{table_ctrl},"cellIndex":0,"cellParaIndex":0}}]"#);
+    core.set_cell_picture_properties_by_path_native(
+        0,
+        table_para,
+        &path,
+        inner,
+        r#"{"treatAsChar":true,"hasCaption":true,"captionDirection":"Left","captionVertAlign":"Top","captionWidth":8504,"captionSpacing":850}"#,
+    )
+    .expect("셀 그림 왼쪽 캡션");
+    let image = image_boxes(&core)[0];
+    let (line, _) = caption_lines(&core).remove(0);
+    let room = crate::renderer::hwpunit_to_px(8504 + 850, core.dpi);
+    assert!(
+        (image.x - room - line.x).abs() < 0.5,
+        "캡션 {line:?} 그림 {image:?}"
+    );
+    assert!(
+        (line.y - image.y).abs() < 0.5,
+        "캡션 {line:?} 그림 {image:?}"
+    );
+    let cell_box = first_cell_box(&core);
+    assert!(line.x >= cell_box.x, "캡션 {line:?} 셀 {cell_box:?}");
+}

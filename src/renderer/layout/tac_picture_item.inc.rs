@@ -404,7 +404,6 @@ impl LayoutEngine {
             // 표·그림 +17.9pt). 보통 줄은 baseline < 그림 높이라 두 식이 같다.
             let image_bottom = effective_pic_y + effective_pic_h;
             let cap_y = match caption.direction {
-                CaptionDirection::Bottom => image_bottom + caption_spacing,
                 CaptionDirection::Top => effective_pic_y,
                 _ => image_bottom + caption_spacing,
             };
@@ -437,14 +436,20 @@ impl LayoutEngine {
                 self.dpi,
             )
             .max(0.0);
+            // 왼쪽·오른쪽 캡션은 줄 배치가 비워 둔 그림 옆 자리에 둔다.
+            let image = BoundingBox::new(image_x, effective_pic_y, pic_w, effective_pic_h);
+            let (cap_x, cap_w, cap_y) = self
+                .inline_side_caption_place(caption, image, caption_h)
+                .unwrap_or((image_x - ext_left, pic_w + ext_w, cap_y));
+            let caption_first = col_node.children.len();
             self.layout_caption(
                 tree,
                 col_node,
                 caption,
                 styles,
                 col_area,
-                image_x - ext_left,
-                pic_w + ext_w,
+                cap_x,
+                cap_w,
                 cap_y,
                 bin_data_content,
                 Some(cell_ctx),
@@ -454,6 +459,15 @@ impl LayoutEngine {
                     Some(control_index),
                     CaptionControlKind::Image,
                 ),
+            );
+            Self::clip_side_caption(
+                col_node,
+                caption_first,
+                caption,
+                cap_x,
+                cap_w,
+                image.y,
+                image.y + image.height,
             );
             // [Task #864 Stage F] caption 이 차지한 영역까지 result_y 진행.
             // 미진행 시 다음 paragraph 가 caption 위에 그려져 겹침

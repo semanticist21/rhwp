@@ -7,8 +7,8 @@ impl LayoutEngine {
     /// 머리말·꼬리말 문단 글줄에 든 글자처럼 취급 그림의 위·아래 캡션을 본문 글자처럼 취급 그림처럼
     /// 그린다(한컴 12.30: 아래 캡션은 그림 바로 아래, 위 캡션은 줄 위끝에 두고 그림을 그만큼 내린다).
     /// 캡션 글줄은 머리말 표 칸처럼 머리말 문단이 뿌리인 [(그림, 0, 캡션 문단)] 문맥을 가져 머리말
-    /// 히트·셀 경로 API가 그 캡션 글에 닿는다. 그린 캡션·그림의 바닥을 돌려준다.
-    /// ponytail: 옆 캡션은 본문처럼 줄 배치가 캡션 폭을 개체 폭에 넣지 않아 아직 그리지 않는다.
+    /// 히트·셀 경로 API가 그 캡션 글에 닿는다. 왼쪽·오른쪽 캡션은 줄 배치가 비워 둔 그림 옆 자리에
+    /// 그림 높이 안에서 맞춰 그린다. 그린 캡션·그림의 바닥을 돌려준다.
     fn layout_header_footer_tac_captions(
         &self,
         tree: &mut PageLayoutContext,
@@ -38,12 +38,7 @@ impl LayoutEngine {
                 continue;
             };
             use crate::model::shape::CaptionDirection;
-            if !pic.common.treat_as_char
-                || !matches!(
-                    caption.direction,
-                    CaptionDirection::Top | CaptionDirection::Bottom
-                )
-            {
+            if !pic.common.treat_as_char {
                 continue;
             }
             // 글줄 배치는 머리말 문단 번호를 usize::MAX - i 로 적는다(머리말 노드 후처리가 되돌린다).
@@ -76,14 +71,18 @@ impl LayoutEngine {
                 self.dpi,
             )
             .max(0.0);
+            let (cap_x, cap_w, cap_y) = self
+                .inline_side_caption_place(caption, image, caption_h)
+                .unwrap_or((image.x - ext_left, image.width + ext_w, cap_y));
+            let caption_first = area_node.children.len();
             self.layout_caption(
                 tree,
                 area_node,
                 caption,
                 styles,
                 area,
-                image.x - ext_left,
-                image.width + ext_w,
+                cap_x,
+                cap_w,
                 cap_y,
                 bin_data_content,
                 Some(CellContext {
@@ -98,9 +97,19 @@ impl LayoutEngine {
                 }),
                 None,
             );
+            Self::clip_side_caption(
+                area_node,
+                caption_first,
+                caption,
+                cap_x,
+                cap_w,
+                image.y,
+                image.y + image.height,
+            );
             bottom = bottom.max(match caption.direction {
                 CaptionDirection::Top => cap_y + caption_h + spacing + image.height,
-                _ => cap_y + caption_h,
+                CaptionDirection::Bottom => cap_y + caption_h,
+                _ => image.y + image.height,
             });
         }
         bottom
