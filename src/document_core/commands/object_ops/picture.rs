@@ -584,6 +584,13 @@ impl DocumentCore {
             .resolve_picture_control_ref(section_idx, parent_para_idx, control_idx)
             .ok()
             .map(|pic| picture_band_geometry(&pic.common));
+        // 글자처럼 취급 그림의 줄 안 자리(바깥 여백 + 효과 + 옆 캡션). 옆 캡션을 넣거나 폭·간격을 바꾸면
+        // 밴드 기하는 그대로여도 줄을 다시 나눠야 한다.
+        let inline_room_before = self
+            .resolve_picture_control_ref(section_idx, parent_para_idx, control_idx)
+            .ok()
+            .filter(|pic| pic.common.treat_as_char)
+            .map(crate::renderer::composer::inline_picture_margins_hu);
 
         let caption_styles = self.resolve_render_styles();
         let (dpi, hwp3_layout) = (self.dpi, self.document.layout_profile().hwp3_layout());
@@ -732,10 +739,19 @@ impl DocumentCore {
             .resolve_picture_control_ref(section_idx, parent_para_idx, control_idx)
             .ok()
             .map(|pic| picture_band_geometry(&pic.common));
-        if band_geometry_before != band_geometry_after {
+        let inline_room_after = self
+            .resolve_picture_control_ref(section_idx, parent_para_idx, control_idx)
+            .ok()
+            .filter(|pic| pic.common.treat_as_char)
+            .map(crate::renderer::composer::inline_picture_margins_hu);
+        let band_changed = band_geometry_before != band_geometry_after;
+        if band_changed || inline_room_before != inline_room_after {
             // 재투영 실패는 이 편집의 실패가 아니다 — 밴드를 만들 수 없는 형상이면
             // 종전대로 recompose 에 맡긴다.
-            let _ = self.apply_body_edit_through_picture_band(section_idx, parent_para_idx, |_| {});
+            if band_changed {
+                let _ =
+                    self.apply_body_edit_through_picture_band(section_idx, parent_para_idx, |_| {});
+            }
             // TAC 개체의 크기·바깥 여백 편집도 저장 줄을 다시 발행해야 한다.
             // 화면만 recompose하면 이전 줄 높이가 저장되어 재열기와 Print가 갈린다.
             if parent_para_idx < self.document.sections[section_idx].paragraphs.len()

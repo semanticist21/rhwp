@@ -8930,18 +8930,11 @@ impl LayoutEngine {
                                                                     lines[ci] == owner
                                                                 }) =>
                                                     {
-                                                        Some(
-                                                            hwpunit_to_px(
-                                                                signed_hwpunit(prior.common.width),
-                                                                self.dpi,
-                                                            ) + hwpunit_to_px(
-                                                                i32::from(prior.common.margin.left)
-                                                                    + i32::from(
-                                                                        prior.common.margin.right,
-                                                                    ),
-                                                                self.dpi,
-                                                            ),
-                                                        )
+                                                        // 앞 그림이 줄에서 차지한 자리(옆 캡션·효과 포함).
+                                                        Some(hwpunit_to_px(
+                                                            crate::renderer::composer::inline_picture_occupied_size_hu(prior).0,
+                                                            self.dpi,
+                                                        ))
                                                     }
                                                     _ => None,
                                                 })
@@ -9060,7 +9053,14 @@ impl LayoutEngine {
                                             .max(picture_y + clamped_h),
                                     );
                                 }
-                                inline_x += clamped_w;
+                                // 옆 캡션은 그 폭과 간격만큼 다음 그림을 민다.
+                                inline_x += clamped_w
+                                    + hwpunit_to_px(
+                                        crate::renderer::composer::inline_side_caption_hu(pic)
+                                            .iter()
+                                            .sum(),
+                                        self.dpi,
+                                    );
                                 continue;
                             }
                             inline_x += pic_w;

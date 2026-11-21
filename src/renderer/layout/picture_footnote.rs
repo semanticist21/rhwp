@@ -1139,31 +1139,37 @@ impl LayoutEngine {
         super::super::composer::caption_height_px_in_context(caption, Some(styles), self.dpi)
     }
 
-    /// 글자처럼 취급 그림의 왼쪽·오른쪽 캡션 자리 (x, 폭, y). 줄 배치가 캡션 폭과 간격을 그림 바깥
-    /// 여백에 넣어 비워 두므로(`inline_picture_margins_hu`) 그린 그림 상자 옆에 두고, 그림 높이 안에서
-    /// 위·가운데·아래로 맞춘다(한컴 12.30). 위·아래 캡션이면 `None`.
+    /// 글자처럼 취급 그림의 왼쪽·오른쪽 캡션 상자 (x, 폭, y, 위끝, 아래끝). 줄 배치가 캡션 폭과 간격을 그림
+    /// 바깥 여백에 넣어 비워 두므로(`inline_picture_margins_hu`) 그린 그림 옆에 둔다. 한컴 12.30처럼
+    /// 바깥 여백 → 캡션 → 그림 효과(네온·그림자·반사) → 그림 차례라 캡션은 효과 상자 옆에 서고, 그
+    /// 상자 높이 안에서 위·가운데·아래로 맞추며 그 높이에서 잘린다. 위·아래 캡션이면 `None`.
     pub(crate) fn inline_side_caption_place(
         &self,
         caption: &Caption,
+        picture: &crate::model::image::Picture,
         image: BoundingBox,
         caption_height: f64,
-    ) -> Option<(f64, f64, f64)> {
+    ) -> Option<(f64, f64, f64, f64, f64)> {
         use crate::model::shape::CaptionVertAlign;
+        let [left, right, top, bottom] =
+            crate::renderer::composer::inline_picture_effect_outsets_hu(picture)
+                .map(|v| hwpunit_to_px(v, self.dpi));
+        let (box_top, box_bottom) = (image.y - top, image.y + image.height + bottom);
         let width = hwpunit_to_px(caption.width as i32, self.dpi);
-        let spacing = hwpunit_to_px(caption.spacing as i32, self.dpi);
+        let spacing = hwpunit_to_px(i32::from(caption.spacing).max(0), self.dpi);
         let x = match caption.direction {
-            CaptionDirection::Left => image.x - spacing - width,
-            CaptionDirection::Right => image.x + image.width + spacing,
+            CaptionDirection::Left => image.x - left - spacing - width,
+            CaptionDirection::Right => image.x + image.width + right + spacing,
             _ => return None,
         };
-        let room = (image.height - caption_height).max(0.0);
-        let y = image.y
+        let room = (box_bottom - box_top - caption_height).max(0.0);
+        let y = box_top
             + match caption.vert_align {
                 CaptionVertAlign::Top => 0.0,
                 CaptionVertAlign::Center => room / 2.0,
                 CaptionVertAlign::Bottom => room,
             };
-        Some((x, width, y))
+        Some((x, width, y, box_top, box_bottom))
     }
 
     /// 한컴 12.30은 왼쪽·오른쪽 캡션을 개체 높이에서 잘라 그린다(넘친 줄은 개체 아래 경계에서
@@ -2416,9 +2422,15 @@ impl LayoutEngine {
                 // ponytail: 표 셀·글상자 안 각주의 그림 캡션은 그리기만 하고 편집 주소는 아직 없다.
                 _ => None,
             };
-            let (cap_x, cap_w, cap_y) = self
-                .inline_side_caption_place(caption, bbox, caption_h)
-                .unwrap_or((bbox.x - ext_left, bbox.width + ext_w, cap_y));
+            let (cap_x, cap_w, cap_y, clip_top, clip_bottom) = self
+                .inline_side_caption_place(caption, pic, bbox, caption_h)
+                .unwrap_or((
+                    bbox.x - ext_left,
+                    bbox.width + ext_w,
+                    cap_y,
+                    bbox.y,
+                    bbox.y + bbox.height,
+                ));
             let caption_first = fn_node.children.len();
             self.layout_caption(
                 tree,
@@ -2439,8 +2451,8 @@ impl LayoutEngine {
                 caption,
                 cap_x,
                 cap_w,
-                bbox.y,
-                bbox.y + bbox.height,
+                clip_top,
+                clip_bottom,
             );
         }
     }

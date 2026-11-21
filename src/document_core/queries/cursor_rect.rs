@@ -2021,7 +2021,15 @@ impl DocumentCore {
                         (l.max(own.0), r.min(own.1), t.max(own.2), btm.min(own.3))
                     }))
                 }
-                _ => current_clip,
+                // 옆 캡션처럼 그리기 자름 상자 밖으로 나간 글줄은 보이지 않으므로 고르지 않는다.
+                _ => match paint_clip_span(node) {
+                    Some((top, bottom)) => {
+                        let (l, r, t, btm) =
+                            current_clip.unwrap_or((f64::MIN, f64::MAX, f64::MIN, f64::MAX));
+                        Some((l, r, t.max(top), btm.min(bottom)))
+                    }
+                    None => current_clip,
+                },
             };
             let fully_clipped = |b: &crate::renderer::render_tree::BoundingBox| {
                 clip.is_some_and(|(l, r, t, btm)| {
@@ -7318,6 +7326,27 @@ fn header_footer_edit_node(
 /// 각주 그림 캡션 글줄을 누른 자리. 캡션 글줄의 셀 문맥은 본문 문단이 뿌리인
 /// [(각주, 0, 각주 문단), (그림, 0, 캡션 문단)]이다(각주 글은 문단 표지를 쓰고 문맥이 없다).
 /// 누른 y가 든 캡션 줄의 가장 가까운 글자 자리를 셀 히트와 같은 JSON으로 준다.
+/// 노드 그리기 자름 상자(`paint_clip`)의 세로 범위(위, 아래).
+fn paint_clip_span(node: &crate::renderer::render_tree::RenderNode) -> Option<(f64, f64)> {
+    use crate::model::text_clip::ClipCommand;
+    node.paint_clip
+        .as_ref()?
+        .iter()
+        .flat_map(|path| path.commands.iter())
+        .filter_map(|command| match command {
+            ClipCommand::Move(_, y) | ClipCommand::Line(_, y) => Some(*y),
+            _ => None,
+        })
+        .fold(None, |span: Option<(f64, f64)>, y| {
+            Some(span.map_or((y, y), |(top, bottom)| (top.min(y), bottom.max(y))))
+        })
+}
+
+/// 누른 y가 노드의 그리기 자름 상자 밖이면 그 글은 보이지 않는 자리다(옆 캡션이 그림 높이에서 잘린 줄).
+fn outside_paint_clip(node: &crate::renderer::render_tree::RenderNode, y: f64) -> bool {
+    paint_clip_span(node).is_some_and(|(top, bottom)| y < top || y > bottom)
+}
+
 fn footnote_caption_hit(
     fn_node: &crate::renderer::render_tree::RenderNode,
     page_num: u32,
@@ -7326,7 +7355,10 @@ fn footnote_caption_hit(
     y: f64,
 ) -> Option<String> {
     use crate::renderer::render_tree::{RenderNode, RenderNodeType};
-    fn collect<'a>(node: &'a RenderNode, out: &mut Vec<&'a RenderNode>) {
+    fn collect<'a>(node: &'a RenderNode, y: f64, out: &mut Vec<&'a RenderNode>) {
+        if outside_paint_clip(node, y) {
+            return;
+        }
         if let RenderNodeType::TextRun(ref run) = node.node_type {
             if run.char_start.is_some()
                 && run.cell_context.as_ref().is_some_and(|ctx| {
@@ -7340,11 +7372,11 @@ fn footnote_caption_hit(
             return;
         }
         for child in &node.children {
-            collect(child, out);
+            collect(child, y, out);
         }
     }
     let mut runs = Vec::new();
-    collect(fn_node, &mut runs);
+    collect(fn_node, y, &mut runs);
     let node = runs
         .into_iter()
         .filter(|node| y >= node.bbox.y && y <= node.bbox.y + node.bbox.height)
@@ -7403,7 +7435,10 @@ fn header_footer_caption_hit(
     use crate::renderer::render_tree::{RenderNode, RenderNodeType};
     // 머리말 그림 캡션 글은 표 칸 글처럼 머리말 문단이 뿌리인 [(그림, 0, 캡션 문단)] 문맥을 갖는다.
     // 표 칸(TableCell) 밖이고 글상자가 아닌 칸 0 문맥만 그림 캡션이다(표 캡션은 65534로 따로 찾는다).
-    fn collect<'a>(node: &'a RenderNode, in_cell: bool, out: &mut Vec<&'a RenderNode>) {
+    fn collect<'a>(node: &'a RenderNode, in_cell: bool, y: f64, out: &mut Vec<&'a RenderNode>) {
+        if outside_paint_clip(node, y) {
+            return;
+        }
         if let RenderNodeType::TextRun(ref run) = node.node_type {
             if !in_cell
                 && run.char_start.is_some()
@@ -7417,11 +7452,11 @@ fn header_footer_caption_hit(
         }
         let in_cell = in_cell || matches!(node.node_type, RenderNodeType::TableCell(_));
         for child in &node.children {
-            collect(child, in_cell, out);
+            collect(child, in_cell, y, out);
         }
     }
     let mut runs = Vec::new();
-    collect(hf_node, false, &mut runs);
+    collect(hf_node, false, y, &mut runs);
     let node = runs
         .into_iter()
         .filter(|node| y >= node.bbox.y && y <= node.bbox.y + node.bbox.height)

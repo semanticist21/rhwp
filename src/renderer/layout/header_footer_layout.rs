@@ -71,9 +71,15 @@ impl LayoutEngine {
                 self.dpi,
             )
             .max(0.0);
-            let (cap_x, cap_w, cap_y) = self
-                .inline_side_caption_place(caption, image, caption_h)
-                .unwrap_or((image.x - ext_left, image.width + ext_w, cap_y));
+            let (cap_x, cap_w, cap_y, clip_top, clip_bottom) = self
+                .inline_side_caption_place(caption, pic, image, caption_h)
+                .unwrap_or((
+                    image.x - ext_left,
+                    image.width + ext_w,
+                    cap_y,
+                    image.y,
+                    image.y + image.height,
+                ));
             let caption_first = area_node.children.len();
             self.layout_caption(
                 tree,
@@ -103,8 +109,8 @@ impl LayoutEngine {
                 caption,
                 cap_x,
                 cap_w,
-                image.y,
-                image.y + image.height,
+                clip_top,
+                clip_bottom,
             );
             bottom = bottom.max(match caption.direction {
                 CaptionDirection::Top => cap_y + caption_h + spacing + image.height,
