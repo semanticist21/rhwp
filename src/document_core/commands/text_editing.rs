@@ -3676,6 +3676,7 @@ impl DocumentCore {
                     if squeeze {
                         crate::renderer::composer::merge_soft_wrapped_line_segs(cell_para);
                     }
+                    cell_para.cell_lines_edited = true;
                 }
             }
             Some(Control::Shape(shape)) if cell_idx == 65534 => {
@@ -4127,6 +4128,7 @@ impl DocumentCore {
             }
             None => reflow_line_segs(cell_para, paragraph_box, &styles, dpi),
         }
+        cell_para.cell_lines_edited = true;
         if squeeze {
             crate::renderer::composer::merge_soft_wrapped_line_segs(cell_para);
         }

@@ -6,6 +6,7 @@ mod hft_outline_fonts;
 mod initial_fields;
 mod laid_out_tabs;
 mod metafile_fonts;
+mod nested_row_page_starts;
 mod reflowed_table_frames;
 mod section_activation;
 
@@ -2831,9 +2832,11 @@ impl DocumentCore {
         let grown_tables = self.grown_table_heights();
         let grows_tables = grown_tables.iter().any(Option::is_some);
         let page_starts = self.shifted_page_starts();
+        let nested_starts = self.nested_row_page_starts();
         let cache_updates = self.managed_line_cache_updates();
         if !grows_tables
             && page_starts.is_empty()
+            && nested_starts.is_empty()
             && self.render_normalization.text_reflowed_tables.is_empty()
             && !self.has_unlaid_tabs()
             && (self.file_name.is_empty()
@@ -2847,6 +2850,7 @@ impl DocumentCore {
         Self::apply_managed_line_cache_updates(&mut snapshot, cache_updates);
         grown_table_heights::apply_grown_table_heights(&mut snapshot, &grown_tables);
         self.write_page_starts(&mut snapshot, &page_starts);
+        Self::write_nested_row_page_starts(&mut snapshot, &nested_starts);
         self.writeback_reflowed_table_frames(&mut snapshot);
         self.write_laid_out_tab_widths(&mut snapshot);
         super::header_footer_ops::refresh_header_footer_file_name_fields(
@@ -3235,6 +3239,7 @@ impl DocumentCore {
         Self::apply_managed_line_cache_updates(&mut snapshot, cache_updates);
         grown_table_heights::apply_grown_table_heights(&mut snapshot, &grown_tables);
         self.write_page_starts(&mut snapshot, &self.shifted_page_starts());
+        Self::write_nested_row_page_starts(&mut snapshot, &self.nested_row_page_starts());
         self.writeback_reflowed_table_frames_with_storage(&mut snapshot, storage)?;
         self.write_laid_out_tab_widths(&mut snapshot);
         let _report = try_convert_if_hwpx_source(&mut snapshot, self.source_format, storage)?;
@@ -3439,6 +3444,7 @@ impl DocumentCore {
         let grown_tables = self.grown_table_heights();
         let grows_tables = grown_tables.iter().any(Option::is_some);
         let page_starts = self.shifted_page_starts();
+        let nested_starts = self.nested_row_page_starts();
         let cache_updates = self.managed_line_cache_updates();
         // [#8302] rhwp 가 HWPX 에서 만든 HWP(`/RhwpHwpxOrigin`, `hwpx_lineage`)는 HWP5 계보가
         // 아니다. 그 IR 은 HWPX 저장 계약(줄 축·저장 줄 유무)을 그대로 지니므로 HWP5-origin
@@ -3452,6 +3458,7 @@ impl DocumentCore {
             Self::apply_managed_line_cache_updates(&mut doc, cache_updates);
             grown_table_heights::apply_grown_table_heights(&mut doc, &grown_tables);
             self.write_page_starts(&mut doc, &page_starts);
+            Self::write_nested_row_page_starts(&mut doc, &nested_starts);
             if let Some((_, value)) = doc
                 .hwpx_aux_entries
                 .iter_mut()
@@ -3484,6 +3491,7 @@ impl DocumentCore {
             Self::apply_managed_line_cache_updates(&mut doc, cache_updates);
             grown_table_heights::apply_grown_table_heights(&mut doc, &grown_tables);
             self.write_page_starts(&mut doc, &page_starts);
+            Self::write_nested_row_page_starts(&mut doc, &nested_starts);
             if let Some((_, value)) = doc
                 .hwpx_aux_entries
                 .iter_mut()
@@ -3496,11 +3504,16 @@ impl DocumentCore {
             }
             lower_markers(&mut doc);
             consume(&doc)
-        } else if grows_tables || !page_starts.is_empty() || !cache_updates.is_empty() {
+        } else if grows_tables
+            || !page_starts.is_empty()
+            || !nested_starts.is_empty()
+            || !cache_updates.is_empty()
+        {
             let mut doc = self.document.clone();
             Self::apply_managed_line_cache_updates(&mut doc, cache_updates);
             grown_table_heights::apply_grown_table_heights(&mut doc, &grown_tables);
             self.write_page_starts(&mut doc, &page_starts);
+            Self::write_nested_row_page_starts(&mut doc, &nested_starts);
             consume(&doc)
         } else {
             consume(&self.document)
