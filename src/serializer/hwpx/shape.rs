@@ -1110,7 +1110,7 @@ where
 // =====================================================================
 
 /// `<hp:lineShape>` — `parse_line_shape_attr` 의 역매핑.
-/// alpha 는 파서 미적재 → "0" 고정 방출. headStyle/tailStyle 은 bit 10~21 에서 복원한다(#2956).
+/// alpha 는 한컴처럼 0~255 정수다. headStyle/tailStyle 은 bit 10~21 에서 복원한다(#2956).
 pub(crate) fn write_line_shape<W: Write>(
     w: &mut Writer<W>,
     bl: &ShapeBorderLine,
@@ -1164,6 +1164,7 @@ where
         2 => "INNER",
         _ => "NORMAL",
     };
+    let alpha = xml_value(storage, bl.alpha)?;
     empty_tag_with_storage(
         w,
         "hp:lineShape",
@@ -1179,7 +1180,7 @@ where
             ("headSz", head_sz),
             ("tailSz", tail_sz),
             ("outlineStyle", outline),
-            ("alpha", "0"),
+            ("alpha", &alpha),
         ],
         storage,
     )
@@ -1424,7 +1425,8 @@ fn fill_alpha_str_with_storage<S: crate::storage::Storage>(
 where
     S::Error: std::fmt::Display,
 {
-    super::utils::xml_value(storage, alpha as f64 / 255.0)
+    // 한컴 12.30처럼 0~255 정수로 쓴다(투명도 30% → 77).
+    super::utils::xml_value(storage, alpha)
 }
 
 /// `<hp:shadow>` — `parse_shape_shadow_attr` 의 역매핑.

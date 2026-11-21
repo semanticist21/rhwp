@@ -146,6 +146,7 @@ pub(crate) const SHAPE_PROPS: &[PropSpec] = &[
     prop("vertFlip", PropKind::Bool),
     prop("borderColor", COLOR),
     prop("borderWidth", I32),
+    prop("lineAlpha", PropKind::Int(0, u8::MAX as i64)),
     prop("lineType", BITS6),
     prop("lineEndShape", BITS4),
     prop("arrowStart", BITS6),

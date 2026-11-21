@@ -320,12 +320,12 @@ impl DocumentCore {
             let arrow_end_size = (bl.attr >> 26) & 0x0F; // bits 26-29: 화살표 끝 크기
 
             let mut extra = format!(
-                ",\"borderColor\":{},\"borderWidth\":{},\"borderAttr\":{},\"borderOutlineStyle\":{}\
+                ",\"borderColor\":{},\"borderWidth\":{},\"borderAttr\":{},\"borderOutlineStyle\":{},\"lineAlpha\":{}\
                 ,\"lineType\":{},\"lineEndShape\":{}\
                 ,\"arrowStart\":{},\"arrowEnd\":{},\"arrowStartSize\":{},\"arrowEndSize\":{}\
                 ,\"rotationAngle\":{},\"horzFlip\":{},\"vertFlip\":{}\
                 ,\"fillType\":\"{}\"",
-                bl.color, bl.width, bl.attr, bl.outline_style,
+                bl.color, bl.width, bl.attr, bl.outline_style, bl.alpha,
                 line_type, line_end_shape,
                 arrow_start, arrow_end, arrow_start_size, arrow_end_size,
                 sa.rotation_angle, sa.horz_flip, sa.vert_flip,
@@ -500,6 +500,9 @@ impl DocumentCore {
             }
             if let Some(v) = json_i32(props_json, "borderWidth") {
                 d.border_line.width = v;
+            }
+            if let Some(v) = json_i32(props_json, "lineAlpha") {
+                d.border_line.alpha = v.clamp(0, 255) as u8;
             }
 
             // 테두리 선 — attr 비트필드 개별 필드 업데이트
@@ -748,12 +751,12 @@ impl DocumentCore {
             let arrow_end_size = (bl.attr >> 26) & 0x0F;
 
             let mut extra = format!(
-                ",\"borderColor\":{},\"borderWidth\":{},\"borderAttr\":{},\"borderOutlineStyle\":{}\
+                ",\"borderColor\":{},\"borderWidth\":{},\"borderAttr\":{},\"borderOutlineStyle\":{},\"lineAlpha\":{}\
                 ,\"lineType\":{},\"lineEndShape\":{}\
                 ,\"arrowStart\":{},\"arrowEnd\":{},\"arrowStartSize\":{},\"arrowEndSize\":{}\
                 ,\"rotationAngle\":{},\"horzFlip\":{},\"vertFlip\":{}\
                 ,\"fillType\":\"{}\"",
-                bl.color, bl.width, bl.attr, bl.outline_style,
+                bl.color, bl.width, bl.attr, bl.outline_style, bl.alpha,
                 line_type, line_end_shape,
                 arrow_start, arrow_end, arrow_start_size, arrow_end_size,
                 sa.rotation_angle, sa.horz_flip, sa.vert_flip,
@@ -896,6 +899,9 @@ impl DocumentCore {
             }
             if let Some(v) = json_i32(props_json, "borderWidth") {
                 d.border_line.width = v;
+            }
+            if let Some(v) = json_i32(props_json, "lineAlpha") {
+                d.border_line.alpha = v.clamp(0, 255) as u8;
             }
             {
                 let mut attr = d.border_line.attr;
@@ -1330,6 +1336,7 @@ impl DocumentCore {
                 width: 33,
                 attr: 0xD1000041,
                 outline_style: 0,
+                alpha: 0,
             },
             fill: if has_fill {
                 Fill {
