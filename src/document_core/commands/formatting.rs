@@ -995,11 +995,18 @@ impl DocumentCore {
                 let korean_break_unit = (a1 >> 7) & 0x01;
                 let border_connect = (a1 >> 28) & 1 != 0;
                 let border_ignore_margin = (a1 >> 29) & 1 != 0;
+                let raw_spacing = raw_ps.map_or_else(String::new, |raw| {
+                    format!(
+                        r#""spacingBeforeRaw":{},"spacingAfterRaw":{},"#,
+                        raw.spacing_before, raw.spacing_after
+                    )
+                });
                 format!(
                     concat!(
                         "{{\"alignment\":\"{}\",\"lineSpacing\":{:.1},\"lineSpacingType\":\"{:?}\",",
                         "\"marginLeft\":{:.1},\"marginRight\":{:.1},\"indent\":{:.1},",
                         "\"spacingBefore\":{:.1},\"spacingAfter\":{:.1},\"paraShapeId\":{},",
+                        "{}\"spacingBeforePx\":{},\"spacingAfterPx\":{},",
                         "\"headType\":\"{}\",\"paraLevel\":{},\"numberingId\":{},",
                         "\"widowOrphan\":{},\"keepWithNext\":{},\"keepLines\":{},\"pageBreakBefore\":{},",
                         "\"fontLineHeight\":{},\"singleLine\":{},",
@@ -1015,6 +1022,7 @@ impl DocumentCore {
                     raw_ps.map(|r| margin_px(r.spacing_before)).unwrap_or(ps.spacing_before),
                     raw_ps.map(|r| margin_px(r.spacing_after)).unwrap_or(ps.spacing_after),
                     para_shape_id,
+                    raw_spacing, ps.spacing_before, ps.spacing_after,
                     head_str, ps.para_level, ps.numbering_id,
                     widow_orphan, keep_with_next, keep_lines, page_break_before,
                     font_line_height, single_line,

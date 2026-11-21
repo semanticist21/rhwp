@@ -462,6 +462,8 @@ impl DocumentCore {
             debug_overlay: false,
             respect_vpos_reset: false,
             hangul2024_compat: false,
+            print_png_rgb555: false,
+            print_job_context: None,
             measured_tables: Vec::new(),
             dirty_sections: storage
                 .collect(std::iter::repeat_n(true, sec_count))
@@ -1050,6 +1052,10 @@ impl DocumentCore {
                                                 .para_styles
                                                 .get(cell_para.para_shape_id as usize),
                                             dpi,
+                                        )
+                                        .with_line_wrap_squeeze(
+                                            cell.line_wrap
+                                                == crate::model::table::CELL_LINE_WRAP_SQUEEZE,
                                         ),
                                         styles,
                                         dpi,
@@ -2291,6 +2297,9 @@ impl DocumentCore {
                                 inner_width,
                                 styles.para_styles.get(child_para.para_shape_id as usize),
                                 dpi,
+                            )
+                            .with_line_wrap_squeeze(
+                                cell.line_wrap == crate::model::table::CELL_LINE_WRAP_SQUEEZE,
                             ),
                             styles,
                             dpi,
@@ -2634,6 +2643,10 @@ impl DocumentCore {
                                                 .para_styles
                                                 .get(cell_para.para_shape_id as usize),
                                             dpi,
+                                        )
+                                        .with_line_wrap_squeeze(
+                                            cell.line_wrap
+                                                == crate::model::table::CELL_LINE_WRAP_SQUEEZE,
                                         ),
                                         &styles,
                                         dpi,

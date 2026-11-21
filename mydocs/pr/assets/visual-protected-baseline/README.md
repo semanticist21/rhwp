@@ -152,3 +152,15 @@ Hancom PDF Print 기준을 사용하며 웹한글기안기 출력으로 대체�
 
 같은 제품 소스의 46조건·4,046행을 대조하여 하락·누락 없이 상승한 1행을 반영했다. 상승한 문서의 해당 백엔드 전쪽 결과를 수용했다.
 [전쪽 검증](../issues7739_7743_20261119/protected-validation.json) · [갱신 영수증](updates/issues7739-7743-20261120.json)
+
+## 2026-11-20 원 PR 네 건 통합의 보호 하한 상향
+
+최종 제품 `3901aa782d`에서 정본과 동일한 조건으로 Native·fresh WASM
+46조건·4,046쪽을 대조했다. 하락과 누락은 0쪽이며, 공식 두 자리 값이 상승한
+4쪽을 새 하한으로 반영했다.
+[최종 전쪽 검증](../integration_open_prs_20261120/final-protected/validation.json) ·
+[갱신 영수증](updates/integration-open-prs-20261120.json).
+
+## 2026-11-21 조판 PR 9건 통합 검토
+
+46조건 4,046쪽에서 하락·누락 0쪽을 확인하고 화학 문서의 Native 17쪽과 fresh WASM 13쪽을 상향했다. 중첩 표와 sample10은 원본 및 독립 Print에 맞춘 기호 공급으로 고정 기준과 후보의 전쪽 출력을 비교했다. [검증 결과](../planet6897_9208_9236_20261121/final-protection/validation.json) · [갱신 영수증](updates/planet6897-9208-9236-20261121.json).
