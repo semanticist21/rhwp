@@ -116,14 +116,8 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     (
         "commands/text_editing.rs",
         "delete_range_native",
-        Exempt::DelegatesTo("delete_range_internal"),
-        "기존 글자 축 삭제는 무효화와 삭제를 수행하는 공통 구현에 위임한다.",
-    ),
-    (
-        "commands/text_editing.rs",
-        "delete_range_logical_native",
-        Exempt::DelegatesTo("delete_range_internal"),
-        "논리 경계를 검증한 뒤 실제 삭제와 구역 무효화를 수행하는 공통 구현에 위임한다.",
+        Exempt::DelegatesTo("delete_range_with_boundaries"),
+        "원문·셀 삭제 경계를 공통 함수로 넘긴다. 공통 함수가 대상 구역의 raw_stream을 비운 뒤 삭제를 적용한다.",
     ),
     (
         "commands/formatting.rs",

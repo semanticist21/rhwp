@@ -437,15 +437,15 @@ pub(super) fn collect_own_line_notes(
     let mut notes = Vec::new();
     // 저장 줄이 없는 문단(HWPX 저장은 rhwp가 지은 줄을 내지 않는다)은 측정한 줄의 글자 컷으로
     // 참조 줄을 찾는다. 다시 열자마자 넘치는 각주도 고친 뒤처럼 줄 단위로 나눈다.
-    let composed_lines = para
-        .line_segs
-        .is_empty()
-        .then(|| {
-            fmt.host_composition
-                .as_deref()
-                .or(fmt.computed_paragraph.as_ref())
-        })
-        .flatten()
+    let no_stored_host = if para.line_segs.is_empty() {
+        fmt.host_composition.as_deref()
+    } else {
+        None
+    };
+    let composed_lines = fmt
+        .computed_paragraph
+        .as_ref()
+        .or(no_stored_host)
         .map(|composed| composed.lines.as_slice())
         .filter(|lines| lines.len() == fmt.line_count());
     if fmt.line_count() == 0
