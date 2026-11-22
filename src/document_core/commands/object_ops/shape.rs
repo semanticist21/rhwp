@@ -362,6 +362,13 @@ impl DocumentCore {
                 d.shadow_type, d.shadow_color, d.shadow_offset_x, d.shadow_offset_y, d.shadow_alpha));
             extra.push_str(&format!(",\"scInstId\":{}", d.inst_id));
             extra
+        } else if let crate::model::shape::ShapeObject::Group(group) = shape {
+            // 묶음 회전·대칭(한컴 12.30 개체 속성 > 배치)
+            let sa = &group.shape_attr;
+            format!(
+                ",\"rotationAngle\":{},\"horzFlip\":{},\"vertFlip\":{}",
+                sa.rotation_angle, sa.horz_flip, sa.vert_flip
+            )
         } else {
             String::new()
         };
@@ -701,7 +708,7 @@ impl DocumentCore {
 
         // 묶음 크기 바꾸기: original은 두고 current와 자손 행렬에 배율을 합성한다(한컴 12.30).
         if let crate::model::shape::ShapeObject::Group(ref mut group) = shape {
-            group_geometry::finish_group_edit(group, transform_before, new_w, new_h);
+            group_geometry::finish_group_edit(group, transform_before, new_w, new_h, props_json);
         }
 
         super::common::update_changed_polygon_geometry(shape, transform_before);
@@ -846,6 +853,13 @@ impl DocumentCore {
                 d.shadow_type, d.shadow_color, d.shadow_offset_x, d.shadow_offset_y, d.shadow_alpha));
             extra.push_str(&format!(",\"scInstId\":{}", d.inst_id));
             extra
+        } else if let crate::model::shape::ShapeObject::Group(group) = shape {
+            // 묶음 회전·대칭(한컴 12.30 개체 속성 > 배치)
+            let sa = &group.shape_attr;
+            format!(
+                ",\"rotationAngle\":{},\"horzFlip\":{},\"vertFlip\":{}",
+                sa.rotation_angle, sa.horz_flip, sa.vert_flip
+            )
         } else {
             String::new()
         };
@@ -1103,7 +1117,7 @@ impl DocumentCore {
         let caption_changed = Self::apply_shape_caption_props(shape, props_json);
 
         if let crate::model::shape::ShapeObject::Group(ref mut group) = shape {
-            group_geometry::finish_group_edit(group, transform_before, new_w, new_h);
+            group_geometry::finish_group_edit(group, transform_before, new_w, new_h, props_json);
         }
         super::common::update_changed_polygon_geometry(shape, transform_before);
         (caption_changed, direction_changed)

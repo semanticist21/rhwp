@@ -51,3 +51,25 @@ pub(super) fn owns_axis_rotation(line: &LineShape) -> bool {
             sin.abs() * width + cos.abs() * height,
         )
 }
+
+/// 돌리거나 뒤집은 직선의 저장 행렬이 회전·대칭까지 담았는가.
+/// 한컴 12.30 저장본과 rhwp의 직선 회전·대칭 편집은 회전·대칭을 행렬에 적고 틀을 돌린
+/// 외접 상자로 둔다. 이때 끝점은 행렬로 틀 안에 놓으며 회전·대칭을 다시 걸지 않는다.
+pub(super) fn matrix_owns_transform(line: &LineShape) -> bool {
+    let sa = &line.drawing.shape_attr;
+    (sa.rotation_angle.rem_euclid(360) != 0 || sa.horz_flip || sa.vert_flip)
+        && [
+            sa.render_sx,
+            sa.render_b,
+            sa.render_tx,
+            sa.render_c,
+            sa.render_sy,
+            sa.render_ty,
+        ]
+        .iter()
+        .all(|value| value.is_finite())
+        && (sa.render_b.abs() > 1e-6
+            || sa.render_c.abs() > 1e-6
+            || sa.render_sx < 0.0
+            || sa.render_sy < 0.0)
+}
