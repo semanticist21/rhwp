@@ -583,7 +583,14 @@ impl DocumentCore {
         let band_geometry_before = self
             .resolve_picture_control_ref(section_idx, parent_para_idx, control_idx)
             .ok()
-            .map(|pic| picture_band_geometry(&pic.common));
+            .map(|pic| {
+                (
+                    picture_band_geometry(&pic.common),
+                    pic.common
+                        .treat_as_char
+                        .then(|| crate::renderer::composer::inline_picture_occupied_size_hu(pic)),
+                )
+            });
 
         let caption_styles = self.resolve_render_styles();
         let (dpi, hwp3_layout) = (self.dpi, self.document.layout_profile().hwp3_layout());
@@ -731,7 +738,14 @@ impl DocumentCore {
         let band_geometry_after = self
             .resolve_picture_control_ref(section_idx, parent_para_idx, control_idx)
             .ok()
-            .map(|pic| picture_band_geometry(&pic.common));
+            .map(|pic| {
+                (
+                    picture_band_geometry(&pic.common),
+                    pic.common
+                        .treat_as_char
+                        .then(|| crate::renderer::composer::inline_picture_occupied_size_hu(pic)),
+                )
+            });
         if band_geometry_before != band_geometry_after {
             // 재투영 실패는 이 편집의 실패가 아니다 — 밴드를 만들 수 없는 형상이면
             // 종전대로 recompose 에 맡긴다.
@@ -856,6 +870,8 @@ impl DocumentCore {
             // 그림 높이가 줄 높이에 반영되지 않아 렌더 시 그림이 겹치거나 잘림.
             let was_tac = pic.common.treat_as_char;
             let px = Self::picture_pixel_size(pic, &self.document.bin_data_content);
+            let old_inline_size =
+                was_tac.then(|| crate::renderer::composer::inline_picture_occupied_size_hu(pic));
             let caption_width_before = picture_caption_text_width(pic);
             caption_created = Self::apply_picture_props_inner(pic, props_json, px);
             reflow_picture_caption_if_width_changed(
@@ -866,6 +882,10 @@ impl DocumentCore {
                 hwp3_layout,
             );
             let now_tac = pic.common.treat_as_char;
+            let changed_inline_size = now_tac
+                && old_inline_size.is_some_and(|old| {
+                    old != crate::renderer::composer::inline_picture_occupied_size_hu(pic)
+                });
             // 본문 setter 와 같은 이유로 여기서도 packed attr 을 동기화한다 —
             // 머리말/꼬리말 경로도 같은 tac 토글 마이그레이션을 수행한다 (Issue #3781).
             crate::serializer::control::sync_anchor_bits(&mut pic.common);
@@ -890,6 +910,10 @@ impl DocumentCore {
                         inner_para, frame, &styles, self.dpi,
                     );
                 }
+            } else if changed_inline_size {
+                super::picture_inline_migration::reflow_text_host(
+                    inner_para, frame, &styles, self.dpi,
+                );
             }
         }
         // 한컴 12.30처럼 머리말·꼬리말 그림에도 캡션을 새로 단다. 본문 setter처럼 자동 번호를 다시 매긴다.

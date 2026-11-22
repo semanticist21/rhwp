@@ -1,4 +1,7 @@
-//! 관계형: 각주 번호 뒤 논리 캐럿의 내부 붙이기·개체 붙이기·표 만들기 자리와 상속 글자 모양.
+//! 관계형 검사. 메모리 문단에 만든 각주·수식과 붙여넣은 글·표의 좌우 순서, 캐럿 및 상속 속성을 검사한다.
+//! 주석 갱신 2026-11-21T15:21:50+09:00. 직전 파일 변경 82f43831f492beb7f3ec8c3d4cde946225b0f150 2026-11-21T10:04:32+09:00.
+//! 실물 인쇄 좌표·픽셀을 대상으로 하는 검사는 없다. 실행 근거는 `mydocs/pr/pr_9265_review.md`에 있다.
+//!
 //! 입력은 메모리에서 생성한 API 계약이며 독립 Print의 실물 px 좌표나 golden을 고정하지 않는다.
 #![cfg(not(target_arch = "wasm32"))]
 
@@ -159,4 +162,20 @@ fn control_pasted_right_after_note_gives_caret_character_shape_to_its_empty_para
         !bold_at(&core, 2, 0),
         "개체 아래 빈 문단은 캐럿 글자 모양을 잇는다"
     );
+}
+
+#[test]
+fn paste_between_adjacent_inline_objects_uses_the_selected_gap() {
+    let mut core = DocumentCore::new_empty();
+    core.create_blank_document_native().unwrap();
+    core.insert_text_native(0, 0, 0, "가나X").unwrap();
+    core.split_paragraph_native(0, 0, 2, None).unwrap();
+    for equation in ["x", "y"] {
+        core.insert_equation_native(0, 0, 1, equation, 1000, 0)
+            .unwrap();
+    }
+    assert_eq!(marked(&core, 0), "가[ob][ob]나");
+    core.copy_selection_logical_native(0, 1, 0, 1, 1).unwrap();
+    core.paste_internal_logical_native(0, 0, 2).unwrap();
+    assert_eq!(marked(&core, 0), "가[ob]X[ob]나");
 }

@@ -1,3 +1,7 @@
+//! 관계형 검사. 합성 문서에서 설정한 메타데이터와 읽기 전용 값을 저장 전후 및 잘못된 요청 전후에 대조한다.
+//! 주석 갱신 2026-11-21T15:21:50+09:00. 직전 파일 변경 71e204933411f821aac6f67a96dd29e37e808ef6 2026-11-21T10:20:03+09:00.
+//! 실물 인쇄 좌표·픽셀을 대상으로 하는 검사는 없다. 실행 근거는 `mydocs/pr/pr_9224_review.md`에 있다.
+//!
 //! 문서 정보 창 API — 문서 요약 읽기·쓰기, 그림 정보, 저작권, 개체 수.
 #![cfg(not(target_arch = "wasm32"))]
 
@@ -37,6 +41,15 @@ fn summary_survives_hwp_and_hwpx_saves_from_either_source() {
         for bytes in [doc.export_hwp().unwrap(), doc.export_hwpx().unwrap()] {
             let reopened = HwpDocument::from_bytes(&bytes).unwrap();
             assert_eq!(reopened.document_summary(), patch(), "{name}");
+            // 같은 형식으로 다시 저장해 열어도 그대로다.
+            let resaved = if bytes.starts_with(b"PK") {
+                reopened.export_hwpx()
+            } else {
+                reopened.export_hwp()
+            }
+            .unwrap();
+            let again = HwpDocument::from_bytes(&resaved).unwrap();
+            assert_eq!(again.document_summary(), patch(), "{name}");
         }
     }
 }
@@ -67,6 +80,46 @@ fn partial_summary_patch_keeps_other_fields() {
         assert_eq!(reopened.last_saved_at, None);
         assert_eq!(reopened.last_saved_by.as_deref(), Some(""));
         assert_eq!(reopened.created_at, before.created_at);
+    }
+}
+
+#[test]
+fn editing_title_preserves_unrelated_metadata_xml_after_hwpx_round_trip() {
+    const UNKNOWN: &str = r#"<opf:meta name="extension" vendor="example"><![CDATA[A < B </opf:metadata>]]><v:extra xmlns:v="urn:example"><opf:meta name="creator">wrong</opf:meta></v:extra></opf:meta>"#;
+    let mut doc = open("field-01.hwp");
+    let metadata = format!(
+        r#"<opf:metadata xml:lang="ko"><opf:title>old</opf:title><opf:meta name="subject"/>   {UNKNOWN}<opf:meta name="creator" content="text"><![CDATA[A & B]]></opf:meta></opf:metadata>"#
+    );
+    let entries = &mut doc.document_mut().hwpx_aux_entries;
+    entries.retain(|(path, _)| path != "Contents/content.hpf");
+    entries.push(("Contents/content.hpf".into(), metadata.into_bytes()));
+    doc.set_document_summary_json(r#"{"title":"new"}"#).unwrap();
+    let bytes = doc.export_hwpx().unwrap();
+    let reopened = HwpDocument::from_bytes(&bytes).unwrap();
+    let hpf = reopened
+        .document()
+        .hwpx_aux_entry("Contents/content.hpf")
+        .unwrap();
+    assert!(std::str::from_utf8(hpf).unwrap().contains(UNKNOWN));
+    assert_eq!(reopened.document_summary().subject.as_deref(), Some(""));
+    assert_eq!(reopened.document_summary().author.as_deref(), Some("A & B"));
+    assert_eq!(reopened.document_summary().title.as_deref(), Some("new"));
+}
+
+#[test]
+fn invalid_timestamp_leaves_summary_unchanged() {
+    let mut doc = open("field-01.hwp");
+    doc.set_document_summary_json(r#"{"createdAt":"2000-02-29T00:00:00Z"}"#)
+        .unwrap();
+    let before = doc.document_summary();
+    for invalid in [
+        "1900-02-29T00:00:00Z",
+        "2026-02-30T00:00:00Z",
+        "2026/10/10T00:00:00Z",
+    ] {
+        let patch = serde_json::json!({"title": "changed", "createdAt": invalid});
+        assert!(doc.set_document_summary_json(&patch.to_string()).is_err());
+        assert_eq!(doc.document_summary(), before);
     }
 }
 
@@ -117,6 +170,41 @@ fn license_mark_reads_hwpx_and_hwp_storage() {
     raw[40..44].copy_from_slice(&2u32.to_le_bytes());
     raw[48..52].copy_from_slice(&6u32.to_le_bytes());
     assert_eq!(doc.license_mark(), Some(("CCL".into(), 2, 6)));
+}
+
+/// 상용구의 현재 쪽 번호·전체 쪽수 — 글 가운데 넣은 자동 번호가 HWP·HWPX 저장 뒤에도 그 자리에 있다.
+#[test]
+fn auto_number_inserted_mid_text_keeps_its_place() {
+    use rhwp::model::control::{AutoNumberType, Control};
+    let mut doc = open("field-01.hwp");
+    let para = doc.document().sections[0]
+        .paragraphs
+        .iter()
+        .position(|p| p.controls.is_empty() && p.text.chars().count() >= 2)
+        .expect("글만 든 문단");
+    let text = doc.document().sections[0].paragraphs[para].text.clone();
+    doc.insert_auto_number_at(0, para, 1, AutoNumberType::Page)
+        .unwrap();
+    doc.insert_auto_number_at(0, para, 3, AutoNumberType::TotalPage)
+        .unwrap();
+    for bytes in [doc.export_hwp().unwrap(), doc.export_hwpx().unwrap()] {
+        let reopened = HwpDocument::from_bytes(&bytes).unwrap();
+        let p = &reopened.document().sections[0].paragraphs[para];
+        let kinds: Vec<_> = p
+            .controls
+            .iter()
+            .filter_map(|c| match c {
+                Control::AutoNumber(a) => Some(a.number_type),
+                _ => None,
+            })
+            .collect();
+        assert_eq!(kinds, [AutoNumberType::Page, AutoNumberType::TotalPage]);
+        // 자리표 글자 둘이 첫 글자 뒤와 (그 뒤) 둘째 글자 뒤에 있다.
+        let mut expected: Vec<char> = text.chars().collect();
+        expected.insert(1, ' ');
+        expected.insert(3, ' ');
+        assert_eq!(p.text, expected.into_iter().collect::<String>());
+    }
 }
 
 /// CCL 넣기 — HWP·HWPX 원본 모두 적은 CCL 이 HWP·HWPX 어느 쪽으로 저장해도 한컴 자리에 남는다.
@@ -173,39 +261,4 @@ fn hwp_picture_link_is_read_as_href() {
     assert_eq!(first_picture(&mut hwp).href.as_deref(), Some(url));
     let mut hwpx = HwpDocument::from_bytes(&hwp.export_hwpx().unwrap()).unwrap();
     assert_eq!(first_picture(&mut hwpx).href.as_deref(), Some(url));
-}
-
-/// 상용구의 현재 쪽 번호·전체 쪽수 — 글 가운데 넣은 자동 번호가 HWP·HWPX 저장 뒤에도 그 자리에 있다.
-#[test]
-fn auto_number_inserted_mid_text_keeps_its_place() {
-    use rhwp::model::control::{AutoNumberType, Control};
-    let mut doc = open("field-01.hwp");
-    let para = doc.document().sections[0]
-        .paragraphs
-        .iter()
-        .position(|p| p.controls.is_empty() && p.text.chars().count() >= 2)
-        .expect("글만 든 문단");
-    let text = doc.document().sections[0].paragraphs[para].text.clone();
-    doc.insert_auto_number_at(0, para, 1, AutoNumberType::Page)
-        .unwrap();
-    doc.insert_auto_number_at(0, para, 3, AutoNumberType::TotalPage)
-        .unwrap();
-    for bytes in [doc.export_hwp().unwrap(), doc.export_hwpx().unwrap()] {
-        let reopened = HwpDocument::from_bytes(&bytes).unwrap();
-        let p = &reopened.document().sections[0].paragraphs[para];
-        let kinds: Vec<_> = p
-            .controls
-            .iter()
-            .filter_map(|c| match c {
-                Control::AutoNumber(a) => Some(a.number_type),
-                _ => None,
-            })
-            .collect();
-        assert_eq!(kinds, [AutoNumberType::Page, AutoNumberType::TotalPage]);
-        // 자리표 글자 둘이 첫 글자 뒤와 (그 뒤) 둘째 글자 뒤에 있다.
-        let mut expected: Vec<char> = text.chars().collect();
-        expected.insert(1, ' ');
-        expected.insert(3, ' ');
-        assert_eq!(p.text, expected.into_iter().collect::<String>());
-    }
 }

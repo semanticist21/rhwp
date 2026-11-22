@@ -1,3 +1,21 @@
+//! 관계형·고정형 검사. 단별 각주의 소속과 본문 흐름, 한컴 인쇄본의 쪽수와 각주 줄 수를 검사한다.
+//! 주석 갱신 2026-11-21T22:45+09:00. 직전 파일 변경 f40c194638fb44a40b164a46f533da0e0432d0d3, 2026-11-21T15:22:59+09:00.
+//! 2026-11-21 독립 한컴 2020 Print와 96 DPI에서 측정한 2px raw 실루엣이다.
+//! 원본별 전체 쪽을 순서대로 적었다. 각 목록의 길이는 원본과 독립 인쇄본의 쪽수다.
+//! `overflow-e2` 1쪽. Native [100.00000], fresh WASM [100.00000].
+//! `overflow-e2-flow` 2쪽. Native [99.25640, 100.00000], fresh WASM [99.25632, 100.00000].
+//! `overflow-e2-tail` 1쪽. Native [100.00000], fresh WASM [100.00000].
+//! `overflow-r2` 2쪽. Native [100.00000, 100.00000], fresh WASM [100.00000, 100.00000].
+//! `overflow-r2-flow` 2쪽. Native [99.29316, 100.00000], fresh WASM [99.28710, 100.00000].
+//! `overflow-r3u` 2쪽. Native [100.00000, 100.00000], fresh WASM [100.00000, 100.00000].
+//! `refold-e3u` 1쪽. Native [100.00000], fresh WASM [100.00000].
+//! `refold-e3u-chain` 2쪽. Native [100.00000, 100.00000], fresh WASM [100.00000, 100.00000].
+//! `overflow-r3u-resaved-hwp` 2쪽. Native [100.00000, 100.00000], fresh WASM [100.00000, 100.00000].
+//! `overflow-r3u-resaved-hwpx` 2쪽. Native [100.00000, 100.00000], fresh WASM [100.00000, 100.00000].
+//! 전쪽 최저는 Native 99.25640%, fresh WASM 99.25632%다.
+//! 입력·Print 해시, 쪽별 측정과 오른쪽 단의 전후 비교는
+//! `mydocs/pr/assets/semanticist21-20261121/footnotes/right-column-body.tsv`와 같은 폴더의 PNG에 있다.
+//!
 //! 다단 쪽에서 단 각주 영역을 넘치는 각주를 잇는 자리.
 //!
 //! 고정 문서는 rhwp로 만든 2단·너비가 다른 3단(8000·14000·20000HU) 문서다. 한/글 12.30 Mac이
@@ -181,68 +199,81 @@ fn right_column_overflow_takes_whole_right_column_and_pushes_its_body() {
 
 #[test]
 fn right_column_overflow_queues_later_notes_behind_continuation() {
-    let doc = open("overflow-r3u.hwp");
-    assert_eq!(doc.page_count(), 2);
-    let first = page(&doc, 0);
-    assert_eq!(first.notes.len(), 1);
-    let (notes, _) = first.notes_at(436.6).expect("오른쪽 단 각주 영역");
-    assert!(
-        notes.starts_with("나1 ") && !notes.contains("2단 각주"),
-        "{notes}"
-    );
-    assert!(
-        first.body_at(436.6).is_none(),
-        "오른쪽 단 본문은 다음 쪽으로"
-    );
-    let second = page(&doc, 1);
-    let (rest, _) = second.notes_at(436.6).expect("2쪽 오른쪽 단 각주 영역");
-    let (two, three) = (rest.find("2단 각주"), rest.find("3단 각주"));
-    assert!(
-        !rest.starts_with("나1 ") && two.is_some() && two < three,
-        "이어받은 조각 뒤에 2·3단 각주: {rest}"
-    );
-}
+    // 본문 글자 사이의 표식도 보존해, 글은 남고 각주만 잘못된 단으로 가는 경우를 구분한다.
+    fn body_lines(doc: &HwpDocument, page: u32) -> Vec<Vec<String>> {
+        fn children(node: &Value) -> impl Iterator<Item = &Value> {
+            node["children"].as_array().into_iter().flatten()
+        }
+        let tree: Value = serde_json::from_str(&doc.get_page_render_tree(page).unwrap()).unwrap();
+        let mut columns = Vec::new();
+        for column in children(&tree)
+            .filter(|node| node["type"] == "Body")
+            .flat_map(children)
+        {
+            let lines: Vec<String> = children(column)
+                .filter(|node| node["type"] == "TextLine")
+                .map(|line| {
+                    children(line)
+                        .map(|run| {
+                            if run["type"] == "FnMarker" {
+                                "[각주]"
+                            } else {
+                                run["text"].as_str().unwrap_or_default()
+                            }
+                        })
+                        .collect()
+                })
+                .collect();
+            if !lines.is_empty() {
+                columns.push(lines);
+            }
+        }
+        columns
+    }
 
-#[test]
-fn caret_in_continued_note_follows_the_fragment_that_draws_it() {
-    let doc = open("overflow-e2.hwp");
-    let control = (0..8)
-        .find(|&index| {
-            doc.get_note_edit_info_native(0, 0, index)
-                .is_ok_and(|info| info.contains("\"kind\":\"footnote\""))
-        })
-        .expect("1단 각주 컨트롤");
-    let caret = |offset: usize| -> Value {
-        serde_json::from_str(
-            &doc.get_cursor_rect_in_note_native(0, 0, control, 0, offset)
-                .unwrap(),
-        )
-        .unwrap()
-    };
-    // 앞 조각(1단)의 첫 글자와 이어진 조각(2단 각주 영역)의 마지막 글자.
-    let head = caret(3);
-    assert!(head["x"].as_f64().unwrap() < 381.7, "{head}");
-    let tail = caret(1440);
-    assert_eq!(tail["pageIndex"], 0, "{tail}");
-    assert!(
-        tail["x"].as_f64().unwrap() >= 412.0 && tail["y"].as_f64().unwrap() > 855.0,
-        "이어진 줄의 캐럿은 2단 각주 영역에 선다: {tail}"
-    );
-}
-
-fn note_offset(doc: &HwpDocument, para: usize, needle: &str) -> (usize, usize) {
-    let paragraph = &doc.document().sections[0].paragraphs[para];
-    let control = paragraph
-        .controls
-        .iter()
-        .position(|control| matches!(control, rhwp::model::control::Control::Footnote(_)))
-        .expect("각주 컨트롤");
-    let rhwp::model::control::Control::Footnote(note) = &paragraph.controls[control] else {
-        unreachable!()
-    };
-    let text = &note.paragraphs[0].text;
-    let byte = text.find(needle).expect("각주 글");
-    (control, text[..byte].chars().count())
+    let original = open("overflow-r3u.hwp");
+    let hwp = HwpDocument::from_bytes(&original.export_hwp().unwrap()).unwrap();
+    let hwpx = HwpDocument::from_bytes(&original.export_hwpx().unwrap()).unwrap();
+    for (state, doc) in [
+        ("원본", &original),
+        ("HWP 재열기", &hwp),
+        ("HWPX 재열기", &hwpx),
+    ] {
+        assert_eq!(doc.page_count(), 2, "{state}");
+        assert_eq!(
+            body_lines(doc, 0),
+            [
+                vec!["1단[각주] 본문입니", "다"],
+                vec!["2단[각주] 본문입니다."]
+            ],
+            "{state}: 한컴 Print 1쪽의 좁은 첫 단과 두 번째 단"
+        );
+        assert_eq!(
+            body_lines(doc, 1),
+            [vec!["3단[각주] 본문입니", "다.."]],
+            "{state}: 세 번째 문단 전체와 각주 참조가 새 쪽의 첫 단 폭으로 이어진다"
+        );
+        let first = page(doc, 0);
+        assert_eq!(first.notes.len(), 1, "{state}");
+        let (notes, _) = first.notes_at(436.6).expect("오른쪽 단 각주 영역");
+        assert!(
+            notes.starts_with("나1 ") && !notes.contains("2단 각주"),
+            "{state}: {notes}"
+        );
+        assert!(
+            first.body_at(436.6).is_none(),
+            "{state}: 오른쪽 단 본문은 다음 쪽으로"
+        );
+        let second = page(doc, 1);
+        let (rest, _) = second.notes_at(436.6).expect("2쪽 오른쪽 단 각주 영역");
+        let end = rest.find("나400").expect("첫 각주의 끝");
+        let two = rest.find("2단 각주").expect("두 번째 각주");
+        let three = rest.find("3단 각주").expect("세 번째 각주");
+        assert!(
+            !rest.starts_with("나1 ") && end < two && two < three,
+            "{state}: {rest}"
+        );
+    }
 }
 
 #[test]
@@ -290,6 +321,46 @@ fn each_column_overflow_refolds_to_next_column_width() {
 }
 
 #[test]
+fn reopened_hwpx_splits_overflowing_column_footnote() {
+    // 우리 HWPX 저장은 rhwp가 지은 본문 줄을 내지 않는다. 다시 연 문서도 HWP처럼 나눈다.
+    for name in ["overflow-e2.hwp", "refold-e3u.hwp"] {
+        let saved = open(name).export_hwpx().unwrap();
+        let doc = HwpDocument::from_bytes(&saved).unwrap();
+        assert_eq!(doc.page_count(), 1, "{name}");
+        let reopened = page(&doc, 0);
+        let original = page(&open(name), 0);
+        assert_eq!(reopened.notes, original.notes, "{name}");
+    }
+}
+
+#[test]
+fn caret_in_continued_note_follows_the_fragment_that_draws_it() {
+    let doc = open("overflow-e2.hwp");
+    let control = (0..8)
+        .find(|&index| {
+            doc.get_note_edit_info_native(0, 0, index)
+                .is_ok_and(|info| info.contains("\"kind\":\"footnote\""))
+        })
+        .expect("1단 각주 컨트롤");
+    let caret = |offset: usize| -> Value {
+        serde_json::from_str(
+            &doc.get_cursor_rect_in_note_native(0, 0, control, 0, offset)
+                .unwrap(),
+        )
+        .unwrap()
+    };
+    // 앞 조각(1단)의 첫 글자와 이어진 조각(2단 각주 영역)의 마지막 글자.
+    let head = caret(3);
+    assert!(head["x"].as_f64().unwrap() < 381.7, "{head}");
+    let tail = caret(1440);
+    assert_eq!(tail["pageIndex"], 0, "{tail}");
+    assert!(
+        tail["x"].as_f64().unwrap() >= 412.0 && tail["y"].as_f64().unwrap() > 855.0,
+        "이어진 줄의 캐럿은 2단 각주 영역에 선다: {tail}"
+    );
+}
+
+#[test]
 fn caret_in_refolded_note_follows_the_refolded_fragment() {
     let doc = open("refold-e3u-chain.hwp");
     let caret = |needle: &str| -> Value {
@@ -312,15 +383,17 @@ fn caret_in_refolded_note_follows_the_refolded_fragment() {
     assert!(next["pageIndex"] == 1 && x(&next) < 238.5, "{next}");
 }
 
-#[test]
-fn reopened_hwpx_splits_overflowing_column_footnote() {
-    // 우리 HWPX 저장은 rhwp가 지은 본문 줄을 내지 않는다. 다시 연 문서도 HWP처럼 나눈다.
-    for name in ["overflow-e2.hwp", "refold-e3u.hwp"] {
-        let saved = open(name).export_hwpx().unwrap();
-        let doc = HwpDocument::from_bytes(&saved).unwrap();
-        assert_eq!(doc.page_count(), 1, "{name}");
-        let reopened = page(&doc, 0);
-        let original = page(&open(name), 0);
-        assert_eq!(reopened.notes, original.notes, "{name}");
-    }
+fn note_offset(doc: &HwpDocument, para: usize, needle: &str) -> (usize, usize) {
+    let paragraph = &doc.document().sections[0].paragraphs[para];
+    let control = paragraph
+        .controls
+        .iter()
+        .position(|control| matches!(control, rhwp::model::control::Control::Footnote(_)))
+        .expect("각주 컨트롤");
+    let rhwp::model::control::Control::Footnote(note) = &paragraph.controls[control] else {
+        unreachable!()
+    };
+    let text = &note.paragraphs[0].text;
+    let byte = text.find(needle).expect("각주 글");
+    (control, text[..byte].chars().count())
 }

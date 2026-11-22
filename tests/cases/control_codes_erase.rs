@@ -1,3 +1,7 @@
+//! 관계형·고정형 검사. 합성 문서의 필드·교정 표식 이름과 열거 순서, 지운 뒤 본문과 활성 필드의 소유를 검사한다.
+//! 주석 갱신 2026-11-21T15:21:50+09:00. 직전 파일 변경 82f43831f492beb7f3ec8c3d4cde946225b0f150 2026-11-21T10:04:32+09:00.
+//! 실물 인쇄 좌표·픽셀을 대상으로 하는 검사는 없다. 실행 근거는 `mydocs/pr/pr_9235_review.md`에 있다.
+//!
 //! 한컴 조판 부호 지우기·찾아가기의 갈래별 자리(`control_codes_native`)와 지우기
 //! (`erase_control_codes_native`).
 //!
@@ -223,6 +227,16 @@ fn erasing_fields_keeps_their_text_like_hancom() {
         let reopened = DocumentCore::from_bytes(&bytes).unwrap();
         assert_eq!(texts(&reopened), ERASED_TEXT);
         assert!(!has_fields_or_marks(&reopened));
+        // 같은 형식으로 다시 저장해 열어도 그대로다.
+        let resaved = if bytes.starts_with(b"PK") {
+            reopened.export_hwpx_native()
+        } else {
+            reopened.export_hwp_native()
+        }
+        .unwrap();
+        let again = DocumentCore::from_bytes(&resaved).unwrap();
+        assert_eq!(texts(&again), ERASED_TEXT);
+        assert!(!has_fields_or_marks(&again));
     }
 }
 
@@ -385,4 +399,28 @@ fn erasing_a_multi_paragraph_table_of_contents_keeps_its_text() {
         assert_eq!(texts(&reopened), ["T1", "T2", "T3"]);
         assert!(clean(&reopened));
     }
+}
+
+#[test]
+fn active_field_keeps_next_typed_character_after_erasing_an_earlier_mark() {
+    let mut doc = rhwp::wasm_api::HwpDocument::create_empty();
+    doc.create_blank_document_native().unwrap();
+    doc.insert_text_native(0, 0, 0, "앞  뒤").unwrap();
+    doc.insert_click_here_field_at(0, 0, 2, "안내문", "메모", "남을 필드", true)
+        .unwrap();
+    doc.set_field_value_by_name("남을 필드", "AB").unwrap();
+    doc.set_page_hide_native(0, 0, true, false, false, false, false, false)
+        .unwrap();
+    let fields: serde_json::Value = serde_json::from_str(&doc.get_field_list_json()).unwrap();
+    let end = fields[0]["endCharIdx"].as_u64().unwrap() as usize;
+    assert!(doc.set_active_field(0, 0, end));
+    assert_eq!(
+        doc.erase_control_codes_native(&["감추기".into()], None)
+            .unwrap(),
+        1
+    );
+    doc.insert_text_native(0, 0, end, "C").unwrap();
+    let field: serde_json::Value =
+        serde_json::from_str(&doc.get_field_value_by_name("남을 필드").unwrap()).unwrap();
+    assert_eq!(field["value"], "ABC");
 }

@@ -1,75 +1,9 @@
 // 검사 유형: 관계형 소스 가드의 위임 분류. PDF 일치율·실물 px 기대값은 비해당이다.
-// 주석 갱신: 2026-11-18 18:20 KST.
+// 주석 갱신: 2026-11-10 15:57 KST.
 /// 무효화하지 않는 `pub fn (&mut self)` 전수 목록 — (파일, 함수, 분류, 근거).
 ///
 /// 파일 경로는 [`SCAN_ROOT`] 기준 상대 경로다. 병합 `devel` 기준 46건(2026-08-30 동결).
 const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
-    (
-        "commands/table_ops.rs",
-        "set_table_properties_native",
-        Exempt::DelegatesTo("set_table_properties_by_path_native"),
-        "본문 표는 깊이 1 경로로 경로판에 맡긴다. 경로판이 구역의 raw_stream을 비운다.",
-    ),
-    (
-        "commands/table_ops.rs",
-        "paste_table_cells_native",
-        Exempt::DelegatesTo("paste_table_cells_by_path"),
-        "본문 표는 깊이 1 경로로 경로판에 맡긴다. 경로판이 구역의 raw_stream을 비운다.",
-    ),
-    (
-        "commands/table_path_ops.rs",
-        "equalize_table_cell_sizes_by_path",
-        Exempt::DelegatesTo("edit_table_by_path"),
-        "깊이 1은 평면 API에, 칸 안·머리말 표는 경로 표 편집 helper에 맡긴다.",
-    ),
-    (
-        "commands/table_path_ops.rs",
-        "copy_table_cells_by_path",
-        Exempt::SessionState,
-        "셀 블록을 내부 클립보드에 담을 뿐 문서를 바꾸지 않는다.",
-    ),
-    (
-        "commands/table_path_ops.rs",
-        "copy_table_cells_transposed_by_path",
-        Exempt::SessionState,
-        "행/열 바꿈 버퍼에 담을 뿐 문서를 바꾸지 않는다.",
-    ),
-    (
-        "commands/table_path_ops.rs",
-        "paste_table_cells_transposed_by_path",
-        Exempt::DelegatesTo("relayout_table_cells_by_path"),
-        "깊이 1은 평면 API에, 칸 안·머리말 표는 다시 짜는 helper에 맡긴다. helper가 구역의 raw_stream을 비운다.",
-    ),
-    (
-        "commands/table_path_ops.rs",
-        "transpose_table_cells_in_place_by_path",
-        Exempt::DelegatesTo("relayout_table_cells_by_path"),
-        "깊이 1은 평면 API에, 칸 안·머리말 표는 다시 짜는 helper에 맡긴다. helper가 구역의 raw_stream을 비운다.",
-    ),
-    (
-        "commands/table_path_ops.rs",
-        "edit_table_lines_by_path",
-        Exempt::DelegatesTo("edit_table_by_path"),
-        "깊이 1은 평면 표 편집에, 칸 안·머리말 표는 경로 표 편집 helper에 위임한다. helper가 구역의 raw_stream을 비운다.",
-    ),
-    (
-        "commands/table_path_ops.rs",
-        "merge_table_cells_by_path",
-        Exempt::DelegatesTo("edit_table_by_path"),
-        "깊이 1은 평면 표 편집에, 칸 안·머리말 표는 경로 표 편집 helper에 위임한다. helper가 구역의 raw_stream을 비운다.",
-    ),
-    (
-        "commands/table_path_ops.rs",
-        "split_table_cells_by_path",
-        Exempt::DelegatesTo("edit_table_by_path"),
-        "깊이 1은 평면 표 편집에, 칸 안·머리말 표는 경로 표 편집 helper에 위임한다. helper가 구역의 raw_stream을 비운다.",
-    ),
-    (
-        "commands/object_ops/common.rs",
-        "insert_new_number_native",
-        Exempt::DelegatesTo("insert_new_number_of_kind_native"),
-        "쪽 번호 종류로 번호 종류를 받는 새 번호 넣기에 위임한다. 위임 대상이 구역의 raw_stream을 비운다.",
-    ),
     (
         "queries/memo_query.rs",
         "remove_memo",
@@ -119,48 +53,6 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "본문 문단 주소로 영역 공통 함수에 위임한다.",
     ),
     (
-        "commands/clipboard.rs",
-        "paste_internal_native",
-        Exempt::DelegatesTo("paste_internal_at_caret_native"),
-        "캐럿 붙이기 공통 함수에 위임한다. 공통 함수가 대상 구역의 raw_stream을 비운 뒤 붙인다.",
-    ),
-    (
-        "commands/clipboard.rs",
-        "paste_internal_text_logical_native",
-        Exempt::DelegatesTo("paste_internal_at_caret_native"),
-        "논리 캐럿을 글자 위치로 바꾼 뒤 캐럿 붙이기 공통 함수에 위임한다. 공통 함수가 raw_stream을 무효화한다.",
-    ),
-    (
-        "commands/clipboard.rs",
-        "paste_internal_logical_native",
-        Exempt::DelegatesTo("paste_internal_at_caret_native"),
-        "논리 캐럿을 조각에 맞는 자리로 바꾼 뒤 캐럿 붙이기 공통 함수에 위임한다. 공통 함수가 raw_stream을 무효화한다.",
-    ),
-    (
-        "commands/html_import.rs",
-        "paste_html_native",
-        Exempt::DelegatesTo("paste_html_at_caret_native"),
-        "HTML 붙이기 공통 함수에 위임한다. 공통 함수가 대상 구역의 raw_stream을 비운 뒤 붙인다.",
-    ),
-    (
-        "commands/html_import.rs",
-        "paste_html_text_logical_native",
-        Exempt::DelegatesTo("paste_html_at_caret_native"),
-        "글 조각 HTML을 확인한 뒤 HTML 붙이기 공통 함수에 위임한다. 공통 함수가 raw_stream을 무효화한다.",
-    ),
-    (
-        "commands/text_editing.rs",
-        "delete_range_native",
-        Exempt::DelegatesTo("delete_range_with_boundaries"),
-        "원문·셀 삭제 경계를 공통 함수로 넘긴다. 공통 함수가 대상 구역의 raw_stream을 비운 뒤 삭제를 적용한다.",
-    ),
-    (
-        "commands/formatting.rs",
-        "reflow_body_paragraph_range_native",
-        Exempt::DelegatesTo("refresh_section_native"),
-        "검증한 본문 범위를 다시 접은 뒤 공통 구역 갱신에 위임한다. refresh_section_native가 구역 raw_stream과 렌더 캐시를 무효화하며 빈 범위는 무변경이다.",
-    ),
-    (
         "host_font_environment.rs",
         "prepare_declared_font_fallbacks_with",
         Exempt::SessionState,
@@ -187,15 +79,57 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     ),
     (
         "commands/object_ops/picture.rs",
-        "get_picture_effects_native",
-        Exempt::SessionState,
-        "그림 효과를 읽기만 한다. 셀·머리말 경로 해석기가 가변 참조를 돌려줘 &mut self일 뿐 문서 IR을 바꾸지 않는다.",
-    ),
-    (
-        "commands/object_ops/picture.rs",
         "insert_picture_in_cell_native",
         Exempt::DelegatesTo("insert_picture_native_anchored"),
         "칸 경로를 검증한 뒤 같은 공통 구현에 칸 문단 앵커로 위임한다(#8556).",
+    ),
+    (
+        "commands/clipboard.rs",
+        "paste_internal_native",
+        Exempt::DelegatesTo("paste_internal_at_caret_native"),
+        "기존 붙이기 진입점은 구역 무효화를 수행하는 공통 구현에 위임한다.",
+    ),
+    (
+        "commands/clipboard.rs",
+        "paste_internal_text_logical_native",
+        Exempt::DelegatesTo("paste_internal_at_caret_native"),
+        "순수 조각과 논리 위치를 검증한 뒤 구역 무효화 공통 구현에 위임한다.",
+    ),
+    (
+        "commands/clipboard.rs",
+        "paste_internal_logical_native",
+        Exempt::DelegatesTo("paste_internal_at_caret_native"),
+        "논리 캐럿을 조각에 맞는 자리로 바꾼 뒤 캐럿 붙이기 공통 함수에 위임한다. 공통 함수가 raw_stream을 무효화한다.",
+    ),
+    (
+        "commands/html_import.rs",
+        "paste_html_native",
+        Exempt::DelegatesTo("paste_html_at_caret_native"),
+        "기존 HTML 붙이기는 구역 무효화 공통 구현에 위임한다.",
+    ),
+    (
+        "commands/html_import.rs",
+        "paste_html_text_logical_native",
+        Exempt::DelegatesTo("paste_html_at_caret_native"),
+        "순수 HTML을 검증한 뒤 구역 무효화 공통 구현에 위임한다.",
+    ),
+    (
+        "commands/text_editing.rs",
+        "delete_range_native",
+        Exempt::DelegatesTo("delete_range_internal"),
+        "기존 글자 축 삭제는 무효화와 삭제를 수행하는 공통 구현에 위임한다.",
+    ),
+    (
+        "commands/text_editing.rs",
+        "delete_range_logical_native",
+        Exempt::DelegatesTo("delete_range_internal"),
+        "논리 경계를 검증한 뒤 실제 삭제와 구역 무효화를 수행하는 공통 구현에 위임한다.",
+    ),
+    (
+        "commands/formatting.rs",
+        "reflow_body_paragraph_range_native",
+        Exempt::DelegatesTo("refresh_section_native"),
+        "범위 전체를 검증해 줄을 계산한 뒤 구역 패스스루·파생 상태를 갱신한다.",
     ),
     (
         "commands/border_paint_edit.rs",
@@ -318,18 +252,6 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "insert_hyperlink_native",
         Exempt::DelegatesTo("insert_hyperlink_command"),
         "웹 주소 Command를 공통 삽입 경로에 넘긴다. 그 경로가 commit helper로 구역 raw_stream과 페이지 캐시를 무효화한다 (#6963).",
-    ),
-    (
-        "hyperlink.rs",
-        "insert_hwp_hyperlink_native",
-        Exempt::DelegatesTo("insert_hyperlink_command"),
-        "한글 문서 링크 Command를 공통 삽입 경로에 넘긴다. 대상 번호를 새로 매기면 set_link_object_id가 구역 raw_stream을 따로 무효화한다.",
-    ),
-    (
-        "hyperlink.rs",
-        "insert_file_hyperlink_native",
-        Exempt::DelegatesTo("insert_hyperlink_command"),
-        "외부 파일 링크 Command를 공통 삽입 경로에 넘긴다. 그 경로가 commit helper로 구역 raw_stream과 페이지 캐시를 무효화한다.",
     ),
     (
         "hyperlink.rs",
@@ -484,6 +406,18 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
          선행 편집 뮤테이터가 이미 무효화했다.",
     ),
     (
+        "queries/document_info.rs",
+        "update_document_summary",
+        Exempt::SurgicalRawEdit,
+        "문서 요약은 구역·DocInfo 밖 저장 자리다. HWP 요약 스트림(extra_streams)과 HWPX content.hpf metadata 원문을 직접 고쳐 쓴다.",
+    ),
+    (
+        "queries/document_info.rs",
+        "set_document_summary_json",
+        Exempt::SurgicalRawEdit,
+        "JSON 을 풀어 update_document_summary 로 요약 원문만 고쳐 쓴다. 구역·DocInfo 패스스루와 무관하다.",
+    ),
+    (
         "queries/memo_query.rs",
         "insert_memo_at",
         Exempt::DelegatesTo("insert_memo_at_checked"),
@@ -504,14 +438,14 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     (
         "queries/memo_query.rs",
         "insert_memo_json_native",
-        Exempt::DelegatesTo("insert_memo_at_checked"),
-        "insertMemo의 {author,text,time,offset} JSON을 읽은 뒤 insert_memo_at_checked에 넘긴다. 구역 raw_stream 무효화는 그 함수가 한다 (#8017).",
+        Exempt::DelegatesTo("insert_memo_at"),
+        "insertMemo의 {author,text} JSON을 읽은 뒤 insert_memo_at에 넘긴다. 구역 raw_stream 무효화는 insert_memo_at이 한다 (#8017).",
     ),
     (
         "queries/memo_query.rs",
         "insert_memo_by_path_json_native",
-        Exempt::DelegatesTo("insert_memo_by_path_checked"),
-        "insertMemoByPath의 셀 경로와 JSON을 읽은 뒤 insert_memo_by_path_checked에 넘긴다. 구역 raw_stream 무효화는 그 함수가 한다 (#8017).",
+        Exempt::DelegatesTo("insert_memo_by_path"),
+        "insertMemoByPath의 셀 경로와 JSON을 읽은 뒤 insert_memo_by_path에 넘긴다. 구역 raw_stream 무효화는 insert_memo_by_path가 한다 (#8017).",
     ),
     (
         "queries/changed_pages.rs",
@@ -525,18 +459,6 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "clear_clipboard_native",
         Exempt::SessionState,
         "`self.clipboard = None` 뿐.",
-    ),
-    (
-        "commands/clipboard.rs",
-        "save_internal_clipboard_native",
-        Exempt::SessionState,
-        "내부 클립보드와 붙이기 횟수를 비켜 두는 편집 세션 상태만 바꾼다.",
-    ),
-    (
-        "commands/clipboard.rs",
-        "restore_internal_clipboard_native",
-        Exempt::SessionState,
-        "비켜 둔 내부 클립보드와 붙이기 횟수만 되돌린다.",
     ),
     (
         "commands/clipboard.rs",
@@ -707,12 +629,6 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "복사 — `table_transpose_clipboard` 에만 기록.",
     ),
     (
-        "commands/table_ops.rs",
-        "copy_table_cells_native",
-        Exempt::SessionState,
-        "셀 블록 복사 — 블록만 남긴 표 사본을 `self.clipboard` 에만 기록(표 복사 copy_control_native 와 같다).",
-    ),
-    (
         "queries/field_query.rs",
         "set_active_field",
         Exempt::SessionState,
@@ -729,12 +645,6 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "set_active_field_by_path",
         Exempt::SessionState,
         "편집 세션의 활성 필드 포커스. 직렬화 비대상.",
-    ),
-    (
-        "queries/bookmark_query.rs",
-        "set_active_field_at",
-        Exempt::SessionState,
-        "주소의 컨트롤 번호로 고른 활성 필드 포커스 + 렌더 캐시 무효화. 직렬화 비대상.",
     ),
     (
         "queries/field_query.rs",
@@ -900,12 +810,6 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "insert_text_in_cell_native",
         Exempt::DelegatesTo("replace_text_in_cell_native_impl"),
         "얇은 래퍼 — 실제 삽입·무효화는 `_impl` 이 수행.",
-    ),
-    (
-        "commands/text_editing.rs",
-        "insert_text_in_cell_by_path",
-        Exempt::DelegatesTo("insert_text_in_cell_by_path_at"),
-        "얇은 래퍼 — 개체 뒤 여부만 false 로 넘기고 삽입·무효화는 `_at` 이 수행.",
     ),
     (
         "commands/page_extract.rs",
@@ -1076,6 +980,144 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
          추정으로 고치지 않고 지속성 계약 확정까지 보류한다.",
     ),
     (
+        "queries/bookmark_query.rs",
+        "add_bookmark_at_native",
+        Exempt::DelegatesTo("bookmark_edited"),
+        "보통 책갈피를 넣은 뒤 주소 공통 후처리에 맡긴다. 그 helper가 구역 raw_stream을 비우고 다시 조판한다(바탕쪽은 구역 정의도 옮긴다).",
+    ),
+    (
+        "queries/bookmark_query.rs",
+        "add_block_bookmark_native",
+        Exempt::DelegatesTo("bookmark_edited"),
+        "블록 책갈피를 넣은 뒤 주소 공통 후처리에 맡긴다. 그 helper가 구역 raw_stream을 비우고 다시 조판한다(바탕쪽은 구역 정의도 옮긴다).",
+    ),
+    (
+        "queries/bookmark_query.rs",
+        "rename_bookmark_at_native",
+        Exempt::DelegatesTo("bookmark_edited"),
+        "책갈피 이름을 바꾼 뒤 주소 공통 후처리에 맡긴다. 그 helper가 구역 raw_stream을 비우고 다시 조판한다(바탕쪽은 구역 정의도 옮긴다).",
+    ),
+    (
+        "queries/bookmark_query.rs",
+        "delete_bookmark_at_native",
+        Exempt::DelegatesTo("bookmark_edited"),
+        "책갈피를 지운 뒤 주소 공통 후처리에 맡긴다. 그 helper가 구역 raw_stream을 비우고 다시 조판한다(바탕쪽은 구역 정의도 옮긴다).",
+    ),
+    (
+        "commands/table_ops.rs",
+        "set_table_properties_native",
+        Exempt::DelegatesTo("set_table_properties_by_path_native"),
+        "본문 표는 깊이 1 경로로 경로판에 맡긴다. 경로판이 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_ops.rs",
+        "paste_table_cells_native",
+        Exempt::DelegatesTo("paste_table_cells_by_path"),
+        "본문 표는 깊이 1 경로로 경로판에 맡긴다. 경로판이 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "equalize_table_cell_sizes_by_path",
+        Exempt::DelegatesTo("edit_table_by_path"),
+        "깊이 1은 평면 API에, 칸 안·머리말 표는 경로 표 편집 helper에 맡긴다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "copy_table_cells_by_path",
+        Exempt::SessionState,
+        "셀 블록을 내부 클립보드에 담을 뿐 문서를 바꾸지 않는다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "copy_table_cells_transposed_by_path",
+        Exempt::SessionState,
+        "행/열 바꿈 버퍼에 담을 뿐 문서를 바꾸지 않는다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "paste_table_cells_transposed_by_path",
+        Exempt::DelegatesTo("relayout_table_cells_by_path"),
+        "깊이 1은 평면 API에, 칸 안·머리말 표는 다시 짜는 helper에 맡긴다. helper가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "transpose_table_cells_in_place_by_path",
+        Exempt::DelegatesTo("relayout_table_cells_by_path"),
+        "깊이 1은 평면 API에, 칸 안·머리말 표는 다시 짜는 helper에 맡긴다. helper가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "edit_table_lines_by_path",
+        Exempt::DelegatesTo("edit_table_by_path"),
+        "깊이 1은 평면 표 편집에, 칸 안·머리말 표는 경로 표 편집 helper에 위임한다. helper가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "merge_table_cells_by_path",
+        Exempt::DelegatesTo("edit_table_by_path"),
+        "깊이 1은 평면 표 편집에, 칸 안·머리말 표는 경로 표 편집 helper에 위임한다. helper가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/table_path_ops.rs",
+        "split_table_cells_by_path",
+        Exempt::DelegatesTo("edit_table_by_path"),
+        "깊이 1은 평면 표 편집에, 칸 안·머리말 표는 경로 표 편집 helper에 위임한다. helper가 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/object_ops/common.rs",
+        "insert_new_number_native",
+        Exempt::DelegatesTo("insert_new_number_of_kind_native"),
+        "쪽 번호 종류로 번호 종류를 받는 새 번호 넣기에 위임한다. 위임 대상이 구역의 raw_stream을 비운다.",
+    ),
+    (
+        "commands/object_ops/picture.rs",
+        "get_picture_effects_native",
+        Exempt::SessionState,
+        "그림 효과를 읽기만 한다. 셀·머리말 경로 해석기가 가변 참조를 돌려줘 &mut self일 뿐 문서 IR을 바꾸지 않는다.",
+    ),
+    (
+        "hyperlink.rs",
+        "insert_hwp_hyperlink_native",
+        Exempt::DelegatesTo("insert_hyperlink_command"),
+        "한글 문서 링크 Command를 공통 삽입 경로에 넘긴다. 대상 번호를 새로 매기면 set_link_object_id가 구역 raw_stream을 따로 무효화한다.",
+    ),
+    (
+        "hyperlink.rs",
+        "insert_file_hyperlink_native",
+        Exempt::DelegatesTo("insert_hyperlink_command"),
+        "외부 파일 링크 Command를 공통 삽입 경로에 넘긴다. 그 경로가 commit helper로 구역 raw_stream과 페이지 캐시를 무효화한다.",
+    ),
+    (
+        "commands/clipboard.rs",
+        "save_internal_clipboard_native",
+        Exempt::SessionState,
+        "내부 클립보드와 붙이기 횟수를 비켜 두는 편집 세션 상태만 바꾼다.",
+    ),
+    (
+        "commands/clipboard.rs",
+        "restore_internal_clipboard_native",
+        Exempt::SessionState,
+        "비켜 둔 내부 클립보드와 붙이기 횟수만 되돌린다.",
+    ),
+    (
+        "commands/table_ops.rs",
+        "copy_table_cells_native",
+        Exempt::SessionState,
+        "셀 블록 복사 — 블록만 남긴 표 사본을 `self.clipboard` 에만 기록(표 복사 copy_control_native 와 같다).",
+    ),
+    (
+        "queries/bookmark_query.rs",
+        "set_active_field_at",
+        Exempt::SessionState,
+        "주소의 컨트롤 번호로 고른 활성 필드 포커스 + 렌더 캐시 무효화. 직렬화 비대상.",
+    ),
+    (
+        "commands/text_editing.rs",
+        "insert_text_in_cell_by_path",
+        Exempt::DelegatesTo("insert_text_in_cell_by_path_at"),
+        "얇은 래퍼 — 개체 뒤 여부만 false 로 넘기고 삽입·무효화는 `_at` 이 수행.",
+    ),
+    (
         "commands/table_formula.rs",
         "set_table_cell_formula",
         Exempt::DelegatesTo("set_table_cell_formula_by_path"),
@@ -1137,18 +1179,6 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     ),
     (
         "queries/document_info.rs",
-        "update_document_summary",
-        Exempt::SurgicalRawEdit,
-        "문서 요약은 구역·DocInfo 밖 저장 자리다. HWP 요약 스트림(extra_streams)과 HWPX content.hpf metadata 원문을 직접 고쳐 쓴다.",
-    ),
-    (
-        "queries/document_info.rs",
-        "set_document_summary_json",
-        Exempt::SurgicalRawEdit,
-        "JSON 을 풀어 update_document_summary 로 요약 원문만 고쳐 쓴다. 구역·DocInfo 패스스루와 무관하다.",
-    ),
-    (
-        "queries/document_info.rs",
         "set_ccl_license_mark",
         Exempt::SurgicalRawEdit,
         "저작권 표시는 구역·DocInfo 밖 저장 자리다. HWP FileHeader 원문(raw_data)이나 HWPX 머리 꼬리 원문을 직접 고쳐 쓴다.",
@@ -1158,29 +1188,5 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "insert_auto_number_at_cursor",
         Exempt::DelegatesTo("insert_auto_number_at"),
         "커서 좌표를 구역·문단·글자 자리로 풀어 insert_auto_number_at 에 맡긴다. 그 함수가 구역의 raw_stream을 비운다.",
-    ),
-    (
-        "queries/bookmark_query.rs",
-        "add_bookmark_at_native",
-        Exempt::DelegatesTo("bookmark_edited"),
-        "보통 책갈피를 넣은 뒤 주소 공통 후처리에 맡긴다. 그 helper가 구역 raw_stream을 비우고 다시 조판한다(바탕쪽은 구역 정의도 옮긴다).",
-    ),
-    (
-        "queries/bookmark_query.rs",
-        "add_block_bookmark_native",
-        Exempt::DelegatesTo("bookmark_edited"),
-        "블록 책갈피를 넣은 뒤 주소 공통 후처리에 맡긴다. 그 helper가 구역 raw_stream을 비우고 다시 조판한다(바탕쪽은 구역 정의도 옮긴다).",
-    ),
-    (
-        "queries/bookmark_query.rs",
-        "rename_bookmark_at_native",
-        Exempt::DelegatesTo("bookmark_edited"),
-        "책갈피 이름을 바꾼 뒤 주소 공통 후처리에 맡긴다. 그 helper가 구역 raw_stream을 비우고 다시 조판한다(바탕쪽은 구역 정의도 옮긴다).",
-    ),
-    (
-        "queries/bookmark_query.rs",
-        "delete_bookmark_at_native",
-        Exempt::DelegatesTo("bookmark_edited"),
-        "책갈피를 지운 뒤 주소 공통 후처리에 맡긴다. 그 helper가 구역 raw_stream을 비우고 다시 조판한다(바탕쪽은 구역 정의도 옮긴다).",
     ),
 ];

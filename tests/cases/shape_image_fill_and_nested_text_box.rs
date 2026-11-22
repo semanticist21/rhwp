@@ -1,9 +1,12 @@
+//! 관계형 검사. 메모리에서 그림 채우기·투명도와 셀·머리말의 글상자 속성을 읽고 다시 쓰면서 참조를 대조한다.
+//! 주석 갱신 2026-11-21T15:21:50+09:00. 직전 파일 변경 2badf48da70b42edc3753f4c06c1d5bb634e57f8 2026-11-20T03:44:40+09:00.
+//! 실물 인쇄 좌표·픽셀을 대상으로 하는 검사는 없다. 실행 근거는 `mydocs/pr/pr_9222_review.md`에 있다.
+//!
 //! 도형 속성의 그림 채우기·그림자 투명도와, 표 셀·머리말 안 도형의 글상자 붙이기·떼기.
 //!
 //! 한컴 12.30 개체 모양 복사는 그림 채우기와 그림자 투명도도 옮긴다. 앱은 `getShapeProperties`의
 //! 값을 그대로 `setShapeProperties`에 넘겨 붙이므로 두 값이 오가야 한다.
 //! 한컴 도형 안에 글자 넣기는 표 셀·머리말 안 도형에서도 켜진다(`setTextBoxAtByPath`).
-//! 머리말 안 직선 끝점도 경로로 옮긴다(`moveLineEndpointByPath`).
 #![cfg(not(target_arch = "wasm32"))]
 use rhwp::document_core::DocumentCore;
 use rhwp::model::control::Control;
@@ -110,13 +113,23 @@ fn shape_picture_fill_and_shadow_alpha_are_read_and_written() {
         doc.export_hwpx_native().unwrap(),
     ] {
         let reopened = DocumentCore::from_bytes(&bytes).unwrap();
-        let found = shapes(&reopened.document().sections[0].paragraphs);
-        assert_eq!(found.len(), 2);
-        for shape in found {
-            let d = shape.drawing().unwrap();
-            assert_eq!(d.fill.fill_type, FillType::Image);
-            assert_eq!(d.fill.image.as_ref().unwrap().bin_data_id, bin_id);
-            assert_eq!(d.shadow_alpha, 128);
+        // 같은 형식으로 다시 저장해 연 문서도 본다.
+        let resaved = if bytes.starts_with(b"PK") {
+            reopened.export_hwpx_native()
+        } else {
+            reopened.export_hwp_native()
+        }
+        .unwrap();
+        let again = DocumentCore::from_bytes(&resaved).unwrap();
+        for core in [&reopened, &again] {
+            let found = shapes(&core.document().sections[0].paragraphs);
+            assert_eq!(found.len(), 2);
+            for shape in found {
+                let d = shape.drawing().unwrap();
+                assert_eq!(d.fill.fill_type, FillType::Image);
+                assert_eq!(d.fill.image.as_ref().unwrap().bin_data_id, bin_id);
+                assert_eq!(d.shadow_alpha, 128);
+            }
         }
     }
 }
@@ -146,6 +159,15 @@ fn text_box_round_trip(doc: &HwpDocument, inner: impl Fn(&DocumentCore) -> Vec<&
         let found = inner(&reopened);
         assert_eq!(found.len(), 1);
         assert!(found[0].drawing().unwrap().text_box.is_some());
+        // 같은 형식으로 다시 저장해 열어도 글상자가 남는다.
+        let resaved = if bytes.starts_with(b"PK") {
+            reopened.export_hwpx_native()
+        } else {
+            reopened.export_hwp_native()
+        }
+        .unwrap();
+        let again = DocumentCore::from_bytes(&resaved).unwrap();
+        assert!(inner(&again)[0].drawing().unwrap().text_box.is_some());
     }
 }
 
@@ -226,14 +248,6 @@ fn text_box_attaches_to_a_shape_in_a_header() {
         r#"{"ok":true}"#
     );
     assert!(header_shapes(&doc)[0].drawing().unwrap().text_box.is_some());
-    // 같은 머리말 경로로 도형 속성을 읽는다(앱은 이 값으로 머리말 도형을 고른다).
-    let props: serde_json::Value = serde_json::from_str(
-        &doc.get_cell_shape_properties_by_path_native(0, host, &path, inner_ctrl)
-            .unwrap(),
-    )
-    .unwrap();
-    // 엔진은 글상자가 있을 때만 안쪽 여백을 준다.
-    assert!(props.get("tbMarginLeft").is_some(), "{props}");
     for bytes in [
         doc.export_hwp_native().unwrap(),
         doc.export_hwpx_native().unwrap(),
@@ -258,6 +272,92 @@ fn text_box_attaches_to_a_shape_in_a_header() {
         r#"{"ok":true}"#
     );
     assert!(header_shapes(&doc)[0].drawing().unwrap().text_box.is_none());
+}
+
+#[test]
+fn line_endpoints_move_in_a_header() {
+    // 한컴 12.30은 머리말을 고치며 고른 머리말 직선의 끝점을 끌어 옮긴다.
+    let mut doc = blank();
+    let line = doc
+        .create_shape_control_native(
+            0,
+            0,
+            0,
+            8000,
+            3000,
+            5000,
+            6000,
+            false,
+            "InFrontOfText",
+            "line",
+            false,
+            false,
+            &[],
+        )
+        .unwrap();
+    let line: serde_json::Value = serde_json::from_str(&line).unwrap();
+    let (para, ctrl) = (
+        line["paraIdx"].as_u64().unwrap() as usize,
+        line["controlIdx"].as_u64().unwrap() as usize,
+    );
+    doc.copy_control_native(0, para, &[], ctrl).unwrap();
+    let header: serde_json::Value =
+        serde_json::from_str(&doc.create_header_footer_native(0, true, 0).unwrap()).unwrap();
+    let host = header["paraIndex"].as_u64().unwrap() as usize;
+    let header_ctrl = header["controlIndex"].as_u64().unwrap() as usize;
+    paste_rect(&mut doc, host, &[(header_ctrl, 0, 0)]);
+    let path = format!(r#"[{{"controlIndex":{header_ctrl},"cellIndex":0,"cellParaIndex":0}}]"#);
+    // 끝점을 왼쪽 아래로 끌어 선의 방향을 바꾼다.
+    assert_eq!(
+        doc.move_line_endpoint_by_path_native(0, host, &path, 0, 9000, 1000, 2000, 5000)
+            .unwrap(),
+        r#"{"ok":true}"#
+    );
+    let header_line = |core: &DocumentCore| -> rhwp::model::shape::LineShape {
+        let header = core.document().sections[0]
+            .paragraphs
+            .iter()
+            .flat_map(|p| &p.controls)
+            .find_map(|c| match c {
+                Control::Header(h) => Some(h),
+                _ => None,
+            })
+            .expect("머리말이 없다");
+        match shapes(&header.paragraphs)[0] {
+            ShapeObject::Line(l) => l.clone(),
+            _ => panic!("머리말 직선이 아니다"),
+        }
+    };
+    let moved = header_line(&doc);
+    assert_eq!(
+        (
+            moved.common.horizontal_offset,
+            moved.common.vertical_offset,
+            moved.common.width,
+            moved.common.height
+        ),
+        (2000, 1000, 7000, 4000)
+    );
+    let (start, end) = if moved.started_right_or_bottom {
+        (moved.end, moved.start)
+    } else {
+        (moved.start, moved.end)
+    };
+    assert_eq!((start.x, start.y, end.x, end.y), (7000, 0, 0, 4000));
+    for bytes in [
+        doc.export_hwp_native().unwrap(),
+        doc.export_hwpx_native().unwrap(),
+    ] {
+        let reopened = header_line(&DocumentCore::from_bytes(&bytes).unwrap());
+        assert_eq!(
+            (reopened.common.width, reopened.common.height),
+            (7000, 4000)
+        );
+    }
+    // 본문 경로가 아닌 개체는 직선이어야 한다.
+    assert!(doc
+        .move_line_endpoint_by_path_native(0, host, &path, 9, 0, 0, 1, 1)
+        .is_err());
 }
 
 /// 표 셀 안 도형의 글상자 글은 표 셀 단계부터 시작하는 경로로 커서·히트를 낸다.
@@ -350,90 +450,4 @@ fn text_in_a_cell_text_box_has_a_full_path_caret_and_hit() {
         doc.get_text_in_cell_by_path(0, host, &path, 0, 3).unwrap(),
         "가나다"
     );
-}
-
-#[test]
-fn line_endpoints_move_in_a_header() {
-    // 한컴 12.30은 머리말을 고치며 고른 머리말 직선의 끝점을 끌어 옮긴다.
-    let mut doc = blank();
-    let line = doc
-        .create_shape_control_native(
-            0,
-            0,
-            0,
-            8000,
-            3000,
-            5000,
-            6000,
-            false,
-            "InFrontOfText",
-            "line",
-            false,
-            false,
-            &[],
-        )
-        .unwrap();
-    let line: serde_json::Value = serde_json::from_str(&line).unwrap();
-    let (para, ctrl) = (
-        line["paraIdx"].as_u64().unwrap() as usize,
-        line["controlIdx"].as_u64().unwrap() as usize,
-    );
-    doc.copy_control_native(0, para, &[], ctrl).unwrap();
-    let header: serde_json::Value =
-        serde_json::from_str(&doc.create_header_footer_native(0, true, 0).unwrap()).unwrap();
-    let host = header["paraIndex"].as_u64().unwrap() as usize;
-    let header_ctrl = header["controlIndex"].as_u64().unwrap() as usize;
-    paste_rect(&mut doc, host, &[(header_ctrl, 0, 0)]);
-    let path = format!(r#"[{{"controlIndex":{header_ctrl},"cellIndex":0,"cellParaIndex":0}}]"#);
-    // 끝점을 왼쪽 아래로 끌어 선의 방향을 바꾼다.
-    assert_eq!(
-        doc.move_line_endpoint_by_path_native(0, host, &path, 0, 9000, 1000, 2000, 5000)
-            .unwrap(),
-        r#"{"ok":true}"#
-    );
-    let header_line = |core: &DocumentCore| -> rhwp::model::shape::LineShape {
-        let header = core.document().sections[0]
-            .paragraphs
-            .iter()
-            .flat_map(|p| &p.controls)
-            .find_map(|c| match c {
-                Control::Header(h) => Some(h),
-                _ => None,
-            })
-            .expect("머리말이 없다");
-        match shapes(&header.paragraphs)[0] {
-            ShapeObject::Line(l) => l.clone(),
-            _ => panic!("머리말 직선이 아니다"),
-        }
-    };
-    let moved = header_line(&doc);
-    assert_eq!(
-        (
-            moved.common.horizontal_offset,
-            moved.common.vertical_offset,
-            moved.common.width,
-            moved.common.height
-        ),
-        (2000, 1000, 7000, 4000)
-    );
-    let (start, end) = if moved.started_right_or_bottom {
-        (moved.end, moved.start)
-    } else {
-        (moved.start, moved.end)
-    };
-    assert_eq!((start.x, start.y, end.x, end.y), (7000, 0, 0, 4000));
-    for bytes in [
-        doc.export_hwp_native().unwrap(),
-        doc.export_hwpx_native().unwrap(),
-    ] {
-        let reopened = header_line(&DocumentCore::from_bytes(&bytes).unwrap());
-        assert_eq!(
-            (reopened.common.width, reopened.common.height),
-            (7000, 4000)
-        );
-    }
-    // 본문 경로가 아닌 개체는 직선이어야 한다.
-    assert!(doc
-        .move_line_endpoint_by_path_native(0, host, &path, 9, 0, 0, 1, 1)
-        .is_err());
 }

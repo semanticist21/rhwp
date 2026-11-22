@@ -351,6 +351,9 @@ impl DocumentCore {
             if let Some(ref image) = fill.image {
                 extra.push_str(&crate::document_core::helpers::image_fill_json(image));
             }
+            if let Some(ref image) = fill.image {
+                extra.push_str(&crate::document_core::helpers::image_fill_json(image));
+            }
             extra.push_str(&format!(",\"fillAlpha\":{}", fill.alpha));
             // 그림자
             extra.push_str(&format!(",\"shadowType\":{},\"shadowColor\":{},\"shadowOffsetX\":{},\"shadowOffsetY\":{},\"shadowAlpha\":{}",
@@ -407,6 +410,23 @@ impl DocumentCore {
             common_json, tb_json, extra_json, round_json, connector_json, caption_json
         ))
     }
+    pub(super) fn validate_image_fill_reference(&self, props: &str) -> Result<(), HwpError> {
+        if let Some(id) = crate::document_core::helpers::json_u32(props, "imageBinDataId") {
+            let valid = id
+                .checked_sub(1)
+                .and_then(|index| self.document.doc_info.bin_data_list.get(index as usize))
+                .is_some_and(|entry| {
+                    entry.data_type != crate::model::bin_data::BinDataType::Storage
+                });
+            if !valid {
+                return Err(HwpError::InvalidField(format!(
+                    "문서에 없는 그림 자원: {id}"
+                )));
+            }
+        }
+        Ok(())
+    }
+
     /// 글상자(Shape) 속성 변경 (네이티브).
     pub fn set_shape_properties_native(
         &mut self,
@@ -802,6 +822,9 @@ impl DocumentCore {
                     g.gradient_type, g.angle, g.center_x, g.center_y, g.blur
                 ));
                 extra.push_str(&gradient_stops_json(g));
+            }
+            if let Some(ref image) = fill.image {
+                extra.push_str(&crate::document_core::helpers::image_fill_json(image));
             }
             if let Some(ref image) = fill.image {
                 extra.push_str(&crate::document_core::helpers::image_fill_json(image));

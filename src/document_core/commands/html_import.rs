@@ -337,15 +337,20 @@ impl DocumentCore {
             let (text_offset, after_control) = logical_to_text_offset(para, char_offset);
             let text_offset = text_offset.min(para.text.chars().count());
             // 필드 경계에서는 활성 필드만 붙인 글을 품는다.
-            super::text_editing::insert_body_text_with_field_affinity(
-                para,
-                self.active_field.as_ref(),
-                section_idx,
-                para_idx,
-                text_offset,
-                after_control,
-                &parsed_paras[0],
-            );
+            let text_offset = if text_only {
+                super::text_editing::insert_body_text_with_field_affinity(
+                    para,
+                    self.active_field.as_ref(),
+                    section_idx,
+                    para_idx,
+                    text_offset,
+                    Some(char_offset),
+                    &parsed_paras[0],
+                );
+                text_offset
+            } else {
+                para.insert_text_at_caret(text_offset, &clip_text, after_control)
+            };
 
             self.apply_clipboard_char_shapes(
                 section_idx,

@@ -1,4 +1,7 @@
-//! 관계형: 수식이 든 셀 문단의 논리 캐럿(글자와 글자처럼 취급한 개체가 한 칸씩) 복사·붙이기.
+//! 관계형 검사. 합성 셀 문단에 수식과 글자를 넣어 클립보드 범위·붙여넣기 순서·오류 반환을 대조한다.
+//! 주석 갱신 2026-11-21T15:21:50+09:00. 직전 파일 변경 82f43831f492beb7f3ec8c3d4cde946225b0f150 2026-11-21T10:04:32+09:00.
+//! 실물 인쇄 좌표·픽셀을 대상으로 하는 검사는 없다. 실행 근거는 `mydocs/pr/pr_9270_review.md`에 있다.
+//!
 //! 입력은 메모리에서 생성한 API 계약이며 독립 Print의 실물 px 좌표나 golden을 고정하지 않는다.
 #![cfg(not(target_arch = "wasm32"))]
 
@@ -138,4 +141,18 @@ fn logical_cell_clipboard_rejects_offsets_past_paragraph() {
         .paste_html_in_cell_by_path_logical_native(0, para, &[(ctrl, 0, 0)], 4, "<p>마</p>")
         .is_err());
     assert_eq!(cell(&core, para, ctrl, 0), "가[eq]나");
+}
+
+#[test]
+fn html_text_between_adjacent_cell_equations_keeps_both_neighbors() {
+    let (mut core, para, ctrl) = fixture();
+    let path = [(ctrl, 0, 0)];
+    core.copy_selection_in_cell_by_path_logical_native(0, para, &path, 0, 1, 0, 2)
+        .unwrap();
+    core.paste_internal_in_cell_by_path_logical_native(0, para, &path, 2)
+        .unwrap();
+    assert_eq!(cell(&core, para, ctrl, 0), "가[eq][eq]나");
+    core.paste_html_in_cell_by_path_logical_native(0, para, &path, 2, "X")
+        .unwrap();
+    assert_eq!(cell(&core, para, ctrl, 0), "가[eq]X[eq]나");
 }

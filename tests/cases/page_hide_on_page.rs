@@ -1,3 +1,7 @@
+//! 관계형 검사. 합성 문서의 캐럿 및 표 시작 쪽에서 감추기 컨트롤을 찾고 해당 쪽의 머리말과 활성 필드 소유를 검사한다.
+//! 주석 갱신 2026-11-21T15:21:50+09:00. 직전 파일 변경 710f46dcfe9d94de1060f418f6c06806c48bec5e 2026-11-20T13:29:45+09:00.
+//! 실물 인쇄 좌표·픽셀을 대상으로 하는 검사는 없다. 실행 근거는 `mydocs/pr/pr_9215_review.md`에 있다.
+//!
 //! 쪽 감추기를 쪽 단위로 고치기: 앞 쪽에서 이어지는 문단 가운데와 표 셀 안의 감추기.
 //!
 //! 한/글 12.30 Mac(2026-11-17) 쪽 > 감추기는 앞 쪽에서 이어지는 문단만 있는 쪽에서도 캐럿 자리에
@@ -54,14 +58,11 @@ fn page_hide_count(paragraphs: &[Paragraph]) -> usize {
         .sum()
 }
 
+/// HWP·HWPX 각각 저장 → 다시 열기 → 다시 저장 → 다시 열기.
 fn reopened(doc: &HwpDocument) -> Vec<HwpDocument> {
-    [
-        doc.export_hwp_native().unwrap(),
-        doc.export_hwpx_native().unwrap(),
-    ]
-    .iter()
-    .map(|bytes| HwpDocument::from_bytes(bytes).unwrap())
-    .collect()
+    let hwp = |d: &HwpDocument| HwpDocument::from_bytes(&d.export_hwp_native().unwrap()).unwrap();
+    let hwpx = |d: &HwpDocument| HwpDocument::from_bytes(&d.export_hwpx_native().unwrap()).unwrap();
+    vec![hwp(&hwp(doc)), hwpx(&hwpx(doc))]
 }
 
 #[test]
@@ -138,6 +139,9 @@ fn cell_page_hide_on_a_split_table_hides_the_table_start_page() {
         serde_json::from_str(&doc.create_table_native(0, 0, 6, 80, 2).unwrap()).unwrap();
     let para = table["paraIdx"].as_u64().unwrap() as usize;
     let ctrl = table["controlIdx"].as_u64().unwrap() as usize;
+    // 한컴 새 표처럼 쪽 경계에서 셀 단위로 나눈다(HWPX CELL = RowBreak).
+    doc.set_table_properties_native(0, para, ctrl, r#"{"pageBreak":2}"#)
+        .unwrap();
     assert!(doc.page_count() >= 2, "표가 둘째 쪽으로 이어진다");
     let last = 159;
     doc.insert_text_in_cell_native(0, para, ctrl, last, 0, 0, "cell")
@@ -218,5 +222,35 @@ fn page_hide_at_the_first_character_of_a_page_stays_on_that_page() {
     for again in reopened(&doc) {
         assert_eq!(hides(&again, 1)["hides"].as_array().unwrap().len(), 1);
         assert!(header_drawn(&again, 0));
+    }
+}
+
+/// 같은 문단의 감추기 조판 부호를 넣거나 빼거나 옮겨도 활성 누름틀 끝 입력은 그 누름틀에 든다.
+#[test]
+fn page_hide_on_page_keeps_typing_in_the_active_field() {
+    for (before, hide) in [(false, true), (true, false), (true, true)] {
+        let mut doc = HwpDocument::create_empty();
+        doc.create_blank_document_native().unwrap();
+        doc.insert_text_native(0, 0, 0, "앞  뒤").unwrap();
+        doc.insert_click_here_field_at(0, 0, 2, "안내문", "메모", "남을 필드", true)
+            .unwrap();
+        doc.set_field_value_by_name("남을 필드", "AB").unwrap();
+        if before {
+            doc.set_page_hide_on_page_native(0, 0, &[], 0, HIDE)
+                .unwrap();
+        }
+        let fields: Vec<serde_json::Value> =
+            serde_json::from_str(&doc.get_field_list_json()).unwrap();
+        let end = fields[0]["endCharIdx"].as_u64().unwrap() as usize;
+        assert!(doc.set_active_field(0, 0, end));
+        let ph = PageHide {
+            hide_header: hide,
+            ..Default::default()
+        };
+        doc.set_page_hide_on_page_native(0, 0, &[], 0, ph).unwrap();
+        doc.insert_text_native(0, 0, end, "C").unwrap();
+        let field: serde_json::Value =
+            serde_json::from_str(&doc.get_field_value_by_name("남을 필드").unwrap()).unwrap();
+        assert_eq!(field["value"], "ABC", "앞 감추기 {before}, 감추기 {hide}");
     }
 }

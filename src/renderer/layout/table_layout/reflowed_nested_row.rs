@@ -11,7 +11,95 @@ pub(super) struct NestedRowFlowEdges {
     pub after: f64,
 }
 
+/// A row can give up only the part of its last line advance shared by all
+/// child cells at this cut. A cell already closed before this unit contributes
+/// no new extent. Keep the full band if any still-open cell has no new cut.
+pub(super) fn shared_closing_line_advance(
+    children: &[std::sync::Arc<Vec<CellUnit>>],
+    cut: &NestedTableUnitCut,
+) -> f64 {
+    children
+        .iter()
+        .zip(&cut.start_cut)
+        .zip(&cut.end_cut)
+        .filter(|((units, start), _)| **start < units.len())
+        .map(|((units, start), end)| {
+            if end > start && *end < units.len() {
+                units[*end - 1].following_line_advance
+            } else {
+                0.0
+            }
+        })
+        .reduce(f64::min)
+        .unwrap_or(0.0)
+}
+
+/// The parent page has reopened this row inside its child text. Its last
+/// visible line stops at its own box, before the advance to the next page.
+pub(super) fn continuation_closing_advance(
+    units: &[CellUnit],
+    start: usize,
+    end: usize,
+) -> Option<f64> {
+    if start == 0 || start >= end || end >= units.len() {
+        return None;
+    }
+    let last = &units[end - 1];
+    let same_row = |unit: &CellUnit| {
+        last.nested_row.is_some()
+            && unit.nested_row == last.nested_row
+            && unit.para_idx == last.para_idx
+    };
+    let next = &units[end];
+    (last.following_line_advance > 0.0
+        && same_row(&units[start - 1])
+        && same_row(&units[start])
+        && same_row(next)
+        && ((!next.hard_break_before && !next.stored_frame_break_before)
+            || (next.page_frame_reset_before && next.stored_frame_break_before)))
+        .then_some(last.following_line_advance.min(last.height))
+}
+
 impl LayoutEngine {
+    /// 같은 자식 글줄 행의 중간에서 열고 닫는 블록 조각. 자식 RowCut이 이미
+    /// 마지막 줄의 전진을 제외했으므로 부모는 그 상자와 실제 바깥 여백만 소비한다.
+    pub(super) fn continued_plain_child_frame_height(
+        &self,
+        cell: &Cell,
+        units: &[CellUnit],
+        start: usize,
+        end: usize,
+        styles: &ResolvedStyleSet,
+        purpose: super::row_physical_band::CutHeight,
+    ) -> Option<f64> {
+        use crate::model::control::Control;
+        use crate::model::shape::TextWrap;
+        use crate::renderer::hwpunit_to_px;
+
+        continuation_closing_advance(units, start, end)?;
+        let paragraph = cell.paragraphs.get(units[start].para_idx)?;
+        let mut children = paragraph
+            .controls
+            .iter()
+            .filter_map(|control| match control {
+                Control::Table(child) => Some(child.as_ref()),
+                _ => None,
+            });
+        let child = children.next()?;
+        if children.next().is_some()
+            || child.common.treat_as_char
+            || !child.common.flow_with_text
+            || child.common.text_wrap != TextWrap::TopAndBottom
+        {
+            return None;
+        }
+        let cut = Self::nested_row_projection_cut(&units[start..end])?;
+        let margins = i32::from(child.outer_margin_top) + i32::from(child.outer_margin_bottom);
+        Some(
+            self.nested_cut_height(child, &cut, styles, purpose) + hwpunit_to_px(margins, self.dpi),
+        )
+    }
+
     /// 실제 재귀 글줄 컷 또는 저장 글줄이 없는 호스트의 재조판 행만 재귀 프레임을 연다.
     /// 저장 호스트의 원자 행은 기존 행 조각 경로가 첫 물리 프레임과 문단 범위를 소유한다.
     pub(super) fn nested_row_run_uses_recursive_frame(

@@ -241,6 +241,7 @@ impl LayoutEngine {
                 cell.dirty_flag
                     || cell.paragraphs.iter().any(|para| {
                         para.stored_text_partition_is_dirty() || para.cell_format_vpos_dirty
+                            || (profile.session_edited() && para.cell_lines_edited)
                     })
             })
         {

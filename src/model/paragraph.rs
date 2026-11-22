@@ -151,7 +151,7 @@ pub struct Paragraph {
     /// 컨트롤 목록 (표, 그림, 각주 등)
     pub controls: Vec<Control>,
     /// 각 컨트롤에 대응하는 CTRL_DATA 레코드 (라운드트립 보존용)
-    /// controls[i]에 대응하는 CTRL_DATA가 있으면 ctrl_data_records[i] = Some(data)
+    /// 그림 개체의 경우 최상위 SHAPE_COMPONENT의 자식이다. CTRL_HEADER 직속 데이터는 개체가 보존한다.
     pub ctrl_data_records: Vec<Option<Vec<u8>>>,
     /// char_count의 최상위 비트 (bit 31) 파싱값.
     /// HWP5 저장기는 현재 list scope의 마지막 문단 여부로 bit 31을 재생성한다.
@@ -3435,6 +3435,25 @@ impl Paragraph {
         active: Option<usize>,
         after_inline_control: bool,
     ) -> usize {
+        self.replace_text_at_control_boundary(
+            char_offset,
+            delete_count,
+            text,
+            active,
+            after_inline_control,
+            None,
+        )
+    }
+
+    pub(crate) fn replace_text_at_control_boundary(
+        &mut self,
+        char_offset: usize,
+        delete_count: usize,
+        text: &str,
+        active: Option<usize>,
+        after_inline_control: bool,
+        next_control: Option<usize>,
+    ) -> usize {
         /// 갭 하나의 슬롯. 직렬화기가 같은 갭 안에서 내는 순서대로 늘어놓는다.
         #[derive(Clone, Copy, PartialEq)]
         enum Slot {
@@ -3588,13 +3607,16 @@ impl Paragraph {
                 ))
             };
             // 글자 수를 넘는 자리는 문단 끝 개체 뒤를 가리킨다(`insert_text_at` 과 같은 뜻).
-            let preferred = if char_offset > len {
-                (char_offset - len).min(gap.len())
-            } else if after_inline_control {
-                gap.len()
-            } else {
-                gap.iter().position(object).unwrap_or(gap.len())
-            };
+            let preferred =
+                if let Some(index) = next_control.and_then(|ci| order(Slot::Control(ci))) {
+                    index
+                } else if char_offset > len {
+                    (char_offset - len).min(gap.len())
+                } else if after_inline_control {
+                    gap.len()
+                } else {
+                    gap.iter().position(object).unwrap_or(gap.len())
+                };
             let misses = |m: usize, level: u8| {
                 (wants.iter())
                     .filter(|&&(l, begin, end, inside)| {

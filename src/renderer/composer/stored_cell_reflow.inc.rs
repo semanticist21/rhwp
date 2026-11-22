@@ -84,12 +84,13 @@ pub(crate) fn recompose_stored_lines_in_frame_with_known_square_band_with_storag
             return Ok(None);
         }
         // loader가 만든 합성 줄은 원본 저장 캐시가 아니다. 독립 개체가 없는
-        // 본문과 프레임이 소유하는 TAC 표 host는 현재 슬롯/폭으로 다시 구성한다.
+        // 본문·각주 참조와 프레임이 소유하는 TAC 표 host는 현재 슬롯/폭으로 다시 구성한다.
         // 옛 합성 줄을 수용하면 뒤의 폭 0 기준 문자가 차지한 줄이 사라진다.
         let fresh_body = if !para.line_segs.is_empty()
             && (para.controls.is_empty()
                 || (!stored_geometry_policy.preserve_hwp3_origins
-                    && line_breaking::supports_tac_table_band_frame_controls(para)))
+                    && (line_breaking::supports_tac_table_band_frame_controls(para)
+                        || line_breaking::is_footnote_text_host(para))))
             && crate::renderer::para_has_no_stored_line_segs(para)
             // 너비가 다른 단마다 그 단 너비로 접은 편집 줄(`reflow_line_segs_after`)은
             // 단 경계가 권위다. 한 단 너비로 다시 짜면 다음 단이 엉뚱한 글자에서 시작한다.
@@ -228,7 +229,7 @@ pub(crate) fn recompose_stored_lines_in_frame_with_known_square_band_with_storag
                 para,
                 inner_width_px,
                 styles,
-                paragraph_box.line_wrap_squeeze(),
+                &frame,
                 storage,
             )?
             || line_breaking::remeasured_equation_start_row(para).is_some()
@@ -524,7 +525,7 @@ pub(crate) fn probe_stored_row_disposition(
             .unwrap_or(0),
     );
     let stale = stored_geometry_policy.requires_realign
-        || stored_rows_are_stale(&composed, para, inner_width_px, styles, paragraph_box.line_wrap_squeeze())
+        || stored_rows_are_stale(&composed, para, inner_width_px, styles, &frame)
         || (stored_geometry_policy.stored_rows_before_hancom_2020
             && stored_last_row_is_rejoinable_word_tail(&composed, para, styles)
             && fresh_rows_absorb_stored_tail(

@@ -288,7 +288,8 @@ pub(in crate::renderer::typeset) fn place_with_storage<S: crate::storage::Storag
             current_page_vpos_base,
             false,
             strict_after_empty_host_float,
-            dpi,
+            st.inline_flow_column().width,
+            engine,
             storage,
         )?;
         return Ok(());
@@ -416,7 +417,7 @@ pub(in crate::renderer::typeset) fn place_with_storage<S: crate::storage::Storag
         forced_page_break_line,
         native_hwp5_existing_footnote_boundary,
         current_page_vpos_base,
-        dpi,
+        engine,
         storage,
     )?;
 
@@ -425,7 +426,7 @@ pub(in crate::renderer::typeset) fn place_with_storage<S: crate::storage::Storag
 
 /// 문단의 본문 각주와 참조 줄을 모은다. 줄 대응은 저장 줄 상자가 측정 줄과
 /// 일대일일 때만 쓴다(재조판 줄은 저장 text_start 와 다른 컷을 가진다).
-fn collect_own_line_notes(
+pub(super) fn collect_own_line_notes(
     st: &mut TypesetState,
     engine: &TypesetEngine,
     para_idx: usize,
