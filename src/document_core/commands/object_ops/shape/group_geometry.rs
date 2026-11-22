@@ -40,6 +40,10 @@ pub(super) fn finish_top_level_edit(
     if matches!(shape, ShapeObject::Group(_)) {
         return;
     }
+    if let ShapeObject::Line(line) = shape {
+        finish_line_edit(line, before);
+        return;
+    }
     if shape.shape_attr().rotation_angle != before.6 {
         refresh_top_level_frame(shape);
     }
@@ -64,6 +68,94 @@ pub(super) fn finish_top_level_edit(
         sa.render_b = 0.0;
         sa.render_c = 0.0;
     }
+}
+
+/// 직선의 크기·회전·대칭 편집. 한컴 12.30은 직선을 돌리면 개체 자리(틀 왼쪽 위)를 두고 틀을
+/// 돌린 외접 상자로 바꾸며, 끝점은 그대로 두고 회전·대칭을 저장 행렬(회전 행렬)에 적는다.
+fn finish_line_edit(
+    line: &mut crate::model::shape::LineShape,
+    before: (u32, u32, u32, u32, u32, u32, i16, bool, bool),
+) {
+    let sa = &line.drawing.shape_attr;
+    let after = (
+        line.common.width,
+        line.common.height,
+        sa.current_width,
+        sa.current_height,
+        sa.rotation_angle,
+        sa.horz_flip,
+        sa.vert_flip,
+    );
+    if after
+        == (
+            before.0, before.1, before.4, before.5, before.6, before.7, before.8,
+        )
+    {
+        return;
+    }
+    let (w, h) = (f64::from(sa.current_width), f64::from(sa.current_height));
+    let (sin, cos) = f64::from(sa.rotation_angle).to_radians().sin_cos();
+    if sa.rotation_angle != before.6 {
+        line.common.width = (w * cos.abs() + h * sin.abs()).round() as u32;
+        line.common.height = (w * sin.abs() + h * cos.abs()).round() as u32;
+    }
+    let (frame_w, frame_h) = (f64::from(line.common.width), f64::from(line.common.height));
+    let sa = &mut line.drawing.shape_attr;
+    sa.rotation_center.x = (line.common.width / 2) as i32;
+    sa.rotation_center.y = (line.common.height / 2) as i32;
+    if sa.rotation_angle.rem_euclid(360) == 0 && !sa.horz_flip && !sa.vert_flip {
+        sa.raw_rendering.clear();
+        sa.render_tx = 0.0;
+        sa.render_ty = 0.0;
+        sa.render_sx = 1.0;
+        sa.render_sy = 1.0;
+        sa.render_b = 0.0;
+        sa.render_c = 0.0;
+        return;
+    }
+    let ratio = |current: u32, original: u32| {
+        if current > 0 && original > 0 {
+            f64::from(current) / f64::from(original)
+        } else {
+            1.0
+        }
+    };
+    let (kx, ky) = (
+        ratio(sa.current_width, sa.original_width),
+        ratio(sa.current_height, sa.original_height),
+    );
+    let fx = if sa.horz_flip { -1.0 } else { 1.0 };
+    let fy = if sa.vert_flip { -1.0 } else { 1.0 };
+    // 현재 크기 상자의 가운데를 틀 가운데에 두고 대칭 → 회전한다. 크기 0인 축(가로·세로 선)도 그대로 둔다.
+    let (hx, hy) = (fx * w / 2.0, fy * h / 2.0);
+    let rotation = [cos * fx, -sin * fy, 0.0, sin * fx, cos * fy, 0.0];
+    let (tx, ty) = (
+        frame_w / 2.0 - (cos * hx - sin * hy),
+        frame_h / 2.0 - (sin * hx + cos * hy),
+    );
+    sa.render_sx = rotation[0] * kx;
+    sa.render_b = rotation[1] * ky;
+    sa.render_tx = tx;
+    sa.render_c = rotation[3] * kx;
+    sa.render_sy = rotation[4] * ky;
+    sa.render_ty = ty;
+    // 한컴 저장본처럼 이동·크기·회전(대칭 포함) 행렬로 나눠 적는다. 합성은 이동 × 회전 × 크기다.
+    let mut raw = Vec::with_capacity(2 + 8 * 6 * (3 + 2 * sa.group_level as usize));
+    raw.extend_from_slice(&(sa.group_level + 1).to_le_bytes());
+    let identity = [1.0, 0.0, 0.0, 0.0, 1.0, 0.0];
+    let matrices = [
+        [1.0, 0.0, tx, 0.0, 1.0, ty],
+        [kx, 0.0, 0.0, 0.0, ky, 0.0],
+        rotation,
+    ];
+    for value in matrices
+        .iter()
+        .chain(std::iter::repeat_n(&identity, 2 * sa.group_level as usize))
+        .flatten()
+    {
+        raw.extend_from_slice(&value.to_le_bytes());
+    }
+    sa.raw_rendering = raw;
 }
 
 pub(super) struct Placement {
@@ -170,7 +262,11 @@ pub(super) fn finish_group_edit(
     before: Fingerprint,
     new_w: Option<u32>,
     new_h: Option<u32>,
+    props_json: &str,
 ) {
+    if rotate_group(group, before, props_json) {
+        return;
+    }
     let sa = &mut group.shape_attr;
     let (old_w, old_h) = (sa.current_width, sa.current_height);
     // [#6806] 값이 바뀔 때만 — 파싱값이 `current ≠ common` 인 묶음은 같은 봉지를 되먹여도
@@ -205,6 +301,135 @@ pub(super) fn finish_group_edit(
     // 한컴 저장본처럼 묶음 자신의 크기 행렬은 current/original 배율이 된다(원본 행렬은 위에서 비웠다).
     scale_rendering(sa, kx, ky);
     scale_descendants(&mut group.children, kx, ky);
+}
+
+/// 묶음 회전·대칭. 한컴 12.30은 개체 자리(틀 왼쪽 위)를 두고 틀을 돌린 외접 상자로 바꾸며,
+/// 옛 틀에서 새 틀로 가는 변환 G를 묶음과 모든 자손의 저장 행렬 앞에 합성한다(자손은 이동과 첫
+/// 묶음 단계 회전 행렬에, 이동은 틀 가운데가 옮긴 만큼). 값이 바뀌지 않으면 false다.
+/// 같은 편집의 크기 값은 쓰지 않는다.
+fn rotate_group(
+    group: &mut crate::model::shape::GroupShape,
+    before: Fingerprint,
+    props_json: &str,
+) -> bool {
+    use crate::document_core::helpers::{json_bool, json_i32};
+    let sa = &mut group.shape_attr;
+    if let Some(angle) = json_i32(props_json, "rotationAngle") {
+        sa.rotation_angle = angle as i16;
+    }
+    if let Some(on) = json_bool(props_json, "horzFlip") {
+        sa.horz_flip = on;
+    }
+    if let Some(on) = json_bool(props_json, "vertFlip") {
+        sa.vert_flip = on;
+    }
+    sa.flip = (sa.flip & !3) | u32::from(sa.horz_flip) | (u32::from(sa.vert_flip) << 1);
+    if (sa.rotation_angle, sa.horz_flip, sa.vert_flip) == (before.6, before.7, before.8) {
+        return false;
+    }
+    let old_frame = frame_matrix(
+        &crate::model::shape::CommonObjAttr {
+            width: before.0,
+            height: before.1,
+            ..Default::default()
+        },
+        &crate::model::shape::ShapeComponentAttr {
+            original_width: sa.original_width,
+            original_height: sa.original_height,
+            current_width: before.4,
+            current_height: before.5,
+            rotation_angle: before.6,
+            horz_flip: before.7,
+            vert_flip: before.8,
+            ..Default::default()
+        },
+    );
+    let (width, height) = crate::document_core::DocumentCore::picture_rotated_bounds(
+        sa.current_width,
+        sa.current_height,
+        sa.rotation_angle,
+    );
+    group.common.width = width;
+    group.common.height = height;
+    let sa = &mut group.shape_attr;
+    sa.rotation_center.x = (width / 2) as i32;
+    sa.rotation_center.y = (height / 2) as i32;
+    let Some(inverse) = invert(&old_frame) else {
+        return true;
+    };
+    let g = compose(&frame_matrix(&group.common, sa), &inverse);
+    let shift = (
+        (f64::from(width) - f64::from(before.0)) / 2.0,
+        (f64::from(height) - f64::from(before.1)) / 2.0,
+    );
+    prepend_transform(sa, &g, shift);
+    prepend_descendants(&mut group.children, &g, shift);
+    true
+}
+
+fn prepend_descendants(children: &mut [ShapeObject], g: &[f64; 6], shift: (f64, f64)) {
+    for child in children {
+        prepend_transform(child.shape_attr_mut(), g, shift);
+        if let ShapeObject::Group(group) = child {
+            prepend_descendants(&mut group.children, g, shift);
+        }
+    }
+}
+
+/// 합성 행렬 M을 G·M으로 바꾼다. 저장 원본 행렬이 있으면 이동 T와 첫 묶음 단계 회전 R1을
+/// T' = T + shift, R1' = T'⁻¹·G·T·R1로 고쳐 같은 합성이 되게 한다(한컴 12.30 저장본과 같은 꼴).
+fn prepend_transform(
+    sa: &mut crate::model::shape::ShapeComponentAttr,
+    g: &[f64; 6],
+    shift: (f64, f64),
+) {
+    let m = compose(
+        g,
+        &[
+            sa.render_sx,
+            sa.render_b,
+            sa.render_tx,
+            sa.render_c,
+            sa.render_sy,
+            sa.render_ty,
+        ],
+    );
+    [
+        sa.render_sx,
+        sa.render_b,
+        sa.render_tx,
+        sa.render_c,
+        sa.render_sy,
+        sa.render_ty,
+    ] = m;
+    const MATRIX: usize = 6 * 8;
+    if sa.raw_rendering.len() < 2 + 3 * MATRIX
+        || u16::from_le_bytes([sa.raw_rendering[0], sa.raw_rendering[1]]) == 0
+    {
+        sa.raw_rendering = crate::serializer::control::serialize_affine_rendering(sa);
+        return;
+    }
+    let raw = &mut sa.raw_rendering;
+    let read = |raw: &[u8], at: usize| {
+        let mut m = [0.0; 6];
+        for (i, v) in m.iter_mut().enumerate() {
+            let o = at + i * 8;
+            *v = f64::from_le_bytes(raw[o..o + 8].try_into().expect("8바이트"));
+        }
+        m
+    };
+    let (trans, rotation) = (read(raw, 2), read(raw, 2 + 2 * MATRIX));
+    let moved = [1.0, 0.0, trans[2] + shift.0, 0.0, 1.0, trans[5] + shift.1];
+    let Some(inverse) = invert(&moved) else {
+        return;
+    };
+    let rotated = compose(&compose(&compose(&inverse, g), &trans), &rotation);
+    for (at, matrix) in [(2, moved), (2 + 2 * MATRIX, rotated)] {
+        for (i, v) in matrix.iter().enumerate() {
+            let o = at + i * 8;
+            raw[o..o + 8].copy_from_slice(&v.to_le_bytes());
+        }
+    }
 }
 
 /// 자손의 렌더링 행렬 앞에 묶음 로컬 원점 기준 배율을 곱한다. 한컴 12.30은 크기를 current에도

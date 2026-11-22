@@ -1952,6 +1952,12 @@ impl LayoutEngine {
                 // 점 좌표와 같은 원본 프레임을 소비한다. 이미 세로/가로인
                 // 선을 별도 회전으로 다른 축에 다시 놓지 않는다.
                 transform.rotation = 0.0;
+            } else if matches!(shape, ShapeObject::Line(line) if source_line_frame::matrix_owns_transform(line))
+            {
+                // 행렬이 끝점을 틀 안에 이미 돌리고 뒤집어 둔다. 쪽 개체 목록의 끝점과 그린 선이 같다.
+                transform.rotation = 0.0;
+                transform.horz_flip = false;
+                transform.vert_flip = false;
             }
             transform
         };
