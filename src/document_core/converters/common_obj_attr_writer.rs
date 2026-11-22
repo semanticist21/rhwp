@@ -116,6 +116,7 @@ mod tests {
             affect_line_spacing: false,
             size_protect: false,
             hwp5_gen_shape_attr_bit28: false,
+            hwp5_header_ctrl_data: None,
             vert_rel_to: VertRelTo::Para,
             vert_align: VertAlign::Top,
             horz_rel_to: HorzRelTo::Para,
