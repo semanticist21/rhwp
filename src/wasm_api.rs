@@ -3528,6 +3528,8 @@ impl HwpDocument {
     /// 새 번호 지정 컨트롤 삽입 (쪽 > 새 번호로 시작)
     ///
     /// `kind`는 번호 종류다: 0 쪽(생략 시), 1 각주, 2 미주, 3 그림, 4 표, 5 수식.
+    /// `objects_before`는 같은 글자 자리에 맞붙은 논리 개체 가운데 캐럿 앞의 수다.
+    /// 생략하면 그 자리 개체 모두 뒤에 넣는다.
     #[wasm_bindgen(js_name = insertNewNumber)]
     pub fn insert_new_number(
         &mut self,
@@ -3536,6 +3538,7 @@ impl HwpDocument {
         char_offset: u32,
         start_num: u32,
         kind: Option<u8>,
+        objects_before: Option<u32>,
     ) -> Result<String, JsValue> {
         use crate::model::control::AutoNumberType;
         if start_num == 0 || start_num > 65535 {
@@ -3550,10 +3553,11 @@ impl HwpDocument {
             5 => AutoNumberType::Equation,
             _ => return Err(JsValue::from_str("kind must be 0~5")),
         };
-        self.insert_new_number_of_kind_native(
+        self.insert_new_number_in_slot_native(
             section_idx as usize,
             para_idx as usize,
             char_offset as usize,
+            objects_before.map(|count| count as usize),
             start_num as u16,
             number_type,
         )

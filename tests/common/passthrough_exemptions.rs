@@ -1064,6 +1064,12 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "쪽 번호 종류로 번호 종류를 받는 새 번호 넣기에 위임한다. 위임 대상이 구역의 raw_stream을 비운다.",
     ),
     (
+        "commands/object_ops/common.rs",
+        "insert_new_number_of_kind_native",
+        Exempt::DelegatesTo("insert_new_number_in_slot_native"),
+        "그 글자 자리 개체 모두 뒤를 고른 캐럿 자리 새 번호 넣기에 위임한다. 위임 대상이 구역의 raw_stream을 비운다.",
+    ),
+    (
         "commands/object_ops/picture.rs",
         "get_picture_effects_native",
         Exempt::SessionState,

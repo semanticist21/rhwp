@@ -771,11 +771,34 @@ impl crate::document_core::DocumentCore {
 
     /// `number_type` 번호를 그 자리부터 `start_num`으로 다시 세는 새 번호 지정을 넣는다.
     /// 한컴 12.30 새 번호로 시작의 번호 종류(쪽·각주·미주·그림·표·수식)다.
+    /// 같은 글자 자리의 개체 뒤에 넣는다.
     pub fn insert_new_number_of_kind_native(
         &mut self,
         section_idx: usize,
         para_idx: usize,
         char_offset: usize,
+        start_num: u16,
+        number_type: crate::model::control::AutoNumberType,
+    ) -> Result<String, crate::error::HwpError> {
+        self.insert_new_number_in_slot_native(
+            section_idx,
+            para_idx,
+            char_offset,
+            None,
+            start_num,
+            number_type,
+        )
+    }
+
+    /// 새 번호 지정을 캐럿 자리에 넣는다. `objects_before`는 같은 글자 자리에 맞붙은 논리 개체
+    /// (글자처럼 취급한 표·그림, 각주 따위) 가운데 캐럿 앞에 있는 수다. 문단 처음 표 앞의 캐럿이면
+    /// 0이고, 새 번호가 그 표보다 먼저 와 표 번호도 다시 센다. `None`이면 그 자리 개체 모두 뒤다.
+    pub fn insert_new_number_in_slot_native(
+        &mut self,
+        section_idx: usize,
+        para_idx: usize,
+        char_offset: usize,
+        objects_before: Option<usize>,
         start_num: u16,
         number_type: crate::model::control::AutoNumberType,
     ) -> Result<String, crate::error::HwpError> {
@@ -812,10 +835,19 @@ impl crate::document_core::DocumentCore {
         let insert_idx = {
             let positions = crate::document_core::helpers::find_control_text_positions(paragraph);
             let mut idx = paragraph.controls.len();
+            let mut passed = 0usize;
             for (i, &pos) in positions.iter().enumerate() {
                 if pos > char_offset {
                     idx = i;
                     break;
+                }
+                // 캐럿 뒤의 첫 논리 개체 앞에 둔다. 구역·단 정의 같은 부호는 그대로 앞에 남는다.
+                if pos == char_offset && paragraph.controls[i].is_logical_inline() {
+                    if Some(passed) == objects_before {
+                        idx = i;
+                        break;
+                    }
+                    passed += 1;
                 }
             }
             idx
