@@ -916,6 +916,52 @@ fn should_reflow_matrix_textbox_lines(
         })
 }
 
+/// 한/글 개체 속성의 기울이기만 저장한 독립 도형(회전·대칭 없음)의 쪽 공간 행렬과
+/// 원래 크기(px). 저장 행렬은 원래 좌표를 개체 틀(외접 상자) 안으로 옮긴다.
+/// 다각형은 꼭짓점에 저장 행렬을 직접 적용하므로 여기서 다시 기울이지 않는다.
+fn skew_page_matrix(
+    shape: &crate::model::shape::ShapeObject,
+    x: f64,
+    y: f64,
+    dpi: f64,
+) -> Option<([f64; 6], f64, f64)> {
+    use crate::model::shape::ShapeObject;
+    if !matches!(
+        shape,
+        ShapeObject::Rectangle(_)
+            | ShapeObject::Ellipse(_)
+            | ShapeObject::Arc(_)
+            | ShapeObject::Curve(_)
+    ) {
+        return None;
+    }
+    let sa = shape.shape_attr();
+    if sa.rotation_angle.rem_euclid(360) != 0
+        || sa.horz_flip
+        || sa.vert_flip
+        || (sa.render_b.abs() <= 1e-6 && sa.render_c.abs() <= 1e-6)
+        || sa.original_width == 0
+        || sa.original_height == 0
+        || !sa.has_saved_affine_geometry()
+    {
+        return None;
+    }
+    let unit = dpi / super::super::HWPUNIT_PER_INCH;
+    let (a, b, c, d) = (sa.render_sx, sa.render_b, sa.render_c, sa.render_sy);
+    Some((
+        [
+            a,
+            c,
+            b,
+            d,
+            x - a * x - b * y + sa.render_tx * unit,
+            y - c * x - d * y + sa.render_ty * unit,
+        ],
+        f64::from(sa.original_width) * unit,
+        f64::from(sa.original_height) * unit,
+    ))
+}
+
 fn reflow_matrix_textbox_para(
     para: &mut Paragraph,
     available_width: f64,
@@ -2017,15 +2063,17 @@ impl LayoutEngine {
         // 같은 원점을 소비하도록 실제 좌표를 만들기 전에 한 번 이동한다.
         // 묶음 자식은 renderingInfo가 정한 본체 원점을 그대로 보존한다.
         let (base_x, base_y) = if !matrix_positioned {
+            let unit = self.dpi / super::super::HWPUNIT_PER_INCH;
             let origin = shape.drawing().and_then(|drawing| {
-                crate::model::shape::shadow::parallel_body_origin_hu(
+                crate::model::shape::shadow::body_origin_hu(
                     drawing.shadow_type,
                     drawing.shadow_offset_x,
                     drawing.shadow_offset_y,
+                    w / unit,
+                    h / unit,
                 )
             });
             origin.map_or((base_x, base_y), |(x, y)| {
-                let unit = self.dpi / super::super::HWPUNIT_PER_INCH;
                 (base_x + x * unit, base_y + y * unit)
             })
         } else {
@@ -2033,7 +2081,7 @@ impl LayoutEngine {
         };
 
         // 공통: 회전/대칭 정보 추출
-        let transform = if matrix_positioned {
+        let mut transform = if matrix_positioned {
             ShapeTransform::default()
         } else {
             let mut transform = extract_shape_transform(shape.shape_attr());
@@ -2044,6 +2092,18 @@ impl LayoutEngine {
                 transform.rotation = 0.0;
             }
             transform
+        };
+
+        // 기울인 독립 도형은 원래 크기로 그리고 저장 행렬로 기울인다. 개체 틀은 기울인 외접 상자다.
+        let (w, h) = match (!matrix_positioned)
+            .then(|| skew_page_matrix(shape, base_x, base_y, self.dpi))
+            .flatten()
+        {
+            Some((matrix, width, height)) => {
+                transform.skew = Some(matrix);
+                (width, height)
+            }
+            None => (w, h),
         };
 
         // [Task #1138] 표 셀 내 도형 식별을 위한 cell 정보 추출 (helper)
