@@ -829,10 +829,8 @@ mod tests {
             iso_to_filetime("2004-09-15T12:15:12Z"),
             Some(ft / 10_000_000 * 10_000_000)
         );
-        assert_eq!(
-            iso_to_filetime("2026-02-29T00:00:00Z").map(filetime_to_iso),
-            Some("2026-03-01T00:00:00Z".into())
-        );
+        // 없는 날짜는 다음 달로 넘기지 않고 거부한다(devel의 날짜 검증).
+        assert_eq!(iso_to_filetime("2026-02-29T00:00:00Z"), None);
         assert_eq!(iso_to_filetime("2004-09-15 12:15:12"), None);
     }
 
