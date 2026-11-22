@@ -135,6 +135,42 @@ fn row_that_fits_next_page_still_splits_at_page_bottom() {
     assert_split(&grown(30), 30, 3);
 }
 
+/// HWPX 꾸러미에서 `entry`를 뺀 사본.
+fn without_entry(hwpx: &[u8], entry: &str) -> Vec<u8> {
+    use std::io::{Read, Write};
+    let mut zip = zip::ZipArchive::new(std::io::Cursor::new(hwpx)).unwrap();
+    let mut out = zip::ZipWriter::new(std::io::Cursor::new(Vec::new()));
+    for index in 0..zip.len() {
+        let mut file = zip.by_index(index).unwrap();
+        let name = file.name().unwrap().to_string();
+        if name == entry {
+            continue;
+        }
+        let mut bytes = Vec::new();
+        file.read_to_end(&mut bytes).unwrap();
+        let options =
+            zip::write::SimpleFileOptions::default().compression_method(file.compression());
+        out.start_file(name, options).unwrap();
+        out.write_all(&bytes).unwrap();
+    }
+    out.finish().unwrap().into_inner()
+}
+
+/// HWPX를 열어 고쳐도 HWP처럼 행이 자라 쪽 바닥에서 나뉜다. rhwp가 HWP에서 저장한 HWPX
+/// (`hwp5-origin` 표지)와 그 표지가 없는 HWPX 모두 같다.
+#[test]
+fn editing_hwpx_grows_and_splits_rows_like_hwp() {
+    let source =
+        HwpDocument::from_bytes(&std::fs::read("samples/inner-table-01.hwp").unwrap()).unwrap();
+    let marked = source.export_hwpx().unwrap();
+    let plain = without_entry(&marked, "META-INF/rhwp-hwp5-origin");
+    for bytes in [marked, plain] {
+        for (lines, pages) in [(70, 4), (30, 3)] {
+            assert_split(&grown_from(&bytes, lines), lines, pages);
+        }
+    }
+}
+
 /// 다른 칸에 글자를 쳐도 쪽에서 나뉜 앞 행(바깥 표 ‘사업개요’ 행)의 이어진 조각은
 /// 선언 높이를 지킨다.
 #[test]
