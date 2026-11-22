@@ -1266,3 +1266,145 @@ fn cell_inline_picture_left_caption_sits_before_the_picture() {
     let cell_box = first_cell_box(&core);
     assert!(line.x >= cell_box.x, "캡션 {line:?} 셀 {cell_box:?}");
 }
+
+/// 본문 문단에 글자처럼 취급 그림을 넣고 (문서, 그림 컨트롤)을 준다.
+fn body_inline_picture(text: &str, at: usize) -> (DocumentCore, usize) {
+    let mut core = blank();
+    core.insert_text_native(0, 0, 0, text).expect("본문");
+    let result = core
+        .insert_picture_native(
+            0,
+            0,
+            at,
+            &[],
+            &png(),
+            6000,
+            6000,
+            1,
+            1,
+            "png",
+            "",
+            None,
+            None,
+        )
+        .expect("그림");
+    let ctrl = json_usize(&result, "controlIdx");
+    core.set_picture_properties_native(0, 0, ctrl, r#"{"treatAsChar":true}"#)
+        .expect("글자처럼 취급");
+    (core, ctrl)
+}
+
+/// 옆 캡션을 넣으면 그 폭만큼 줄 자리가 늘므로 저장 줄을 다시 나눈다(줄이 오른쪽 여백을 넘지 않는다).
+#[test]
+fn adding_a_side_caption_rebreaks_the_inline_picture_line() {
+    let (mut core, ctrl) = body_inline_picture(&"가".repeat(30), 15);
+    let before = core.document.sections[0].paragraphs[0].line_segs.len();
+    core.set_picture_properties_native(
+        0,
+        0,
+        ctrl,
+        r#"{"hasCaption":true,"captionDirection":"Left","captionVertAlign":"Top","captionWidth":8504,"captionSpacing":850}"#,
+    )
+    .expect("왼쪽 캡션");
+    let after = core.document.sections[0].paragraphs[0].line_segs.len();
+    assert!(after > before, "줄 수 {before} → {after}");
+}
+
+/// 한컴 12.30은 바깥 여백 → 캡션 → 그림 효과 → 그림 차례로 둔다. 네온이 있으면 캡션은 효과 상자 옆에 서고
+/// 그 상자 위끝에 맞춘다.
+#[test]
+fn side_caption_sits_outside_the_picture_effect() {
+    let (mut core, ctrl) = body_inline_picture("앞글뒷글", 2);
+    core.set_picture_effects_native(
+        0,
+        0,
+        &[],
+        ctrl,
+        r##"{"glow":{"alpha":0,"radius":1500,"color":"#f32626"}}"##,
+    )
+    .expect("네온");
+    core.set_picture_properties_native(
+        0,
+        0,
+        ctrl,
+        r#"{"hasCaption":true,"captionDirection":"Left","captionVertAlign":"Top","captionWidth":8504,"captionSpacing":850}"#,
+    )
+    .expect("왼쪽 캡션");
+    let pic = picture(&core, 0, ctrl);
+    let (w, h) = crate::renderer::composer::inline_picture_size_hu(pic);
+    let [left, _, top, _] = crate::renderer::image_resolver::inline_effect_outsets_hu(pic, w, h)
+        .map(|v| crate::renderer::hwpunit_to_px(v, core.dpi));
+    assert!(left > 0.0 && top > 0.0, "네온 바깥 폭 {left} {top}");
+    let image = image_boxes(&core)[0];
+    let (line, _) = caption_lines(&core).remove(0);
+    let room = crate::renderer::hwpunit_to_px(8504 + 850, core.dpi);
+    assert!(
+        (line.x - (image.x - left - room)).abs() < 0.5,
+        "캡션 {line:?} 그림 {image:?}"
+    );
+    assert!(
+        (line.y - (image.y - top)).abs() < 0.5,
+        "캡션 {line:?} 그림 {image:?}"
+    );
+}
+
+/// 그림 높이에서 잘린 옆 캡션 글줄은 보이지 않으므로, 그 아래를 눌러도 캡션에 캐럿이 들지 않는다.
+#[test]
+fn clipped_side_caption_lines_are_not_hit() {
+    let (mut core, ctrl) = body_inline_picture("앞글뒷글", 2);
+    core.set_picture_properties_native(
+        0,
+        0,
+        ctrl,
+        r#"{"hasCaption":true,"captionDirection":"Right","captionVertAlign":"Top","captionWidth":8504,"captionSpacing":850}"#,
+    )
+    .expect("오른쪽 캡션");
+    let path = [(ctrl, 0, 0)];
+    let end = core
+        .resolve_paragraph_by_path(0, 0, &path)
+        .expect("캡션 문단")
+        .char_count as usize
+        - 1;
+    core.insert_text_in_cell_by_path(0, 0, &path, end, &"수달 ".repeat(40))
+        .expect("긴 캡션");
+    // 그림 아래에 다음 문단 글을 둔다. 넘친 캡션 줄은 그 글과 겹친 자리에 숨어 있다.
+    let len = core.document.sections[0].paragraphs[0].text.chars().count();
+    core.split_paragraph_native(0, 0, len, None)
+        .expect("문단 나누기");
+    for _ in 0..4 {
+        core.insert_text_native(0, 1, 0, &"아래 글 ".repeat(30))
+            .expect("아래 글");
+    }
+    let image = image_boxes(&core)[0];
+    let lines = caption_lines(&core);
+    let hidden = lines
+        .iter()
+        .map(|(line, _)| *line)
+        .find(|line| line.y > image.y + image.height + 1.0)
+        .expect("그림 아래로 넘친 캡션 줄");
+    let hit: serde_json::Value = serde_json::from_str(
+        &core
+            .hit_test_native(0, hidden.x + 2.0, hidden.y + hidden.height / 2.0)
+            .expect("누르기"),
+    )
+    .expect("JSON");
+    assert!(
+        hit["cellPath"]
+            .as_array()
+            .is_none_or(|path| path.iter().all(|step| step["controlIndex"] != ctrl)),
+        "숨은 캡션 줄이 눌렸다: {hit}"
+    );
+    assert_eq!(
+        hit["paragraphIndex"], 1,
+        "아래 문단 글을 눌러야 한다: {hit}"
+    );
+    // 보이는 첫 캡션 줄은 그대로 누른다.
+    let (first, _) = lines[0];
+    let hit: serde_json::Value = serde_json::from_str(
+        &core
+            .hit_test_native(0, first.x + 2.0, first.y + first.height / 2.0)
+            .expect("누르기"),
+    )
+    .expect("JSON");
+    assert_eq!(hit["cellPath"][0]["controlIndex"], ctrl, "{hit}");
+}

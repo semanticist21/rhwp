@@ -439,9 +439,15 @@ impl LayoutEngine {
             .max(0.0);
             // 왼쪽·오른쪽 캡션은 줄 배치가 비워 둔 그림 옆 자리에 둔다.
             let image = BoundingBox::new(image_x, effective_pic_y, pic_w, effective_pic_h);
-            let (cap_x, cap_w, cap_y) = self
-                .inline_side_caption_place(caption, image, caption_h)
-                .unwrap_or((image_x - ext_left, pic_w + ext_w, cap_y));
+            let (cap_x, cap_w, cap_y, clip_top, clip_bottom) = self
+                .inline_side_caption_place(caption, pic, image, caption_h)
+                .unwrap_or((
+                    image_x - ext_left,
+                    pic_w + ext_w,
+                    cap_y,
+                    image.y,
+                    image.y + image.height,
+                ));
             let caption_first = col_node.children.len();
             self.layout_caption(
                 tree,
@@ -467,8 +473,8 @@ impl LayoutEngine {
                 caption,
                 cap_x,
                 cap_w,
-                image.y,
-                image.y + image.height,
+                clip_top,
+                clip_bottom,
             );
             // [Task #864 Stage F] caption 이 차지한 영역까지 result_y 진행.
             // 미진행 시 다음 paragraph 가 caption 위에 그려져 겹침

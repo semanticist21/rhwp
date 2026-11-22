@@ -1787,6 +1787,7 @@ impl DocumentCore {
             restrict_enabled_by_this_call || json_i32(props_json, "vertOffset").is_some();
         let caption_styles = self.resolve_render_styles();
         let (dpi, hwp3_layout) = (self.dpi, self.document.layout_profile().hwp3_layout());
+        let mut room_changed = false;
         let caption_changed = {
             let section = self.document.sections.get_mut(section_idx).ok_or_else(|| {
                 HwpError::RenderError(format!("구역 인덱스 {} 범위 초과", section_idx))
@@ -1809,7 +1810,15 @@ impl DocumentCore {
             let had_caption = pic.caption.is_some();
             let px = Self::picture_pixel_size(pic, &self.document.bin_data_content);
             let caption_width_before = super::picture::picture_caption_text_width(pic);
+            // 글자처럼 취급 그림의 줄 안 자리(옆 캡션 폭·간격 포함)가 바뀌면 셀 문단을 다시 나눈다.
+            let room = |pic: &crate::model::image::Picture| {
+                pic.common
+                    .treat_as_char
+                    .then(|| crate::renderer::composer::inline_picture_margins_hu(pic))
+            };
+            let room_before = room(pic);
             let caption_created = Self::apply_picture_props_inner(pic, props_json, px);
+            room_changed = room_before != room(pic);
             super::picture::reflow_picture_caption_if_width_changed(
                 pic,
                 caption_width_before,
@@ -1838,16 +1847,28 @@ impl DocumentCore {
             inner_control_idx,
         )?;
         // 각주·미주 바로 안 그림은 그 주석 문단을 다시 나눠 캡션을 줄 높이에 넣는다.
-        if let [(note_ctrl, 0, note_para)] = path.as_slice() {
-            if matches!(
-                section.paragraphs[parent_para_idx].controls.get(*note_ctrl),
-                Some(Control::Footnote(_) | Control::Endnote(_))
-            ) {
-                self.reflow_footnote_paragraph(
+        let note_para = match path.as_slice() {
+            [(note_ctrl, 0, note_para)]
+                if matches!(
+                    section.paragraphs[parent_para_idx].controls.get(*note_ctrl),
+                    Some(Control::Footnote(_) | Control::Endnote(_))
+                ) =>
+            {
+                Some((*note_ctrl, *note_para))
+            }
+            _ => None,
+        };
+        if let Some((note_ctrl, note_para)) = note_para {
+            self.reflow_footnote_paragraph(section_idx, parent_para_idx, note_ctrl, note_para);
+        } else if room_changed {
+            if let Some(&(_, _, cell_para)) = path.last() {
+                self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, &path, cell_para);
+                self.recalculate_cell_paragraph_vpos_by_path(
                     section_idx,
                     parent_para_idx,
-                    *note_ctrl,
-                    *note_para,
+                    &path,
+                    cell_para,
+                    None,
                 );
             }
         }

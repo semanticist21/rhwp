@@ -10,24 +10,42 @@ pub(crate) fn inline_picture_size_hu(picture: &Picture) -> (i32, i32) {
 }
 
 /// 글자처럼 그림의 바깥 여백 [왼쪽, 오른쪽, 위, 아래] (HWPUNIT).
-/// 개체 바깥 여백에 한컴 12.30처럼 그림 효과(그림자·네온·반사)가 덮는 만큼을 더한다.
-/// 왼쪽·오른쪽 캡션도 한컴 12.30처럼 캡션 폭과 간격만큼 그 쪽 자리를 차지한다: 왼쪽 캡션이면
-/// 그림이 그만큼 오른쪽으로 옮겨 가고, 오른쪽 캡션이면 뒤 글이 그만큼 밀린다.
+/// 한컴 12.30처럼 개체 바깥 여백, 왼쪽·오른쪽 캡션(폭 + 간격), 그림 효과(그림자·네온·반사)가 덮는
+/// 만큼을 차례로 더한다: 왼쪽 캡션이면 그림이 그만큼 오른쪽으로 옮겨 가고, 오른쪽 캡션이면 뒤 글이
+/// 그만큼 밀린다.
 pub(crate) fn inline_picture_margins_hu(picture: &Picture) -> [i32; 4] {
-    use crate::model::shape::CaptionDirection;
-    let (width, height) = inline_picture_size_hu(picture);
-    let effect = crate::renderer::image_resolver::inline_effect_outsets_hu(picture, width, height);
+    let effect = inline_picture_effect_outsets_hu(picture);
+    let [left, right] = inline_side_caption_hu(picture);
     let m = &picture.common.margin;
-    let mut margin = [m.left, m.right, m.top, m.bottom].map(i32::from);
-    if let Some(caption) = picture.caption.as_ref() {
-        let side = (caption.width as i32).saturating_add(i32::from(caption.spacing));
-        match caption.direction {
-            CaptionDirection::Left => margin[0] = margin[0].saturating_add(side),
-            CaptionDirection::Right => margin[1] = margin[1].saturating_add(side),
-            _ => {}
-        }
-    }
+    let margin = [
+        i32::from(m.left).saturating_add(left),
+        i32::from(m.right).saturating_add(right),
+        i32::from(m.top),
+        i32::from(m.bottom),
+    ];
     std::array::from_fn(|i| margin[i].saturating_add(effect[i]))
+}
+
+/// 글자처럼 그림의 효과(그림자·네온·반사)가 그림 밖으로 덮는 [왼쪽, 오른쪽, 위, 아래] (HWPUNIT).
+pub(crate) fn inline_picture_effect_outsets_hu(picture: &Picture) -> [i32; 4] {
+    let (width, height) = inline_picture_size_hu(picture);
+    crate::renderer::image_resolver::inline_effect_outsets_hu(picture, width, height)
+}
+
+/// 왼쪽·오른쪽 캡션이 그림 옆에 차지하는 [왼쪽, 오른쪽] 폭(캡션 폭 + 간격, HWPUNIT).
+pub(crate) fn inline_side_caption_hu(picture: &Picture) -> [i32; 2] {
+    use crate::model::shape::CaptionDirection;
+    let Some(caption) = picture.caption.as_ref() else {
+        return [0, 0];
+    };
+    let side = i32::try_from(caption.width)
+        .unwrap_or(i32::MAX)
+        .saturating_add(i32::from(caption.spacing).max(0));
+    match caption.direction {
+        CaptionDirection::Left => [side, 0],
+        CaptionDirection::Right => [0, side],
+        _ => [0, 0],
+    }
 }
 
 /// 글줄이 예약하는 그림 상자는 잉크와 바깥 여백을 함께 포함한다.

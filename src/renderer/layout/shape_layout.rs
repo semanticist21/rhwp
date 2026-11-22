@@ -4904,7 +4904,14 @@ impl LayoutEngine {
                                 Some(&pic_cell_ctx),
                                 styles,
                             );
-                            inline_x += clamped_w;
+                            // 옆 캡션은 그 폭과 간격만큼 다음 그림을 민다.
+                            inline_x += clamped_w
+                                + hwpunit_to_px(
+                                    crate::renderer::composer::inline_side_caption_hu(pic)
+                                        .iter()
+                                        .sum(),
+                                    self.dpi,
+                                );
                         } else {
                             // 절대 위치 이미지
                             let pic_container = LayoutRect {
