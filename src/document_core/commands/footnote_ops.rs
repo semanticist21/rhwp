@@ -567,6 +567,22 @@ impl DocumentCore {
         note_info_json(ctrl, control_idx)
     }
 
+    /// 셀 경로(`...ByPath` API 꼴, 마지막 단계 문단이 주석 번호가 든 문단)로 각주·미주 정보를 준다.
+    /// 표 셀·글상자(중첩 포함) 안 주석도 본문 `get_footnote_info_native`와 같은 꼴로 읽는다.
+    pub fn get_footnote_info_by_path_native(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        control_idx: usize,
+    ) -> Result<String, HwpError> {
+        let para = self.resolve_paragraph_by_path(section_idx, parent_para_idx, path)?;
+        let ctrl = para.controls.get(control_idx).ok_or_else(|| {
+            HwpError::RenderError(format!("컨트롤 인덱스 {} 범위 초과", control_idx))
+        })?;
+        note_info_json(ctrl, control_idx)
+    }
+
     /// 각주 내 텍스트 삽입
     pub fn insert_text_in_footnote_native(
         &mut self,
