@@ -427,6 +427,7 @@ impl DocumentCore {
 
         let caption_styles = self.resolve_render_styles();
         let (dpi, hwp3_layout) = (self.dpi, self.document.layout_profile().hwp3_layout());
+        self.validate_image_fill_reference(props_json)?;
         // 글자처럼 취급 전환·글자처럼 취급한 도형의 크기 편집은 문단 저장 줄을 다시 새긴다.
         let stored_end_before = self
             .document
