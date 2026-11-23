@@ -3357,6 +3357,7 @@ pub(crate) use notes::endnotes::content::endnote_first_para_render_offset;
 mod paragraph;
 mod section;
 mod state;
+mod stored_reset_ownership;
 mod stored_table_frame;
 use state::TypesetState;
 mod table;
