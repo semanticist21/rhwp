@@ -1036,8 +1036,9 @@ impl DocumentCore {
     /// 가장 가까운 표·그림·도형·수식·필드·책갈피를 찾는다.
     ///
     /// 표 셀·글상자·캡션·각주·미주·머리말·꼬리말 안이면 그 문단 목록을 먼저 훑고, 다 훑으면 그 영역을 가진
-    /// 컨트롤로 나온다. 한/글 12.30 F11처럼 앞으로 찾을 때는 그 컨트롤이 표·그림·도형·수식이면 그것을 고르고,
-    /// 각주·머리말처럼 고를 수 없으면 그 컨트롤 앞에서 잇는다. 본문에서는 본문 검색처럼 셀 안으로 들어가지 않는다.
+    /// 컨트롤로 나온다. 한/글 12.30 F11처럼 앞으로 찾을 때는 그 컨트롤이 표·그림·도형·수식·각주·미주·머리말·꼬리말이면
+    /// 그것을 돌려주고(`type`은 `footnote`·`endnote`·`header`·`footer`도 된다), 다른 영역이면 그 컨트롤 앞에서 잇는다.
+    /// 본문에서는 본문 검색처럼 셀 안으로 들어가지 않는다.
     ///
     /// `from_control`이 있으면 글자 자리 대신 주소 문단의 그 컨트롤을 경계로 삼아, 같은 글자 자리의 앞(뒤) 형제부터 잇는다.
     ///
@@ -1176,9 +1177,16 @@ impl DocumentCore {
             depth -= 1;
             let parent = if depth == 0 { host } else { path[depth - 1].2 };
             if !forward {
-                if let Some(kind @ ("table" | "picture" | "shape" | "equation")) =
-                    nearest_kind(&lists[depth].0[parent].controls[host_ci])
-                {
+                // 각주·미주·머리말·꼬리말은 한/글 12.30처럼 그 조판 부호 자체에 멈춘다.
+                let kind = match &lists[depth].0[parent].controls[host_ci] {
+                    Control::Footnote(_) => Some("footnote"),
+                    Control::Endnote(_) => Some("endnote"),
+                    Control::Header(_) => Some("header"),
+                    Control::Footer(_) => Some("footer"),
+                    ctrl => nearest_kind(ctrl)
+                        .filter(|kind| matches!(*kind, "table" | "picture" | "shape" | "equation")),
+                };
+                if let Some(kind) = kind {
                     return Ok(hit(place.section, depth, parent, host_ci, kind));
                 }
             }
