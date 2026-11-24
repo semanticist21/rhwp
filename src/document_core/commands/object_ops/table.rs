@@ -2091,6 +2091,12 @@ impl DocumentCore {
         if caption_changed {
             crate::parser::assign_auto_numbers(&mut self.document);
         }
+        // 각주·미주 안 도형은 그 주석 문단을 다시 나눠 줄 높이와 어울림 둘레를 맞춘다(그림과 같다).
+        if self.path_terminates_at_note(section_idx, parent_para_idx, &path) {
+            if let Some(&(_, _, note_para)) = path.last() {
+                self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, &path, note_para);
+            }
+        }
         self.finish_loaded_source_cache_after_object_edit(section_idx);
         self.paginate_if_needed();
         self.invalidate_page_tree_cache();

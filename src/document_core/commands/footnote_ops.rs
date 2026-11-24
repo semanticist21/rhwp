@@ -12,6 +12,54 @@ use crate::model::event::DocumentEvent;
 use crate::model::paragraph::{ParaMeta, Paragraph};
 use crate::renderer::composer::{reflow_line_segs, restamp_indentation, ParagraphBox};
 
+/// 한컴 12.30은 주석 안 문단 기준 어울림·자리차지 개체 둘레로 주석 글을 접는다. 본문·표 칸과 같은 밴드
+/// 소유자([`layout_container_picture_band`])가 그 문단과 뒤 문단의 줄을 다시 낸다. 글 앞·뒤 개체와
+/// 쪽·종이 기준 개체는 글을 밀지 않는다.
+pub(crate) fn project_note_float_bands(
+    paragraphs: &mut [Paragraph],
+    width_px: f64,
+    styles: &crate::renderer::style_resolver::ResolvedStyleSet,
+    dpi: f64,
+) {
+    use crate::model::shape::{TextWrap, VertRelTo};
+    let wraps_text = |control: &Control| {
+        let common = match control {
+            Control::Picture(picture) => &picture.common,
+            Control::Shape(shape) => shape.common(),
+            _ => return false,
+        };
+        !common.treat_as_char
+            && common.vert_rel_to == VertRelTo::Para
+            && matches!(
+                common.text_wrap,
+                TextWrap::Square | TextWrap::Tight | TextWrap::Through | TextWrap::TopAndBottom
+            )
+    };
+    let mut host = 0;
+    while host < paragraphs.len() {
+        if !paragraphs[host].controls.iter().any(wraps_text) {
+            host += 1;
+            continue;
+        }
+        let band = crate::renderer::composer::layout_container_picture_band(
+            paragraphs, host, width_px, styles, dpi, false,
+        )
+        .filter(|band| band.paragraph_range.start == host);
+        let Some(band) = band else {
+            host += 1;
+            continue;
+        };
+        let range = band.paragraph_range.clone();
+        for (paragraph, (rows, spaces)) in paragraphs[range.clone()]
+            .iter_mut()
+            .zip(band.line_segs.into_iter().zip(band.space_metrics))
+        {
+            paragraph.publish_float_band_rows(rows, spaces);
+        }
+        host = range.end.max(host + 1);
+    }
+}
+
 impl DocumentCore {
     /// 구역의 각주 번호를 문서 순서대로 1부터 다시 매긴다.
     pub(crate) fn renumber_footnotes_in_section(&mut self, section_idx: usize) {
@@ -439,6 +487,12 @@ impl DocumentCore {
             }
             _ => {}
         }
+        let paragraphs = match ctrl {
+            Control::Footnote(f) => &mut f.paragraphs,
+            Control::Endnote(e) => &mut e.paragraphs,
+            _ => return,
+        };
+        project_note_float_bands(paragraphs, available_width, &styles, self.dpi);
     }
 
     /// 각주/미주 내부 문단 속성 조회.

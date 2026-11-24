@@ -1959,6 +1959,7 @@ impl LayoutEngine {
         let mut total = origin_y;
         let mut flat_line = 0usize;
         let mut number_drawn = false;
+        let mut float_bottom = f64::MIN;
         for para in paragraphs {
             let composed = compose_footnote_paragraph(para, area_width, styles, self.dpi);
             let line_count = composed.lines.len().max(1);
@@ -1980,6 +1981,10 @@ impl LayoutEngine {
                 area_width,
             );
             total += placement.spacing.before;
+            if selected_start == 0 {
+                float_bottom = float_bottom
+                    .max(total + super::note_floats::note_float_extent_px(para, self.dpi));
+            }
             if let Some(block) = placement.block_table {
                 total += block.advance;
                 if para_start + selected_end < end_line {
@@ -1990,7 +1995,23 @@ impl LayoutEngine {
             } else if composed.lines.is_empty() {
                 total += hwpunit_to_px(400, self.dpi);
             } else {
+                if selected_start == 0 {
+                    total +=
+                        super::note_floats::note_topbottom_lead_px(para, self.dpi).unwrap_or(0.0);
+                }
                 for index in selected_start..selected_end {
+                    // 어울림 개체 양옆으로 나뉜 한 줄(같은 저장 세로 위치의 조각)은 마지막 조각만 줄
+                    // 높이를 더한다. 배치도 그 조각들을 한 줄에 놓는다.
+                    let same_row_follows = index + 1 < selected_end
+                        && composed.lines.len() == para.line_segs.len()
+                        && {
+                            let (line, next) = (&para.line_segs[index], &para.line_segs[index + 1]);
+                            next.vertical_pos == line.vertical_pos
+                                && next.column_start >= line.column_start + line.segment_width
+                        };
+                    if same_row_follows {
+                        continue;
+                    }
                     let metrics = self.footnote_line_metrics(para, &composed, index, styles);
                     total += metrics.flow_height;
                     if para_start + index + 1 < end_line {
@@ -2001,7 +2022,7 @@ impl LayoutEngine {
             total += placement.spacing.after;
             number_drawn |= placement.route == FootnoteParagraphRoute::Numbered;
         }
-        total - origin_y
+        total.max(float_bottom) - origin_y
     }
 
     pub(crate) fn footnote_with_block_table_content_height(
@@ -2091,8 +2112,12 @@ impl LayoutEngine {
             );
             let mut flat_line = 0usize;
             let mut number_drawn = false;
+            // 떠 있는 개체: 글 앞 개체는 그 문단 글줄 뒤에 두고, 문단 기준 개체의 아래 끝은 주석 높이에 넣는다.
+            let mut float_front: Vec<RenderNode> = Vec::new();
+            let mut float_bottom = f64::MIN;
 
             for (p_idx, para) in fn_paras.iter().enumerate() {
+                fn_node.children.append(&mut float_front);
                 let composed = compose_footnote_paragraph(para, fn_area.width, styles, self.dpi);
                 let marker_para = usize::MAX - 2000 - p_idx; // 각주 내 문단 인덱스
                                                              // 각주 번호 스타일용 기본 char_shape_id (빈/비빈 문단 모두 동일)
@@ -2122,6 +2147,30 @@ impl LayoutEngine {
                     y - fn_area.y,
                     fn_area.width,
                 );
+                let para_top = y + placement.spacing.before;
+                // 자리차지 개체가 첫 줄에 걸치면 글을 그 아래에서 시작한다(한컴 저장 줄과 같은 자리).
+                let topbottom_lead = super::note_floats::note_topbottom_lead_px(para, self.dpi);
+                let lead = topbottom_lead
+                    .filter(|_| selected_start == 0)
+                    .unwrap_or(0.0);
+                if selected_start == 0 {
+                    let mut behind = Vec::new();
+                    self.layout_note_floats(
+                        tree,
+                        fn_paras,
+                        p_idx,
+                        (marker_section, marker_para),
+                        styles,
+                        fn_area,
+                        para_top,
+                        bin_data_content,
+                        &mut behind,
+                        &mut float_front,
+                    );
+                    fn_node.children.append(&mut behind);
+                    float_bottom = float_bottom
+                        .max(para_top + super::note_floats::note_float_extent_px(para, self.dpi));
+                }
                 if let Some(block) = placement.block_table {
                     y += placement.spacing.before;
                     let anchor_y = y;
@@ -2301,7 +2350,7 @@ impl LayoutEngine {
                         Some(&composed),
                         styles,
                         fn_area,
-                        y + placement.spacing.before - before,
+                        y + lead + placement.spacing.before - before,
                         marker_section,
                         marker_para,
                         bin_data_content,
@@ -2318,7 +2367,7 @@ impl LayoutEngine {
                         para,
                         styles,
                         fn_area,
-                        y,
+                        y + lead,
                         &number_text,
                         fn_ref.number,
                         marker_section,
@@ -2338,6 +2387,20 @@ impl LayoutEngine {
                         self.apply_paragraph_numbering(Some(composed), para, styles, 0);
                     let composed = with_head.as_ref().unwrap_or(composed);
                     let first_new_child = fn_node.children.len();
+                    // 자리차지 문단의 줄 배치는 저장 줄 위치를 영역 위에서 잰다. 주석에서는 그 위치를
+                    // 이 조각 첫 줄 기준으로 옮기고, 영역 위를 이 문단 글이 시작하는 자리로 준다.
+                    let rebased = topbottom_lead.map(|_| {
+                        (
+                            super::note_floats::rebased_note_paragraph(para, selected_start),
+                            LayoutRect {
+                                y: para_top + lead,
+                                ..*fn_area
+                            },
+                        )
+                    });
+                    let (text_para, text_area) = rebased
+                        .as_ref()
+                        .map_or((para, fn_area), |(para, area)| (para, area));
                     // 각주 줄도 원본 인라인 개체와 문서의 BinData를 소비한다.
                     // 텍스트 줄만 전달하면 높이는 예약하면서 TAC 표·그림을
                     // 출력하지 못한다. 이어받기에도 같은 글줄 소유를 사용한다.
@@ -2346,8 +2409,8 @@ impl LayoutEngine {
                         fn_node,
                         composed,
                         styles,
-                        fn_area,
-                        y,
+                        text_area,
+                        y + lead,
                         selected_start,
                         selected_end,
                         marker_section,
@@ -2357,7 +2420,7 @@ impl LayoutEngine {
                         false,
                         0.0,
                         None,
-                        Some(para),
+                        Some(text_para),
                         Some(bin_data_content),
                         None, // 각주 컨텍스트 — wrap zone 무관
                         false,
@@ -2417,6 +2480,9 @@ impl LayoutEngine {
                     }
                 }
             }
+
+            fn_node.children.append(&mut float_front);
+            y = y.max(float_bottom);
 
             // 각주 간 간격
             if frame_index + 1 < footnotes.len() {

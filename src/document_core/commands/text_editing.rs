@@ -4154,6 +4154,7 @@ impl DocumentCore {
                 .and_then(|section| section.paragraphs.get(parent_para_idx))
                 .and_then(|para| para.controls.get(path[0].0))
                 .is_some_and(|control| control.header_footer_paragraphs().is_some());
+        let note = self.path_terminates_at_note(section_idx, parent_para_idx, path);
         let Ok(paras) = self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)
         else {
             return;
@@ -4190,6 +4191,10 @@ impl DocumentCore {
                 available_width,
                 vertical,
             );
+        }
+        // 각주·미주 글은 그 안 문단 기준 어울림·자리차지 개체 둘레로 접는다(한컴 12.30).
+        if note {
+            super::footnote_ops::project_note_float_bands(paras, available_width, &styles, dpi);
         }
     }
 

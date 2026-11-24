@@ -4114,6 +4114,7 @@ mod hidden_paragraph_marker;
 mod nested_table_origin;
 mod note_reference;
 pub(crate) use note_reference::note_reference_advance;
+mod note_floats;
 mod note_separator;
 mod paragraph_border;
 mod paragraph_layout;

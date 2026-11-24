@@ -1474,6 +1474,9 @@ impl DocumentCore {
         }
         super::clone_identity::reidentify_clipboard(&self.document, &mut clip_paras)?;
         let contains_field = clipboard_paragraphs_contain_field(&clip_paras);
+        if self.path_terminates_at_note(section_idx, parent_para_idx, path) {
+            place_floats_for_note(&mut clip_paras);
+        }
 
         let cell_para_idx = path[path.len() - 1].2;
         let (last_para_idx, merge_point) = {
@@ -2638,6 +2641,32 @@ impl DocumentCore {
     }
 
     // === 클립보드 HTML 붙여넣기 ===
+}
+
+/// 한컴 12.30은 각주·미주에 붙인 떠 있는 그림·도형을 떠 있는 채로, 문단 세로·단 가로 기준 자리 0에
+/// 둔다(본문과 함께 움직임). 글자처럼 취급한 개체와 배치(글 앞·뒤·어울림 등)는 그대로 둔다.
+fn place_floats_for_note(paragraphs: &mut [Paragraph]) {
+    use crate::model::shape::{HorzAlign, HorzRelTo, VertAlign, VertRelTo};
+    for paragraph in paragraphs {
+        for control in &mut paragraph.controls {
+            let common = match control {
+                Control::Picture(picture) => &mut picture.common,
+                Control::Shape(shape) => shape.common_mut(),
+                _ => continue,
+            };
+            if common.treat_as_char {
+                continue;
+            }
+            common.vert_rel_to = VertRelTo::Para;
+            common.horz_rel_to = HorzRelTo::Column;
+            common.vert_align = VertAlign::Top;
+            common.horz_align = HorzAlign::Left;
+            common.vertical_offset = 0;
+            common.horizontal_offset = 0;
+            common.flow_with_text = true;
+            common.attr |= 1 << 13;
+        }
+    }
 }
 
 #[cfg(test)]
