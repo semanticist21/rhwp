@@ -234,6 +234,68 @@ impl LayoutEngine {
             })
     }
 
+    /// 부모 쪽이 같은 자식 글줄 행의 중간에서 다시 열리면 첫 조각은 그 컷에서 새로 시작한다.
+    /// 행 유닛은 앞 조각의 끝에서 잰 차이라 앞 줄의 줄간격을 품고 칸 안여백은 빠져 있다.
+    /// 저장본은 그 자리를 되감아 적어 첫 조각을 컷 원점에서 재므로(한/글 12.30 인쇄와 같다),
+    /// 편집 중 행도 같은 원점 높이로 맞추도록 두 높이의 차이를 돌려준다.
+    /// 같은 생산식(`nested_plain_row_unit_height`)으로 만든 유닛인지 확인한 뒤에만 쓴다.
+    pub(super) fn continued_nested_row_opening_excess(
+        &self,
+        cell: &Cell,
+        units: &[CellUnit],
+        start: usize,
+        styles: &ResolvedStyleSet,
+    ) -> f64 {
+        use crate::model::control::Control;
+        let (Some(previous), Some(unit)) =
+            (start.checked_sub(1).map(|i| &units[i]), units.get(start))
+        else {
+            return 0.0;
+        };
+        let (Some(row), Some(fragment), Some(edges)) = (
+            unit.nested_row,
+            unit.nested_table_fragment.as_ref(),
+            unit.nested_row_flow_edges,
+        ) else {
+            return 0.0;
+        };
+        if previous.nested_row != Some(row)
+            || previous.para_idx != unit.para_idx
+            || previous.following_line_advance <= 0.0
+            || unit.stored_frame_break_before
+            || fragment.is_block
+            || fragment.terminal
+            || fragment.start_cut.iter().all(|&cut| cut == 0)
+        {
+            return 0.0;
+        }
+        let Some(paragraph) = cell.paragraphs.get(unit.para_idx) else {
+            return 0.0;
+        };
+        let mut children = paragraph
+            .controls
+            .iter()
+            .filter_map(|control| match control {
+                Control::Table(child) => Some(child.as_ref()),
+                _ => None,
+            });
+        let (Some(child), None) = (children.next(), children.next()) else {
+            return 0.0;
+        };
+        let carried = self.nested_plain_row_unit_height(child, (row, 0.0), &[], fragment, styles);
+        if (unit.height - edges.before - edges.after - carried).abs() > 0.1 {
+            return 0.0;
+        }
+        let opened = self.nested_plain_row_unit_height(
+            child,
+            (row, 0.0),
+            &fragment.start_cut,
+            fragment,
+            styles,
+        );
+        (carried - opened).max(0.0)
+    }
+
     /// 자식 배치에 전달하는 것과 같은 시작·종료 컷의 물리 상자를 예약한다.
     /// 마지막 유닛을 소비하면 배치도 빈 end_cut으로 행 전체를 닫는다. 이때
     /// 마지막 줄까지의 내용 높이만 쓰면 선언 상자의 남은 띠가 원장에서 사라진다.

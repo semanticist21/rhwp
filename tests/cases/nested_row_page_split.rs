@@ -360,3 +360,35 @@ fn reopened_last_fragment_closes_where_hancom_prints() {
         );
     }
 }
+
+/// 쪽 `page`의 (바깥 칸 높이, 칸 위에서 안쪽 표까지의 거리).
+fn last_fragment_frame(doc: &HwpDocument, page: u32) -> (f64, f64) {
+    let tree: Value = serde_json::from_str(&doc.get_page_render_tree(page).unwrap()).unwrap();
+    let mut boxes = Vec::new();
+    table_boxes(&tree, &mut boxes);
+    let [(outer_y, outer_h), (inner_y, _)] = boxes[..] else {
+        panic!("{page}쪽의 바깥·안쪽 표 {boxes:?}");
+    };
+    (outer_h, inner_y - outer_y)
+}
+
+/// 저장하기 전 편집 상태의 70줄도 4쪽 마지막 조각을 다시 연 문서와 같은 자리에서 닫는다.
+/// 한/글은 편집 뒤 저장한 문서를 다시 연 문서와 똑같이 인쇄한다. 4쪽 첫 줄(줄 59)은
+/// 앞 쪽 마지막 줄(줄 58)의 줄간격을 이어받지 않으므로, 그 간격을 조각에 남기면
+/// 바깥 칸이 줄간격 하나(378HU)만큼 길어지고 세로 가운데 정렬로 안쪽 표가 내려간다.
+#[test]
+fn editing_last_fragment_closes_like_reopened() {
+    let live = grown(70);
+    let reopened = HwpDocument::from_bytes(&live.export_hwp().unwrap()).unwrap();
+    assert_eq!(live.page_count(), 4);
+    let (live_h, live_top) = last_fragment_frame(&live, 3);
+    let (saved_h, saved_top) = last_fragment_frame(&reopened, 3);
+    assert!(
+        (live_h - saved_h).abs() < 0.3,
+        "편집 중 4쪽 바깥 칸 높이 {live_h:.2}, 다시 연 문서 {saved_h:.2}"
+    );
+    assert!(
+        (live_top - saved_top).abs() < 0.3,
+        "편집 중 4쪽 안쪽 표가 칸 위에서 {live_top:.2} 아래, 다시 연 문서 {saved_top:.2}"
+    );
+}

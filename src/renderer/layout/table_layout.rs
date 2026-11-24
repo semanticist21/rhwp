@@ -28726,7 +28726,8 @@ impl LayoutEngine {
             flow_height += extra;
         }
         if first_index == lo {
-            let carried_lead = Self::carried_float_lead_at(&units, first_index);
+            let carried_lead = Self::carried_float_lead_at(&units, first_index)
+                + self.continued_nested_row_opening_excess(cell, &units, first_index, styles);
             visible_height -= carried_lead;
             flow_height -= carried_lead;
         }
@@ -30175,7 +30176,8 @@ impl LayoutEngine {
             // 방금 앉힌 atom 을 다음 쪽으로 밀어낸다.
             let nested_atom_tail =
                 self.continued_cut_nested_atom_tail(cell, &units, su, eu, styles);
-            let carried_lead = Self::carried_float_lead_at(&units, flow_range.start);
+            let carried_lead = Self::carried_float_lead_at(&units, flow_range.start)
+                + self.continued_nested_row_opening_excess(cell, &units, flow_range.start, styles);
             let content: f64 = (units[flow_range].iter().map(|u| u.height).sum::<f64>()
                 - trailing_trim
                 - nested_atom_tail
