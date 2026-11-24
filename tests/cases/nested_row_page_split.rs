@@ -320,3 +320,43 @@ fn hancom_resaved_hwpx_keeps_nested_lines_and_frame_on_edit_and_reopen() {
         }
     }
 }
+
+/// 쪽 그림에서 표 상자의 (y, h)를 바깥부터 차례로 모은다.
+fn table_boxes(node: &Value, boxes: &mut Vec<(f64, f64)>) {
+    if node["type"] == "Table" {
+        boxes.push((
+            node["bbox"]["y"].as_f64().unwrap(),
+            node["bbox"]["h"].as_f64().unwrap(),
+        ));
+    }
+    for child in node["children"].as_array().into_iter().flatten() {
+        table_boxes(child, boxes);
+    }
+}
+
+/// 70줄의 마지막 조각(4쪽)은 한/글 12.30 인쇄처럼 바깥 칸이 689.92px에서 닫히고,
+/// 안쪽 표는 칸 위 여백과 바깥 위 여백(각 141HU)만큼만 내려온다. 이어받는 조각의
+/// 바깥 위 여백을 두 번 예약하면 칸이 1.88px 길어지고 가운데 정렬로 안쪽 표가 내려간다.
+#[test]
+fn reopened_last_fragment_closes_where_hancom_prints() {
+    let live = grown(70);
+    for saved in [live.export_hwp().unwrap(), live.export_hwpx().unwrap()] {
+        let doc = HwpDocument::from_bytes(&saved).unwrap();
+        assert_eq!(doc.page_count(), 4);
+        let tree: Value = serde_json::from_str(&doc.get_page_render_tree(3).unwrap()).unwrap();
+        let mut boxes = Vec::new();
+        table_boxes(&tree, &mut boxes);
+        let [(outer_y, outer_h), (inner_y, _)] = boxes[..] else {
+            panic!("4쪽의 바깥·안쪽 표 {boxes:?}");
+        };
+        assert!(
+            (outer_h - 689.92).abs() < 0.5,
+            "4쪽 바깥 칸 높이 {outer_h:.2}, 한컴 689.92"
+        );
+        assert!(
+            (inner_y - outer_y - 3.76).abs() < 0.5,
+            "4쪽 안쪽 표가 칸 위에서 {:.2} 아래, 한컴 3.76",
+            inner_y - outer_y
+        );
+    }
+}

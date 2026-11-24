@@ -88,7 +88,20 @@ impl LayoutEngine {
                             run_start = run_end;
                             continue;
                         }
-                        if start > run_start {
+                        // 이어받는 조각의 바깥 위 여백은 `nested_continuation_header_height`의
+                        // 머리 띠가 이미 연다. 같은 원본 여백을 여기서 또 예약하면 마지막 조각이
+                        // 여백 하나만큼 길어지고 세로 가운데 정렬 칸의 내용이 내려간다
+                        // (한/글 12.30 인쇄: inner-table-01 70줄 4쪽 바깥 칸 689.92px).
+                        let header_opens_top = !child.common.treat_as_char
+                            && units[start].nested_row.is_some_and(|row| row > 0)
+                            && units[start].nested_table_fragment.is_some()
+                            && host
+                                .controls
+                                .iter()
+                                .filter(|control| matches!(control, Control::Table(_)))
+                                .count()
+                                == 1;
+                        if start > run_start && !header_opens_top {
                             extra += hwpunit_to_px(child.outer_margin_top as i32, self.dpi);
                         }
                         if end < run_end {
