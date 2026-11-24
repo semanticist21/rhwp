@@ -53,6 +53,11 @@ fn edited_body_paragraph_keeps_page_ownership_after_hwpx_reopen() {
         .expect("저장본을 다시 연다");
     assert_eq!(pages(&reopened), edited, "다시 연 저장본의 쪽 소속");
 
+    // 다시 연 문서를 한 번 더 저장해 열어도 같다.
+    let resaved = DocumentCore::from_bytes(&reopened.export_hwpx_native().expect("다시 저장한다"))
+        .expect("다시 저장한 문서를 연다");
+    assert_eq!(pages(&resaved), edited, "다시 저장한 문서의 쪽 소속");
+
     // 파일에 실린 줄 위치는 원본 좌표계다. 고친 문단은 줄 위치를 싣지 않거나(다시 계산)
     // 원본과 같은 값을 싣고, 고치지 않은 문단은 원본 값을 그대로 지닌다.
     let original = DocumentCore::from_bytes(&bytes).expect("샘플을 다시 연다");
