@@ -589,57 +589,66 @@ impl HwpDocument {
         let sources: Vec<usize> = picked.iter().map(|(src, _)| *src).collect();
         let shapes = self.core.import_foreign_style_shapes(source, &sources);
 
-        // 스타일 정의를 넣거나 덮어 쓴다. 덮어 쓴 스타일은 옛 모양을 기억해 문단에 반영한다.
-        let mut done: Vec<(usize, usize, bool)> = Vec::new();
+        // 같은 이름은 덮어 쓰고 옛 모양을 기억해 문단에 반영한다. 새 스타일은 한컴 12.30처럼 바탕글
+        // 바로 뒤(1번)부터 고른 차례로 끼워 넣고, 뒤 스타일을 가리키던 참조는 함께 민다.
+        // 끼우면 번호가 바뀌므로 스타일은 끝까지 이름으로 찾는다(한 문서 안에서 이름은 겹치지 않는다).
         let mut changed = Vec::new();
+        let mut at = 1;
         for ((src, dst), (char_shape_id, para_shape_id)) in picked.iter().zip(shapes) {
             let from = &source.doc_info.styles[*src];
-            let styles = &mut self.core.document.doc_info.styles;
-            let id = match *dst {
-                Some(id) => {
-                    let style = &mut styles[id];
-                    changed.push((id, style.char_shape_id, style.para_shape_id));
-                    style.english_name = from.english_name.clone();
-                    style.style_type = from.style_type;
-                    style.lang_id = from.lang_id;
-                    style.lock_form = from.lock_form;
-                    style.char_shape_id = char_shape_id;
-                    style.para_shape_id = para_shape_id;
-                    style.raw_data = None;
-                    id
-                }
-                None => {
-                    let mut style = from.clone();
-                    style.raw_data = None;
-                    style.char_shape_id = char_shape_id;
-                    style.para_shape_id = para_shape_id;
-                    styles.push(style);
-                    styles.len() - 1
-                }
-            };
-            done.push((*src, id, dst.is_none()));
+            if let Some(id) = *dst {
+                let style = &mut self.core.document.doc_info.styles[id];
+                changed.push((
+                    from.local_name.clone(),
+                    style.char_shape_id,
+                    style.para_shape_id,
+                ));
+                style.english_name = from.english_name.clone();
+                style.style_type = from.style_type;
+                style.lang_id = from.lang_id;
+                style.lock_form = from.lock_form;
+                style.char_shape_id = char_shape_id;
+                style.para_shape_id = para_shape_id;
+                style.raw_data = None;
+                continue;
+            }
+            let mut style = from.clone();
+            style.raw_data = None;
+            style.char_shape_id = char_shape_id;
+            style.para_shape_id = para_shape_id;
+            let index = at as u16;
+            self.remap_style_ids(|id| if id >= index { id + 1 } else { id });
+            self.core.document.doc_info.styles.insert(at, style);
+            at += 1;
         }
         // 다음 스타일은 이름으로 잇는다. 이 문서에 그 이름이 없으면 새 스타일은 자기 자신을,
         // 덮어 쓴 스타일은 원래 다음 스타일을 둔다.
-        for &(src, id, created) in &done {
+        for (src, dst) in &picked {
+            let from = &source.doc_info.styles[*src];
             let next_name = source
                 .doc_info
                 .styles
-                .get(usize::from(source.doc_info.styles[src].next_style_id))
+                .get(usize::from(from.next_style_id))
                 .map(|s| s.local_name.as_str());
             let styles = &mut self.core.document.doc_info.styles;
+            let Some(id) = find(styles, &from.local_name) else {
+                continue;
+            };
             match next_name.and_then(|name| find(styles, name)) {
                 Some(next) => styles[id].next_style_id = next as u8,
-                None if created => styles[id].next_style_id = id as u8,
+                None if dst.is_none() => styles[id].next_style_id = id as u8,
                 None => {}
             }
         }
         self.core.document.doc_info.raw_stream_dirty = true;
         self.core.rebuild_resolved_styles();
-        for (id, old_csid, old_psid) in &changed {
-            let style_type = self.core.document.doc_info.styles[*id].style_type;
+        for (name, old_csid, old_psid) in &changed {
+            let Some(id) = find(&self.core.document.doc_info.styles, name) else {
+                continue;
+            };
+            let style_type = self.core.document.doc_info.styles[id].style_type;
             self.apply_style_shapes_to_paragraphs(
-                *id as u32,
+                id as u32,
                 u32::from(*old_csid),
                 *old_psid,
                 style_type,
@@ -650,15 +659,19 @@ impl HwpDocument {
                 self.core.rebuild_section(sec_idx);
             }
         }
-        let mut ids = Vec::with_capacity(names.len());
-        for name in names {
-            let src = find(&source.doc_info.styles, name);
-            ids.push(
-                done.iter()
-                    .find(|(s, _, _)| Some(*s) == src)
-                    .map_or(-1, |(_, id, _)| *id as i32),
-            );
-        }
+        let styles = &self.core.document.doc_info.styles;
+        let ids = names
+            .iter()
+            .map(|name| {
+                let kept = picked
+                    .iter()
+                    .any(|(src, _)| source.doc_info.styles[*src].local_name == *name);
+                match find(styles, name) {
+                    Some(id) if kept => id as i32,
+                    _ => -1,
+                }
+            })
+            .collect();
         Ok(ids)
     }
 

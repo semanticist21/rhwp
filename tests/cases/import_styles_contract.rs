@@ -9,7 +9,7 @@ use rhwp::wasm_api::HwpDocument;
 
 const HANJA_FONT: &str = "가져온한자체";
 const BORDER_COLOR: u32 = 0x0012_3456;
-const TAB_AT: i32 = 12_345;
+const TAB_AT: u32 = 12_345;
 
 fn blank() -> HwpDocument {
     let mut doc = HwpDocument::create_empty();
@@ -133,7 +133,10 @@ fn source() -> HwpDocument {
 fn imported_styles_carry_their_shapes_and_next_style() {
     let src = source();
     let mut doc = blank();
-    let before = doc.document().doc_info.styles.len();
+    doc.insert_text_native(0, 0, 0, "가나다").unwrap();
+    let body = style_named(doc.document(), "본문").unwrap();
+    doc.apply_style_native(0, 0, body).unwrap();
+    let count = doc.document().doc_info.styles.len();
     let ids = doc
         .import_styles_native(
             src.document(),
@@ -141,7 +144,14 @@ fn imported_styles_carry_their_shapes_and_next_style() {
             false,
         )
         .unwrap();
-    assert_eq!(ids, vec![before as i32, before as i32 + 1]);
+    // 한컴 12.30처럼 바탕글 바로 뒤에 고른 차례로 넣고, 뒤 스타일을 쓰던 문단은 그 스타일을 따라간다.
+    assert_eq!(ids, vec![1, 2]);
+    assert_eq!(doc.document().doc_info.styles.len(), count + 2);
+    let para_style = doc.document().sections[0].paragraphs[0].style_id as usize;
+    assert_eq!(
+        doc.document().doc_info.styles[para_style].local_name,
+        "본문"
+    );
 
     let check = |doc: &HwpDocument, label: &str| {
         let d = doc.document();
@@ -217,10 +227,8 @@ fn imported_styles_carry_their_shapes_and_next_style() {
     else {
         panic!("하나만 가져온다");
     };
-    assert_eq!(
-        i32::from(alone.document().doc_info.styles[id as usize].next_style_id),
-        id
-    );
+    assert_eq!(id, 1);
+    assert_eq!(alone.document().doc_info.styles[1].next_style_id, 1);
 
     assert!(doc
         .import_styles_native(src.document(), &["없는 스타일".into()], false)
