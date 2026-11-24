@@ -4499,11 +4499,32 @@ impl DocumentCore {
                                 )
                         );
                     let control_type = if source_is_ole { "ole" } else { "equation" };
+                    // 각주·미주 안 수식은 본문 문단이 뿌리인 주석 경로를 그림·도형처럼 낸다
+                    // (`getEquationPropertiesByPath` 가 받는 주소).
+                    let container = if node.container_path.is_empty() {
+                        String::new()
+                    } else {
+                        format!(
+                            ",\"parentParaIdx\":{}{}",
+                            eq_node
+                                .note_ref
+                                .as_ref()
+                                .map(|r| r.para_index)
+                                .or(eq_node.para_index.map(public_para))
+                                .unwrap_or(0),
+                            DocumentCore::shape_cell_context_json(
+                                None,
+                                None,
+                                None,
+                                &node.container_path
+                            )
+                        )
+                    };
                     controls.push(format!(
-                        "{{\"type\":\"{}\",\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1}{}{}{}{}}}",
+                        "{{\"type\":\"{}\",\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1}{}{}{}{}{}}}",
                         control_type,
                         node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height,
-                        doc_coords, cell_coords, note_ref, layer_str
+                        doc_coords, cell_coords, note_ref, container, layer_str
                     ));
                     return;
                 }

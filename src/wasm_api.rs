@@ -6441,6 +6441,10 @@ impl HwpDocument {
     /// `shapeType` "polygon"·"curve"는 `polygonPoints`(상자 기준 꼭짓점)를 받고, 곡선은
     /// `curveSegmentTypes`(구간마다 0 직선·1 곡선, 빼면 모두 곡선)도 받는다.
     /// 반환: JSON `{"ok":true,"paraIdx":<N>,"controlIdx":0}`
+    ///
+    /// `cellPath`(by-path API 꼴 배열, 마지막 마디가 각주·미주)를 주면 그 주석 문단의 `charOffset`
+    /// 에 글자처럼 취급 도형을 넣고 `{"ok":true,"cellParaIdx":N,"controlIdx":N}` 를 준다. 이때
+    /// `paraIdx` 는 경로의 바깥 본문 문단이고, 곡선 구간 종류·연결선 연결은 적용하지 않는다.
     #[wasm_bindgen(js_name = createShapeControl)]
     pub fn create_shape_control(&mut self, json: &str) -> Result<String, JsValue> {
         let sec = json_u32(json, "sectionIdx").unwrap_or(0) as usize;
@@ -6464,6 +6468,27 @@ impl HwpDocument {
             } else {
                 Vec::new()
             };
+        // 각주·미주 문단 경로가 있으면 그 주석 문단에 글자처럼 넣는다(`paraIdx` 는 경로의 바깥 문단).
+        if let Some(path) = serde_json::from_str::<serde_json::Value>(json)
+            .ok()
+            .and_then(|v| v.get("cellPath").cloned())
+            .filter(|v| v.is_array())
+        {
+            let path = DocumentCore::parse_cell_path(&path.to_string()).map_err(JsValue::from)?;
+            return self
+                .create_shape_control_by_path_native(
+                    sec,
+                    para,
+                    &path,
+                    offset,
+                    width,
+                    height,
+                    &shape_type,
+                    (line_flip_x, line_flip_y),
+                    &polygon_points,
+                )
+                .map_err(|e| e.into());
+        }
         let result = self.create_shape_control_native(
             sec,
             para,
@@ -6950,6 +6975,76 @@ impl HwpDocument {
             script,
             font_size,
             color,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 셀 경로 문단(표 칸·글상자·각주·미주)의 캐럿 자리에 수식을 글자처럼 넣는다.
+    ///
+    /// `cell_path_json` 은 다른 by-path API 와 같은 `[{controlIndex, cellIndex, cellParaIndex}, ...]`
+    /// 이고, 각주·미주 마디는 `{controlIndex: 주석 컨트롤, cellIndex: 0, cellParaIndex: 주석 문단}` 이다.
+    /// 반환: `{"ok":true,"cellParaIdx":N,"controlIdx":N}` (`controlIdx` 는 그 문단 안 번호)
+    #[wasm_bindgen(js_name = insertEquationByPath)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_equation_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        char_offset: u32,
+        script: &str,
+        font_size: u32,
+        color: u32,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(cell_path_json).map_err(JsValue::from)?;
+        self.insert_equation_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            char_offset as usize,
+            script,
+            font_size,
+            color,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 셀 경로 문단(표 칸·글상자·각주·미주)의 수식 속성. 반환은 `getEquationProperties` 와 같다.
+    #[wasm_bindgen(js_name = getEquationPropertiesByPath)]
+    pub fn get_equation_properties_by_path(
+        &self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        control_idx: u32,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(cell_path_json).map_err(JsValue::from)?;
+        self.get_equation_properties_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            control_idx as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 셀 경로 문단(표 칸·글상자·각주·미주)의 수식 속성을 바꾼다. 봉지는 `setEquationProperties` 와 같다.
+    #[wasm_bindgen(js_name = setEquationPropertiesByPath)]
+    pub fn set_equation_properties_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        control_idx: u32,
+        props_json: &str,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(cell_path_json).map_err(JsValue::from)?;
+        self.set_equation_properties_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            control_idx as usize,
+            props_json,
         )
         .map_err(|e| e.into())
     }

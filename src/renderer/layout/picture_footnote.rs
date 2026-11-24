@@ -2379,6 +2379,14 @@ impl LayoutEngine {
                         marker_para,
                         bin_data_content,
                     );
+                    self.layout_footnote_tac_shapes(
+                        tree,
+                        fn_node,
+                        para,
+                        (marker_section, marker_para),
+                        styles,
+                        bin_data_content,
+                    );
                     self.layout_footnote_tac_captions(
                         tree,
                         fn_node,
@@ -2408,6 +2416,50 @@ impl LayoutEngine {
             if frame_index + 1 < footnotes.len() {
                 y += hwpunit_to_px(shape.between_notes_margin_hu() as i32, self.dpi);
             }
+        }
+    }
+
+    /// 각주 글줄에 든 글자처럼 취급 도형을 글줄 배치가 비워 둔 자리에 그린다. 본문은 별도 도형
+    /// 패스가 그 자리에 그리지만 각주 영역에는 그 패스가 없다(표 칸 글자처럼 취급 도형과 같은 방식).
+    fn layout_footnote_tac_shapes(
+        &self,
+        tree: &mut PageLayoutContext,
+        fn_node: &mut RenderNode,
+        para: &Paragraph,
+        (marker_section, marker_para): (usize, usize),
+        styles: &ResolvedStyleSet,
+        bin_data_content: &[BinDataContent],
+    ) {
+        for (ci, control) in para.controls.iter().enumerate() {
+            let Control::Shape(shape) = control else {
+                continue;
+            };
+            if !shape.common().treat_as_char {
+                continue;
+            }
+            let Some((x, y)) =
+                tree.get_inline_shape_position(marker_section, marker_para, ci, None)
+            else {
+                continue;
+            };
+            self.layout_shape_object(
+                tree,
+                fn_node,
+                shape,
+                x,
+                y,
+                hwpunit_to_px(shape.common().width as i32, self.dpi),
+                hwpunit_to_px(shape.common().height as i32, self.dpi),
+                marker_section,
+                marker_para,
+                ci,
+                styles,
+                bin_data_content,
+                &std::collections::HashMap::new(),
+                &[],
+                None,
+                false,
+            );
         }
     }
 
@@ -2491,30 +2543,21 @@ impl LayoutEngine {
                 self.dpi,
             )
             .max(0.0);
-            let ctx = match source {
-                FootnoteSource::Body {
-                    para_index,
-                    control_index,
-                } => Some(super::CellContext {
+            // 본문·표 칸·글상자 안 각주 모두 본문 문단이 뿌리인 [..각주 경로, (그림, 0, 캡션 문단)]이다.
+            let ctx = {
+                let (host, mut path) =
+                    super::footnote_frames::footnote_note_path(source, note_para);
+                path.push(super::CellPathEntry {
+                    control_index: ci,
+                    cell_index: 0,
+                    cell_para_index: 0,
+                    text_direction: 0,
+                });
+                Some(super::CellContext {
                     in_textbox: false,
-                    parent_para_index: *para_index,
-                    path: vec![
-                        super::CellPathEntry {
-                            control_index: *control_index,
-                            cell_index: 0,
-                            cell_para_index: note_para,
-                            text_direction: 0,
-                        },
-                        super::CellPathEntry {
-                            control_index: ci,
-                            cell_index: 0,
-                            cell_para_index: 0,
-                            text_direction: 0,
-                        },
-                    ],
-                }),
-                // ponytail: 표 셀·글상자 안 각주의 그림 캡션은 그리기만 하고 편집 주소는 아직 없다.
-                _ => None,
+                    parent_para_index: host,
+                    path,
+                })
             };
             let (cap_x, cap_w, cap_y, clip_top, clip_bottom) = self
                 .inline_side_caption_place(caption, pic, bbox, caption_h)

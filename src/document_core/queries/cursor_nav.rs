@@ -862,6 +862,31 @@ impl DocumentCore {
         })
     }
 
+    /// 경로의 마지막 마디가 각주·미주(본문·표 칸·글상자 안 주석)인가. 경로가 틀려도 false.
+    /// 주석 영역은 띄운 개체를 그리지 않으므로 주석 안에 넣는 개체는 글자처럼 취급한다.
+    pub(crate) fn path_terminates_at_note(
+        &self,
+        sec: usize,
+        parent_para: usize,
+        path: &[(usize, usize, usize)],
+    ) -> bool {
+        let Some((&(ctrl_idx, _, _), outer)) = path.split_last() else {
+            return false;
+        };
+        let para = if outer.is_empty() {
+            self.document
+                .sections
+                .get(sec)
+                .and_then(|section| section.paragraphs.get(parent_para))
+        } else {
+            self.resolve_paragraph_by_path(sec, parent_para, outer).ok()
+        };
+        matches!(
+            para.and_then(|para| para.controls.get(ctrl_idx)),
+            Some(Control::Footnote(_) | Control::Endnote(_))
+        )
+    }
+
     /// 경로 기반으로 셀/글상자 내 문단을 탐색한다 (표와 글상자 모두 지원).
     pub(crate) fn resolve_paragraph_by_path<'a>(
         &'a self,

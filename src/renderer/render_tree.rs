@@ -2132,10 +2132,11 @@ pub fn doc_path_for_node(node: &RenderNode) -> Option<DocPath> {
     let path = doc_path_from_fields(node)?;
     // 글상자 안·중첩 표 칸 도형은 칸 스칼라만으로는 글상자 자신과 주소가 겹친다.
     // 레이아웃이 남긴 전체 컨테이너 경로로 주소를 다시 만든다.
+    // 수식은 각주·미주 안에서만 컨테이너 경로를 갖는다(주석 경로가 없으면 본문 수식과 겹친다).
     if node.container_path.is_empty()
         || matches!(
             node.node_type,
-            RenderNodeType::Table(_) | RenderNodeType::Image(_) | RenderNodeType::Equation(_)
+            RenderNodeType::Table(_) | RenderNodeType::Image(_)
         )
     {
         return Some(path);

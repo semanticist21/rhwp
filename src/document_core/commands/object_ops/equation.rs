@@ -435,6 +435,52 @@ impl DocumentCore {
 
         Ok(crate::document_core::helpers::json_ok())
     }
+    /// 셀 경로 문단(표 칸·글상자·각주·미주)의 `control_idx` 번째 수식 속성. 쪽 개체 목록이
+    /// 주석 안 수식에 주는 `parentParaIdx`·`cellPath`·`controlIdx` 를 그대로 받는다.
+    pub fn get_equation_properties_by_path_native(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        control_idx: usize,
+    ) -> Result<String, HwpError> {
+        let para = self.resolve_paragraph_by_path(section_idx, parent_para_idx, path)?;
+        match para.controls.get(control_idx) {
+            Some(Control::Equation(eq)) => Ok(Self::equation_properties_json(eq)),
+            Some(other) => Err(not_an_equation_error(other)),
+            None => Err(HwpError::RenderError(format!(
+                "컨트롤 인덱스 {} 범위 초과",
+                control_idx
+            ))),
+        }
+    }
+
+    /// 셀 경로 문단의 수식 속성을 바꾸고 그 문단을 다시 나눈다.
+    pub fn set_equation_properties_by_path_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        control_idx: usize,
+        props_json: &str,
+    ) -> Result<String, HwpError> {
+        self.get_equation_properties_by_path_native(
+            section_idx,
+            parent_para_idx,
+            path,
+            control_idx,
+        )?;
+        let dpi = self.dpi;
+        let cell_para_idx = path[path.len() - 1].2;
+        let paras = self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)?;
+        if let Some(Control::Equation(eq)) = paras[cell_para_idx].controls.get_mut(control_idx) {
+            Self::apply_equation_properties(eq, dpi, props_json);
+        }
+        self.document.sections[section_idx].raw_stream = None;
+        self.reflow_after_inline_insert_by_path(section_idx, parent_para_idx, path);
+        Ok(crate::document_core::helpers::json_ok())
+    }
+
     /// 수식 스크립트를 SVG로 렌더링하여 반환한다 (미리보기 전용).
     pub fn render_equation_preview_native(
         &self,
@@ -509,7 +555,7 @@ impl DocumentCore {
     }
 
     // ─── 각주 삽입/삭제 API ──────────────────────────────
-    /// 본문 문단에 수식을 삽입한다 (표 셀/글상자 내부는 미지원).
+    /// 본문 문단에 수식을 삽입한다. 표 칸·글상자·각주·미주 문단은 `insert_equation_by_path_native`.
     /// 커서 위치에 수식 컨트롤을 추가한다.
     /// 반환: JSON `{"ok":true, "paraIdx":N, "controlIdx":N}`
     pub fn insert_equation_native(
@@ -521,10 +567,6 @@ impl DocumentCore {
         font_size: u32,
         color: u32,
     ) -> Result<String, HwpError> {
-        use crate::model::control::Equation;
-        use crate::model::shape::{CommonObjAttr, HorzRelTo, TextWrap, VertRelTo};
-        use crate::parser::tags::CTRL_EQUATION;
-
         if section_idx >= self.document.sections.len() {
             return Err(HwpError::RenderError(format!(
                 "구역 인덱스 {} 범위 초과",
@@ -537,6 +579,114 @@ impl DocumentCore {
                 para_idx
             )));
         }
+        let equation = self.new_inline_equation(section_idx, script, font_size, color)?;
+
+        self.document.sections[section_idx].raw_stream = None;
+        let paragraph = &mut self.document.sections[section_idx].paragraphs[para_idx];
+        let insert_idx = Self::insert_inline_control(
+            paragraph,
+            char_offset,
+            Control::Equation(Box::new(equation)),
+        );
+        self.shift_active_field_for_control_insert(section_idx, para_idx, insert_idx);
+
+        // 본문 문단 리플로우
+        // 본문 문단의 상자는 쪽 폭이 아니라 **열** 폭에서 나온다. 직접 계산하면
+        // ColumnDef(다단)·margin_gutter·가로 용지·양면 짝수쪽 여백 교환·손상
+        // PageDef 의 A4 폴백을 모두 놓친다 — 그리고 그 결과가 디스크로 나간다.
+        // 대화형 편집의 관문과 같은 한 곳을 쓴다.
+        self.reflow_paragraph(section_idx, para_idx);
+
+        self.recompose_section(section_idx);
+        self.paginate_if_needed();
+        self.invalidate_page_tree_cache();
+
+        self.event_log.push(DocumentEvent::PictureInserted {
+            section: section_idx,
+            para: para_idx,
+        });
+        Ok(format!(
+            "{{\"ok\":true,\"paraIdx\":{},\"controlIdx\":{}}}",
+            para_idx, insert_idx
+        ))
+    }
+
+    /// 셀 경로가 가리키는 문단(표 칸·글상자·각주·미주, 그 안의 중첩 컨테이너)의 캐럿 자리에
+    /// 수식을 글자처럼 넣는다. 한/글 12.30은 각주 안에서도 수식을 캐럿 자리에 글자처럼 넣는다.
+    /// `path` 마지막 마디의 `cell_para` 가 넣을 문단, `char_offset` 은 그 문단의 글자 자리다.
+    /// 반환: `{"ok":true,"cellParaIdx":N,"controlIdx":N}` — `controlIdx` 는 그 문단 안 번호다.
+    pub fn insert_equation_by_path_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        char_offset: usize,
+        script: &str,
+        font_size: u32,
+        color: u32,
+    ) -> Result<String, HwpError> {
+        let &(_, _, cell_para_idx) = path
+            .last()
+            .ok_or_else(|| HwpError::RenderError("경로가 비어있습니다".to_string()))?;
+        // 확인 — 여기까지는 문서를 바꾸지 않는다.
+        self.resolve_paragraph_by_path(section_idx, parent_para_idx, path)?;
+        let equation = self.new_inline_equation(section_idx, script, font_size, color)?;
+
+        self.document.sections[section_idx].raw_stream = None;
+        let paras = self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)?;
+        let insert_idx = Self::insert_inline_control(
+            &mut paras[cell_para_idx],
+            char_offset,
+            Control::Equation(Box::new(equation)),
+        );
+        self.reflow_after_inline_insert_by_path(section_idx, parent_para_idx, path);
+
+        self.event_log.push(DocumentEvent::PictureInserted {
+            section: section_idx,
+            para: parent_para_idx,
+        });
+        Ok(format!(
+            "{{\"ok\":true,\"cellParaIdx\":{},\"controlIdx\":{}}}",
+            cell_para_idx, insert_idx
+        ))
+    }
+
+    /// 경로 문단에 글자처럼 넣은 개체 뒤처리 — 경로 글자 입력처럼 그 문단을 가장 안쪽
+    /// 컨테이너 폭(주석은 주석 영역 폭)으로 다시 나누고 바깥 측정을 무효화한 뒤 다시 조판한다.
+    pub(crate) fn reflow_after_inline_insert_by_path(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+    ) {
+        let Some(&(_, _, cell_para_idx)) = path.last() else {
+            return;
+        };
+        self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, path, cell_para_idx);
+        self.recalculate_cell_paragraph_vpos_by_path(
+            section_idx,
+            parent_para_idx,
+            path,
+            cell_para_idx,
+            None,
+        );
+        self.mark_cell_control_dirty(section_idx, parent_para_idx, path[0].0);
+        self.recompose_section(section_idx);
+        self.paginate_if_needed();
+        self.invalidate_page_tree_cache();
+    }
+
+    /// 새 인라인 수식(한컴 저장본의 글자처럼 취급 수식 계약).
+    fn new_inline_equation(
+        &self,
+        section_idx: usize,
+        script: &str,
+        font_size: u32,
+        color: u32,
+    ) -> Result<crate::model::control::Equation, HwpError> {
+        use crate::model::control::Equation;
+        use crate::model::shape::{CommonObjAttr, HorzRelTo, TextWrap, VertRelTo};
+        use crate::parser::tags::CTRL_EQUATION;
 
         let (width, height) = crate::renderer::equation::intrinsic_size_hwp(script, font_size);
         let equation_order = self.document.sections[section_idx]
@@ -563,7 +713,7 @@ impl DocumentCore {
                 HwpError::RenderError("수식 instance ID를 더 이상 배정할 수 없습니다.".to_string())
             })?;
         let instance_id = 0x4400_0000 | equation_instance_sequence;
-        let equation = Equation {
+        Ok(Equation {
             common: CommonObjAttr {
                 ctrl_id: CTRL_EQUATION,
                 // 한컴 저장본의 인라인 수식 계약: 문단 기준 위치, 절대 크기,
@@ -595,55 +745,31 @@ impl DocumentCore {
             version_info: "Equation Version 60".to_string(),
             font_name: "HYhwpEQ".to_string(),
             ..Default::default()
-        };
+        })
+    }
 
-        self.document.sections[section_idx].raw_stream = None;
-        let paragraph = &mut self.document.sections[section_idx].paragraphs[para_idx];
-
+    /// 컨트롤을 문단의 글자 자리 `char_offset` 에 8칸 확장 문자로 넣고 그 컨트롤 번호를 준다.
+    pub(crate) fn insert_inline_control(
+        paragraph: &mut crate::model::paragraph::Paragraph,
+        char_offset: usize,
+        control: Control,
+    ) -> usize {
         let insert_idx = {
             let positions = crate::document_core::helpers::find_control_text_positions(paragraph);
-            let mut idx = paragraph.controls.len();
-            for (i, &pos) in positions.iter().enumerate() {
-                if pos > char_offset {
-                    idx = i;
-                    break;
-                }
-            }
-            idx
+            positions
+                .iter()
+                .position(|&pos| pos > char_offset)
+                .unwrap_or(paragraph.controls.len())
         };
-
         // [#3214] controls 기준 인덱스를 ctrl_data_records 에 그대로 쓰기 전에 정렬한다.
         paragraph.align_ctrl_data_records();
-        paragraph
-            .controls
-            .insert(insert_idx, Control::Equation(Box::new(equation)));
+        paragraph.controls.insert(insert_idx, control);
         paragraph.ctrl_data_records.insert(insert_idx, None);
-
         paragraph.shift_for_inline_control_insert(insert_idx, char_offset);
         paragraph.char_count += 8;
         paragraph.control_mask |= 1u32 << 11;
         paragraph.has_para_text = true;
-        self.shift_active_field_for_control_insert(section_idx, para_idx, insert_idx);
-
-        // 본문 문단 리플로우
-        // 본문 문단의 상자는 쪽 폭이 아니라 **열** 폭에서 나온다. 직접 계산하면
-        // ColumnDef(다단)·margin_gutter·가로 용지·양면 짝수쪽 여백 교환·손상
-        // PageDef 의 A4 폴백을 모두 놓친다 — 그리고 그 결과가 디스크로 나간다.
-        // 대화형 편집의 관문과 같은 한 곳을 쓴다.
-        self.reflow_paragraph(section_idx, para_idx);
-
-        self.recompose_section(section_idx);
-        self.paginate_if_needed();
-        self.invalidate_page_tree_cache();
-
-        self.event_log.push(DocumentEvent::PictureInserted {
-            section: section_idx,
-            para: para_idx,
-        });
-        Ok(format!(
-            "{{\"ok\":true,\"paraIdx\":{},\"controlIdx\":{}}}",
-            para_idx, insert_idx
-        ))
+        insert_idx
     }
 }
 

@@ -1270,6 +1270,8 @@ impl DocumentCore {
     /// `path` 는 다른 by-path API 와 같은 `(control, cell, cell_para)` 사슬이고, 마지막 마디의
     /// `cell_para` 가 캐럿이 있는 칸 문단, `char_offset` 은 그 문단의 캐럿 축 offset 이다.
     /// 첫 마디가 머리말·꼬리말(`cell` 0, `cell_para` 는 머리말·꼬리말 문단)이면 그 문단에 만든다.
+    /// 마디가 각주·미주(`cell` 0, `cell_para` 는 주석 문단)이면 그 주석 문단에 만든다. 폭은 주석
+    /// 영역 폭(쪽 글 영역 폭)이다.
     ///
     /// 구조는 한/글 2020 이 칸 안에 만든 표와 같다(#8262 표본):
     /// - 캐럿 위치에서 칸 문단을 가른다. **앞쪽이 비면 원래 문단이 표 문단이 되고**,
@@ -1280,7 +1282,7 @@ impl DocumentCore {
     /// - `treat_as_char` 가 거짓이면 한/글 12.30 이 칸·머리말에서 글자처럼 취급을 끄고 만든 표처럼
     ///   본문 표 만들기와 같은 자리 차지 표(위아래, 쪽 경계 셀 단위, 제목 줄 반복)다.
     ///
-    /// 칸·머리말·꼬리말이 아닌 컨테이너(글상자 등)는 받지 않는다. 입력이 틀리면 문서를 바꾸지
+    /// 칸·머리말·꼬리말·주석이 아닌 컨테이너(글상자 등)는 받지 않는다. 입력이 틀리면 문서를 바꾸지
     /// 않고 오류를 돌려준다.
     ///
     /// 반환: `{"ok":true,"cellParaIdx":<표 문단>,"controlIdx":0,"cellPath":[..안쪽 표 첫 칸까지]}`
@@ -1482,8 +1484,8 @@ impl DocumentCore {
         )))
     }
 
-    /// 경로의 마지막 마디가 **표 칸**이나 머리말·꼬리말인가(글상자·캡션이 아니라). 경로가 틀려도 false.
-    /// 머리말·꼬리말은 본문 문단의 컨트롤이라 경로의 첫 마디로만 온다.
+    /// 경로의 마지막 마디가 **표 칸**·머리말·꼬리말·각주·미주인가(글상자·캡션이 아니라). 경로가
+    /// 틀려도 false. 머리말·꼬리말은 본문 문단의 컨트롤이라 경로의 첫 마디로만 온다.
     fn innermost_container_takes_table(
         &self,
         section_idx: usize,
@@ -1512,6 +1514,9 @@ impl DocumentCore {
                         None => return false,
                     }
                 }
+                // 한/글 12.30은 각주·미주(본문·표 칸·글상자 안 주석) 안에서도 표 만들기를 켠다.
+                Some(Control::Footnote(note)) if cell_idx == 0 => &note.paragraphs,
+                Some(Control::Endnote(note)) if cell_idx == 0 => &note.paragraphs,
                 _ => return false,
             };
             if i + 1 == path.len() {

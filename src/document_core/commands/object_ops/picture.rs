@@ -2395,7 +2395,10 @@ impl DocumentCore {
         // 글상자(text_box) 내부 picture 는 글상자 문단의 control 로 들어가야 한다.
         // 기존 resolve_cell_by_path 는 마지막 엔트리가 표일 때만 성공하므로
         // 먼저 표/글상자를 구분한다.
-        let cell_path_is_textbox = if !cell_path.is_empty() {
+        // 각주·미주 안 그림은 그 주석 문단의 컨트롤로 넣는다(아래 `in_note` 마무리).
+        let in_note =
+            !cell_path.is_empty() && self.path_terminates_at_note(section_idx, para_idx, cell_path);
+        let cell_path_is_textbox = if !cell_path.is_empty() && !in_note {
             let section = &self.document.sections[section_idx];
             let is_textbox = Self::cell_path_terminates_at_textbox(section, para_idx, cell_path)?;
             if !is_textbox {
@@ -2408,7 +2411,7 @@ impl DocumentCore {
 
         // 셀 자체가 있어도 마지막 문단 번호는 잘못될 수 있다. BinData 등록 전에
         // 실제 삽입 문단까지 검증해 실패한 요청이 문서 자원을 남기지 않게 한다.
-        if cell_path_is_textbox || anchor_in_cell {
+        if cell_path_is_textbox || anchor_in_cell || in_note {
             self.resolve_paragraph_by_path(section_idx, para_idx, cell_path)?;
         }
 
@@ -2418,7 +2421,7 @@ impl DocumentCore {
         let position_id = self.register_embedded_bin_data(image_data, extension);
 
         if !cell_path.is_empty() {
-            if cell_path_is_textbox || anchor_in_cell {
+            if cell_path_is_textbox || anchor_in_cell || in_note {
                 // === 글상자 내부 picture 분기 (#1322 maintainer fix) ===
                 // (`insert_picture_in_cell_native` 의 표 셀 문단 삽입도 이 분기를 쓴다.)
                 // hitTest 의 글상자 sentinel path (`cellIdx=0`) 가 넘어온 경우에는
@@ -2510,6 +2513,18 @@ impl DocumentCore {
                 if !cell_path_is_textbox {
                     // 셀 문단이 바뀌었으므로 최외곽 표 host 문단의 측정 revision도 무효화한다.
                     self.mark_cell_control_dirty(section_idx, para_idx, cell_path[0].0);
+                }
+                if in_note {
+                    // 주석 영역은 띄운 그림을 그리지 않는다. 한/글 12.30처럼 주석 글줄에 글자처럼
+                    // 넣어 주석 문단을 다시 나눈다(앱이 칸 그림에 주는 속성 변경과 같은 경로).
+                    let path_json = Self::format_path_json(cell_path);
+                    self.set_cell_picture_properties_by_path_native(
+                        section_idx,
+                        para_idx,
+                        &path_json,
+                        new_ctrl_idx,
+                        "{\"treatAsChar\":true}",
+                    )?;
                 }
                 self.mark_section_dirty(section_idx);
                 self.recompose_section(section_idx);

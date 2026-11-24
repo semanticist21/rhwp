@@ -6298,7 +6298,7 @@ impl DocumentCore {
             Some(n) => n,
             None => return Ok("{\"hit\":false}".to_string()),
         };
-        // 각주 그림 캡션 글줄을 누르면 그 캡션 글 자리를 본문 문단 뿌리 셀 경로로 준다.
+        // 각주 그림 캡션·각주 안 표 칸 글을 누르면 그 글 자리를 본문 문단 뿌리 셀 경로로 준다.
         if let Some(hit) = footnote_caption_hit(
             fn_node,
             page_num,
@@ -7448,43 +7448,11 @@ impl DocumentCore {
                 control, cell, para
             )
         };
-        let (steps, note_control_idx) = match &fn_ref.source {
-            FootnoteSource::Body { control_index, .. } => (Vec::new(), *control_index),
-            FootnoteSource::TableCell {
-                table_control_index,
-                cell_index,
-                cell_para_index,
-                cell_control_index,
-                ..
-            } => (
-                vec![step(*table_control_index, *cell_index, *cell_para_index)],
-                *cell_control_index,
-            ),
-            FootnoteSource::NestedTableCell {
-                table_control_index,
-                cell_path,
-                ..
-            } => {
-                // 첫 항목은 바깥 표의 셀이고, 다음 항목마다 앞 셀 문단의 표 컨트롤 번호를 단다.
-                // 마지막 항목의 컨트롤 번호가 각주다.
-                let mut steps = Vec::new();
-                let mut control = *table_control_index;
-                for entry in cell_path {
-                    steps.push(step(control, entry.cell_index, entry.cell_para_index));
-                    control = entry.control_index;
-                }
-                (steps, control)
-            }
-            FootnoteSource::ShapeTextBox {
-                shape_control_index,
-                tb_para_index,
-                tb_control_index,
-                ..
-            } => (
-                vec![step(*shape_control_index, 0, *tb_para_index)],
-                *tb_control_index,
-            ),
-        };
+        let (_, owner_steps, note_control_idx) = fn_ref.source.note_owner();
+        let steps: Vec<String> = owner_steps
+            .into_iter()
+            .map(|(control, cell, para)| step(control, cell, para))
+            .collect();
 
         Ok(format!(
             "{{\"ok\":true,\"sectionIdx\":{},\"paraIdx\":{},\"controlIdx\":{},\"sourceType\":\"{}\",\"notePath\":[{}],\"noteControlIdx\":{}}}",
@@ -7551,11 +7519,10 @@ fn footnote_caption_hit(
             return;
         }
         if let RenderNodeType::TextRun(ref run) = node.node_type {
+            // 본문 문단이 뿌리인 [..각주 경로, 안쪽 컨테이너] 문맥: 그림 캡션·각주 안 표 칸 글.
             if run.char_start.is_some()
                 && run.cell_context.as_ref().is_some_and(|ctx| {
-                    ctx.path.len() == 2
-                        && ctx.parent_para_index < usize::MAX - 3000
-                        && ctx.path[1].cell_index == 0
+                    ctx.path.len() >= 2 && ctx.parent_para_index < usize::MAX - 3000
                 })
             {
                 out.push(node);
@@ -7593,17 +7560,20 @@ fn footnote_caption_hit(
         .min_by(|a, b| (a.1 - local).abs().total_cmp(&(b.1 - local).abs()))
         .map_or(0, |(i, _)| i);
     let cursor_x = node.bbox.x + positions.get(index).copied().unwrap_or(0.0);
-    let (note, inner) = (&ctx.path[0], &ctx.path[1]);
+    let inner = ctx.path.last()?;
+    let path: Vec<(usize, usize, usize)> = ctx
+        .path
+        .iter()
+        .map(|e| (e.control_index, e.cell_index, e.cell_para_index))
+        .collect();
+    // `caption` 은 앱 호환 이름이다 — 참이면 `cellPath` 로 그 글 자리를 고친다(캡션·표 칸 모두).
     Some(format!(
-        "{{\"hit\":true,\"caption\":true,\"sectionIndex\":{},\"paraIndex\":{},\"charOffset\":{},\"parentParaIndex\":{},\"cellPath\":[{{\"controlIndex\":{},\"cellIndex\":0,\"cellParaIndex\":{}}},{{\"controlIndex\":{},\"cellIndex\":0,\"cellParaIndex\":{}}}],\"cursorRect\":{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"height\":{:.1}}}}}",
+        "{{\"hit\":true,\"caption\":true,\"sectionIndex\":{},\"paraIndex\":{},\"charOffset\":{},\"parentParaIndex\":{},\"cellPath\":{},\"cursorRect\":{{\"pageIndex\":{},\"x\":{:.1},\"y\":{:.1},\"height\":{:.1}}}}}",
         section_idx,
         inner.cell_para_index,
         run.char_start? + index,
         ctx.parent_para_index,
-        note.control_index,
-        note.cell_para_index,
-        inner.control_index,
-        inner.cell_para_index,
+        DocumentCore::format_path_json(&path),
         page_num,
         cursor_x,
         node.bbox.y,

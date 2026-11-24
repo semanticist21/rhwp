@@ -1202,10 +1202,6 @@ impl DocumentCore {
         line_flip_y: bool,
         polygon_points: &[crate::model::Point],
     ) -> Result<String, HwpError> {
-        use crate::model::paragraph::{CharShapeRef, LineSeg};
-        use crate::model::shape::*;
-        use crate::model::style::{Fill, ShapeBorderLine};
-
         // 유효성 검사
         if section_idx >= self.document.sections.len() {
             return Err(HwpError::RenderError(format!(
@@ -1225,6 +1221,173 @@ impl DocumentCore {
             ));
         }
 
+        let current_para = &self.document.sections[section_idx].paragraphs[para_idx];
+        let inherited = (
+            current_para.char_shape_id_at(char_offset).unwrap_or(0),
+            current_para.para_shape_id,
+        );
+        let shape_obj = self.new_shape_object(
+            section_idx,
+            inherited,
+            (width, height),
+            (horz_offset, vert_offset),
+            treat_as_char,
+            text_wrap_str,
+            shape_type,
+            (line_flip_x, line_flip_y),
+            polygon_points,
+        );
+
+        let stored_end_before = crate::renderer::composer::paragraph_flow_end(
+            &self.document.sections[section_idx].paragraphs[para_idx],
+        );
+        // --- 기존 문단에 인라인 컨트롤로 삽입 ---
+        self.document.sections[section_idx].raw_stream = None;
+
+        let insert_para_idx = para_idx;
+        let insert_ctrl_idx;
+        {
+            let paragraph = &mut self.document.sections[section_idx].paragraphs[para_idx];
+
+            // 컨트롤 삽입 위치 결정 (char_offset 기준)
+            let insert_idx = {
+                let positions =
+                    crate::document_core::helpers::find_control_text_positions(paragraph);
+                let mut idx = paragraph.controls.len();
+                for (i, &pos) in positions.iter().enumerate() {
+                    if pos > char_offset {
+                        idx = i;
+                        break;
+                    }
+                }
+                idx
+            };
+
+            // 컨트롤 추가
+            // [#3214] controls 기준 인덱스를 ctrl_data_records 에 그대로 쓰기 전에 정렬한다.
+            paragraph.align_ctrl_data_records();
+            paragraph
+                .controls
+                .insert(insert_idx, Control::Shape(Box::new(shape_obj)));
+            paragraph.ctrl_data_records.insert(insert_idx, None);
+
+            // 컨트롤은 char_offsets 에 원소로 들어가지 않고 8 code unit 갭으로 표현된다.
+            // 각주·수식·그림 경로와 같은 공용 시프트로 갭을 내고 뒤 누름틀 번호도 민다.
+            paragraph.shift_for_inline_control_insert(insert_idx, char_offset);
+
+            // char_count 갱신 (확장 컨트롤 = 8 code units)
+            paragraph.char_count += 8;
+
+            // control_mask에 GSO 비트 설정
+            paragraph.control_mask |= 0x00000800;
+            // has_para_text 보장
+            paragraph.has_para_text = true;
+            insert_ctrl_idx = insert_idx;
+        }
+        self.shift_active_field_for_control_insert(section_idx, para_idx, insert_ctrl_idx);
+
+        if treat_as_char {
+            self.reflow_body_inline_object_change(section_idx, para_idx, stored_end_before);
+        }
+
+        // 리플로우 + 페이지네이션
+        self.recompose_section(section_idx);
+        self.paginate_if_needed();
+        // [#8399] 어울림 도형은 host 와 뒤 문단의 줄을 깎는다 — 그림 밴드와 같은 소유자가
+        // 저장 줄을 발행한다. 밴드를 만들 수 없으면 종전 전폭 줄이 남는다.
+        if !treat_as_char {
+            let _ = self.apply_body_edit_through_picture_band(section_idx, insert_para_idx, |_| {});
+        }
+
+        self.event_log.push(DocumentEvent::PictureInserted {
+            section: section_idx,
+            para: insert_para_idx,
+        });
+        Ok(crate::document_core::helpers::json_ok_with(&format!(
+            "\"paraIdx\":{},\"controlIdx\":{}",
+            insert_para_idx, insert_ctrl_idx
+        )))
+    }
+    /// 각주·미주 문단(본문·표 칸·글상자 안 주석, `path` 마지막 마디가 주석)의 글자 자리에 도형을
+    /// 넣는다. 주석 영역은 띄운 개체를 그리지 않으므로 한/글 12.30 주석 안 개체처럼 글자처럼
+    /// 취급으로 넣는다. 반환: `{"ok":true,"cellParaIdx":N,"controlIdx":N}` (주석 문단 안 번호).
+    #[allow(clippy::too_many_arguments)]
+    pub fn create_shape_control_by_path_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        char_offset: usize,
+        width: u32,
+        height: u32,
+        shape_type: &str,
+        line_flips: (bool, bool),
+        polygon_points: &[crate::model::Point],
+    ) -> Result<String, HwpError> {
+        if !self.path_terminates_at_note(section_idx, parent_para_idx, path) {
+            return Err(HwpError::RenderError(
+                "도형 경로는 각주·미주 문단을 가리켜야 합니다".to_string(),
+            ));
+        }
+        if width == 0 && height == 0 {
+            return Err(HwpError::RenderError(
+                "폭과 높이가 모두 0입니다".to_string(),
+            ));
+        }
+        let para = self.resolve_paragraph_by_path(section_idx, parent_para_idx, path)?;
+        let inherited = (
+            para.char_shape_id_at(char_offset).unwrap_or(0),
+            para.para_shape_id,
+        );
+        let shape_obj = self.new_shape_object(
+            section_idx,
+            inherited,
+            (width, height),
+            (0, 0),
+            true,
+            "Square",
+            shape_type,
+            line_flips,
+            polygon_points,
+        );
+        let cell_para_idx = path[path.len() - 1].2;
+        self.document.sections[section_idx].raw_stream = None;
+        let paras = self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)?;
+        let insert_idx = Self::insert_inline_control(
+            &mut paras[cell_para_idx],
+            char_offset,
+            Control::Shape(Box::new(shape_obj)),
+        );
+        self.reflow_after_inline_insert_by_path(section_idx, parent_para_idx, path);
+        self.event_log.push(DocumentEvent::PictureInserted {
+            section: section_idx,
+            para: parent_para_idx,
+        });
+        Ok(format!(
+            "{{\"ok\":true,\"cellParaIdx\":{},\"controlIdx\":{}}}",
+            cell_para_idx, insert_idx
+        ))
+    }
+
+    /// 새 도형 개체(글상자·선·타원·다각형·호·곡선·연결선)를 조립한다. 문서는 바꾸지 않는다.
+    /// `inherited` 는 넣을 문단의 (글자 모양, 문단 모양)으로 글상자 안 빈 문단이 물려받는다.
+    #[allow(clippy::too_many_arguments)]
+    fn new_shape_object(
+        &self,
+        section_idx: usize,
+        (default_char_shape_id, default_para_shape_id): (u32, u16),
+        (width, height): (u32, u32),
+        (horz_offset, vert_offset): (u32, u32),
+        treat_as_char: bool,
+        text_wrap_str: &str,
+        shape_type: &str,
+        (line_flip_x, line_flip_y): (bool, bool),
+        polygon_points: &[crate::model::Point],
+    ) -> crate::model::shape::ShapeObject {
+        use crate::model::paragraph::{CharShapeRef, LineSeg};
+        use crate::model::shape::*;
+        use crate::model::style::{Fill, ShapeBorderLine};
+
         let text_wrap = match text_wrap_str {
             "Square" => TextWrap::Square,
             "Tight" => TextWrap::Tight,
@@ -1234,11 +1397,6 @@ impl DocumentCore {
             "InFrontOfText" => TextWrap::InFrontOfText,
             _ => TextWrap::InFrontOfText,
         };
-
-        // 커서 위치 문단의 속성 상속 — 혼합 글자모양 문단에서는 커서 offset 의 글자모양이 기준.
-        let current_para = &self.document.sections[section_idx].paragraphs[para_idx];
-        let default_char_shape_id: u32 = current_para.char_shape_id_at(char_offset).unwrap_or(0);
-        let default_para_shape_id: u16 = current_para.para_shape_id;
 
         // 편집 영역 폭
         let pd = &self.document.sections[section_idx].section_def.page_def;
@@ -1453,7 +1611,7 @@ impl DocumentCore {
         };
         drawing.sync_text_box_storage_bit();
 
-        let shape_obj = match shape_type {
+        match shape_type {
             "line"
             | "connector-straight"
             | "connector-stroke"
@@ -1613,78 +1771,9 @@ impl DocumentCore {
                 x_coords: [0, w_i, w_i, 0],
                 y_coords: [0, 0, h_i, h_i],
             }),
-        };
-
-        let stored_end_before = crate::renderer::composer::paragraph_flow_end(
-            &self.document.sections[section_idx].paragraphs[para_idx],
-        );
-        // --- 기존 문단에 인라인 컨트롤로 삽입 ---
-        self.document.sections[section_idx].raw_stream = None;
-
-        let insert_para_idx = para_idx;
-        let insert_ctrl_idx;
-        {
-            let paragraph = &mut self.document.sections[section_idx].paragraphs[para_idx];
-
-            // 컨트롤 삽입 위치 결정 (char_offset 기준)
-            let insert_idx = {
-                let positions =
-                    crate::document_core::helpers::find_control_text_positions(paragraph);
-                let mut idx = paragraph.controls.len();
-                for (i, &pos) in positions.iter().enumerate() {
-                    if pos > char_offset {
-                        idx = i;
-                        break;
-                    }
-                }
-                idx
-            };
-
-            // 컨트롤 추가
-            // [#3214] controls 기준 인덱스를 ctrl_data_records 에 그대로 쓰기 전에 정렬한다.
-            paragraph.align_ctrl_data_records();
-            paragraph
-                .controls
-                .insert(insert_idx, Control::Shape(Box::new(shape_obj)));
-            paragraph.ctrl_data_records.insert(insert_idx, None);
-
-            // 컨트롤은 char_offsets 에 원소로 들어가지 않고 8 code unit 갭으로 표현된다.
-            // 각주·수식·그림 경로와 같은 공용 시프트로 갭을 내고 뒤 누름틀 번호도 민다.
-            paragraph.shift_for_inline_control_insert(insert_idx, char_offset);
-
-            // char_count 갱신 (확장 컨트롤 = 8 code units)
-            paragraph.char_count += 8;
-
-            // control_mask에 GSO 비트 설정
-            paragraph.control_mask |= 0x00000800;
-            // has_para_text 보장
-            paragraph.has_para_text = true;
-            insert_ctrl_idx = insert_idx;
         }
-        self.shift_active_field_for_control_insert(section_idx, para_idx, insert_ctrl_idx);
-
-        if treat_as_char {
-            self.reflow_body_inline_object_change(section_idx, para_idx, stored_end_before);
-        }
-
-        // 리플로우 + 페이지네이션
-        self.recompose_section(section_idx);
-        self.paginate_if_needed();
-        // [#8399] 어울림 도형은 host 와 뒤 문단의 줄을 깎는다 — 그림 밴드와 같은 소유자가
-        // 저장 줄을 발행한다. 밴드를 만들 수 없으면 종전 전폭 줄이 남는다.
-        if !treat_as_char {
-            let _ = self.apply_body_edit_through_picture_band(section_idx, insert_para_idx, |_| {});
-        }
-
-        self.event_log.push(DocumentEvent::PictureInserted {
-            section: section_idx,
-            para: insert_para_idx,
-        });
-        Ok(crate::document_core::helpers::json_ok_with(&format!(
-            "\"paraIdx\":{},\"controlIdx\":{}",
-            insert_para_idx, insert_ctrl_idx
-        )))
     }
+
     /// 글상자(Shape) z-order 변경 (네이티브).
     /// operation: "front" | "back" | "forward" | "backward"
     pub fn change_shape_z_order_native(
