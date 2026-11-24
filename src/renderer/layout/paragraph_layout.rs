@@ -6086,7 +6086,8 @@ impl LayoutEngine {
                             note_ref,
                         }),
                         BoundingBox::new(content_x, eq_y, content_width, eq_h),
-                    );
+                    )
+                    .with_equation_owner(cell_ctx.as_ref(), tac_ci);
                     line_node.children.push(eq_node);
                     tree.set_inline_shape_position(
                         section_index,
@@ -11048,7 +11049,8 @@ impl LayoutEngine {
                                     },
                                 ),
                                 BoundingBox::new(content_x, eq_y, content_width, eq_h),
-                            );
+                            )
+                            .with_equation_owner(cell_ctx.as_ref(), tac_ci);
                             line_node.children.push(eq_node);
                             // 인라인 좌표 등록 → shape_layout에서 이 수식을 스킵
                             tree.set_inline_shape_position(

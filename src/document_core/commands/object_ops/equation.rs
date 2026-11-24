@@ -554,6 +554,34 @@ impl DocumentCore {
         Ok("{\"ok\":true}".to_string())
     }
 
+    /// 셀 경로 문단(표 칸·글상자·캡션·머리말·꼬리말·각주·미주)의 수식 하나를 지우고 그 문단을 다시 나눈다.
+    pub fn delete_equation_control_by_path_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        control_idx: usize,
+    ) -> Result<String, HwpError> {
+        // 확인 — 여기까지는 문서를 바꾸지 않는다.
+        self.get_equation_properties_by_path_native(
+            section_idx,
+            parent_para_idx,
+            path,
+            control_idx,
+        )?;
+        let cell_para_idx = path[path.len() - 1].2;
+        self.document.sections[section_idx].raw_stream = None;
+        let paras = self.get_cell_paragraphs_mut_by_path(section_idx, parent_para_idx, path)?;
+        paras[cell_para_idx].remove_control(control_idx);
+        self.reflow_after_inline_insert_by_path(section_idx, parent_para_idx, path);
+        self.event_log.push(DocumentEvent::PictureDeleted {
+            section: section_idx,
+            para: parent_para_idx,
+            ctrl: path[0].0,
+        });
+        Ok("{\"ok\":true}".to_string())
+    }
+
     // ─── 각주 삽입/삭제 API ──────────────────────────────
     /// 본문 문단에 수식을 삽입한다. 표 칸·글상자·각주·미주 문단은 `insert_equation_by_path_native`.
     /// 커서 위치에 수식 컨트롤을 추가한다.

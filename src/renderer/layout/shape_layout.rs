@@ -5141,7 +5141,8 @@ impl LayoutEngine {
                                     ),
                                     eq_h,
                                 ),
-                            );
+                            )
+                            .with_equation_owner(Some(&equiv_cell_ctx), ctrl_idx_in_para);
                             textbox_node.children.push(eq_node);
                         }
                     }

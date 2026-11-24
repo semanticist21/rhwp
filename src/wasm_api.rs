@@ -7049,6 +7049,25 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 셀 경로 문단(표 칸·글상자·캡션·머리말·꼬리말·각주·미주)의 수식 하나를 지운다. 반환: `{"ok":true}`
+    #[wasm_bindgen(js_name = deleteEquationControlByPath)]
+    pub fn delete_equation_control_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        control_idx: u32,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(cell_path_json).map_err(JsValue::from)?;
+        self.delete_equation_control_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            control_idx as usize,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// 한/글 5.x/97 OLE 수식을 편집 가능한 native equation으로 변환한다.
     #[wasm_bindgen(js_name = promoteOleEquation)]
     pub fn promote_ole_equation(

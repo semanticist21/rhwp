@@ -10148,7 +10148,8 @@ impl LayoutEngine {
                                     ),
                                     eq_h,
                                 ),
-                            );
+                            )
+                            .with_equation_owner(cell_context.as_ref(), ctrl_idx);
                             cell_node.children.push(eq_node);
                         }
                     }

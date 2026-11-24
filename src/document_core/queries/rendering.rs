@@ -4501,7 +4501,16 @@ impl DocumentCore {
                     let control_type = if source_is_ole { "ole" } else { "equation" };
                     // 각주·미주 안 수식은 본문 문단이 뿌리인 주석 경로를 그림·도형처럼 낸다
                     // (`getEquationPropertiesByPath` 가 받는 주소).
-                    let container = if node.container_path.is_empty() {
+                    // 표 칸·글상자·캡션 안 수식은 레이아웃이 단 편집 주소(뿌리 문단·전체 경로·그 문단 안
+                    // 수식 번호)를 그림처럼 낸다. `controlIdx` 는 호환을 위해 바깥 컨테이너 번호로 둔다.
+                    let container = if let Some((parent, path, inner)) = &node.equation_owner {
+                        format!(
+                            ",\"parentParaIdx\":{}{},\"innerControlIdx\":{}",
+                            public_para(*parent),
+                            DocumentCore::shape_cell_context_json(None, None, None, path),
+                            inner
+                        )
+                    } else if node.container_path.is_empty() {
                         String::new()
                     } else {
                         format!(

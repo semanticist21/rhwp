@@ -247,6 +247,11 @@ pub struct RenderNode {
     /// 쪽 개체 목록이 중첩 도형의 `cellPath`로 내보낸다. 본문 도형은 비어 있다.
     #[serde(skip)]
     pub(crate) container_path: Vec<super::layout::CellPathEntry>,
+    /// 표 칸·글상자·캡션 안 수식의 편집 주소: (뿌리 문단, 수식이 든 문단까지의 경로, 그 문단 안 수식 번호).
+    /// 쪽 개체 목록이 `parentParaIdx`·`cellPath`·`innerControlIdx`로 낸다. 수식 노드의 `control_index`는
+    /// 호환을 위해 그대로(칸 안 수식은 바깥 컨테이너 번호) 둔다.
+    #[serde(skip)]
+    pub(crate) equation_owner: Option<(usize, Vec<super::layout::CellPathEntry>, usize)>,
 }
 
 #[derive(Debug, Default, Clone, Copy, Serialize)]
@@ -301,8 +306,20 @@ impl RenderNode {
             header_footer_source: None,
             textbox_source: None,
             container_path: Vec::new(),
+            equation_owner: None,
             paint_clip: None,
         }
+    }
+
+    /// 셀 문맥(표 칸·글상자·캡션) 안 수식 노드에 편집 주소를 단다. 셀 문맥이 없으면 그대로 둔다.
+    pub(crate) fn with_equation_owner(
+        mut self,
+        ctx: Option<&super::layout::CellContext>,
+        control_index: usize,
+    ) -> Self {
+        self.equation_owner =
+            ctx.map(|ctx| (ctx.parent_para_index, ctx.path.clone(), control_index));
+        self
     }
 
     /// 레이어 메타데이터를 부여한 노드를 반환한다.

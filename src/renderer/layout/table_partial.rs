@@ -4793,7 +4793,8 @@ impl LayoutEngine {
                     hwpunit_to_px(crate::renderer::equation::inline_box::horizontal_metrics(eq).content_width_hwp, self.dpi),
                     eq_h,
                 ),
-                                );
+                                )
+                                .with_equation_owner(Some(&cell_context), ctrl_idx);
                                 cell_node.children.push(eq_node);
                             }
                             Control::Table(nested_table) => {
