@@ -98,12 +98,17 @@ pub(crate) fn top_underline_geometry(
         .top_underline_phase
         .filter(|phase| phase.is_finite())
         .unwrap_or(0.0);
+    // 높은 개체가 있는 줄은 선 묶음 전체를 그 개체 위끝 기준으로 올린다.
+    let raise = style
+        .top_underline_raise
+        .filter(|raise| raise.is_finite() && *raise > 0.0)
+        .unwrap_or(0.0);
     if shape == 6 {
         return Some(TopUnderlineGeometry {
             phase,
             strokes: Vec::new(),
             dots: Some(DecorationDots {
-                offset: -0.875 * size,
+                offset: -0.875 * size - raise,
                 radius: 0.03 * size,
                 step: size / 7.0,
             }),
@@ -116,7 +121,22 @@ pub(crate) fn top_underline_geometry(
         10 => &[(1.035, 0.030), (0.950, 0.080), (0.865, 0.030)],
         _ => &[(0.870, 0.040)],
     };
-    // 짧은 선·긴 선과 간격의 공통 비율. Print 장치의 600dpi 반올림은 넣지 않는다.
+    Some(TopUnderlineGeometry {
+        phase,
+        strokes: bands
+            .iter()
+            .map(|&(offset, width)| DecorationStroke {
+                offset: -offset * size - raise,
+                width: width * size,
+                dash: dash_pattern(shape, size),
+            })
+            .collect(),
+        dots: None,
+    })
+}
+
+/// 짧은 선·긴 선과 간격의 공통 비율. Print 장치의 600dpi 반올림은 넣지 않는다.
+fn dash_pattern(shape: u8, size: f64) -> Vec<f64> {
     let pattern: &[f64] = match shape {
         1 => &[2.0, 3.0],
         2 => &[10.0, 6.0],
@@ -125,18 +145,137 @@ pub(crate) fn top_underline_geometry(
         5 => &[20.0, 6.0],
         _ => &[],
     };
-    Some(TopUnderlineGeometry {
-        phase,
-        strokes: bands
-            .iter()
-            .map(|&(offset, width)| DecorationStroke {
-                offset: -offset * size,
-                width: width * size,
-                dash: pattern.iter().map(|value| value * size / 35.0).collect(),
-            })
-            .collect(),
-        dots: None,
-    })
+    pattern.iter().map(|value| value * size / 35.0).collect()
+}
+
+/// 세로쓰기 글의 밑줄을 한컴처럼 글자 칸 옆에 세로로 긋는다.
+///
+/// 한컴 12.30 PDF(20pt 세로 글상자·세로 셀): 아래 밑줄은 글자 칸 오른쪽 0.02em 밖,
+/// 위 밑줄은 왼쪽 0.02em 밖에 칸의 세로 길이만큼 긋고, 이어진 글자에서는 한 줄로 잇는다.
+/// 가로 글의 기준선 아래 오프셋(글자 칸 아래끝 0.15em 기준)과 위 밑줄 기하를 옆으로 옮겨 쓴다.
+/// 세로 run은 글자마다 하나라 run을 그리는 쪽은 가로선을 긋지 않도록 밑줄을 지운다.
+/// 물결선(11 이상)은 다루지 않는다.
+pub(crate) fn resolve_vertical_underlines(tree: &mut super::render_tree::PageRenderTree) {
+    let mut root = std::mem::replace(
+        &mut tree.root,
+        super::render_tree::RenderNode::new(
+            0,
+            super::render_tree::RenderNodeType::MasterPage,
+            super::render_tree::BoundingBox::new(0.0, 0.0, 0.0, 0.0),
+        ),
+    );
+    vertical_underlines(&mut root, &mut || tree.next_id());
+    tree.root = root;
+}
+
+fn vertical_underlines(
+    root: &mut super::render_tree::RenderNode,
+    next_id: &mut dyn FnMut() -> super::render_tree::NodeId,
+) {
+    use super::render_tree::{LineNode, RenderNode, RenderNodeType};
+    use crate::model::style::UnderlineType;
+    for child in &mut root.children {
+        vertical_underlines(child, next_id);
+    }
+    // (x, 굵기, 반복 구간, 색, 위끝, 아래끝)
+    let mut lines: Vec<(f64, f64, Vec<f64>, u32, f64, f64)> = Vec::new();
+    for line in &mut root.children {
+        if !matches!(line.node_type, RenderNodeType::TextLine(_)) {
+            continue;
+        }
+        for node in &mut line.children {
+            let bbox = node.bbox;
+            let RenderNodeType::TextRun(run) = &mut node.node_type else {
+                continue;
+            };
+            let style = &run.style;
+            if !run.is_vertical
+                || style.underline == UnderlineType::None
+                || style.underline_shape > 10
+                || run.display_or_text().is_empty()
+                || !(bbox.width > 0.0 && bbox.height > 0.0)
+            {
+                continue;
+            }
+            let size = style.effective_font_size();
+            if !(size.is_finite() && size > 0.0) {
+                continue;
+            }
+            // 칸 바깥쪽으로 잰 (거리, 굵기, 반복 구간)
+            let strokes: Vec<(f64, f64, Vec<f64>)> = if style.underline == UnderlineType::Top {
+                let mut plain = style.clone();
+                plain.top_underline_font_size = None;
+                plain.top_underline_raise = None;
+                let Some(geometry) = top_underline_geometry(&plain, size) else {
+                    continue;
+                };
+                let mut out: Vec<_> = geometry
+                    .strokes
+                    .iter()
+                    .map(|s| (-(s.offset + 0.85 * size), s.width, s.dash.clone()))
+                    .collect();
+                if let Some(dot) = geometry.dots {
+                    let d = dot.radius * 2.0;
+                    out.push((
+                        -(dot.offset + 0.85 * size),
+                        d,
+                        vec![d, (dot.step - d).max(d)],
+                    ));
+                }
+                out
+            } else if let Some(bands) = underline_multi_lines(style.underline_shape) {
+                bands
+                    .iter()
+                    .map(|&(offset, width)| ((offset - 0.15) * size, width * size, Vec::new()))
+                    .collect()
+            } else {
+                let dash = match style.underline_shape {
+                    // 가로 아래 점선과 같은 간격의 점
+                    6 => vec![0.06 * size, size / 7.0 - 0.06 * size],
+                    shape => dash_pattern(shape, size),
+                };
+                vec![((UNDERLINE_BASELINE_RATIO - 0.15) * size, 0.04 * size, dash)]
+            };
+            let top = style.underline == UnderlineType::Top;
+            let color = style.underline_color;
+            for (out, width, dash) in strokes {
+                let x = if top {
+                    bbox.x - out
+                } else {
+                    bbox.x + bbox.width + out
+                };
+                let (y0, y1) = (bbox.y, bbox.y + bbox.height);
+                // 같은 열에서 바로 이어진 글자의 같은 선이면 한 줄로 잇는다.
+                if let Some(prev) = lines
+                    .iter_mut()
+                    .rev()
+                    .find(|l| (l.0 - x).abs() < 1e-6 && l.1 == width && l.2 == dash && l.3 == color)
+                {
+                    if (prev.5 - y0).abs() < 0.5 {
+                        prev.5 = y1;
+                        continue;
+                    }
+                }
+                lines.push((x, width, dash, color, y0, y1));
+            }
+            run.style.underline = UnderlineType::None;
+        }
+    }
+    for (x, width, dash, color, y0, y1) in lines {
+        let style = super::LineStyle {
+            color,
+            width,
+            dash_pattern: (!dash.is_empty()).then_some(dash),
+            ..Default::default()
+        };
+        let mut bbox = super::render_tree::BoundingBox::new(x - width / 2.0, y0, width, y1 - y0);
+        bbox.width = bbox.width.max(0.0);
+        root.children.push(RenderNode::new(
+            next_id(),
+            RenderNodeType::Line(LineNode::new(x, y0, x, y1, style)),
+            bbox,
+        ));
+    }
 }
 
 /// 아래 일점쇄선도 같은 출력 기하를 소비한다. 위 밑줄의 기존 계약은 그대로 유지한다.
@@ -181,6 +320,7 @@ pub(crate) fn resolve_page_phases(root: &mut super::render_tree::RenderNode) {
     if !matches!(root.node_type, RenderNodeType::TextLine(_)) {
         return;
     }
+    raise_top_underlines_over_objects(root);
     type Key = (u32, u8, u32, bool);
     struct Group {
         key: Key,
@@ -262,6 +402,65 @@ pub(crate) fn resolve_page_phases(root: &mut super::render_tree::RenderNode) {
             if let RenderNodeType::TextRun(run) = &mut node.node_type {
                 run.style.top_underline_phase = Some(node.bbox.x - group.origin);
             }
+        }
+    }
+}
+
+/// 글자처럼 둔 개체가 글자보다 높은 줄의 위 밑줄을 그 개체 위끝으로 올린다.
+///
+/// 한컴 12.30 PDF: 20pt 글 사이에 30mm 그림을 둔 줄의 위 밑줄은 그림 위끝 0.02em 위에
+/// 있고(글자만 있는 줄의 글자 위끝 0.02em 위와 같은 규칙), 글자 바로 위가 아니다.
+fn raise_top_underlines_over_objects(line: &mut super::render_tree::RenderNode) {
+    use super::render_tree::RenderNodeType;
+    use crate::model::style::UnderlineType;
+    let object_top = line
+        .children
+        .iter()
+        .filter(|node| {
+            node.bbox.height > 0.0
+                && matches!(
+                    node.node_type,
+                    RenderNodeType::Image(_)
+                        | RenderNodeType::Group(_)
+                        | RenderNodeType::Path(_)
+                        | RenderNodeType::Ellipse(_)
+                        | RenderNodeType::Rectangle(_)
+                        | RenderNodeType::Line(_)
+                        | RenderNodeType::TextBox
+                        | RenderNodeType::Equation(_)
+                        | RenderNodeType::Table(_)
+                        | RenderNodeType::FormObject(_)
+                )
+        })
+        .map(|node| node.bbox.y)
+        .filter(|y| y.is_finite())
+        .fold(f64::INFINITY, f64::min);
+    if !object_top.is_finite() {
+        return;
+    }
+    for node in &mut line.children {
+        let RenderNodeType::TextRun(run) = &mut node.node_type else {
+            continue;
+        };
+        let style = &run.style;
+        if style.underline != UnderlineType::Top
+            || style.underline_shape > 10
+            || run.rotation != 0.0
+            || run.is_vertical
+            || run.char_overlap.is_some()
+        {
+            continue;
+        }
+        let (font_size, baseline) =
+            style.script_draw_metrics(style.effective_font_size(), node.bbox.y + run.baseline);
+        let size = style
+            .top_underline_font_size
+            .filter(|size| size.is_finite() && *size > 0.0)
+            .unwrap_or(font_size);
+        // 위 밑줄 기하는 글자 위끝(기준선 위 0.85em)에 맞춘 값이다.
+        let raise = baseline - 0.85 * size - object_top;
+        if raise.is_finite() && raise > 0.01 {
+            run.style.top_underline_raise = Some(raise);
         }
     }
 }

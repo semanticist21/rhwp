@@ -1047,6 +1047,7 @@ fn try_char_style_to_text_style<S: crate::renderer::style_resolver::storage::Sto
             emphasis_skip_first_cluster: false,
             top_underline_font_size: None,
             top_underline_phase: None,
+            top_underline_raise: None,
             fixed_glyph_advances: false,
             source_font_is_hft: cs.source_hft_for_lang(lang_index),
             source_font_is_ttf: cs.source_ttf_for_lang(lang_index),
