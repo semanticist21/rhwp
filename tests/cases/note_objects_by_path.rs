@@ -455,3 +455,26 @@ fn note_picture_keeps_following_text_drawn() {
         assert!(svg.contains(">석</text>"), "{kind}: 그림 뒤 글이 없다");
     }
 }
+
+/// 주석 안 표도 셀 경로로 셀 정보를 읽고 계산식을 다시 계산한다(주석 마디를 지나 표를 찾는다).
+#[test]
+fn note_table_cell_info_and_formulas_by_path() {
+    for kind in ["footnote", "endnote"] {
+        let (mut doc, note) = body_note(kind);
+        let got = insert_objects(&mut doc, 0, &note);
+        let info: Value = serde_json::from_str(
+            &doc.get_cell_info_by_path(0, 0, &json_path(&got.a1))
+                .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(
+            (info["row"].as_u64(), info["col"].as_u64()),
+            (Some(0), Some(0)),
+            "{kind}"
+        );
+        let mut table = got.a1.clone();
+        table.last_mut().unwrap().2 = 0;
+        doc.recalculate_table_formulas_by_path(0, 0, &json_path(&table), 0, true)
+            .unwrap();
+    }
+}

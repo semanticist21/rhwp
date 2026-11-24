@@ -828,6 +828,23 @@ impl DocumentCore {
                 Control::Header(_) | Control::Footer(_) => {
                     para = header_footer_step(ctrl, i, cell_idx, cell_para_idx)?;
                 }
+                // 각주·미주 안 표도 주석 마디(셀 0, 주석 문단)를 지나 찾는다(`resolve_paragraph_by_path`와 같은 꼴).
+                Control::Footnote(note) if cell_idx == 0 => {
+                    para = note.paragraphs.get(cell_para_idx).ok_or_else(|| {
+                        HwpError::RenderError(format!(
+                            "경로[{}]: 각주 문단 {} 범위 초과",
+                            i, cell_para_idx
+                        ))
+                    })?;
+                }
+                Control::Endnote(note) if cell_idx == 0 => {
+                    para = note.paragraphs.get(cell_para_idx).ok_or_else(|| {
+                        HwpError::RenderError(format!(
+                            "경로[{}]: 미주 문단 {} 범위 초과",
+                            i, cell_para_idx
+                        ))
+                    })?;
+                }
                 _ => {
                     return Err(HwpError::RenderError(format!(
                         "경로[{}]: controls[{}]가 표/글상자/그림 캡션이 아닙니다",
