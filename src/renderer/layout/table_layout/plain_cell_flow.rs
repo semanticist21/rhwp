@@ -420,7 +420,7 @@ impl super::CellUnit {
 /// 표 기본 칸 여백 141·400, 칸 글자 10·16pt, 병합 칸·저장 줄 유무와 무관했다 — 칸의 줄 높이가
 /// 기준이 아니다. 한/글 2020 #7642 stage3197 의 13.33px 흡수 · 21.33px 이월과도 맞는다.
 /// 1282HU 는 기본 10pt 줄(1000)과 기본 칸 위아래 여백(141×2)의 합이다.
-const COMPLETE_ROW_BLANK_TAIL_ABSORB_HU: i32 = 1282;
+pub(crate) const COMPLETE_ROW_BLANK_TAIL_ABSORB_HU: i32 = 1282;
 
 fn complete_row_blank_tail_is_absorbed(tail: f64, dpi: f64) -> bool {
     tail <= super::hwpunit_to_px(COMPLETE_ROW_BLANK_TAIL_ABSORB_HU, dpi)

@@ -57,6 +57,14 @@ pub(crate) fn stored_plain_opening_row_frame(table: &Table) -> Option<StoredOpen
         if surplus < 0 {
             continue;
         }
+        // 첫 개체 상자 뒤에 남는 선언 몫이 쪽 경계 흡수 한도를 넘으면 한/글은 그 몫을 다음
+        // 쪽 첫머리 빈 띠로 잇는다(한/글 12.30 저장본: 칸 112964HU 행을 첫 상자 63495HU 에서
+        // 닫지 않고 다음 쪽에 659.5px 를 더 그린다). 이 행은 저장 그리드 그대로 둔다.
+        if surplus
+            > i64::from(crate::renderer::layout::table_layout::COMPLETE_ROW_BLANK_TAIL_ABSORB_HU)
+        {
+            return None;
+        }
         let closing = i32::try_from(i64::from(rows[last]) - surplus).ok()?;
         if closing <= 0 {
             return None;

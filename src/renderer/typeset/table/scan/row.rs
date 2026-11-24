@@ -274,6 +274,25 @@ pub(in crate::renderer::typeset) fn ordinary_band_row_shape(
         && row_total <= declared_row_height_px(table, row, dpi) + 0.5
 }
 
+/// 칸 선언 높이가 새 쪽 본문(`fresh_budget`)보다 큰 일반 글줄 행.
+/// 한/글 12.30은 이 행을 어느 쪽에도 통째로 넣지 못하므로 내용이 끝난 뒤에도 선언 높이의
+/// 빈 띠를 쪽 아래 닫는 선에서 자르고 남은 몫을 다음 쪽 첫머리로 잇는다(2×2 표 칸 112964HU
+/// = 1506px: 한/글 인쇄 57.3 · 867.8 · 581.0px 로 세 쪽에 걸쳐 그린다).
+pub(in crate::renderer::typeset) fn declared_row_exceeds_page(
+    table: &crate::model::table::Table,
+    row: usize,
+    fresh_budget: f64,
+    dpi: f64,
+) -> bool {
+    row_content_is_line_units_only(table, row)
+        && table
+            .cells
+            .iter()
+            .filter(|cell| cell.row as usize == row)
+            .all(|cell| cell.row_span == 1 && cell.height < 0x8000_0000)
+        && declared_row_height_px(table, row, dpi) > fresh_budget + 0.5
+}
+
 /// 행의 선언 높이 — 이 행에서 시작해 이 행에서 끝나는 칸의 저장 높이 중 최댓값(px).
 fn declared_row_height_px(table: &crate::model::table::Table, row: usize, dpi: f64) -> f64 {
     table

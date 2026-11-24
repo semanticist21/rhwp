@@ -119,6 +119,16 @@ impl TypesetEngine {
             crate::model::shape::TextWrap::TopAndBottom
         ) && (layout_engine.row_has_plain_line_units(table, r, styles)
             || crate::renderer::typeset::is_reparsed_single_column_cell_split_row(table, r));
+        // 새 쪽에도 들어가지 않는 선언 높이의 일반 행은 내용이 끝난 뒤 빈 선언 띠로 쪽을 넘는다.
+        let declared_band_row = mt.allows_row_break_split()
+            && !rowspan_touched[r]
+            && !table.common.treat_as_char
+            && table::scan::row::declared_row_exceeds_page(
+                table,
+                r,
+                (st.base_available_height() - header_overhead).max(0.0),
+                self.dpi,
+            );
         let avail_for_rows = v.plain_row_available_height(owns_plain_row_frame, plain_body_band);
         if avail_for_rows < v.avail_for_rows && std::env::var("RHWP_DIAG_SCAN").is_ok() {
             eprintln!(
@@ -716,7 +726,7 @@ impl TypesetEngine {
                         || table_storage_declares_splits
                         || row_needs_whole_band
                 },
-                physical_minimum_splittable,
+                physical_minimum_splittable || declared_band_row,
             );
             if !splittable {
                 if r == cursor_row {
@@ -1021,10 +1031,12 @@ impl TypesetEngine {
                 }
                 // 빈 줄도 점유 상자를 보존한다. 앞 내용 뒤의 완전한 원본 빈 행은
                 // 가시 글자의 고아 기준 대신 그 원본 상자와 실제 띠로 완결한다.
+                // 새 쪽보다 큰 선언 빈 행은 쪽 끝에서 닫지 않고 아래 빈 꼬리 컷으로 잇는다.
                 let rest = (avail_for_rows - consumed - cs_before).max(0.0);
                 if mt.allows_row_break_split()
                     && r > cursor_row
                     && !rowspan_touched[r]
+                    && !declared_band_row
                     && row_start_cut.is_empty()
                     && table::scan::row::ordinary_band_row_shape(table, r, row_total, self.dpi)
                     && layout_engine
@@ -1043,8 +1055,15 @@ impl TypesetEngine {
                 // minimum fits. Cut the blank tail at the accepted page budget and
                 // carry it with the exhausted content cursor; never force the full
                 // carried height past the page or replay the already consumed units.
-                let rest = (avail_for_rows - consumed - cs_before).max(0.0);
-                if layout_engine.row_uses_reflow_physical_frame(table, r)
+                // 새 쪽보다 큰 선언 행은 저장 글줄이어도 같은 빈 꼬리 컷을 쓰고, 그 띠는 다른
+                // 선언 최소처럼 빈 띠 닫는 선까지만 예약한다(내용 컷의 예산은 바꾸지 않는다).
+                let band_avail = if declared_band_row {
+                    v.blank_row_available_height().min(avail_for_rows)
+                } else {
+                    avail_for_rows
+                };
+                let rest = (band_avail - consumed - cs_before).max(0.0);
+                if (layout_engine.row_uses_reflow_physical_frame(table, r)
                     && (r == cursor_row && start_row_height_override.is_some()
                         || layout_engine
                             .reflow_row_physical_minimum(
@@ -1055,6 +1074,11 @@ impl TypesetEngine {
                                 styles,
                             )
                             .is_some())
+                    || declared_band_row
+                        && (row_start_cut.is_empty()
+                            || r == cursor_row && start_row_height_override.is_some())
+                        // 흡수 한도 이하의 빈 꼬리는 한/글도 쪽 경계에서 버린다.
+                        && !layout_engine.complete_row_blank_tail_is_absorbed(row_total - rest))
                     && mt.allows_row_break_split()
                     && row_total > rest + 0.5
                     && res.consumed_height + padding <= rest + 0.5

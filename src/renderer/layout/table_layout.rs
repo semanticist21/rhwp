@@ -56,6 +56,7 @@ mod stored_wrapper_prefix;
 mod stored_zero_origin;
 mod straddle_continuation;
 mod tac_host_end;
+pub(crate) use plain_cell_flow::COMPLETE_ROW_BLANK_TAIL_ABSORB_HU;
 pub(crate) use stored_zero_origin::SavedZeroOriginWitness;
 pub(super) mod unit_diagnostics;
 mod wrapper_cell_viewport;

@@ -1720,6 +1720,42 @@ impl TypesetEngine {
                     span_band_owns_end_row = true;
                     span_band_row_box = Some((last_row, last_height + ledger_band));
                 }
+            } else if other_content_cut
+                && !(self.stored_header_physical_rows(st, input.source)
+                    || layout_engine.has_stored_continuous_spans(row_geometry_table))
+                && super::physical_rows::row_cells_hold_only_text_lines(
+                    row_geometry_table,
+                    last_row,
+                )
+                && !row_geometry_table.cells.iter().any(|cell| {
+                    let first = usize::from(cell.row);
+                    cell.row_span > 1
+                        && first <= last_row
+                        && last_row < first + usize::from(cell.row_span)
+                })
+            {
+                // 저장 걸침 프레임이 없는 표에서 재조판 글줄로 나뉜 일반 행도 저장 문단 컷과 같이
+                // 그 행 칸의 선언 높이까지 쪽 끝 띠를 갖는다. 한/글 12.30은 칸 선언 12164HU(162.2px)
+                // 행의 2줄 컷(38.4px)을 쪽 아래 닫는 선(57.3px)까지 그린다 — 다시 연 문서와 같다.
+                let reserved = if split_end_reserved > 0.0 {
+                    split_end_reserved
+                } else {
+                    split_end_limit
+                };
+                let cap = (super::physical_rows::declared_row_height(
+                    row_geometry_table,
+                    last_row,
+                    self.dpi,
+                ) - last_height)
+                    .max(0.0);
+                let band = unreserved_page_end_band.min(cap);
+                let ledger_band = ledger_page_end_band.min(cap);
+                let ledger_box = last_height + ledger_band;
+                end_row_height_override = Some(ledger_box);
+                partial_height += ledger_box - reserved;
+                ledger_end_row_trim = (ledger_band - band).max(0.0);
+                span_band_owns_end_row = true;
+                span_band_row_box = Some((last_row, ledger_box));
             } else {
                 // 쪽 끝까지의 방은 예약(`consumed`)이 이 행에 실제로 준 높이 위에 남은 띠를 더한
                 // 값이고, 상자는 끝 컷 내용(`last_height`) 이상·걸침 칸의 남는 몫 이하다. 컷 경로에
