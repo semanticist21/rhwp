@@ -237,6 +237,12 @@ impl TypesetEngine {
                 self.dpi,
             )
         });
+        let section_spacing_hu = (self.profile.get().hwp5_container()
+            || self.profile.get().hwpx_container())
+        .then(|| self.section_column_spacing_hu.get())
+        .flatten();
+        let prior_line_spacing_hu =
+            crate::renderer::zone_closing_line_spacing_hu(paragraphs, para_idx);
         let solo_zone_pad = if leaving_is_header_band {
             0.0
         } else if let Some(pad) = header_entry_pad.or(header_exit_pad) {
@@ -244,14 +250,17 @@ impl TypesetEngine {
         } else if let Some(title_exit_pad) = title_exit_pad {
             title_exit_pad
         } else if column_break_new_band && st.col_count > 1 && new_band_is_multicol {
-            crate::renderer::multicol_band_break_pad_px(self.dpi)
+            crate::renderer::multicol_band_break_pad_px(
+                section_spacing_hu,
+                prior_line_spacing_hu,
+                self.dpi,
+            )
         } else if entering_solo_zero || leaving_solo_zero || column_break_new_band {
             crate::renderer::solo_zone_pad_px(
                 entering_solo_zero,
                 st.col_count > 1,
-                (self.profile.get().hwp5_container() || self.profile.get().hwpx_container())
-                    .then(|| self.section_column_spacing_hu.get())
-                    .flatten(),
+                section_spacing_hu,
+                prior_line_spacing_hu,
                 self.dpi,
             )
         } else {

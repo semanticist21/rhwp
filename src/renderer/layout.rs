@@ -7330,6 +7330,13 @@ impl LayoutEngine {
                         self.dpi,
                     )
                 });
+                let section_spacing_hu = (self.profile.get().hwp5_container()
+                    || self.profile.get().hwpx_container())
+                .then(|| self.section_column_spacing_hu.get())
+                .flatten();
+                let prior_line_spacing_hu = new_zone_first_para.map_or(0, |first| {
+                    super::zone_closing_line_spacing_hu(paragraphs, first)
+                });
                 let solo_zone_pad = if prev_zone_was_header_band {
                     0.0
                 } else if let Some(pad) = header_entry_pad.or(header_exit_pad) {
@@ -7337,15 +7344,17 @@ impl LayoutEngine {
                 } else if let Some(title_exit_pad) = title_exit_pad {
                     title_exit_pad
                 } else if column_break_new_band && prev_zone_was_multi && new_band_is_multicol {
-                    super::multicol_band_break_pad_px(self.dpi)
+                    super::multicol_band_break_pad_px(
+                        section_spacing_hu,
+                        prior_line_spacing_hu,
+                        self.dpi,
+                    )
                 } else if new_zone_is_solo_zero || prev_zone_is_solo_zero || column_break_new_band {
                     super::solo_zone_pad_px(
                         new_zone_is_solo_zero,
                         prev_zone_was_multi,
-                        (self.profile.get().hwp5_container()
-                            || self.profile.get().hwpx_container())
-                        .then(|| self.section_column_spacing_hu.get())
-                        .flatten(),
+                        section_spacing_hu,
+                        prior_line_spacing_hu,
                         self.dpi,
                     )
                 } else {

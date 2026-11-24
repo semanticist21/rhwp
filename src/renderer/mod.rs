@@ -3049,27 +3049,52 @@ pub(crate) fn plain_text_column_zone(
         })
 }
 
-/// 같은 쪽의 단일 단 뒤에는 구역에 저장된 단 사이 간격을 쓴다.
-/// 구역 정보 없는 직접 호출과 다단 뒤의 전환은 기존 간격 계약을 유지한다.
+/// 같은 쪽에서 단 정의가 바뀌는 자리에는 구역에 저장된 단 사이 간격을 쓴다.
+/// 한컴 12.30은 앞 영역의 단 수와 상관없이 마지막 줄 아래끝(줄 간격 제외)에서 이 간격을 띄운다
+/// (shortcut.hwp 구역 간격 0·2000·5669 PDF에서 다단→한 단 헤더 띠 자리가 그 차이만큼 움직인다).
+/// 한 단 영역 끝 높이는 마지막 줄 간격을 이미 뺐지만, 다단 영역 끝 높이는 그 줄 간격을 품으므로
+/// `prior_line_spacing_hu`(앞 영역 마지막 줄의 줄 간격)만큼 덜 띄운다.
+/// 구역 정보 없는 직접 호출은 기존 고정 간격 계약을 유지한다.
 pub(crate) fn solo_zone_pad_px(
     entering_solo: bool,
     prior_multicol: bool,
     section_spacing_hu: Option<i32>,
+    prior_line_spacing_hu: i32,
     dpi: f64,
 ) -> f64 {
-    let spacing = section_spacing_hu
-        .filter(|spacing| !prior_multicol && *spacing >= 0)
-        .unwrap_or(if entering_solo && prior_multicol {
-            1500
-        } else {
-            1200
-        });
+    let spacing = match section_spacing_hu.filter(|spacing| *spacing >= 0) {
+        Some(spacing) if !prior_multicol => spacing,
+        Some(spacing) if entering_solo => spacing - prior_line_spacing_hu,
+        _ if entering_solo && prior_multicol => 1500,
+        _ => 1200,
+    };
     hwpunit_to_px(spacing, dpi)
 }
 
-/// 명시 단나누기가 다단에서 다음 다단 밴드를 시작할 때 저장 한 줄 간격.
-pub(crate) fn multicol_band_break_pad_px(dpi: f64) -> f64 {
-    hwpunit_to_px(1500, dpi)
+/// 명시 단나누기가 다단에서 다음 다단 밴드를 시작할 때의 간격.
+/// 구역 단 사이 간격을 앞 밴드 마지막 줄의 줄 간격만큼 덜 띄운다(`solo_zone_pad_px`와 같은 셈).
+/// 구역 정보가 없으면 저장 한 줄 간격(1500)을 쓴다.
+pub(crate) fn multicol_band_break_pad_px(
+    section_spacing_hu: Option<i32>,
+    prior_line_spacing_hu: i32,
+    dpi: f64,
+) -> f64 {
+    let spacing = section_spacing_hu
+        .filter(|spacing| *spacing >= 0)
+        .map_or(1500, |spacing| spacing - prior_line_spacing_hu);
+    hwpunit_to_px(spacing, dpi)
+}
+
+/// 새 영역 첫 문단 앞에서 저장 줄을 가진 문단의 마지막 줄 간격(HWPUNIT).
+pub(crate) fn zone_closing_line_spacing_hu(
+    paragraphs: &[crate::model::paragraph::Paragraph],
+    new_zone_first_para: usize,
+) -> i32 {
+    paragraphs[..new_zone_first_para.min(paragraphs.len())]
+        .iter()
+        .rev()
+        .find_map(|para| para.line_segs.last())
+        .map_or(0, |line| line.line_spacing.max(0))
 }
 
 /// 큰 디자인 간격의 한 줄 표 헤더 앞뒤에 나누어 예약할 직전 제목의 줄간격.
