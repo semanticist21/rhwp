@@ -3049,52 +3049,135 @@ pub(crate) fn plain_text_column_zone(
         })
 }
 
-/// 같은 쪽에서 단 정의가 바뀌는 자리에는 구역에 저장된 단 사이 간격을 쓴다.
-/// 한컴 12.30은 앞 영역의 단 수와 상관없이 마지막 줄 아래끝(줄 간격 제외)에서 이 간격을 띄운다
-/// (shortcut.hwp 구역 간격 0·2000·5669 PDF에서 다단→한 단 헤더 띠 자리가 그 차이만큼 움직인다).
-/// 한 단 영역 끝 높이는 마지막 줄 간격을 이미 뺐지만, 다단 영역 끝 높이는 그 줄 간격을 품으므로
-/// `prior_line_spacing_hu`(앞 영역 마지막 줄의 줄 간격)만큼 덜 띄운다.
-/// 구역 정보 없는 직접 호출은 기존 고정 간격 계약을 유지한다.
-pub(crate) fn solo_zone_pad_px(
-    entering_solo: bool,
-    prior_multicol: bool,
-    section_spacing_hu: Option<i32>,
-    prior_line_spacing_hu: i32,
-    dpi: f64,
-) -> f64 {
-    let spacing = match section_spacing_hu.filter(|spacing| *spacing >= 0) {
-        Some(spacing) if !prior_multicol => spacing,
-        Some(spacing) if entering_solo => spacing - prior_line_spacing_hu,
-        _ if entering_solo && prior_multicol => 1500,
-        _ => 1200,
-    };
-    hwpunit_to_px(spacing, dpi)
+/// 구역 단 사이 간격을 모르는 문서(HWP5·HWPX 밖)에서 한 단 영역 앞뒤의 고정 간격.
+/// 다단 뒤 한 단 진입은 저장 한 줄 간격(1500), 나머지는 1200 이다.
+pub(crate) fn solo_zone_pad_px(entering_solo: bool, prior_multicol: bool, dpi: f64) -> f64 {
+    hwpunit_to_px(
+        if entering_solo && prior_multicol {
+            1500
+        } else {
+            1200
+        },
+        dpi,
+    )
 }
 
-/// 명시 단나누기가 다단에서 다음 다단 밴드를 시작할 때의 간격.
-/// 구역 단 사이 간격을 앞 밴드 마지막 줄의 줄 간격만큼 덜 띄운다(`solo_zone_pad_px`와 같은 셈).
-/// 구역 정보가 없으면 저장 한 줄 간격(1500)을 쓴다.
-pub(crate) fn multicol_band_break_pad_px(
-    section_spacing_hu: Option<i32>,
-    prior_line_spacing_hu: i32,
-    dpi: f64,
-) -> f64 {
-    let spacing = section_spacing_hu
-        .filter(|spacing| *spacing >= 0)
-        .map_or(1500, |spacing| spacing - prior_line_spacing_hu);
-    hwpunit_to_px(spacing, dpi)
+/// 구역 단 사이 간격을 모르는 문서에서 명시 단나누기로 다음 다단 밴드를 시작할 때의 저장 한 줄 간격.
+pub(crate) fn multicol_band_break_pad_px(dpi: f64) -> f64 {
+    hwpunit_to_px(1500, dpi)
 }
 
-/// 새 영역 첫 문단 앞에서 저장 줄을 가진 문단의 마지막 줄 간격(HWPUNIT).
-pub(crate) fn zone_closing_line_spacing_hu(
+/// 같은 쪽에서 단 정의가 바뀌는 자리의 간격(영역 끝 높이·디자인 간격 위에 더하는 몫).
+/// 한컴 12.30은 앞 영역의 단 수·단 종류·1단 단 간격과 상관없이 마지막 줄 아래끝(줄 간격 제외)에서
+/// 구역의 단 사이 간격만 띄운다. 영역 끝 높이에 남은 마지막 줄 간격(`kept_line_spacing_px`)과
+/// 호출부가 따로 더하는 1단 디자인 간격 절반들(`design_halves_px`)은 그 간격에서 뺀다.
+pub(crate) fn zone_transition_pad_px(
+    section_spacing_hu: i32,
+    kept_line_spacing_px: f64,
+    design_halves_px: f64,
+    dpi: f64,
+) -> f64 {
+    hwpunit_to_px(section_spacing_hu, dpi) - kept_line_spacing_px - design_halves_px
+}
+
+/// 같은 쪽의 다음 단 정의가 닫는 다단 글 영역의 끝 문단(미포함).
+///
+/// 한컴 12.30은 단 정의가 바뀌는 자리 앞의 다단 영역을 단마다 고르게 나눈다(단 종류 일반·배분 같음:
+/// rhwp가 만든 한 단·두 단·한 단 문서의 11줄 두 단 영역을 6/5로 나눈다). 글만 있는 영역만 대상이다.
+/// 한컴이 이미 단을 나눈 저장 줄(위치가 되돌아가는 줄)·개체·묶음 제약·영역 안 단/쪽 나누기,
+/// 다음 단 정의 없이 끝나는 영역은 나누지 않는다.
+pub(crate) fn balanced_text_zone_end(
     paragraphs: &[crate::model::paragraph::Paragraph],
-    new_zone_first_para: usize,
-) -> i32 {
-    paragraphs[..new_zone_first_para.min(paragraphs.len())]
+    start: usize,
+    styles: &style_resolver::ResolvedStyleSet,
+) -> Option<usize> {
+    use crate::model::control::Control;
+    use crate::model::paragraph::ColumnBreakType;
+    let mut last_vpos = i32::MIN;
+    for (index, para) in paragraphs.iter().enumerate().skip(start) {
+        let opens_zone = para.column_type == ColumnBreakType::MultiColumn
+            || para
+                .controls
+                .iter()
+                .any(|ctrl| matches!(ctrl, Control::ColumnDef(_)));
+        if index > start && opens_zone {
+            return Some(index);
+        }
+        let plain = para
+            .controls
+            .iter()
+            .all(|ctrl| matches!(ctrl, Control::ColumnDef(_) | Control::SectionDef(_)))
+            && styles
+                .para_styles
+                .get(para.para_shape_id as usize)
+                .is_some_and(|style| {
+                    !style.keep_with_next && !style.keep_lines && !style.widow_orphan
+                });
+        if !plain || (index > start && para.column_type != ColumnBreakType::None) {
+            return None;
+        }
+        for line in &para.line_segs {
+            // 앞 줄보다 위(또는 같은 자리)에서 시작하는 저장 줄은 한컴이 이미 단을 나눈 자리다.
+            if line.vertical_pos <= last_vpos {
+                return None;
+            }
+            last_vpos = line.vertical_pos;
+        }
+    }
+    None
+}
+
+/// 고르게 나눌 다단 영역의 앞 단 높이(영역 상대 px). `lines`는 영역 흐름의 줄 (위끝, 아래끝)이다.
+/// 앞 단이 가장 적게 받으면서 모든 줄이 `column_count` 단에 드는 높이를 고르고, 그 단 마지막 줄의
+/// 줄 간격 자리(다음 줄 위끝)까지 준다. 한 단에 다 들거나 이 쪽 남은 높이에 다 들지 않으면 나누지 않는다.
+pub(crate) fn balanced_column_height_px(
+    lines: &[(f64, f64)],
+    column_count: u16,
+    available_px: f64,
+) -> Option<f64> {
+    const EPS: f64 = 0.01;
+    let &(origin, _) = lines.first()?;
+    let total = lines.last()?.1 - origin;
+    let fits = |height: f64| {
+        let mut columns = 1;
+        let mut column_top = origin;
+        for &(top, bottom) in lines {
+            if bottom - column_top > height + EPS {
+                columns += 1;
+                column_top = top;
+            }
+        }
+        columns <= usize::from(column_count)
+    };
+    let height = lines
         .iter()
-        .rev()
-        .find_map(|para| para.line_segs.last())
-        .map_or(0, |line| line.line_spacing.max(0))
+        .map(|&(_, bottom)| bottom - origin)
+        .find(|&height| fits(height))?;
+    let next_top = lines
+        .iter()
+        .map(|&(top, _)| top - origin)
+        .find(|&top| top >= height - EPS)
+        .unwrap_or(height);
+    let height = height.max(next_top) + 0.5;
+    (column_count >= 2
+        && next_top < total
+        && total <= available_px * f64::from(column_count)
+        && height <= available_px)
+        .then_some(height)
+}
+
+/// 영역을 닫는 문단의 마지막 줄 간격(HWPUNIT). 저장 줄이 없으면 배치가 쓴 구성 줄을 읽는다.
+pub(crate) fn closing_line_spacing_hu(
+    paragraph: &crate::model::paragraph::Paragraph,
+    composed: Option<&composer::ComposedParagraph>,
+) -> i32 {
+    paragraph
+        .line_segs
+        .last()
+        .map(|line| line.line_spacing)
+        .or_else(|| composed?.lines.last().map(|line| line.line_spacing))
+        .unwrap_or(0)
+        .max(0)
 }
 
 /// 큰 디자인 간격의 한 줄 표 헤더 앞뒤에 나누어 예약할 직전 제목의 줄간격.

@@ -81,6 +81,59 @@ impl TypesetEngine {
         let closing_content_height = closing_text_bounds
             .filter(|bounds| blank_tail_spacing == 0.0 && bounds.flow_end == st.current_height)
             .map_or(closing_content_height, |bounds| bounds.content_bottom);
+        let closing_trailing_cut_px = st.current_height - closing_content_height;
+        // 한컴 12.30은 단 정의가 바뀌는 자리마다 앞 영역 마지막 줄 아래끝(줄 간격 제외)에서
+        // 구역의 단 사이 간격만 띄운다(shortcut.hwp 구역 간격 0·2000·5669 PDF에서 제목→헤더 띠,
+        // 헤더 띠→본문, 본문→헤더 띠, `<…>` 소제목 앞뒤가 모두 그 차이만큼 움직인다).
+        // 구역 간격을 모르는 문서(HWP5·HWPX 밖)만 아래의 영역별 고정 간격을 쓴다.
+        let section_spacing_hu = self.zone_spacing_hu();
+        let balanced_closing_spacing = st.close_zone_balance();
+        let balanced = balanced_closing_spacing.is_some();
+        let zone_columns: Vec<_> = st
+            .pages
+            .last()
+            .map(|page| {
+                page.column_contents
+                    .iter()
+                    .rev()
+                    .take_while(|column| {
+                        (column.zone_y_offset - st.current_zone_y_offset).abs() < 0.1
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+        // 고르게 나눈 다단 영역은 저장 줄 위치가 한 단에 몰려 있으므로 가장 높은 단의 흐름 높이로 닫는다.
+        let balanced_zone_height = balanced.then(|| {
+            zone_columns
+                .iter()
+                .map(|column| column.used_height)
+                .fold(0.0, f64::max)
+        });
+        // 다단 영역의 끝은 마지막 단이 아니라 이 쪽 모든 단의 저장 줄 아래끝 가운데 가장 낮은 자리다.
+        let multicol_stored_end = (st.col_count > 1 && section_spacing_hu.is_some())
+            .then(|| {
+                zone_columns
+                    .iter()
+                    .flat_map(|column| &column.items)
+                    .filter_map(|item| {
+                        let (index, lines) = match item {
+                            PageItem::FullParagraph { para_index } => (*para_index, 0..usize::MAX),
+                            PageItem::PartialParagraph {
+                                para_index,
+                                start_line,
+                                end_line,
+                            } => (*para_index, *start_line..*end_line),
+                            _ => return None,
+                        };
+                        let segs = &paragraphs.get(index)?.line_segs;
+                        segs.get(lines.start.min(segs.len())..lines.end.min(segs.len()))?
+                            .iter()
+                            .map(|line| line.vertical_pos.saturating_add(line.line_height))
+                            .max()
+                    })
+                    .max()
+            })
+            .flatten();
 
         // [Task #874 Case 5] leaving zone 의 height 계산 시 마지막 라인의 trailing
         // line_spacing 을 제외한다. zone 간 gap 은 design_spacing/2 + solo_zone_pad 가
@@ -91,7 +144,12 @@ impl TypesetEngine {
         // pi=80 (21_언어_기출_편집가능본 test_544) 회귀 없음 — pi=80 은 zone 내부 box
         // 인접 paragraph 로 trailing_ls 가 layout 의 y_offset 에서 포함됨 (이 변경은 zone
         // 전환 시의 vpos_zone_height 만 수정).
-        let vpos_zone_height = if para_idx > 0 {
+        // 저장 줄 아래끝(줄 간격 제외)이 영역 높이를 정한 경우의 그 값. 영역 높이가 이보다 크면
+        // 그 차이는 마지막 줄 간격이 남은 몫이다(구역 단 사이 간격에서 뺀다).
+        let mut stored_zone_bottom_px = None;
+        let vpos_zone_height = if let Some(height) = balanced_zone_height {
+            height
+        } else if para_idx > 0 {
             let mut max_vpos_end: i32 = 0;
             let mut prev_is_floating_anchor = false;
             for prev_idx in (0..para_idx).rev() {
@@ -106,6 +164,9 @@ impl TypesetEngine {
                         );
                     break;
                 }
+            }
+            if let Some(end) = multicol_stored_end {
+                max_vpos_end = max_vpos_end.max(end);
             }
             // [#2019 부분 완화] leaving zone 높이는 "이 페이지에서 콘텐츠가 내려간 높이"여야
             // 한다. 별지 서식처럼 stored vpos 가 섹션 누적 좌표인 문서에서는 max_vpos_end 가
@@ -124,6 +185,7 @@ impl TypesetEngine {
                 // vs 실소비 867.4px — zone 두 개가 1657.3px 로 본문 876.9px 에 겹쳐
                 // 745.7px 이 쪽 밖으로 나갔다). 흐름 누적은 이 쪽에 실제로 놓인 양이므로
                 // 둘 중 큰 값이 이 쪽의 소비량이다.
+                stored_zone_bottom_px = Some(max_vpos_px);
                 max_vpos_px.max(closing_content_height)
             } else {
                 closing_content_height
@@ -154,44 +216,45 @@ impl TypesetEngine {
         // [Task #874 Stage 2] design_spacing 조건을 ≤ 1mm(=3.8px) 까지 인정. 페이지 break 후
         // current_zone_design_spacing_px 가 stale state 로 1mm 남은 경우 (shortcut.hwp 6쪽
         // pi=210 '도구' 헤더띠 zone cd 가 pi=209 cd=1mm 인 케이스) 도 헤더띠 leaving 으로 식별.
-        let tac_band_extra: f64 = if st.current_zone_design_spacing_px < 4.0 {
-            (0..para_idx)
-                .rev()
-                .find(|&i| !paragraphs[i].line_segs.is_empty())
-                .and_then(|pi| {
-                    paragraphs[pi].controls.iter().find_map(|c| match c {
-                        Control::Table(t)
-                            if t.common.treat_as_char
-                                && matches!(
-                                    t.common.text_wrap,
-                                    crate::model::shape::TextWrap::TopAndBottom
-                                ) =>
-                        {
-                            if paragraphs[pi].line_segs.len() > 1 {
-                                Some(crate::renderer::partial_tac_header_tail_px(
-                                    t.common.height,
-                                    t.outer_margin_bottom,
-                                    paragraphs[pi]
-                                        .line_segs
-                                        .last()
-                                        .map_or(0, |line| line.line_spacing),
-                                    self.dpi,
-                                ))
-                            } else {
-                                Some(crate::renderer::single_tac_header_tail_px(
-                                    t.common.height,
-                                    t.outer_margin_top,
-                                    self.dpi,
-                                ))
+        let tac_band_extra: f64 =
+            if section_spacing_hu.is_none() && st.current_zone_design_spacing_px < 4.0 {
+                (0..para_idx)
+                    .rev()
+                    .find(|&i| !paragraphs[i].line_segs.is_empty())
+                    .and_then(|pi| {
+                        paragraphs[pi].controls.iter().find_map(|c| match c {
+                            Control::Table(t)
+                                if t.common.treat_as_char
+                                    && matches!(
+                                        t.common.text_wrap,
+                                        crate::model::shape::TextWrap::TopAndBottom
+                                    ) =>
+                            {
+                                if paragraphs[pi].line_segs.len() > 1 {
+                                    Some(crate::renderer::partial_tac_header_tail_px(
+                                        t.common.height,
+                                        t.outer_margin_bottom,
+                                        paragraphs[pi]
+                                            .line_segs
+                                            .last()
+                                            .map_or(0, |line| line.line_spacing),
+                                        self.dpi,
+                                    ))
+                                } else {
+                                    Some(crate::renderer::single_tac_header_tail_px(
+                                        t.common.height,
+                                        t.outer_margin_top,
+                                        self.dpi,
+                                    ))
+                                }
                             }
-                        }
-                        _ => None,
+                            _ => None,
+                        })
                     })
-                })
-                .unwrap_or(0.0)
-        } else {
-            0.0
-        };
+                    .unwrap_or(0.0)
+            } else {
+                0.0
+            };
         // [Task #866 v2 Stage 2/4] zone 전환 시 추가 세로 여백.
         // (1) 1단/간격=0 zone(헤더 띠 / `<...>` 소제목) 진입·이탈: +1500 HU(=20px).
         //     shortcut.hwp 4쪽 `개체 모양 복사`↔`<스타일에서>`, 6쪽 `도구`↔`맞춤법 검사` 등.
@@ -237,32 +300,47 @@ impl TypesetEngine {
                 self.dpi,
             )
         });
-        let section_spacing_hu = (self.profile.get().hwp5_container()
-            || self.profile.get().hwpx_container())
-        .then(|| self.section_column_spacing_hu.get())
-        .flatten();
-        let prior_line_spacing_hu =
-            crate::renderer::zone_closing_line_spacing_hu(paragraphs, para_idx);
-        let solo_zone_pad = if leaving_is_header_band {
+        let prior_line_spacing_hu = st
+            .pages
+            .last()
+            .and_then(|page| page.column_contents.last())
+            .and_then(|column| {
+                let index = column.items.last()?.para_index();
+                Some(crate::renderer::closing_line_spacing_hu(
+                    paragraphs.get(index)?,
+                    column.computed_paragraphs.get(&index),
+                ))
+            })
+            .unwrap_or(0);
+        // 영역 높이에 남은 마지막 줄 간격. 고르게 나눈 영역의 흐름 높이는 그 줄 간격을 품고,
+        // 나머지는 저장 줄 아래끝을 넘는 몫만큼(`<…>` 소제목처럼 줄 간격을 빼지 않은 끝) 품는다.
+        let closing_spacing_px = hwpunit_to_px(prior_line_spacing_hu, self.dpi);
+        let kept_line_spacing_px = if let Some(spacing) = balanced_closing_spacing {
+            spacing
+        } else {
+            stored_zone_bottom_px
+                .map_or(closing_spacing_px - closing_trailing_cut_px, |bottom| {
+                    vpos_zone_height - bottom
+                })
+                .clamp(0.0, closing_spacing_px)
+        };
+        let solo_zone_pad = if let Some(spacing) = section_spacing_hu {
+            crate::renderer::zone_transition_pad_px(
+                spacing,
+                kept_line_spacing_px,
+                st.current_zone_design_spacing_px / 2.0 + new_ds / 2.0,
+                self.dpi,
+            )
+        } else if leaving_is_header_band {
             0.0
         } else if let Some(pad) = header_entry_pad.or(header_exit_pad) {
             pad
         } else if let Some(title_exit_pad) = title_exit_pad {
             title_exit_pad
         } else if column_break_new_band && st.col_count > 1 && new_band_is_multicol {
-            crate::renderer::multicol_band_break_pad_px(
-                section_spacing_hu,
-                prior_line_spacing_hu,
-                self.dpi,
-            )
+            crate::renderer::multicol_band_break_pad_px(self.dpi)
         } else if entering_solo_zero || leaving_solo_zero || column_break_new_band {
-            crate::renderer::solo_zone_pad_px(
-                entering_solo_zero,
-                st.col_count > 1,
-                section_spacing_hu,
-                prior_line_spacing_hu,
-                self.dpi,
-            )
+            crate::renderer::solo_zone_pad_px(entering_solo_zero, st.col_count > 1, self.dpi)
         } else {
             0.0
         };
@@ -274,7 +352,12 @@ impl TypesetEngine {
             )
         });
         let candidate_offset = st.current_zone_y_offset
-            + (vpos_zone_height - blank_tail_excess - header_entry_pad.unwrap_or(0.0) * 2.0)
+            + (vpos_zone_height
+                - blank_tail_excess
+                - header_entry_pad
+                    .filter(|_| section_spacing_hu.is_none())
+                    .unwrap_or(0.0)
+                    * 2.0)
                 .max(0.0)
             + tac_band_extra
             + st.current_zone_design_spacing_px / 2.0
@@ -292,8 +375,31 @@ impl TypesetEngine {
         // 본문영역을 넘어 바닥 여백에 그려지던 결함)
         // 제약 없는 텍스트 zone은 실제 format 결과의 첫 줄 수용 판정을 사용한다.
         // 개체·keep 제약을 포함한 zone의 기존 밴드 예약은 유지한다.
+        // 구역 간격을 아는 문서는 영역 끝·간격을 배치와 같게 재므로 새 영역 첫 줄이 들어가는지만 본다.
+        // ponytail: 개체를 품은 첫 문단은 줄 사이에서 쪽을 나누지 못하므로 그 문단 전체를 예약한다
+        // (한컴은 shortcut.hwp 간격 0 판 3쪽 끝 `모양` 줄만 남기고 헤더 띠 표 줄을 다음 쪽으로 넘긴다).
         let reserved_height = if plain_text_zone {
             0.0
+        } else if section_spacing_hu.is_some() {
+            let first = &paragraphs[para_idx];
+            let has_object = first
+                .controls
+                .iter()
+                .any(|ctrl| !matches!(ctrl, Control::ColumnDef(_) | Control::SectionDef(_)));
+            let lines = if has_object {
+                &first.line_segs[..]
+            } else {
+                first.line_segs.get(..1).unwrap_or_default()
+            };
+            lines
+                .first()
+                .zip(lines.last())
+                .map_or(0.0, |(top, bottom)| {
+                    hwpunit_to_px(
+                        bottom.vertical_pos + bottom.line_height - top.vertical_pos,
+                        self.dpi,
+                    )
+                })
         } else {
             hwpunit_to_px(6000, self.dpi)
         };
@@ -312,6 +418,12 @@ impl TypesetEngine {
         for ctrl in &paragraphs[para_idx].controls {
             if let Control::ColumnDef(cd) = ctrl {
                 st.enter_column_definition(cd.column_count.max(1));
+                if cd.column_count > 1 {
+                    st.queue_zone_balance(
+                        crate::renderer::balanced_text_zone_end(paragraphs, para_idx, styles)
+                            .map(|end| (para_idx, end)),
+                    );
+                }
                 let new_layout = PageLayoutInfo::from_page_def(page_def, cd, self.dpi);
                 // [Task #702] 새 zone 의 ColumnType 반영. Distribute(배분) 단에서
                 // 짧은 컬럼 vpos-reset 검출 임계값 완화용.
@@ -396,6 +508,8 @@ impl TypesetEngine {
         // 방금 닫힌 밴드의 높이 = 그 밴드 각 단의 마지막 문단 vpos_end 중 최댓값.
         let zone_off = st.current_zone_y_offset;
         let mut band_height_px = 0.0_f64;
+        // 같은 밴드의 마지막 줄 아래끝(줄 간격 제외). 구역 간격을 아는 문서는 여기에 그 간격을 띄운다.
+        let mut band_bottom_px = 0.0_f64;
         if let Some(page) = st.pages.last() {
             for cc in page.column_contents.iter().rev() {
                 if cc.zone_y_offset != zone_off {
@@ -411,6 +525,10 @@ impl TypesetEngine {
                 });
                 if let Some(pi) = last_para_idx {
                     if let Some(seg) = paragraphs.get(pi).and_then(|p| p.line_segs.last()) {
+                        band_bottom_px = band_bottom_px.max(hwpunit_to_px(
+                            seg.vertical_pos.saturating_add(seg.line_height),
+                            self.dpi,
+                        ));
                         let v = hwpunit_to_px(
                             seg.vertical_pos
                                 .saturating_add(seg.line_height)
@@ -426,6 +544,8 @@ impl TypesetEngine {
         }
         if band_height_px <= 0.0 {
             band_height_px = st.current_height;
+        } else if let Some(spacing) = self.zone_spacing_hu() {
+            band_height_px = band_bottom_px + hwpunit_to_px(spacing, self.dpi);
         }
 
         let first_line_h = paragraphs

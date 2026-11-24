@@ -24,6 +24,31 @@ impl TypesetEngine {
     ) -> Result<Option<notes::footnotes::boundary::NativeHwp5FootnoteBreak>, S::Error> {
         let issue2424_branch_started = issue2424_ts_enabled.then(std::time::Instant::now);
         let mut native_hwp5_footnote_break = None;
+        if let Some((start, end)) = st.take_zone_balance_for(para_idx) {
+            // 영역의 줄을 단 폭으로 미리 재서 앞 단 높이를 정한다(한컴의 단 고르게 나누기).
+            let col_w = st.layout.column_areas.first().map(|area| area.width);
+            let mut lines = Vec::new();
+            let mut closing_spacing = 0.0;
+            let mut y = 0.0;
+            for (index, zone_para) in paragraphs.iter().enumerate().take(end).skip(start) {
+                let formatted =
+                    self.format_paragraph(zone_para, composed.get(index), styles, col_w);
+                y += formatted.spacing_before;
+                for (height, spacing) in formatted.line_heights.iter().zip(&formatted.line_spacings)
+                {
+                    lines.push((y, y + height));
+                    closing_spacing = *spacing;
+                    y += height + spacing;
+                }
+                y += formatted.spacing_after;
+            }
+            let height = crate::renderer::balanced_column_height_px(
+                &lines,
+                st.col_count,
+                st.available_height(),
+            );
+            st.set_zone_balance_height(height, closing_spacing);
+        }
         if !has_table {
             // --- 핵심: format → fits → place/split ---
             let col_w = st

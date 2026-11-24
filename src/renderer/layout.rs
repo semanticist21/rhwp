@@ -7197,6 +7197,15 @@ impl LayoutEngine {
                 .unwrap_or(0.0)
         };
         let mut prev_zone_design_px: f64 = 0.0;
+        // 한컴 12.30은 단 정의가 바뀌는 자리마다 앞 영역 마지막 줄 아래끝(줄 간격 제외)에서 구역의
+        // 단 사이 간격만 띄운다. 구역 간격을 아는 문서는 아래의 영역별 고정 간격 대신 그 규칙을 쓴다.
+        let section_spacing_hu = (self.profile.get().hwp5_container()
+            || self.profile.get().hwpx_container())
+        .then(|| self.section_column_spacing_hu.get())
+        .flatten()
+        .filter(|spacing| *spacing >= 0);
+        // `prev_zone_y_end` 에 남은 앞 영역 마지막 줄 간격(px). 그 간격만큼 덜 띄운다.
+        let mut prev_zone_kept_spacing_px: f64 = 0.0;
         let mut prev_zone_was_solo: bool = false;
         let mut prev_zone_was_multi: bool = false;
         // [Task #866 v3 Stage 1] 직전 zone 이 헤더 띠(TAC wrap=TopAndBottom 표만 보유) 였으면
@@ -7331,33 +7340,23 @@ impl LayoutEngine {
                         self.dpi,
                     )
                 });
-                let section_spacing_hu = (self.profile.get().hwp5_container()
-                    || self.profile.get().hwpx_container())
-                .then(|| self.section_column_spacing_hu.get())
-                .flatten();
-                let prior_line_spacing_hu = new_zone_first_para.map_or(0, |first| {
-                    super::zone_closing_line_spacing_hu(paragraphs, first)
-                });
-                let solo_zone_pad = if prev_zone_was_header_band {
+                let solo_zone_pad = if let Some(spacing) = section_spacing_hu {
+                    super::zone_transition_pad_px(
+                        spacing,
+                        prev_zone_kept_spacing_px,
+                        prev_zone_design_px / 2.0 + new_zone_design / 2.0,
+                        self.dpi,
+                    )
+                } else if prev_zone_was_header_band {
                     0.0
                 } else if let Some(pad) = header_entry_pad.or(header_exit_pad) {
                     pad
                 } else if let Some(title_exit_pad) = title_exit_pad {
                     title_exit_pad
                 } else if column_break_new_band && prev_zone_was_multi && new_band_is_multicol {
-                    super::multicol_band_break_pad_px(
-                        section_spacing_hu,
-                        prior_line_spacing_hu,
-                        self.dpi,
-                    )
+                    super::multicol_band_break_pad_px(self.dpi)
                 } else if new_zone_is_solo_zero || prev_zone_is_solo_zero || column_break_new_band {
-                    super::solo_zone_pad_px(
-                        new_zone_is_solo_zero,
-                        prev_zone_was_multi,
-                        section_spacing_hu,
-                        prior_line_spacing_hu,
-                        self.dpi,
-                    )
+                    super::solo_zone_pad_px(new_zone_is_solo_zero, prev_zone_was_multi, self.dpi)
                 } else {
                     0.0
                 };
@@ -7529,6 +7528,15 @@ impl LayoutEngine {
 
             if y_offset_no_trailing > prev_zone_y_end {
                 prev_zone_y_end = y_offset_no_trailing;
+                // 끝에서 덜어 낸 몫을 뺀 마지막 줄 간격이 영역 끝에 남는다(다단·`<…>` 소제목·헤더 띠).
+                // 저장 줄이 없는 글 문단은 배치한 내용 아래끝과의 차이가 그 몫이다.
+                prev_zone_kept_spacing_px = match last_para.and_then(|p| p.line_segs.last()) {
+                    Some(line) => {
+                        let closing = hwpunit_to_px(line.line_spacing.max(0), self.dpi);
+                        (closing - (y_offset - y_offset_no_trailing)).clamp(0.0, closing)
+                    }
+                    None => (y_offset_no_trailing - body_content_bottom).max(0.0),
+                };
             }
             // [Task #866] 헤더 띠의 저장 줄 수로 잔여 높이를 구분한다. 한 줄 표는
             // 소비한 아래 여백을 빼고, 선행 줄을 포함한 표는 그 줄이 소비한 몫을 뺀다.
@@ -7562,7 +7570,7 @@ impl LayoutEngine {
                             })
                             .unwrap_or(false)
                     };
-                    if cd_gap_zero {
+                    if cd_gap_zero && section_spacing_hu.is_none() {
                         if let Some((band, partial_tail)) =
                             p.controls.iter().find_map(|c| match c {
                                 Control::Table(t)

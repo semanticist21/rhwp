@@ -3557,6 +3557,14 @@ impl TypesetEngine {
         self
     }
 
+    /// 단 정의가 바뀌는 자리의 간격으로 쓸 구역 단 사이 간격(HWPUNIT). HWP5·HWPX 밖은 모른다.
+    pub(in crate::renderer::typeset) fn zone_spacing_hu(&self) -> Option<i32> {
+        (self.profile.get().hwp5_container() || self.profile.get().hwpx_container())
+            .then(|| self.section_column_spacing_hu.get())
+            .flatten()
+            .filter(|spacing| *spacing >= 0)
+    }
+
     fn prime_section_cell_context(&self, engine: &crate::renderer::layout::LayoutEngine) {
         if let Some(spacing) = self.section_column_spacing_hu.get() {
             engine.set_section_column_spacing_hu(spacing);

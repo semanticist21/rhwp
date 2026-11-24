@@ -966,6 +966,38 @@ impl TypesetState {
         self.data.next_para_is_empty_float_table_anchor = empty_float;
         self.data.next_para_is_plain_text = plain_text;
     }
+    /// 고르게 나눌 다단 영역 후보(첫 문단, 끝 문단 미포함)를 건다.
+    pub(in crate::renderer::typeset) fn queue_zone_balance(
+        &mut self,
+        zone: Option<(usize, usize)>,
+    ) {
+        self.data.zone_balance_pending = zone;
+    }
+    /// 이 문단이 후보 영역의 첫 문단이면 후보를 꺼낸다.
+    pub(in crate::renderer::typeset) fn take_zone_balance_for(
+        &mut self,
+        para_idx: usize,
+    ) -> Option<(usize, usize)> {
+        self.data
+            .zone_balance_pending
+            .take_if(|(start, _)| *start == para_idx)
+    }
+    pub(in crate::renderer::typeset) fn set_zone_balance_height(
+        &mut self,
+        height: Option<f64>,
+        closing_spacing: f64,
+    ) {
+        self.data.zone_balance_height = height;
+        self.data.zone_balance_closing_spacing = closing_spacing;
+    }
+    /// 영역을 닫으며 고르게 나눈 상태를 지운다. 고르게 나눈 영역이었으면 마지막 줄 간격을 준다.
+    pub(in crate::renderer::typeset) fn close_zone_balance(&mut self) -> Option<f64> {
+        self.data.zone_balance_pending = None;
+        self.data
+            .zone_balance_height
+            .take()
+            .map(|_| self.data.zone_balance_closing_spacing)
+    }
     pub(in crate::renderer::typeset) fn enter_column_definition(&mut self, count: u16) {
         self.data.col_count = count;
     }

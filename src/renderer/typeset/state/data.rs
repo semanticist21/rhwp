@@ -409,6 +409,13 @@ pub(in crate::renderer::typeset) struct StateView {
     /// 더한다. 다단(2+) ColumnDef 의 `간격`은 가로 간격이므로 0 으로 둔다.
     pub(in crate::renderer::typeset) current_zone_design_spacing_px: f64,
     pub(in crate::renderer::typeset) current_zone_plain_text: bool,
+    /// 같은 쪽의 다음 단 정의가 닫는 다단 글 영역에서 마지막 앞 단들이 채울 높이(영역 상대 px).
+    /// 한컴은 그 영역의 줄을 단마다 고르게 나눈다(`balanced_column_height_px`).
+    pub(in crate::renderer::typeset) zone_balance_height: Option<f64>,
+    /// 고르게 나눈 영역 마지막 줄의 줄 간격(px). 영역 끝 흐름 높이가 품는 몫이다.
+    pub(in crate::renderer::typeset) zone_balance_closing_spacing: f64,
+    /// 고르게 나눌 후보 영역의 (첫 문단, 끝 문단 미포함). 첫 문단 배치 직전에 높이를 잰다.
+    pub(in crate::renderer::typeset) zone_balance_pending: Option<(usize, usize)>,
     /// [Task #1027 Stage D] 컬럼 단위 vpos 스냅 상태 (렌더러 build_single_column 정합).
     /// current_height 상대공간(col_area_y=0)에서 HeightCursor 를 구동한다.
     pub(in crate::renderer::typeset) vpos_page_base: Option<i32>,

@@ -144,6 +144,9 @@ impl TypesetState {
                 current_zone_column_type: column_type,
                 current_zone_design_spacing_px: 0.0,
                 current_zone_plain_text: false,
+                zone_balance_height: None,
+                zone_balance_closing_spacing: 0.0,
+                zone_balance_pending: None,
                 vpos_page_base: None,
                 stored_paragraph_boundary_carry: None,
                 vpos_lazy_base: None,
@@ -264,6 +267,9 @@ impl TypesetState {
             - self.data.current_zone_y_offset
             - self.data.current_bottom_fixed_exclusion)
             .max(0.0);
+        let available = self
+            .zone_balance_limit()
+            .map_or(available, |limit| available.min(limit));
         let available = if self.data.profile.hwpx_stored_layout()
             && self.data.deferred_hwpx_note_body
             && self.data.current_footnote_height > 0.0
@@ -294,6 +300,13 @@ impl TypesetState {
             );
         }
         available
+    }
+
+    /// 고르게 나눈 다단 영역의 앞 단이 채울 높이(영역 상대). 마지막 단은 남은 줄을 다 받는다.
+    pub(in crate::renderer::typeset) fn zone_balance_limit(&self) -> Option<f64> {
+        self.data
+            .zone_balance_height
+            .filter(|_| self.data.current_column + 1 < self.data.col_count)
     }
 
     /// 기본 가용 높이 (각주/존 미차감)
@@ -1293,6 +1306,8 @@ impl TypesetState {
     }
 
     pub(in crate::renderer::typeset) fn reset_for_new_page(&mut self) {
+        self.data.zone_balance_height = None;
+        self.data.zone_balance_pending = None;
         self.data.side_wrap_exclusions.clear();
         self.data.unwitnessed_side_wraps.clear();
         self.data.current_column = 0;

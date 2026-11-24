@@ -273,6 +273,10 @@ pub(super) fn place_split_paragraph_with_storage<S: crate::storage::Storage>(
             // 이어받은 본문 줄보다 먼저 쪽 아래를 차지한다.
             (base_available - reserve - st.current_footnote_height).max(0.0)
         };
+        // 고르게 나눈 다단 영역의 앞 단은 나눈 높이에서 줄을 넘긴다.
+        let page_avail = st.zone_balance_limit().map_or(page_avail, |limit| {
+            page_avail.min((limit - st.current_height).max(0.0))
+        });
 
         let sp_b = if cursor_line == 0 {
             fmt.spacing_before
