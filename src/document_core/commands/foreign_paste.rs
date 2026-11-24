@@ -1062,3 +1062,225 @@ impl crate::document_core::DocumentCore {
         paras
     }
 }
+
+// ───────────────────────────── 스타일 가져오기 ─────────────────────────────
+
+/// 한컴 스타일 가져오기·내보내기처럼 다른 문서에서 고른 스타일이 쓰는 서식만 옮겨 심는다.
+///
+/// 붙여넣기의 `merge_foreign_doc_info` 와 규칙이 같다(값이 같은 항목은 재사용, 원본 바이트는
+/// 비움, 표 밖 참조는 그대로). 다만 외부 표 전체가 아니라 고른 스타일이 닿는 항목만 옮긴다.
+/// 글꼴은 한컴처럼 같은 언어 목록에서 이름으로 찾고, 없을 때만 그 언어 목록에 더한다.
+struct StyleShapeImport<'a> {
+    current: &'a mut Document,
+    foreign: &'a Document,
+    pool: &'a mut BinPool,
+    fonts: HashMap<(usize, u16), u16>,
+    border_fills: HashMap<u16, u16>,
+    tab_defs: HashMap<u16, u16>,
+    char_shapes: HashMap<u32, u32>,
+    numberings: HashMap<u16, u16>,
+    bullets: HashMap<u16, u16>,
+    para_shapes: HashMap<u16, u16>,
+}
+
+// ponytail: 새 항목마다 현재 표를 직렬화해 찾는다. 스타일 몇 개를 옮기는 데는 충분하고,
+// 수백 개를 한꺼번에 옮겨 느려지면 표마다 색인을 한 번만 만들어 들고 다닌다.
+fn find_or_push_once<T: serde::Serialize>(dst: &mut Vec<T>, candidate: T) -> usize {
+    let mut index = build_table_index(dst);
+    find_or_push(dst, &mut index, candidate)
+}
+
+impl StyleShapeImport<'_> {
+    fn font(&mut self, slot: usize, old: u16) -> u16 {
+        if let Some(&id) = self.fonts.get(&(slot, old)) {
+            return id;
+        }
+        let Some(font) = self
+            .foreign
+            .doc_info
+            .font_faces
+            .get(slot)
+            .and_then(|fonts| fonts.get(old as usize))
+        else {
+            return old;
+        };
+        while self.current.doc_info.font_faces.len() <= slot {
+            self.current.doc_info.font_faces.push(Vec::new());
+        }
+        let found = self.current.doc_info.font_faces[slot]
+            .iter()
+            .position(|f| f.name == font.name);
+        let idx = match found {
+            Some(idx) => idx,
+            None => {
+                let mut candidate = font.clone();
+                candidate.raw_data = None;
+                if let Some(bin) = candidate.resolved_bin_data_id {
+                    candidate.resolved_bin_data_id = Some(self.pool.map_id(self.foreign, bin));
+                }
+                let dst = &mut self.current.doc_info.font_faces[slot];
+                dst.push(candidate);
+                dst.len() - 1
+            }
+        };
+        let id = u16::try_from(idx).unwrap_or(0);
+        self.fonts.insert((slot, old), id);
+        id
+    }
+
+    /// 테두리/배경 참조(1-based, 0 = 없음).
+    fn border_fill_ref(&mut self, old: u16) -> u16 {
+        if old == 0 {
+            return 0;
+        }
+        if let Some(&id) = self.border_fills.get(&old) {
+            return id;
+        }
+        let Some(border_fill) = self.foreign.doc_info.border_fills.get((old - 1) as usize) else {
+            return old;
+        };
+        let mut candidate = border_fill.clone();
+        candidate.raw_data = None;
+        if let Some(image) = &mut candidate.fill.image {
+            image.bin_data_id = self.pool.map_id(self.foreign, image.bin_data_id);
+        }
+        let idx = find_or_push_once(&mut self.current.doc_info.border_fills, candidate);
+        let id = u16::try_from(idx + 1).unwrap_or(0);
+        self.border_fills.insert(old, id);
+        id
+    }
+
+    fn tab_def(&mut self, old: u16) -> u16 {
+        if let Some(&id) = self.tab_defs.get(&old) {
+            return id;
+        }
+        let Some(tab_def) = self.foreign.doc_info.tab_defs.get(old as usize) else {
+            return old;
+        };
+        let mut candidate = tab_def.clone();
+        candidate.raw_data = None;
+        let idx = find_or_push_once(&mut self.current.doc_info.tab_defs, candidate);
+        let id = u16::try_from(idx).unwrap_or(0);
+        self.tab_defs.insert(old, id);
+        id
+    }
+
+    fn char_shape(&mut self, old: u32) -> u32 {
+        if let Some(&id) = self.char_shapes.get(&old) {
+            return id;
+        }
+        let Some(char_shape) = self.foreign.doc_info.char_shapes.get(old as usize) else {
+            return old;
+        };
+        let mut candidate = char_shape.clone();
+        candidate.raw_data = None;
+        for slot in 0..candidate.font_ids.len() {
+            candidate.font_ids[slot] = self.font(slot, candidate.font_ids[slot]);
+        }
+        candidate.border_fill_id = self.border_fill_ref(candidate.border_fill_id);
+        let idx = find_or_push_once(&mut self.current.doc_info.char_shapes, candidate);
+        let id = u32::try_from(idx).unwrap_or(0);
+        self.char_shapes.insert(old, id);
+        id
+    }
+
+    /// 문단머리 참조(1-based, 0 = 없음). 글머리표면 글머리표 표, 아니면 번호 표를 본다.
+    fn numbering_ref(&mut self, old: u16, head_type: HeadType) -> u16 {
+        if old == 0 {
+            return 0;
+        }
+        if head_type == HeadType::Bullet {
+            if let Some(&id) = self.bullets.get(&old) {
+                return id;
+            }
+            let Some(bullet) = self.foreign.doc_info.bullets.get((old - 1) as usize) else {
+                return old;
+            };
+            let mut candidate = bullet.clone();
+            candidate.raw_data = None;
+            candidate.char_shape_id = self.char_shape(candidate.char_shape_id);
+            let idx = find_or_push_once(&mut self.current.doc_info.bullets, candidate);
+            self.current.doc_info.bullet_count = self.current.doc_info.bullets.len() as u32;
+            let id = u16::try_from(idx + 1).unwrap_or(0);
+            self.bullets.insert(old, id);
+            return id;
+        }
+        if let Some(&id) = self.numberings.get(&old) {
+            return id;
+        }
+        let Some(numbering) = self.foreign.doc_info.numberings.get((old - 1) as usize) else {
+            return old;
+        };
+        let mut candidate = numbering.clone();
+        candidate.raw_data = None;
+        for head in 0..candidate.heads.len() {
+            candidate.heads[head].char_shape_id =
+                self.char_shape(candidate.heads[head].char_shape_id);
+        }
+        let idx = find_or_push_once(&mut self.current.doc_info.numberings, candidate);
+        let id = u16::try_from(idx + 1).unwrap_or(0);
+        self.numberings.insert(old, id);
+        id
+    }
+
+    fn para_shape(&mut self, old: u16) -> u16 {
+        if let Some(&id) = self.para_shapes.get(&old) {
+            return id;
+        }
+        let Some(para_shape) = self.foreign.doc_info.para_shapes.get(old as usize) else {
+            return old;
+        };
+        let mut candidate = para_shape.clone();
+        candidate.raw_data = None;
+        candidate.tab_def_id = self.tab_def(candidate.tab_def_id);
+        candidate.numbering_id = self.numbering_ref(candidate.numbering_id, candidate.head_type);
+        candidate.border_fill_id = self.border_fill_ref(candidate.border_fill_id);
+        let idx = find_or_push_once(&mut self.current.doc_info.para_shapes, candidate);
+        let id = u16::try_from(idx).unwrap_or(0);
+        self.para_shapes.insert(old, id);
+        id
+    }
+}
+
+impl crate::document_core::DocumentCore {
+    /// 외부 문서 `foreign` 의 스타일 `styles`(외부 번호)가 쓰는 글자·문단 모양을 이 문서로 옮겨 심고,
+    /// 스타일마다 이 문서의 (글자 모양, 문단 모양) 번호를 돌려준다. 스타일 목록은 바꾸지 않는다.
+    /// 언어별 글꼴·테두리/배경·탭 정의·문단 번호/글머리표 정의(와 그 글자 모양)가 함께 온다.
+    pub(crate) fn import_foreign_style_shapes(
+        &mut self,
+        foreign: &Document,
+        styles: &[usize],
+    ) -> Vec<(u16, u16)> {
+        let mut pool = BinPool::take(&mut self.document);
+        let shapes = {
+            let mut import = StyleShapeImport {
+                current: &mut self.document,
+                foreign,
+                pool: &mut pool,
+                fonts: HashMap::new(),
+                border_fills: HashMap::new(),
+                tab_defs: HashMap::new(),
+                char_shapes: HashMap::new(),
+                numberings: HashMap::new(),
+                bullets: HashMap::new(),
+                para_shapes: HashMap::new(),
+            };
+            styles
+                .iter()
+                .map(|&idx| {
+                    let style = &foreign.doc_info.styles[idx];
+                    let char_shape = import.char_shape(u32::from(style.char_shape_id));
+                    let para_shape = import.para_shape(style.para_shape_id);
+                    (u16::try_from(char_shape).unwrap_or(0), para_shape)
+                })
+                .collect()
+        };
+        let imported_bin = pool.imported();
+        pool.restore(&mut self.document);
+        self.document.doc_info.raw_stream_dirty = true;
+        if imported_bin {
+            self.bump_bin_data_epoch();
+        }
+        shapes
+    }
+}

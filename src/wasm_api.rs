@@ -555,6 +555,113 @@ impl HwpDocument {
         self.core.load_bytes(data, password)
     }
 
+    /// [`Self::import_styles`] 의 네이티브 본체. 이름이 원본에 없거나 스타일이 256개를 넘게 되면
+    /// 아무것도 바꾸지 않고 오류를 낸다.
+    pub fn import_styles_native(
+        &mut self,
+        source: &crate::model::document::Document,
+        names: &[String],
+        overwrite: bool,
+    ) -> Result<Vec<i32>, HwpError> {
+        let find = |styles: &[crate::model::style::Style], name: &str| {
+            styles.iter().position(|s| s.local_name == name)
+        };
+        let mut picked: Vec<(usize, Option<usize>)> = Vec::new();
+        let mut added = 0;
+        for name in names {
+            let src = find(&source.doc_info.styles, name).ok_or_else(|| {
+                HwpError::RenderError(format!("원본에 '{name}' 스타일이 없습니다"))
+            })?;
+            if picked.iter().any(|(s, _)| *s == src) {
+                continue;
+            }
+            let dst = find(&self.core.document.doc_info.styles, name);
+            added += usize::from(dst.is_none());
+            picked.push((src, dst));
+        }
+        // 문단은 스타일 번호를 1바이트로 저장한다.
+        if self.core.document.doc_info.styles.len() + added > 256 {
+            return Err(HwpError::RenderError(
+                "스타일은 256개까지 만들 수 있습니다".to_string(),
+            ));
+        }
+        picked.retain(|(_, dst)| dst.is_none() || overwrite);
+        let sources: Vec<usize> = picked.iter().map(|(src, _)| *src).collect();
+        let shapes = self.core.import_foreign_style_shapes(source, &sources);
+
+        // 스타일 정의를 넣거나 덮어 쓴다. 덮어 쓴 스타일은 옛 모양을 기억해 문단에 반영한다.
+        let mut done: Vec<(usize, usize, bool)> = Vec::new();
+        let mut changed = Vec::new();
+        for ((src, dst), (char_shape_id, para_shape_id)) in picked.iter().zip(shapes) {
+            let from = &source.doc_info.styles[*src];
+            let styles = &mut self.core.document.doc_info.styles;
+            let id = match *dst {
+                Some(id) => {
+                    let style = &mut styles[id];
+                    changed.push((id, style.char_shape_id, style.para_shape_id));
+                    style.english_name = from.english_name.clone();
+                    style.style_type = from.style_type;
+                    style.lang_id = from.lang_id;
+                    style.lock_form = from.lock_form;
+                    style.char_shape_id = char_shape_id;
+                    style.para_shape_id = para_shape_id;
+                    style.raw_data = None;
+                    id
+                }
+                None => {
+                    let mut style = from.clone();
+                    style.raw_data = None;
+                    style.char_shape_id = char_shape_id;
+                    style.para_shape_id = para_shape_id;
+                    styles.push(style);
+                    styles.len() - 1
+                }
+            };
+            done.push((*src, id, dst.is_none()));
+        }
+        // 다음 스타일은 이름으로 잇는다. 이 문서에 그 이름이 없으면 새 스타일은 자기 자신을,
+        // 덮어 쓴 스타일은 원래 다음 스타일을 둔다.
+        for &(src, id, created) in &done {
+            let next_name = source
+                .doc_info
+                .styles
+                .get(usize::from(source.doc_info.styles[src].next_style_id))
+                .map(|s| s.local_name.as_str());
+            let styles = &mut self.core.document.doc_info.styles;
+            match next_name.and_then(|name| find(styles, name)) {
+                Some(next) => styles[id].next_style_id = next as u8,
+                None if created => styles[id].next_style_id = id as u8,
+                None => {}
+            }
+        }
+        self.core.document.doc_info.raw_stream_dirty = true;
+        self.core.rebuild_resolved_styles();
+        for (id, old_csid, old_psid) in &changed {
+            let style_type = self.core.document.doc_info.styles[*id].style_type;
+            self.apply_style_shapes_to_paragraphs(
+                *id as u32,
+                u32::from(*old_csid),
+                *old_psid,
+                style_type,
+            );
+        }
+        if !changed.is_empty() {
+            for sec_idx in 0..self.core.document.sections.len() {
+                self.core.rebuild_section(sec_idx);
+            }
+        }
+        let mut ids = Vec::with_capacity(names.len());
+        for name in names {
+            let src = find(&source.doc_info.styles, name);
+            ids.push(
+                done.iter()
+                    .find(|(s, _, _)| Some(*s) == src)
+                    .map_or(-1, |(_, id, _)| *id as i32),
+            );
+        }
+        Ok(ids)
+    }
+
     pub fn find_initial_column_def(paragraphs: &[Paragraph]) -> ColumnDef {
         DocumentCore::find_initial_column_def(paragraphs)
     }
@@ -10272,6 +10379,26 @@ impl HwpDocument {
         self.core.document.doc_info.styles[style_id as usize].raw_data = None;
         self.core.document.doc_info.raw_stream_dirty = true;
 
+        self.apply_style_shapes_to_paragraphs(style_id, old_csid, old_psid, style_type);
+
+        // 스타일 캐시 무효화 + 전체 리빌드
+        let num_sections = self.core.document.sections.len();
+        for sec_idx in 0..num_sections {
+            self.core.rebuild_section(sec_idx);
+        }
+        true
+    }
+
+    /// 스타일 `style_id` 의 모양이 `old_csid`·`old_psid` 에서 바뀌었을 때 그 스타일을 쓴 모든 문단
+    /// (본문·표 셀·머리말·주석·글상자 등)과 글자 스타일 영역에 새 모양을 반영한다. 문단에 따로 준
+    /// 모양은 그대로 둔다. 구역 다시 그리기는 호출한 쪽이 한다.
+    fn apply_style_shapes_to_paragraphs(
+        &mut self,
+        style_id: u32,
+        old_csid: u32,
+        old_psid: u16,
+        style_type: u8,
+    ) {
         let sid = style_id as u8;
         let mut body_targets = Vec::new();
         let mut cell_targets = Vec::new();
@@ -10396,13 +10523,6 @@ impl HwpDocument {
             self.core
                 .replace_char_style_shapes(style_id, old_csid, new_csid);
         }
-
-        // 스타일 캐시 무효화 + 전체 리빌드
-        let num_sections = self.core.document.sections.len();
-        for sec_idx in 0..num_sections {
-            self.core.rebuild_section(sec_idx);
-        }
-        true
     }
 
     /// 새 스타일을 생성한다.
@@ -10503,6 +10623,26 @@ impl HwpDocument {
         // 스타일 캐시 갱신
         self.core.rebuild_resolved_styles();
         true
+    }
+
+    /// 다른 문서 `source` 에서 이름으로 고른 스타일을 이 문서로 가져온다(한컴 스타일 가져오기·내보내기).
+    ///
+    /// names_json: `["개요 1", ...]`. 같은 이름의 스타일이 있으면 `overwrite` 일 때만 덮어 쓰고,
+    /// 그 스타일을 쓴 문단에 새 모양을 반영한다. 반환: 이름 차례의 이 문서 스타일 번호 JSON 배열
+    /// (덮어 쓰지 않아 건너뛴 이름은 -1).
+    #[wasm_bindgen(js_name = importStyles)]
+    pub fn import_styles(
+        &mut self,
+        source: &HwpDocument,
+        names_json: &str,
+        overwrite: bool,
+    ) -> Result<String, JsValue> {
+        let names: Vec<String> = serde_json::from_str(names_json)
+            .map_err(|e| JsValue::from_str(&format!("스타일 이름 목록을 읽지 못했습니다: {e}")))?;
+        let ids = self
+            .import_styles_native(&source.core.document, &names, overwrite)
+            .map_err(|e| JsValue::from_str(&e.to_string()))?;
+        Ok(serde_json::to_string(&ids).unwrap_or_else(|_| "[]".to_string()))
     }
 
     /// 스타일을 목록의 `from` 자리에서 빼 `to` 자리에 둔다(한컴 스타일 창의 한 줄 위로·아래로 이동).
