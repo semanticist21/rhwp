@@ -60,7 +60,15 @@ impl LayoutEngine {
                         _ => None,
                     })
                 }) {
-                    if self.stored_hwpx_cut_owns_outer_frame(host, child) {
+                    // 재조판 행 유닛이 예약하는 조각은 `reflow_recursive_run_extra`가 바깥 위·아래
+                    // 여백을 소유한다. 여기서 또 예약하면 다시 연 문서의 조각만 여백 하나만큼 길어진다
+                    // (inner-table-01 57줄 4쪽: 행 경계에서 이어받는 안쪽 표 위 여백이 두 번).
+                    let reflow_owns_frame = Self::reflow_rows_own_outer_frame(
+                        host,
+                        &units[run_start..run_end],
+                        &units[start..end],
+                    );
+                    if !reflow_owns_frame && self.stored_hwpx_cut_owns_outer_frame(host, child) {
                         // 저장 자식 프레임의 흐름 높이는 이미 양쪽 바깥 여백을
                         // 포함한다. 같은 원본 컷에 여백을 다시 예약하지 않는다.
                         let saved_frame_owns_margin = (start > run_start || end < run_end)

@@ -2479,6 +2479,7 @@ impl LayoutEngine {
                             // 예약과 자식 배치가 여는 이어받기 위 띠도 정렬 내용이다.
                             // 빠뜨리면 같은 물리 여백의 절반만큼 내용이 아래로 밀린다.
                             + self.nested_continuation_header_height(cell, &units, start, styles)
+                            + self.reflow_row_boundary_outer_top(cell, &units, start, styles)
                             - self.continued_cut_nested_atom_tail(cell, &units, start, end, styles)
                     })
                     .unwrap_or(total_content_height)

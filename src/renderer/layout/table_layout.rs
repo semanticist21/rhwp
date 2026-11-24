@@ -25066,6 +25066,12 @@ impl LayoutEngine {
             let mut applied_trailing_trim = 0.0f64;
             let flow_range =
                 self.cell_cut_flow_range(cell, table, &units, start, units.len(), styles);
+            // 편집 중 자식 글줄 행의 중간에서 다시 여는 조각의 첫 유닛은 앞 줄의 줄간격을 품고
+            // 칸 안여백은 빠져 있다. 컷 높이(`row_cut_height`)가 그 차이를 빼듯 용량 판정에서도
+            // 빼야 저장본(첫 줄을 컷 원점에서 잰다)과 같은 줄에서 쪽이 나뉜다.
+            let opening_excess =
+                self.continued_nested_row_opening_excess(cell, &units, flow_range.start, styles);
+            let avail_height = avail_height + opening_excess;
             // [#8539] `[start, j]` 를 받을 때 끝 줄간격을 빼면 `limit` 안에 드는가. 들면 뺄 몫을 준다.
             // 용량 컷과 아래 선언 상자 판정이 같은 끝 줄간격 계산을 소비한다(#7870 과 같은 원칙).
             let trimmed_capacity_fit = |j: usize, h: f64, limit: f64| -> Option<f64> {
@@ -25611,7 +25617,7 @@ impl LayoutEngine {
             // The capacity branch has already removed the selected tail.
             // Restore that amount before applying the final cut's shared trim:
             // a later orphan rewind may have changed its closing unit.
-            h = (h + applied_trailing_trim - trailing_trim).max(0.0);
+            h = (h + applied_trailing_trim - trailing_trim - opening_excess).max(0.0);
             if j > start {
                 h += nested_header;
             }
@@ -29193,8 +29199,7 @@ impl LayoutEngine {
                 .map(|edges| edges.before + edges.after)
                 .sum::<f64>();
             // 첫·끝 소유 유닛의 edges가 바깥여백도 이미 예약했다.
-            // 중간 조각에 끝 여백을 반복하면 실제로 들어가는 다음 행을 밀어낸다.
-            // 셀 내부에서 자른 재귀 viewport는 매 쪽의 물리 바깥 상자를 별도로 연다.
+            // 쪽을 넘어 이어지는 조각은 그 쪽에서 자식의 바깥 상자를 따로 열고 닫는다.
             if start > run_start {
                 physical += self
                     .nested_row_continuation_outer_top(child, &cut)
@@ -29206,17 +29211,27 @@ impl LayoutEngine {
                         }
                     });
             }
-            if repeats_outer_frame && end < run_end {
-                physical += hwpunit_to_px(child.outer_margin_bottom as i32, self.dpi);
+            if end < run_end {
+                physical += self
+                    .nested_row_continued_outer_bottom(child, &cut)
+                    .unwrap_or_else(|| {
+                        if repeats_outer_frame {
+                            hwpunit_to_px(child.outer_margin_bottom as i32, self.dpi)
+                        } else {
+                            0.0
+                        }
+                    });
             }
             // 반복 머리행은 상위 컷과 viewport가 이미 한 번 더한다.
             physical -= self.nested_continuation_header_height(cell, units, start, styles);
             // 내용 커서가 끝나도 생산자가 예약한 물리 띠는 남을 수 있다.
             // 실제 자식 상자가 더 요구하는 몫만 보완하고, 내용 높이만으로
             // 이미 소유한 프레임을 줄여 다음 문단의 원점을 앞당기지 않는다.
-            return Some(
-                (physical - selected.iter().map(|unit| unit.height).sum::<f64>()).max(0.0),
-            );
+            // 호출자는 행 중간에서 다시 여는 첫 유닛의 줄간격 몫을 따로 뺀다. 그 몫을 뺀 예약과
+            // 견주어야 이어지는 조각의 바깥 아래 여백이 그 차이에 묻히지 않는다.
+            let reserved = selected.iter().map(|unit| unit.height).sum::<f64>()
+                - self.continued_nested_row_opening_excess(cell, units, start, styles);
+            return Some((physical - reserved).max(0.0));
         }
         let style = styles.para_styles.get(para.para_shape_id as usize);
         let ownership =

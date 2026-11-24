@@ -416,3 +416,74 @@ fn editing_terminal_only_fragment_closes_like_reopened() {
         "편집 중 4쪽 안쪽 표가 칸 위에서 {live_top:.2} 아래, 다시 연 문서 {saved_top:.2}"
     );
 }
+
+/// 쪽 `page`의 표 상자를 바깥부터 모은다.
+fn page_tables(doc: &HwpDocument, page: u32) -> Vec<(f64, f64)> {
+    let tree: Value = serde_json::from_str(&doc.get_page_render_tree(page).unwrap()).unwrap();
+    let mut boxes = Vec::new();
+    table_boxes(&tree, &mut boxes);
+    boxes
+}
+
+/// 58줄이면 행의 마지막 줄(줄 58)이 3쪽 바닥에 들어간다. 편집 중에도 다시 연 문서처럼
+/// 3쪽에 남아야 한다. 3쪽 첫 줄(줄 22) 유닛은 앞 줄의 줄간격을 품고 있어, 용량 판정에서
+/// 그 차이를 빼지 않으면 줄 58이 5px 모자라 4쪽으로 밀린다.
+#[test]
+fn editing_last_line_of_row_stays_on_page_like_reopened() {
+    let live = grown(58);
+    let saved = [live.export_hwp().unwrap(), live.export_hwpx().unwrap()];
+    let reopened: Vec<_> = saved
+        .iter()
+        .map(|bytes| HwpDocument::from_bytes(bytes).unwrap())
+        .collect();
+    for doc in std::iter::once(&live).chain(&reopened) {
+        assert_eq!(doc.page_count(), 4);
+        for (line, page) in [(21, 1), (22, 2), (57, 2), (58, 2)] {
+            assert_eq!(caret(doc, line).0, page, "줄 {line}의 쪽");
+        }
+    }
+    for bytes in &saved {
+        assert_saved_page_origins(bytes, 58);
+    }
+}
+
+/// 행이 3쪽에서 끝나는 55~58줄도 편집 중 쪽마다 바깥·안쪽 표 상자가 다시 연 문서와 같다.
+/// 다음 쪽으로 이어지는 안쪽 표 조각은 그 쪽에서 바깥 아래 여백을 닫고(한/글 12.30 인쇄:
+/// 70줄 2쪽 바깥 칸 아래 987.36px), 행 경계에서 이어받는 4쪽 조각은 바깥 위 여백을 한 번만
+/// 연다(4쪽 칸 위에서 안쪽 표까지 칸 위 안여백 + 바깥 위 여백 = 3.76px).
+#[test]
+fn editing_row_boundary_fragments_match_reopened() {
+    for lines in 55..=58 {
+        let live = grown(lines);
+        let reopened = HwpDocument::from_bytes(&live.export_hwp().unwrap()).unwrap();
+        for page in 1..4 {
+            let (edited, saved) = (page_tables(&live, page), page_tables(&reopened, page));
+            assert_eq!(edited.len(), saved.len(), "{lines}줄 {}쪽 표 수", page + 1);
+            for ((ey, eh), (sy, sh)) in edited.iter().zip(&saved) {
+                assert!(
+                    (ey - sy).abs() < 0.3 && (eh - sh).abs() < 0.3,
+                    "{lines}줄 {}쪽: 편집 중 {edited:?}, 다시 연 문서 {saved:?}",
+                    page + 1
+                );
+            }
+        }
+        for doc in [&live, &reopened] {
+            let [(outer_y, outer_h), _] = page_tables(doc, 1)[..] else {
+                panic!("2쪽의 바깥·안쪽 표");
+            };
+            assert!(
+                (outer_y + outer_h - 987.36).abs() < 0.5,
+                "{lines}줄 2쪽 바깥 칸 아래 {:.2}, 한컴 987.36",
+                outer_y + outer_h
+            );
+            let [(outer_y, _), (inner_y, _)] = page_tables(doc, 3)[..] else {
+                panic!("4쪽의 바깥·안쪽 표");
+            };
+            assert!(
+                (inner_y - outer_y - 3.76).abs() < 0.3,
+                "{lines}줄 4쪽 안쪽 표가 칸 위에서 {:.2} 아래",
+                inner_y - outer_y
+            );
+        }
+    }
+}

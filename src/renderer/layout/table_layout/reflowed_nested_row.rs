@@ -127,6 +127,101 @@ impl LayoutEngine {
             .then(|| crate::renderer::hwpunit_to_px(i32::from(child.outer_margin_top), self.dpi))
     }
 
+    /// 다음 쪽으로 이어지는 자식 표 조각도 그 쪽에서 바깥 아래 프레임을 닫는다
+    /// (한/글 12.30 인쇄: inner-table-01 70줄 2·3쪽의 안쪽 표 아래 괘선과 바깥 칸 아래 사이
+    /// 3.84px = 바깥 칸 아래 안여백 + 안쪽 표 바깥 아래 여백). 위 여백처럼 병합 칸 블록
+    /// 안에서 끊기는 조각은 행 사이가 아니므로 닫지 않는다.
+    pub(in crate::renderer::layout) fn nested_row_continued_outer_bottom(
+        &self,
+        child: &Table,
+        cut: &NestedTableCut,
+    ) -> Option<f64> {
+        (!child.common.treat_as_char && !cut.is_block_split)
+            .then(|| crate::renderer::hwpunit_to_px(i32::from(child.outer_margin_bottom), self.dpi))
+    }
+
+    /// 재조판 행 유닛(`nested_row_flow_edges`)이 자식 컷의 물리 상자를 예약하는 조각인가.
+    /// 그 조각의 바깥 위·아래 여백은 `reflow_recursive_run_extra`가 소유한다.
+    pub(super) fn reflow_rows_own_outer_frame(
+        host: &crate::model::paragraph::Paragraph,
+        run: &[CellUnit],
+        selected: &[CellUnit],
+    ) -> bool {
+        Self::nested_row_run_uses_recursive_frame(host, run)
+            && !selected.is_empty()
+            && selected
+                .iter()
+                .all(|unit| unit.nested_row_flow_edges.is_some())
+    }
+
+    /// 행 경계에서 이어받는 재조판 자식 표 조각의 바깥 위 띠. 머리 띠
+    /// (`nested_continuation_header_height`)는 행 안 컷에서만 그 여백을 열고, 행 경계의 이
+    /// 띠는 `reflow_recursive_run_extra`가 `nested_row_continuation_outer_top`으로 예약한다.
+    /// 세로 정렬도 같은 띠를 내용으로 세야 칸 안에서 여백의 절반만큼 내려가지 않는다.
+    pub(in crate::renderer::layout) fn reflow_row_boundary_outer_top(
+        &self,
+        cell: &Cell,
+        units: &[CellUnit],
+        start: usize,
+        styles: &ResolvedStyleSet,
+    ) -> f64 {
+        use crate::model::control::Control;
+        let Some(unit) = units.get(start) else {
+            return 0.0;
+        };
+        let Some(row) = unit.nested_row.filter(|&row| row > 0) else {
+            return 0.0;
+        };
+        let same_run =
+            |other: &CellUnit| other.para_idx == unit.para_idx && other.nested_row.is_some();
+        if !start
+            .checked_sub(1)
+            .is_some_and(|index| same_run(&units[index]))
+            || self.nested_continuation_header_height(cell, units, start, styles) > 0.0
+        {
+            return 0.0;
+        }
+        let Some(host) = cell.paragraphs.get(unit.para_idx) else {
+            return 0.0;
+        };
+        let mut children = host.controls.iter().filter_map(|control| match control {
+            Control::Table(child) => Some(child.as_ref()),
+            _ => None,
+        });
+        let (Some(child), None) = (children.next(), children.next()) else {
+            return 0.0;
+        };
+        let run_start = units[..start]
+            .iter()
+            .rposition(|other| !same_run(other))
+            .map_or(0, |index| index + 1);
+        let run_end = start
+            + units[start..]
+                .iter()
+                .position(|other| !same_run(other))
+                .unwrap_or(units.len() - start);
+        if !Self::reflow_rows_own_outer_frame(
+            host,
+            &units[run_start..run_end],
+            &units[start..start + 1],
+        ) {
+            return 0.0;
+        }
+        let cut = NestedTableCut {
+            start_row: row,
+            end_row: row + 1,
+            start_cut: Vec::new(),
+            end_cut: Vec::new(),
+            is_block_split: false,
+            start_cut_is_block: unit
+                .nested_table_fragment
+                .as_ref()
+                .is_some_and(|fragment| fragment.is_block),
+        };
+        self.nested_row_continuation_outer_top(child, &cut)
+            .unwrap_or(0.0)
+    }
+
     /// 독립 저장 줄로 닫힌 전체 표의 마지막 빈 행 공간을 같은 계산으로 회수한다.
     /// 부분 내용 컷은 선언된 행의 미소비 물리 띠를 소유하므로 이 전체 상자 규칙과 다르다.
     pub(super) fn fit_complete_stored_row_frame(
