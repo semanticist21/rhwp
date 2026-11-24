@@ -392,3 +392,27 @@ fn editing_last_fragment_closes_like_reopened() {
         "편집 중 4쪽 안쪽 표가 칸 위에서 {live_top:.2} 아래, 다시 연 문서 {saved_top:.2}"
     );
 }
+
+/// 행의 마지막 줄 하나(줄 59)만 4쪽으로 넘어간 59줄도 편집 중에 다시 연 문서와 같은 자리에서
+/// 닫는다. 행을 닫는 조각이라도 그 줄은 앞 줄(줄 58)의 줄간격을 이어받지 않고 칸 안여백에서
+/// 새로 시작하므로, 앞 조각 끝에서 잰 높이를 남기면 바깥 칸이 5px 길어진다.
+#[test]
+fn editing_terminal_only_fragment_closes_like_reopened() {
+    let live = grown(59);
+    let reopened = HwpDocument::from_bytes(&live.export_hwp().unwrap()).unwrap();
+    for doc in [&live, &reopened] {
+        assert_eq!(doc.page_count(), 4);
+        assert_eq!(caret(doc, 58).0, 2, "줄 58은 셋째 쪽에 남는다");
+        assert_eq!(caret(doc, 59).0, 3, "줄 59만 넷째 쪽으로 넘어간다");
+    }
+    let (live_h, live_top) = last_fragment_frame(&live, 3);
+    let (saved_h, saved_top) = last_fragment_frame(&reopened, 3);
+    assert!(
+        (live_h - saved_h).abs() < 0.3,
+        "편집 중 4쪽 바깥 칸 높이 {live_h:.2}, 다시 연 문서 {saved_h:.2}"
+    );
+    assert!(
+        (live_top - saved_top).abs() < 0.3,
+        "편집 중 4쪽 안쪽 표가 칸 위에서 {live_top:.2} 아래, 다시 연 문서 {saved_top:.2}"
+    );
+}

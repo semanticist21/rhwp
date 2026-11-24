@@ -239,6 +239,8 @@ impl LayoutEngine {
     /// 저장본은 그 자리를 되감아 적어 첫 조각을 컷 원점에서 재므로(한/글 12.30 인쇄와 같다),
     /// 편집 중 행도 같은 원점 높이로 맞추도록 두 높이의 차이를 돌려준다.
     /// 같은 생산식(`nested_plain_row_unit_height`)으로 만든 유닛인지 확인한 뒤에만 쓴다.
+    /// 행의 마지막 줄만 넘어온 조각(`terminal`)도 같다. 그 유닛은 뒤 행과의 칸 간격을 함께
+    /// 품으므로 생산식과 대조할 때 그 간격을 뺀다.
     pub(super) fn continued_nested_row_opening_excess(
         &self,
         cell: &Cell,
@@ -264,7 +266,6 @@ impl LayoutEngine {
             || previous.following_line_advance <= 0.0
             || unit.stored_frame_break_before
             || fragment.is_block
-            || fragment.terminal
             || fragment.start_cut.iter().all(|&cut| cut == 0)
         {
             return 0.0;
@@ -283,7 +284,13 @@ impl LayoutEngine {
             return 0.0;
         };
         let carried = self.nested_plain_row_unit_height(child, (row, 0.0), &[], fragment, styles);
-        if (unit.height - edges.before - edges.after - carried).abs() > 0.1 {
+        // 행을 닫는 조각은 뒤 행이 있으면 칸 간격을 더해 만든다(표 끝이면 `edges.after`가 맡는다).
+        let row_gap = if fragment.terminal && fragment.end_row < usize::from(child.row_count) {
+            crate::renderer::hwpunit_to_px(i32::from(child.cell_spacing), self.dpi)
+        } else {
+            0.0
+        };
+        if (unit.height - edges.before - edges.after - row_gap - carried).abs() > 0.1 {
             return 0.0;
         }
         let opened = self.nested_plain_row_unit_height(
