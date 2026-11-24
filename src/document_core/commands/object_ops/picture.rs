@@ -2498,7 +2498,9 @@ impl DocumentCore {
                         .controls
                         .insert(new_ctrl_idx, Control::Picture(Box::new(pic)));
                     target_para.ctrl_data_records.insert(new_ctrl_idx, None);
-                    target_para.shift_for_inline_control_insert(new_ctrl_idx, char_offset);
+                    // 본문 그림처럼 스트림 8칸을 문단 길이에도 남긴다. 빠지면 마지막 줄이 그림
+                    // 뒤 글을 8칸 일찍 끊어, 주석·글상자 글이 다시 열기 전까지 그림 뒤에서 사라진다.
+                    Self::leave_coordinate_trace(target_para, new_ctrl_idx, char_offset);
                     target_para.control_mask |= 0x00000800;
                     let logical_positions =
                         crate::document_core::helpers::find_logical_control_positions(target_para);

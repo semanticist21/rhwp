@@ -421,3 +421,37 @@ fn note_equation_properties_and_shape_path_guard() {
     );
     assert!(rejected.is_err());
 }
+
+/// 주석 글 가운데 넣은 그림 뒤 글도 곧바로 그린다(다시 열기 전에도). 그림은 문단 길이에 8칸을 더한다.
+#[test]
+fn note_picture_keeps_following_text_drawn() {
+    for kind in ["footnote", "endnote"] {
+        let (mut doc, note) = body_note(kind);
+        let before = note_paras(&doc, 0, &note)[0].char_count;
+        doc.insert_picture_in_cell_native(
+            0,
+            0,
+            3,
+            &note,
+            &png(),
+            1000,
+            1000,
+            1,
+            1,
+            "png",
+            "그림",
+            None,
+            None,
+        )
+        .unwrap();
+        assert_eq!(
+            note_paras(&doc, 0, &note)[0].char_count,
+            before + 8,
+            "{kind}"
+        );
+        let svg: String = (0..doc.page_count())
+            .map(|page| doc.render_page_svg_native(page).unwrap())
+            .collect();
+        assert!(svg.contains(">석</text>"), "{kind}: 그림 뒤 글이 없다");
+    }
+}
