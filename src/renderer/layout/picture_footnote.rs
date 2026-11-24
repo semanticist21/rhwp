@@ -2331,6 +2331,12 @@ impl LayoutEngine {
                         );
                 } else {
                     let composed = numbered.as_ref().unwrap_or(&composed);
+                    // 문단 번호·글머리표·개요 머리도 본문처럼 각주 문단 앞에 그린다. 한/글 12.30은
+                    // 머리를 각주 영역 왼쪽에 두고 각주 번호와 글을 머리 영역 뒤로 민다(`3. 1) 주석 가`).
+                    // 머리는 첫 줄에만 그리고, 이어지는 조각은 배치가 머리 영역만 비운다.
+                    let with_head =
+                        self.apply_paragraph_numbering(Some(composed), para, styles, 0);
+                    let composed = with_head.as_ref().unwrap_or(composed);
                     let first_new_child = fn_node.children.len();
                     // 각주 줄도 원본 인라인 개체와 문서의 BinData를 소비한다.
                     // 텍스트 줄만 전달하면 높이는 예약하면서 TAC 표·그림을
