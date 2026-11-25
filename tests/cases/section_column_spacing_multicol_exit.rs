@@ -19,6 +19,8 @@
 //!   `되돌리기` -99.96(간격 0). 원본은 7쪽, 간격 5669 판은 12쪽이다. 간격 0 판 3쪽 끝에서는 문단 141의
 //!   `모양` 글줄(537.12pt)만 3쪽에 남고 같은 문단의 글자처럼 취급한 머리 띠 표 줄 `서식`은 4쪽 첫머리
 //!   (45.48pt)로 넘어간다.
+//! - `samples/section_column_spacing/multicol-first-5669.hwp`(rhwp가 만든 두 단으로 시작하는 구역: 문단 0이
+//!   두 단, 문단 1이 한 단, 문단 2가 두 단, 문단 3이 한 단): 구역 첫 두 단 영역도 6/5줄로 나뉜다.
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::path::Path;
@@ -144,6 +146,24 @@ fn zone_closed_by_next_column_definition_is_balanced() {
             column_line_counts(&lines, pi),
             [6, 5],
             "다음 단 정의가 닫는 두 단 영역(문단 {pi}, 11줄)은 한컴처럼 6/5줄로 나뉘어야 한다"
+        );
+    }
+}
+
+/// 구역이 두 단으로 시작하는 문서: 첫 영역(문단 0)도 다음 한 단 정의(문단 1)가 닫으므로 고르게 나눈다.
+#[test]
+fn section_first_multicolumn_zone_is_balanced() {
+    let core = load(
+        "samples/section_column_spacing/multicol-first-5669.hwp",
+        None,
+    );
+    let (lines, _) = boxes(&core, 0);
+    for pi in [0, 2] {
+        let counts = column_line_counts(&lines, pi);
+        assert_eq!(counts.len(), 2, "문단 {pi} 단별 줄 수 {counts:?}");
+        assert!(
+            counts[0] >= counts[1] && counts[0] - counts[1] <= 1,
+            "다음 단 정의가 닫는 두 단 영역(문단 {pi})은 한컴처럼 고르게 나뉘어야 한다: {counts:?}"
         );
     }
 }

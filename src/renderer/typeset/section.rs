@@ -138,6 +138,13 @@ impl TypesetEngine {
             }
         }
         st.initialize_zone_spacing(column_def_design_spacing_px(column_def, self.dpi), false);
+        // 구역 첫 다단 영역도 같은 쪽의 다음 단 정의가 닫으면 단마다 고르게 나눈다(한컴 12.30 PDF:
+        // 두 단으로 시작해 한 단 정의가 닫는 구역의 11줄 영역을 6/5로 나눈다).
+        if col_count > 1 {
+            st.queue_zone_balance(
+                crate::renderer::balanced_text_zone_end(paragraphs, 0, styles).map(|end| (0, end)),
+            );
+        }
 
         // 머리말/꼬리말/쪽 번호/새 번호/감추기 컨트롤 수집
         let (hf_entries, page_number_pos) =
