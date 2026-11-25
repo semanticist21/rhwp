@@ -838,7 +838,11 @@ fn handle_end(name: &[u8], chart: &mut OoxmlChart, st: &mut ParseState) {
         b"schemeClr" | b"sysClr" => {
             if let Some((rgb, factor, offset)) = st.scheme_fill.take() {
                 let color = apply_luminance(rgb, factor, offset);
-                if let Some(ser) = st.cur_series.as_mut() {
+                // 점별(`c:dPt`) 색은 계열 색이 아니다 — 계열 선 굵기와 같은 규칙이다.
+                // 한컴 기본 원형은 점마다 accent1~ 를 적어, 첫 점 색을 계열 색으로 올리면
+                // 모든 조각이 한 색이 됐다.
+                let in_d_pt = st.in_d_pt;
+                if let Some(ser) = st.cur_series.as_mut().filter(|_| !in_d_pt) {
                     if ser.color.is_none() {
                         ser.color = Some(color);
                     }

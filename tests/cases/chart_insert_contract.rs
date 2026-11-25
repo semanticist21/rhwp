@@ -354,3 +354,27 @@ fn insert_chart_by_path_in_table_cell_and_footnote() {
         }
     }
 }
+
+/// 한컴 기본 원형은 점(`c:dPt`)마다 테마 색을 적는다. 첫 점 색을 계열 색으로 올리면 모든 조각이
+/// 한 색으로 그려진다 — 조각마다 다른 색이어야 한다.
+#[test]
+fn hancom_pie_slices_render_in_distinct_colors() {
+    let colors = |core: &DocumentCore| {
+        let svg = core.render_page_svg_native(0).unwrap();
+        let mut set = std::collections::BTreeSet::new();
+        for part in svg.split("<path ").skip(1) {
+            if !part.contains(" A") {
+                continue;
+            }
+            if let Some(rest) = part.split("fill=\"").nth(1) {
+                set.insert(rest[..7].to_string());
+            }
+        }
+        set
+    };
+    let hancom = open(&fixture("rchart-pie.hwpx"));
+    assert!(colors(&hancom).len() >= 4, "{:?}", colors(&hancom));
+    let mut core = blank();
+    core.insert_chart_native(0, 0, 0, "pie", "", "").unwrap();
+    assert!(colors(&core).len() >= 4, "{:?}", colors(&core));
+}
