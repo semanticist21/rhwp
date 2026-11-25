@@ -7,6 +7,8 @@
 mod caption_edit_tests;
 /// [#4100] 차트 숫자 데이터 읽기·쓰기.
 mod chart;
+/// 한컴 차트 만들기와 같은 차트 넣기.
+mod chart_insert;
 mod common;
 mod connector;
 mod equation;

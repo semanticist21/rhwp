@@ -7129,6 +7129,62 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 본문 문단의 글자 자리에 한컴 12.30 차트 만들기와 같은 차트를 넣는다.
+    ///
+    /// `chart_type`: `bar`(기본, 빈 문자열)·`column`·`line`·`area`·`pie`·`scatter`·`radar`.
+    /// `data_json`: 비우면 한컴 기본 데이터, 주면 `setChartData` 와 같은 편집 JSON.
+    /// `options_json`: `{"width":HWPUNIT,"height":HWPUNIT}` 또는 빈 문자열.
+    /// 반환: `{"ok":true,"paraIdx":N,"controlIdx":N,"chartIndex":N}` — 데이터를 받을 수 없으면
+    /// 문서를 바꾸지 않고 `{"ok":false,"invalid":[...]}`.
+    #[wasm_bindgen(js_name = insertChart)]
+    pub fn insert_chart(
+        &mut self,
+        section_idx: u32,
+        para_idx: u32,
+        char_offset: u32,
+        chart_type: &str,
+        data_json: &str,
+        options_json: &str,
+    ) -> Result<String, JsValue> {
+        self.insert_chart_native(
+            section_idx as usize,
+            para_idx as usize,
+            char_offset as usize,
+            chart_type,
+            data_json,
+            options_json,
+        )
+        .map_err(|e| e.into())
+    }
+
+    /// 셀 경로 문단(표 칸·글상자·각주·미주·머리말)의 글자 자리에 차트를 넣는다.
+    /// `cell_path_json` 은 다른 by-path API 와 같은 경로다. 나머지는 `insertChart` 와 같다.
+    /// 반환: `{"ok":true,"cellParaIdx":N,"controlIdx":N,"chartIndex":N}`.
+    #[wasm_bindgen(js_name = insertChartByPath)]
+    #[allow(clippy::too_many_arguments)]
+    pub fn insert_chart_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        cell_path_json: &str,
+        char_offset: u32,
+        chart_type: &str,
+        data_json: &str,
+        options_json: &str,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(cell_path_json).map_err(JsValue::from)?;
+        self.insert_chart_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            char_offset as usize,
+            chart_type,
+            data_json,
+            options_json,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// 셀 경로 문단(표 칸·글상자·각주·미주)의 수식 속성. 반환은 `getEquationProperties` 와 같다.
     #[wasm_bindgen(js_name = getEquationPropertiesByPath)]
     pub fn get_equation_properties_by_path(

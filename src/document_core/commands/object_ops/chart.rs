@@ -1212,6 +1212,40 @@ fn rescan_matches(rescan: &ChartData, edits: &ChartEdits, scatter: bool) -> Resu
     Ok(())
 }
 
+/// 차트 XML 한 벌에 편집을 적용한 새 XML 을 만든다 — 차트 넣기가 문서에 넣기 전에 쓴다.
+///
+/// 검증·계획·자기 확인은 `apply_chart_edits` 와 같다. 거부는 `Err` 에 같은 부정 봉투를 싣는다.
+/// 바뀐 칸이 없으면 원본 그대로다.
+pub(crate) fn patched_chart_xml(xml: &[u8], edits_json: &str) -> Result<Vec<u8>, String> {
+    let edits: ChartEdits = serde_json::from_str(edits_json)
+        .map_err(|e| refused("editsParse", format!("편집 JSON 을 읽을 수 없습니다: {e}")))?;
+    let data = scan_chart_values(xml).map_err(|e| scan_refusal(&e))?;
+    let invalid = validate(&data, &edits);
+    if !invalid.is_empty() {
+        return Err(serde_json::json!({ "ok": false, "invalid": invalid }).to_string());
+    }
+    let scatter = data.series.first().map(|s| s.axis) == Some(SeriesAxis::Scatter);
+    let (plan, _) = plan_edits(&data, &edits, scatter);
+    if plan.is_empty() {
+        return Ok(xml.to_vec());
+    }
+    let patched =
+        apply_chart_edits(xml, &data, &plan).map_err(|e| refused("chartPatch", e.to_string()))?;
+    let rescan = scan_chart_values(&patched).map_err(|e| {
+        refused(
+            "selfCheckFailed",
+            format!("편집 산출을 다시 읽지 못합니다 — 쓰지 않습니다: {e}"),
+        )
+    })?;
+    rescan_matches(&rescan, &edits, scatter).map_err(|why| {
+        refused(
+            "selfCheckFailed",
+            format!("편집 산출이 목표 행렬과 다릅니다 — 쓰지 않습니다: {why}"),
+        )
+    })?;
+    Ok(patched)
+}
+
 impl DocumentCore {
     /// 주소가 가리키는 **본문 직속** 차트를 찾는다.
     ///

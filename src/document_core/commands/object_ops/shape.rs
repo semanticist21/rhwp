@@ -2084,7 +2084,7 @@ impl DocumentCore {
         }
     }
     /// 구역 내 모든 Shape의 z_order 최대값을 반환 (새 Shape 생성 시 사용)
-    fn max_shape_z_order_in_section(&self, section_idx: usize) -> i32 {
+    pub(crate) fn max_shape_z_order_in_section(&self, section_idx: usize) -> i32 {
         self.document
             .sections
             .get(section_idx)

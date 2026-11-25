@@ -151,6 +151,13 @@ fn walk(doc: &mut Document, f: &mut dyn FnMut(BinRef<'_>)) {
                     f(BinRef::Id(&mut id));
                     ole.bin_data_id = u32::from(id);
                 }
+                // HWPX 차트의 `<hp:default><hp:ole>` 대체 OLE 도 저장소를 순번으로 쓴다.
+                if let Some(fallback) = ole.chart_switch_fallback.as_mut() {
+                    if let Ok(mut id) = u16::try_from(fallback.bin_data_id) {
+                        f(BinRef::Id(&mut id));
+                        fallback.bin_data_id = u32::from(id);
+                    }
+                }
             }
             _ => {
                 if let Some(drawing) = shape.drawing_mut() {
@@ -237,11 +244,20 @@ fn live_positions(doc: &mut Document, keep_storage: &BTreeSet<u16>) -> BTreeSet<
     // 1. 살아 있는 1 기준 순번을 모은다. 범위 밖 값(HWPX 차트 sparse id 등)은
     //    인덱스 의미가 아니므로 건드리지 않고 그대로 둔다.
     let mut referenced: BTreeSet<usize> = BTreeSet::new();
+    let mut sparse: BTreeSet<u16> = BTreeSet::new();
     visit_bin_data_refs(doc, &mut |id| {
         if *id > 0 && (*id as usize) <= before {
             referenced.insert(*id as usize - 1);
+        } else if *id > 0 {
+            sparse.insert(*id);
         }
     });
+    // HWPX 차트 파트(`Chart/chartN.xml`, 60000+N)는 순번이 아니라 id 로 쓰인다.
+    for (index, content) in doc.bin_data_content.iter().enumerate() {
+        if content.extension == "ooxml_chart" && sparse.contains(&content.id) {
+            referenced.insert(index);
+        }
+    }
 
     // 1b. 내장 글꼴이 쓰는 storage id 를 가진 항목도 남긴다 — 순번 축이 아니므로
     //     참조값은 건드리지 않고 보존 대상에만 더한다.
