@@ -100,6 +100,22 @@ fn relabel_para(node: &mut RenderNode, from: usize, to: usize) {
             fix_context(n.cell_context.as_mut());
         }
         RenderNodeType::TextRun(n) => fix_context(n.cell_context.as_mut()),
+        // 주석 안 차트 같은 OLE도 각주 표지를 달아야 쪽 개체 목록이 본문 문단 주소로 바꾼다.
+        RenderNodeType::RawSvg(crate::renderer::render_tree::RawSvgNode {
+            control_ref,
+            cell_context,
+            ..
+        })
+        | RenderNodeType::Placeholder(crate::renderer::render_tree::PlaceholderNode {
+            control_ref,
+            cell_context,
+            ..
+        }) => {
+            if let Some(control_ref) = control_ref.as_mut().filter(|r| r.para_index == from) {
+                control_ref.para_index = to;
+            }
+            fix_context(cell_context.as_mut());
+        }
         RenderNodeType::Table(n) => {
             fix(&mut n.para_index);
             fix_context(n.cell_context.as_mut());

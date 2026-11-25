@@ -33,6 +33,8 @@ pub mod parser;
 /// [#4100] 값 구간의 최소 diff 치환.
 pub mod patch;
 pub mod renderer;
+/// 차트 제목 읽기·쓰기(차트 데이터 편집 창의 "차트 제목").
+pub mod title;
 
 /// OOXML 차트 데이터 모델
 #[derive(Debug, Clone, Default)]

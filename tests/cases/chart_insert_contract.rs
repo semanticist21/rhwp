@@ -227,6 +227,52 @@ fn insert_chart_with_type_and_data_round_trips() {
     assert_eq!(data(&reopen_hwpx(&core), 0)["plot"], "scatter");
 }
 
+/// 한컴 12.30 차트 데이터 편집 창의 "차트 제목": 한컴 기본 차트는 자동 제목 "차트 제목"을 보이고,
+/// 고친 제목은 `c:tx/c:rich` 로 써서 HWP·HWPX 에 남는다. 같은 제목은 쓰지 않고, 빈 제목은 지운다.
+#[test]
+fn chart_data_title_reads_and_writes_like_hancom_data_dialog() {
+    let mut core = blank();
+    core.insert_chart_native(0, 0, 0, "bar", "", "").unwrap();
+    assert_eq!(data(&core, 0)["title"], "차트 제목");
+    let defaults = data(&core, 0);
+    let edits = |title: &str| {
+        serde_json::json!({
+            "series": defaults["series"].as_array().unwrap().iter().map(|s| {
+                serde_json::json!({ "values": s["values"].clone() })
+            }).collect::<Vec<_>>(),
+            "title": title,
+        })
+        .to_string()
+    };
+    let same = json(
+        &core
+            .set_chart_data_by_index_native(0, &edits("차트 제목"))
+            .unwrap(),
+    );
+    assert_eq!(same["changedCount"], 0, "{same}");
+    let wrote = json(
+        &core
+            .set_chart_data_by_index_native(0, &edits("성적표"))
+            .unwrap(),
+    );
+    assert_eq!(wrote["ok"], true, "{wrote}");
+    assert_eq!(data(&core, 0)["title"], "성적표");
+    for reopened in [reopen_hwp(&core), reopen_hwpx(&core)] {
+        assert_eq!(data(&reopened, 0)["title"], "성적표");
+        assert_default_data(&data(&reopened, 0));
+    }
+    let refused = json(
+        &core
+            .set_chart_data_by_index_native(0, &edits("a<b"))
+            .unwrap(),
+    );
+    assert_eq!(refused["ok"], false, "{refused}");
+    assert_eq!(data(&core, 0)["title"], "성적표");
+    core.set_chart_data_by_index_native(0, &edits("")).unwrap();
+    assert!(data(&core, 0)["title"].is_null());
+    assert!(data(&reopen_hwpx(&core), 0)["title"].is_null());
+}
+
 #[test]
 fn insert_chart_refuses_bad_input_without_changing_the_document() {
     let mut core = blank();
@@ -353,6 +399,123 @@ fn insert_chart_by_path_in_table_cell_and_footnote() {
             }
         }
     }
+}
+
+/// 주석 안 차트는 쪽 개체 목록에 본문 문단을 뿌리로 한 주석 경로로 나와야 두 번 눌러 고칠 차트를
+/// 하나로 정할 수 있다. 주석 문단 주소(문단 0·컨트롤 0)만 내면 두 각주의 차트가 같은 주소가 되고,
+/// 미주 차트는 미주 글줄의 가상 문단 번호로 나와 문서의 어느 차트와도 맞지 않는다.
+#[test]
+fn note_charts_report_note_path_in_page_controls() {
+    let mut core = blank();
+    core.insert_text_native(0, 0, 0, "ab").unwrap();
+    core.insert_footnote_native(0, 0, 0).unwrap();
+    core.insert_footnote_native(0, 0, 0).unwrap();
+    core.insert_endnote_native(0, 0, 0).unwrap();
+    let notes: Vec<(usize, &str)> = core.document().sections[0].paragraphs[0]
+        .controls
+        .iter()
+        .enumerate()
+        .filter_map(|(i, c)| match c {
+            Control::Footnote(_) => Some((i, "footnote")),
+            Control::Endnote(_) => Some((i, "endnote")),
+            _ => None,
+        })
+        .collect();
+    assert_eq!(notes.len(), 3);
+    for &(ctrl, _) in &notes {
+        let result = json(
+            &core
+                .insert_chart_by_path_native(0, 0, &[(ctrl, 0, 0)], 0, "bar", "", "")
+                .unwrap(),
+        );
+        assert_eq!(result["ok"], true, "{result}");
+    }
+    let listed: Vec<(u64, String)> = charts(&core)
+        .iter()
+        .map(|c| {
+            let level = &c["container"][0];
+            (
+                level["control"].as_u64().unwrap(),
+                level["kind"].as_str().unwrap().to_string(),
+            )
+        })
+        .collect();
+    let mut want: Vec<(u64, String)> = notes
+        .iter()
+        .map(|&(ctrl, kind)| (ctrl as u64, kind.to_string()))
+        .collect();
+    let mut listed = listed;
+    listed.sort();
+    want.sort();
+    assert_eq!(listed, want);
+
+    let mut reported: Vec<u64> = Vec::new();
+    for page in 0..core.page_count() {
+        let layout = json(&core.get_page_control_layout_native(page).unwrap());
+        for control in layout["controls"].as_array().unwrap() {
+            if control["type"] != "ole" {
+                continue;
+            }
+            assert_eq!(control["secIdx"], 0, "{control}");
+            assert_eq!(control["parentParaIdx"], 0, "{control}");
+            let path = control["cellPath"].as_array().expect("주석 경로");
+            assert_eq!(path.len(), 1, "{control}");
+            assert_eq!(path[0]["cellIndex"], 0, "{control}");
+            assert_eq!(path[0]["cellParaIndex"], 0, "{control}");
+            reported.push(path[0]["controlIndex"].as_u64().unwrap());
+        }
+    }
+    reported.sort();
+    let mut controls: Vec<u64> = notes.iter().map(|&(c, _)| c as u64).collect();
+    controls.sort();
+    assert_eq!(reported, controls);
+}
+
+/// 표 칸 안 각주·미주의 차트도 쪽 개체 목록에 [표 칸, (주석, 0, 주석 문단)] 경로로 나온다.
+#[test]
+fn table_cell_note_charts_report_cell_and_note_path() {
+    let mut core = blank();
+    let table = json(&core.create_table_native(0, 0, 0, 1, 2).unwrap());
+    let host = table["paraIdx"].as_u64().unwrap() as usize;
+    let ctrl = table["controlIdx"].as_u64().unwrap() as usize;
+    let footnote = json(
+        &core
+            .insert_footnote_by_path_native(0, host, &[(ctrl, 0, 0)], 0)
+            .unwrap(),
+    );
+    let endnote = json(
+        &core
+            .insert_endnote_by_path_native(0, host, &[(ctrl, 1, 0)], 0)
+            .unwrap(),
+    );
+    let mut want = Vec::new();
+    for (cell, note) in [(0usize, &footnote), (1, &endnote)] {
+        let note_ctrl = note["controlIdx"].as_u64().unwrap() as usize;
+        let path = [(ctrl, cell, 0), (note_ctrl, 0, 0)];
+        let result = json(
+            &core
+                .insert_chart_by_path_native(0, host, &path, 0, "bar", "", "")
+                .unwrap(),
+        );
+        assert_eq!(result["ok"], true, "{result}");
+        want.push(serde_json::json!([
+            {"controlIndex": ctrl, "cellIndex": cell, "cellParaIndex": 0},
+            {"controlIndex": note_ctrl, "cellIndex": 0, "cellParaIndex": 0},
+        ]));
+    }
+    let mut reported = Vec::new();
+    for page in 0..core.page_count() {
+        let layout = json(&core.get_page_control_layout_native(page).unwrap());
+        for control in layout["controls"].as_array().unwrap() {
+            if control["type"] == "ole" {
+                assert_eq!(control["parentParaIdx"], host as u64, "{control}");
+                reported.push(control["cellPath"].clone());
+            }
+        }
+    }
+    reported.sort_by_key(|path| path.to_string());
+    want.sort_by_key(|path| path.to_string());
+    assert_eq!(reported, want);
 }
 
 /// 한컴 기본 원형은 점(`c:dPt`)마다 테마 색을 적는다. 첫 점 색을 계열 색으로 올리면 모든 조각이

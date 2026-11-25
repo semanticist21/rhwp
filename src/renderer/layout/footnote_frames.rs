@@ -230,6 +230,37 @@ fn address_footnote_controls(node: &mut RenderNode, notes: &[FootnoteRef], secti
         RenderNodeType::Equation(eq) if eq.cell_index.is_none() => {
             shape(&mut eq.section_index, &mut eq.para_index)
         }
+        // 각주 안 차트(OLE)도 그림처럼 본문 문단 뿌리 경로를 단다. 주석 문단 주소만 내면 다른 각주의
+        // 같은 자리 차트와 구분되지 않는다.
+        RenderNodeType::RawSvg(crate::renderer::render_tree::RawSvgNode {
+            control_ref: Some(control_ref),
+            cell_context,
+            ..
+        })
+        | RenderNodeType::Placeholder(crate::renderer::render_tree::PlaceholderNode {
+            control_ref: Some(control_ref),
+            cell_context,
+            ..
+        }) if control_ref.kind == "ole" => {
+            let mut slot = Some(control_ref.section_index);
+            let host = match cell_context.as_mut() {
+                Some(ctx) => readdress_footnote_context(notes, section, &mut slot, ctx),
+                None => footnote_owner(notes, section, &mut slot, control_ref.para_index).map(
+                    |(host, path)| {
+                        *cell_context = Some(CellContext {
+                            in_textbox: false,
+                            parent_para_index: host,
+                            path,
+                        });
+                        host
+                    },
+                ),
+            };
+            if let Some(host) = host {
+                control_ref.section_index = section;
+                control_ref.para_index = host;
+            }
+        }
         RenderNodeType::Rectangle(n) => shape(&mut n.section_index, &mut n.para_index),
         RenderNodeType::Ellipse(n) => shape(&mut n.section_index, &mut n.para_index),
         RenderNodeType::Line(n) => shape(&mut n.section_index, &mut n.para_index),
@@ -351,6 +382,35 @@ pub(crate) fn address_endnote_controls(
                 if let Some((_, _, mut path)) = eq.para_index.and_then(owner) {
                     path.append(container_path);
                     *container_path = path;
+                }
+            }
+            // 미주 안 차트(OLE)는 가상 문단 번호로 그려진다. 그림처럼 본문 문단 뿌리 경로로 바꾼다.
+            RenderNodeType::RawSvg(crate::renderer::render_tree::RawSvgNode {
+                control_ref: Some(control_ref),
+                cell_context,
+                ..
+            })
+            | RenderNodeType::Placeholder(crate::renderer::render_tree::PlaceholderNode {
+                control_ref: Some(control_ref),
+                cell_context,
+                ..
+            }) if control_ref.kind == "ole" => {
+                let mut slot = Some(control_ref.section_index);
+                let host = match cell_context.as_mut() {
+                    Some(ctx) => context(&mut slot, ctx),
+                    None => owner(control_ref.para_index).map(|(section, host, path)| {
+                        slot = Some(section);
+                        *cell_context = Some(CellContext {
+                            in_textbox: false,
+                            parent_para_index: host,
+                            path,
+                        });
+                        host
+                    }),
+                };
+                if let (Some(host), Some(section)) = (host, slot) {
+                    control_ref.section_index = section;
+                    control_ref.para_index = host;
                 }
             }
             RenderNodeType::Rectangle(n) => shape(&mut n.section_index, &mut n.para_index),

@@ -18,6 +18,7 @@ use crate::ooxml_chart::data::{
 use crate::ooxml_chart::patch::{
     apply_chart_edits, is_safe_text, ChartEdit, EditTarget, ValueEdit,
 };
+use crate::ooxml_chart::title::{chart_title, set_chart_title};
 use crate::serializer::ole_container::replace_ole_stream;
 
 /// 중첩 CFB 안 OOXML 차트 스트림 이름.
@@ -288,6 +289,9 @@ struct ChartEdits {
     /// [#5652] 구조 편집 의도.
     #[serde(default)]
     structure: bool,
+    /// 차트 제목(한컴 차트 데이터 편집 창의 "차트 제목"). 화면 제목과 다를 때만 쓰고, 빈 값은 지운다.
+    #[serde(default)]
+    title: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -312,11 +316,45 @@ fn is_number(text: &str) -> bool {
 /// [#5652] `structure` 로 갈린다 — 없으면 B1 의 네 거부(개수·이름·라벨)가 그대로 서고,
 /// 있으면 [`validate_structure`] 가 목표 행렬의 규칙과 종류별 가드를 본다.
 fn validate(data: &ChartData, edits: &ChartEdits) -> Vec<serde_json::Value> {
-    if edits.structure {
+    let mut out = if edits.structure {
         validate_structure(data, edits)
     } else {
         validate_values(data, edits)
+    };
+    if edits
+        .title
+        .as_deref()
+        .is_some_and(|title| !is_safe_text(title))
+    {
+        out.push(invalid(
+            "unsafeTitle",
+            "차트 제목에는 <, >, &, 제어 문자를 쓸 수 없습니다.".to_string(),
+        ));
     }
+    out
+}
+
+/// 바꿀 제목. 화면 제목과 같으면 쓰지 않는다(한컴도 칸을 고치지 않으면 제목을 쓰지 않는다).
+fn title_change<'a>(xml: &[u8], edits: &'a ChartEdits) -> Option<&'a str> {
+    edits
+        .title
+        .as_deref()
+        .filter(|title| chart_title(xml).as_deref().unwrap_or("") != *title)
+}
+
+/// 값 편집을 마친 XML 에 제목을 쓰고 다시 읽어 확인한다.
+fn with_title(xml: Vec<u8>, title: Option<&str>) -> Result<Vec<u8>, String> {
+    let Some(title) = title else {
+        return Ok(xml);
+    };
+    let out = set_chart_title(&xml, title).map_err(|e| refused("chartTitle", e.to_string()))?;
+    if chart_title(&out).as_deref().unwrap_or("") != title {
+        return Err(refused(
+            "selfCheckFailed",
+            "편집 산출의 차트 제목이 목표와 다릅니다 — 쓰지 않습니다.".to_string(),
+        ));
+    }
+    Ok(out)
 }
 
 /// B1 검증 — 구조는 바꾸지 않는다.
@@ -1226,8 +1264,9 @@ pub(crate) fn patched_chart_xml(xml: &[u8], edits_json: &str) -> Result<Vec<u8>,
     }
     let scatter = data.series.first().map(|s| s.axis) == Some(SeriesAxis::Scatter);
     let (plan, _) = plan_edits(&data, &edits, scatter);
+    let title = title_change(xml, &edits);
     if plan.is_empty() {
-        return Ok(xml.to_vec());
+        return with_title(xml.to_vec(), title);
     }
     let patched =
         apply_chart_edits(xml, &data, &plan).map_err(|e| refused("chartPatch", e.to_string()))?;
@@ -1243,7 +1282,7 @@ pub(crate) fn patched_chart_xml(xml: &[u8], edits_json: &str) -> Result<Vec<u8>,
             format!("편집 산출이 목표 행렬과 다릅니다 — 쓰지 않습니다: {why}"),
         )
     })?;
-    Ok(patched)
+    with_title(patched, title)
 }
 
 impl DocumentCore {
@@ -1379,11 +1418,15 @@ impl DocumentCore {
         }
 
         let scatter = data.series.first().map(|s| s.axis) == Some(SeriesAxis::Scatter);
-        let (plan, changed) = plan_edits(&data, &edits, scatter);
+        let (plan, mut changed) = plan_edits(&data, &edits, scatter);
+        let title = title_change(nested_xml, &edits);
+        if let Some(title) = title {
+            changed.push(serde_json::json!({ "target": "title", "after": title }));
+        }
 
         // 바뀐 칸이 없으면 **한 바이트도 건드리지 않는다.** 슬롯을 되쓰기만 해도
         // 중첩 CFB 재포장이 섹터 배치를 바꿔 무편집 왕복의 바이트 동일이 깨진다.
-        if plan.is_empty() {
+        if plan.is_empty() && title.is_none() {
             return serde_json::json!({
                 "ok": true, "chart": chart.index + 1,
                 "changedCount": 0, "changed": [], "wrote": [], "dryRun": edits.dry_run,
@@ -1392,15 +1435,21 @@ impl DocumentCore {
         }
 
         let zip_patched = match &representations.zip {
-            Some((xml, data)) => match apply_chart_edits(xml, data, &plan) {
+            Some((xml, data)) => match apply_chart_edits(xml, data, &plan)
+                .map_err(|e| refused("chartPatch", e.to_string()))
+                .and_then(|v| with_title(v, title))
+            {
                 Ok(v) => Some(v),
-                Err(e) => return refused("chartPatch", e.to_string()),
+                Err(response) => return response,
             },
             None => None,
         };
-        let nested_patched = match apply_chart_edits(nested_xml, nested_data, &plan) {
+        let nested_patched = match apply_chart_edits(nested_xml, nested_data, &plan)
+            .map_err(|e| refused("chartPatch", e.to_string()))
+            .and_then(|v| with_title(v, title))
+        {
             Ok(v) => v,
-            Err(e) => return refused("chartPatch", e.to_string()),
+            Err(response) => return response,
         };
 
         // [#5652] self-check — 산출을 다시 읽어 목표 행렬과 같을 때만 쓴다. 스캐너가 못 읽거나
@@ -1493,7 +1542,16 @@ impl DocumentCore {
         match scan_chart_representations(&self.document, chart) {
             Ok(representations) => {
                 let (data, source) = representations.primary().expect("표현 하나 이상 확인함");
-                chart_data_json(chart, data, source).to_string()
+                let mut json = chart_data_json(chart, data, source);
+                // 화면 제목(명시 제목 또는 자동 제목). 숨긴 제목은 null 이다.
+                let xml = representations
+                    .zip
+                    .as_ref()
+                    .or(representations.nested.as_ref())
+                    .map(|(xml, _)| xml.as_slice())
+                    .unwrap_or_default();
+                json["title"] = chart_title(xml).into();
+                json.to_string()
             }
             Err(response) => response,
         }
