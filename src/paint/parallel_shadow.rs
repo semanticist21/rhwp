@@ -60,8 +60,13 @@ pub(super) fn matrix_px(shadow: &ShadowStyle, body: BoundingBox) -> Option<[f64;
 }
 
 pub(super) fn split(node: &RenderNode) -> Option<ShadowParts> {
+    split_on(node, node.bbox)
+}
+
+/// `frame`(쪽 px)을 본체 상자로 보고 그림자 행렬을 잰다. 기울인 도형은 기울인 외접 상자를 준다.
+pub(super) fn split_on(node: &RenderNode, frame: BoundingBox) -> Option<ShadowParts> {
     let shadow = shadow_style(node)?;
-    let matrix = matrix_px(shadow, node.bbox)?;
+    let matrix = matrix_px(shadow, frame)?;
 
     // 그림으로 채운 도형도 한컴은 그림자를 면으로 칠한다. 그림 채우기는 자식 그림 노드다.
     let image_fill = node

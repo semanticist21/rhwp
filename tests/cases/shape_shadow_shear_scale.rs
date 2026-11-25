@@ -6,7 +6,8 @@
 //! 전쪽 결과와 원본은 mydocs/pr/assets/semanticist21-20261123-table-notes-shadows/focus-pages.tsv 및 hancom-print.tsv에 기록했다.
 //!
 //! 도형 그림자 중 작게·크게·기울임은 한/글 12.30처럼 본체를 줄이고 늘리거나 눕힌 실루엣으로 그린다.
-//! 값은 한/글 12.30 화면에서 12000×8000 HWPUNIT 사각형의 그림자 외곽을 잰 것이다.
+//! 값은 한/글 12.30 화면에서 12000×8000 HWPUNIT 사각형의 그림자 외곽을 잰 것이고, 기울임 그림자의 기울기(높이의 0.56756배)는
+//! 한/글 12.30이 HWP 바깥 여백에 적은 그림자 몫에서 잡았다.
 #![cfg(not(target_arch = "wasm32"))]
 
 use rhwp::paint::{GroupKind, LayerBuilder, LayerNode, LayerNodeKind, RenderProfile};
@@ -98,19 +99,19 @@ fn scale_shadows_shrink_from_top_left_and_grow_from_bottom_right() {
 fn shear_shadows_lie_down_from_the_bottom_edge() {
     let body = BoundingBox::new(100.0, 100.0, 12000.0 * HU, 8000.0 * HU);
     let b = body.y + body.height;
-    // 뒤쪽(왼쪽 위): 아래 변은 그대로, 위 변은 반 높이로 내려와 4500만큼 왼쪽으로.
+    // 뒤쪽(왼쪽 위): 아래 변은 그대로, 위 변은 반 높이로 내려와 4540.48만큼 왼쪽으로.
     let back = shadow_matrix(5, body).expect("기울임 그림자를 그려야 한다");
     assert!(near(apply(back, (body.x, b)), (body.x, b)));
     assert!(near(
         apply(back, (body.x, body.y)),
-        (body.x - 4500.0 * HU, body.y + 4000.0 * HU)
+        (body.x - 4540.48 * HU, body.y + 4000.0 * HU)
     ));
-    // 앞쪽(오른쪽 아래): 위 변이 아래로 뒤집혀 반 높이 아래에서 4500만큼 오른쪽으로.
+    // 앞쪽(오른쪽 아래): 위 변이 아래로 뒤집혀 반 높이 아래에서 4540.48만큼 오른쪽으로.
     let front = shadow_matrix(8, body).expect("기울임 그림자를 그려야 한다");
     assert!(near(apply(front, (body.x, b)), (body.x, b)));
     assert!(near(
         apply(front, (body.x, body.y)),
-        (body.x + 4500.0 * HU, b + 4000.0 * HU)
+        (body.x + 4540.48 * HU, b + 4000.0 * HU)
     ));
 }
 
@@ -121,10 +122,10 @@ fn preset_shadow_boxes_match_hancom_screen() {
         (1, 12000.0, 8000.0, [-600.0, -600.0, 12000.0, 8000.0]),
         (13, 12000.0, 8000.0, [-600.0, -600.0, 9000.0, 6000.0]),
         (14, 12000.0, 8000.0, [-3600.0, -2600.0, 15000.0, 10000.0]),
-        (5, 12000.0, 8000.0, [-4500.0, 4000.0, 16500.0, 4000.0]),
-        (6, 12000.0, 8000.0, [0.0, 4000.0, 16500.0, 4000.0]),
-        (7, 12000.0, 8000.0, [-4500.0, 8000.0, 16500.0, 4000.0]),
-        (8, 6000.0, 12000.0, [0.0, 12000.0, 12750.0, 6000.0]),
+        (5, 12000.0, 8000.0, [-4540.48, 4000.0, 16540.48, 4000.0]),
+        (6, 12000.0, 8000.0, [0.0, 4000.0, 16540.48, 4000.0]),
+        (7, 12000.0, 8000.0, [-4540.48, 8000.0, 16540.48, 4000.0]),
+        (8, 6000.0, 12000.0, [0.0, 12000.0, 12810.72, 6000.0]),
     ];
     for (kind, width, height, expected) in presets {
         let (w, h) = (width * HU, height * HU);
@@ -152,7 +153,7 @@ fn preset_shadow_boxes_match_hancom_screen() {
 fn front_shear_mirrors_the_body() {
     let body = BoundingBox::new(0.0, 0.0, 12000.0 * HU, 8000.0 * HU);
     let m = shadow_matrix(7, body).unwrap();
-    assert!(near(apply(m, (0.0, 0.0)), (-4500.0 * HU, 12000.0 * HU)));
+    assert!(near(apply(m, (0.0, 0.0)), (-4540.48 * HU, 12000.0 * HU)));
 }
 
 #[test]
@@ -204,7 +205,7 @@ fn body_origin_moves_past_left_and_top_shadow() {
         (1, 0, 0, 600.0, 600.0),
         (4, 0, 0, 0.0, 0.0),
         (14, 0, 0, 3600.0, 2600.0),
-        (7, 0, 0, 4500.0, 0.0),
+        (7, 0, 0, 4540.48, 0.0),
         (1, 100, -200, 500.0, 800.0),
     ] {
         let properties = serde_json::json!({"shadowType":kind,"shadowOffsetX":x,"shadowOffsetY":y});
@@ -247,23 +248,23 @@ mod shadow_geometry {
             shadow_box(14, 12000.0, 8000.0),
             [-3600.0, -2600.0, 15000.0, 10000.0]
         );
-        // 뒤쪽 기울임: 아래 변은 본체와 같고 위 변은 반 높이에서 4500만큼 밀린다.
+        // 뒤쪽 기울임: 아래 변은 본체와 같고 위 변은 반 높이에서 4540.48만큼 밀린다.
         assert_eq!(
             shadow_box(5, 12000.0, 8000.0),
-            [-4500.0, 4000.0, 16500.0, 4000.0]
+            [-4540.48, 4000.0, 16540.48, 4000.0]
         );
         assert_eq!(
             shadow_box(6, 12000.0, 8000.0),
-            [0.0, 4000.0, 16500.0, 4000.0]
+            [0.0, 4000.0, 16540.48, 4000.0]
         );
         // 앞쪽 기울임: 본체 아래 변에서 아래로 반 높이.
         assert_eq!(
             shadow_box(7, 12000.0, 8000.0),
-            [-4500.0, 8000.0, 16500.0, 4000.0]
+            [-4540.48, 8000.0, 16540.48, 4000.0]
         );
         assert_eq!(
             shadow_box(8, 6000.0, 12000.0),
-            [0.0, 12000.0, 12750.0, 6000.0]
+            [0.0, 12000.0, 12810.72, 6000.0]
         );
         assert_eq!(matrix(9, [0.0, 0.0, 1.0, 1.0], 1.0, (0.0, 0.0)), None);
     }
@@ -276,7 +277,7 @@ mod shadow_geometry {
             m[0] * 0.0 + m[2] * 0.0 + m[4],
             m[1] * 0.0 + m[3] * 0.0 + m[5],
         );
-        assert_eq!(apex, (-4500.0, 12000.0));
+        assert_eq!(apex, (-4540.48, 12000.0));
     }
 
     #[test]
@@ -292,7 +293,7 @@ mod shadow_geometry {
         );
         assert_eq!(
             body_origin_hu(7, 0, 0, 12000.0, 8000.0),
-            Some((4500.0, 0.0))
+            Some((4540.48, 0.0))
         );
         assert_eq!(
             body_origin_hu(1, 100, -200, 12000.0, 8000.0),

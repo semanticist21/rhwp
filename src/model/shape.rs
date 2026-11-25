@@ -60,6 +60,10 @@ pub struct CommonObjAttr {
     pub z_order: i32,
     /// 바깥 여백 (좌, 우, 상, 하)
     pub margin: Padding,
+    /// HWP에서 읽은 `margin`에 한/글이 더해 둔 그림자 몫 `[좌, 우, 상, 하]`.
+    /// 한/글 12.30은 HWP 저장 때 그림자 몫을 바깥 여백 칸에 더해 적고 HWPX `outMargin`에는 더하지 않는다.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub hwp_shadow_margin: Option<[i16; 4]>,
     /// 인스턴스 ID
     pub instance_id: u32,
     /// 쪽나눔 방지 (0=off, 1=on)

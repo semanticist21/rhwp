@@ -925,37 +925,17 @@ fn skew_page_matrix(
     y: f64,
     dpi: f64,
 ) -> Option<([f64; 6], f64, f64)> {
-    use crate::model::shape::ShapeObject;
-    if !matches!(
-        shape,
-        ShapeObject::Rectangle(_)
-            | ShapeObject::Ellipse(_)
-            | ShapeObject::Arc(_)
-            | ShapeObject::Curve(_)
-    ) {
-        return None;
-    }
+    let [a, c, b, d, tx, ty] = crate::model::shape::shadow::frame_skew_hu(shape)?;
     let sa = shape.shape_attr();
-    if sa.rotation_angle.rem_euclid(360) != 0
-        || sa.horz_flip
-        || sa.vert_flip
-        || (sa.render_b.abs() <= 1e-6 && sa.render_c.abs() <= 1e-6)
-        || sa.original_width == 0
-        || sa.original_height == 0
-        || !sa.has_saved_affine_geometry()
-    {
-        return None;
-    }
     let unit = dpi / super::super::HWPUNIT_PER_INCH;
-    let (a, b, c, d) = (sa.render_sx, sa.render_b, sa.render_c, sa.render_sy);
     Some((
         [
             a,
             c,
             b,
             d,
-            x - a * x - b * y + sa.render_tx * unit,
-            y - c * x - d * y + sa.render_ty * unit,
+            x - a * x - b * y + tx * unit,
+            y - c * x - d * y + ty * unit,
         ],
         f64::from(sa.original_width) * unit,
         f64::from(sa.original_height) * unit,
@@ -2075,16 +2055,18 @@ impl LayoutEngine {
         // 묶음 자식은 renderingInfo가 정한 본체 원점을 그대로 보존한다.
         let (base_x, base_y) = if !matrix_positioned {
             let unit = self.dpi / super::super::HWPUNIT_PER_INCH;
+            // 기울인 도형은 한/글 12.30처럼 기울인 외곽에서 그림자를 잰다.
+            let outline = crate::model::shape::shadow::skewed_outline_hu(shape);
             let origin = shape.drawing().and_then(|drawing| {
-                crate::model::shape::shadow::body_origin_hu(
+                crate::model::shape::shadow::extents_hu(
                     drawing.shadow_type,
-                    drawing.shadow_offset_x,
-                    drawing.shadow_offset_y,
+                    (drawing.shadow_offset_x, drawing.shadow_offset_y),
                     w / unit,
                     h / unit,
+                    outline.as_ref(),
                 )
             });
-            origin.map_or((base_x, base_y), |(x, y)| {
+            origin.map_or((base_x, base_y), |[x, y, _, _]| {
                 (base_x + x * unit, base_y + y * unit)
             })
         } else {

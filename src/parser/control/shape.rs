@@ -259,49 +259,49 @@ pub(crate) fn parse_gso_control(ctrl_data: &[u8], child_records: &[Record]) -> C
     }
 
     // 일반 도형
-    match shape_tag_id {
+    let mut shape = match shape_tag_id {
         Some(tags::HWPTAG_SHAPE_COMPONENT_LINE) => {
             let mut line = LineShape::default();
             line.common = common;
             let is_connector = drawing.shape_attr.ctrl_id == tags::SHAPE_CONNECTOR_ID;
             line.drawing = drawing;
             parse_line_shape_data(shape_tag_data, &mut line, is_connector);
-            Control::Shape(Box::new(ShapeObject::Line(line)))
+            ShapeObject::Line(line)
         }
         Some(tags::HWPTAG_SHAPE_COMPONENT_RECTANGLE) => {
             let mut rect = RectangleShape::default();
             rect.common = common;
             rect.drawing = drawing;
             parse_rect_shape_data(shape_tag_data, &mut rect);
-            Control::Shape(Box::new(ShapeObject::Rectangle(rect)))
+            ShapeObject::Rectangle(rect)
         }
         Some(tags::HWPTAG_SHAPE_COMPONENT_ELLIPSE) => {
             let mut ellipse = EllipseShape::default();
             ellipse.common = common;
             ellipse.drawing = drawing;
             parse_ellipse_shape_data(shape_tag_data, &mut ellipse);
-            Control::Shape(Box::new(ShapeObject::Ellipse(ellipse)))
+            ShapeObject::Ellipse(ellipse)
         }
         Some(tags::HWPTAG_SHAPE_COMPONENT_ARC) => {
             let mut arc = ArcShape::default();
             arc.common = common;
             arc.drawing = drawing;
             parse_arc_shape_data(shape_tag_data, &mut arc);
-            Control::Shape(Box::new(ShapeObject::Arc(arc)))
+            ShapeObject::Arc(arc)
         }
         Some(tags::HWPTAG_SHAPE_COMPONENT_POLYGON) => {
             let mut poly = PolygonShape::default();
             poly.common = common;
             poly.drawing = drawing;
             parse_polygon_shape_data(shape_tag_data, &mut poly);
-            Control::Shape(Box::new(ShapeObject::Polygon(poly)))
+            ShapeObject::Polygon(poly)
         }
         Some(tags::HWPTAG_SHAPE_COMPONENT_CURVE) => {
             let mut curve = CurveShape::default();
             curve.common = common;
             curve.drawing = drawing;
             parse_curve_shape_data(shape_tag_data, &mut curve);
-            Control::Shape(Box::new(ShapeObject::Curve(curve)))
+            ShapeObject::Curve(curve)
         }
         _ => {
             // 알 수 없는 도형 → 사각형으로 대체
@@ -309,9 +309,12 @@ pub(crate) fn parse_gso_control(ctrl_data: &[u8], child_records: &[Record]) -> C
             let mut rect = RectangleShape::default();
             rect.common = common;
             rect.drawing = drawing;
-            Control::Shape(Box::new(ShapeObject::Rectangle(rect)))
+            ShapeObject::Rectangle(rect)
         }
-    }
+    };
+    // 한/글 12.30은 HWP 바깥 여백 칸에 그림자 몫을 더해 적는다. 그 몫을 적어 HWPX·개체 속성이 뺀 값을 쓰게 한다.
+    crate::model::shape::shadow::record_hwp_margin(&mut shape);
+    Control::Shape(Box::new(shape))
 }
 
 // ============================================================

@@ -386,10 +386,37 @@ impl LayerBuilder {
             return None;
         }
 
-        // 기울인 도형은 원래 크기로 그린 몸체·글·그림자를 한 변환 묶음으로 기울인다.
+        // 기울인 도형은 원래 크기로 그린 몸체·글을 한 변환 묶음으로 기울인다.
         if let Some(skew) = node_skew(node) {
             let mut local = node.clone();
             clear_skew(&mut local);
+            // 한/글 12.30은 그림자를 기울인 외곽에서 다시 잰다: 기울인 실루엣을 기울인 외접 상자 기준 그림자 행렬로 옮긴다.
+            let [x, y, w, h] = crate::model::shape::shadow::transformed_box(
+                skew,
+                [node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height],
+            );
+            if let Some(parts) =
+                super::parallel_shadow::split_on(&local, BoundingBox::new(x, y, w, h))
+            {
+                let shadow = self.build_node(&parts.silhouette, previous_text)?;
+                let body = self.build_node(&parts.body, previous_text)?;
+                let mut group = LayerNode::group(
+                    node.bbox,
+                    Some(node.id),
+                    vec![
+                        super::parallel_shadow::transformed(
+                            super::parallel_shadow::transformed(shadow, skew),
+                            parts.matrix,
+                        ),
+                        super::parallel_shadow::transformed(body, skew),
+                    ],
+                    CacheHint::None,
+                    GroupKind::Generic,
+                )
+                .with_layer(node.layer);
+                group.bounds = group.visual_bounds(true);
+                return Some(group);
+            }
             let child = self.build_node(&local, previous_text)?;
             let mut group = LayerNode::group(
                 node.bbox,

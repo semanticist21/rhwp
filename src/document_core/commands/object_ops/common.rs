@@ -380,6 +380,8 @@ impl DocumentCore {
             crate::model::shape::TextWrap::InFrontOfText => "InFrontOfText",
         };
         let desc_escaped = crate::document_core::helpers::json_escape(&c.description);
+        // 개체 속성 창의 바깥 여백은 HWP가 더해 둔 그림자 몫을 뺀 값이다(한/글 12.30).
+        let margin = crate::model::shape::shadow::clean_margin(c);
         format!(
             "\"width\":{},\"height\":{},\"treatAsChar\":{},\
              \"vertRelTo\":\"{}\",\"vertAlign\":\"{}\",\
@@ -405,10 +407,10 @@ impl DocumentCore {
             c.size_protect,
             c.z_order,
             c.instance_id,
-            c.margin.left,
-            c.margin.top,
-            c.margin.right,
-            c.margin.bottom,
+            margin.left,
+            margin.top,
+            margin.right,
+            margin.bottom,
             desc_escaped,
             crate::serializer::hwpx::shape::drop_cap_style_str(c.drop_cap_style),
         )

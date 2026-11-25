@@ -1662,10 +1662,12 @@ pub(super) fn write_out_margin_with_storage<W: Write, S: crate::storage::Storage
 where
     S::Error: std::fmt::Display,
 {
-    let l = xml_value(storage, c.margin.left)?;
-    let r = xml_value(storage, c.margin.right)?;
-    let t = xml_value(storage, c.margin.top)?;
-    let b = xml_value(storage, c.margin.bottom)?;
+    // HWPX outMargin에는 한/글처럼 그림자 몫을 더하지 않는다(HWP에서 읽은 몫은 뺀다).
+    let margin = crate::model::shape::shadow::clean_margin(c);
+    let l = xml_value(storage, margin.left)?;
+    let r = xml_value(storage, margin.right)?;
+    let t = xml_value(storage, margin.top)?;
+    let b = xml_value(storage, margin.bottom)?;
     empty_tag_with_storage(
         w,
         "hp:outMargin",

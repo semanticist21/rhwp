@@ -108,6 +108,7 @@ mod tests {
                 top: 300,
                 bottom: 400,
             },
+            hwp_shadow_margin: None,
             instance_id: 0xCAFEBABE,
             prevent_page_break: 0,
             treat_as_char: false,

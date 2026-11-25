@@ -386,8 +386,15 @@ impl DocumentCore {
         };
 
         // 연결선 종류·가운데 점 좌표와 그 점을 옮기는 축
+        // 직선은 돌리기 전 틀 크기(current)도 준다. 한/글 12.30 배치 탭은 돌린 직선의 크기 칸에 이 원래 크기를 보인다.
         let connector_json = if let crate::model::shape::ShapeObject::Line(ref line) = shape {
-            super::connector::connector_props_json(line)
+            let sa = &line.drawing.shape_attr;
+            format!(
+                ",\"frameWidth\":{},\"frameHeight\":{}{}",
+                sa.current_width,
+                sa.current_height,
+                super::connector::connector_props_json(line)
+            )
         } else {
             String::new()
         };
@@ -436,6 +443,25 @@ impl DocumentCore {
             .and_then(|section| section.paragraphs.get(parent_para_idx))
             .and_then(crate::renderer::composer::paragraph_flow_end);
         let shape = self.resolve_shape_control_mut(section_idx, parent_para_idx, control_idx)?;
+        // 그림자·크기·기울이기·바깥 여백을 고치면 HWP에서 읽은 그림자 몫을 덜어 둔다. HWP 저장이 새 몫을 다시 더한다.
+        if [
+            "shadowType",
+            "shadowOffsetX",
+            "shadowOffsetY",
+            "width",
+            "height",
+            "skewX",
+            "skewY",
+            "outerMarginLeft",
+            "outerMarginRight",
+            "outerMarginTop",
+            "outerMarginBottom",
+        ]
+        .iter()
+        .any(|key| props_json.contains(&format!("\"{key}\"")))
+        {
+            crate::model::shape::shadow::normalize_margin(shape.common_mut());
+        }
         let caption_width_before = shape_caption_text_width(shape);
         let mut direction_changed = false;
 
@@ -874,8 +900,15 @@ impl DocumentCore {
         };
 
         // 연결선 종류·가운데 점 좌표와 그 점을 옮기는 축
+        // 직선은 돌리기 전 틀 크기(current)도 준다. 한/글 12.30 배치 탭은 돌린 직선의 크기 칸에 이 원래 크기를 보인다.
         let connector_json = if let crate::model::shape::ShapeObject::Line(ref line) = shape {
-            super::connector::connector_props_json(line)
+            let sa = &line.drawing.shape_attr;
+            format!(
+                ",\"frameWidth\":{},\"frameHeight\":{}{}",
+                sa.current_width,
+                sa.current_height,
+                super::connector::connector_props_json(line)
+            )
         } else {
             String::new()
         };

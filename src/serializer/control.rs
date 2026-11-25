@@ -2083,6 +2083,19 @@ fn try_serialize_shape_control<S: crate::storage::Storage>(
         ctrl_data_record,
         drop_cap.as_ref().map(|p| p.as_slice()),
     );
+    // 한/글 12.30은 그림자 몫을 HWP 바깥 여백 칸에 더해 적고, 읽을 때 그만큼 본체를 민다.
+    let shadowed;
+    let common = if common.hwp_shadow_margin.is_none()
+        && crate::model::shape::shadow::hwp_margin_extents(shape).is_some()
+    {
+        shadowed = crate::model::shape::CommonObjAttr {
+            margin: crate::model::shape::shadow::hwp_margin(shape),
+            ..common.clone()
+        };
+        &shadowed
+    } else {
+        common
+    };
     let mut header = storage.binary(&ControlPayload::Common(common))?;
     set_caption_attr_bit(&mut header, caption.is_some());
     let record = try_make_ctrl_record(tags::CTRL_GEN_SHAPE, level, &header, storage)?;
