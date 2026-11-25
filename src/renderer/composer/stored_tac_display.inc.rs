@@ -118,6 +118,12 @@ pub(crate) fn owned_tac_prefix_rows(para: &Paragraph, owner: usize) -> bool {
             && stored_prefix_rows_are_text_rows(para, owner))
 }
 
+/// 개체 줄 앞에 보이는 글자 줄을 저장한 문단인가. 한컴은 그 글자 줄을 이 단에 두고 개체 줄만
+/// 다음 단으로 넘긴다(shortcut.hwp 구역 간격 0 판 3쪽 끝 `모양` 줄과 4쪽 머리 띠 표 줄).
+pub(crate) fn visible_text_tac_prefix_rows(para: &Paragraph, owner: usize) -> bool {
+    para.text.chars().any(|c| !c.is_whitespace()) && stored_prefix_rows_are_text_rows(para, owner)
+}
+
 /// 개체 줄 앞 저장 줄들이 같은 조각 안에서 앞으로만 진행하는 글자 높이 줄인지.
 fn stored_prefix_rows_are_text_rows(para: &Paragraph, owner: usize) -> bool {
     owner > 0

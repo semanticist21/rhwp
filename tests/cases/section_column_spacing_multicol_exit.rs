@@ -16,7 +16,9 @@
 //!   자리(제목 → 헤더 띠, 헤더 띠 → 두 단 본문, 두 단 본문 → 헤더 띠, `<…>` 소제목 앞뒤)마다
 //!   -20.04pt·+36.72pt씩 움직인다. 1쪽 `커서 이동` -20.04, `빈칸 삽입` -40.08, `지우기` -60.00,
 //!   `뒤 글자 지우기` -80.04, 2쪽 `새 문서` -20.04, `<미리 보기 상태에서>` -39.96, `편집 용지` -60.00,
-//!   `되돌리기` -99.96(간격 0). 원본은 7쪽, 간격 5669 판은 12쪽이다.
+//!   `되돌리기` -99.96(간격 0). 원본은 7쪽, 간격 5669 판은 12쪽이다. 간격 0 판 3쪽 끝에서는 문단 141의
+//!   `모양` 글줄(537.12pt)만 3쪽에 남고 같은 문단의 글자처럼 취급한 머리 띠 표 줄 `서식`은 4쪽 첫머리
+//!   (45.48pt)로 넘어간다.
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::path::Path;
@@ -242,4 +244,22 @@ fn shortcut_page_count_follows_section_column_spacing() {
             "구역 간격 {spacing:?}"
         );
     }
+}
+
+/// shortcut.hwp 구역 간격 0 판 3쪽 끝: 문단 141은 `모양` 글줄과 글자처럼 취급한 머리 띠 표 줄을 저장한다.
+/// 한컴은 글줄만 3쪽에 두고 표 줄을 4쪽으로 넘긴다.
+#[test]
+fn shortcut_gap0_splits_header_band_paragraph_between_text_and_table_rows() {
+    let core = load("samples/basic/shortcut.hwp", Some(0));
+    let (lines3, tables3) = boxes(&core, 2);
+    let (lines4, tables4) = boxes(&core, 3);
+    assert!(
+        top_of(&lines3, 141).is_some() && top_of(&tables3, 141).is_none(),
+        "3쪽에는 문단 141의 `모양` 글줄만 있어야 한다"
+    );
+    assert!(
+        top_of(&tables4, 141).is_some() && top_of(&lines4, 141).is_none(),
+        "4쪽은 문단 141의 머리 띠 표 줄로 시작해야 한다"
+    );
+    assert_eq!(core.page_count(), 7);
 }

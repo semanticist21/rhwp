@@ -4936,13 +4936,15 @@ impl TypesetEngine {
             > available
             && (!fits_after_overlay_shapes || side_wrap_placement.is_some())
             && (!saved_tac_table_bottom_fits || side_wrap_placement.is_some())
-            && !st.current_items.is_empty())
+            // 같은 쪽 앞 영역이 있는 단은 비어 있지 않다(영역 전환이 단 항목을 비운다).
+            && (!st.current_items.is_empty() || st.current_zone_y_offset > 0.0))
             || stored_vpos_rewind_break
         {
             let mut prefix_carried_separately = false;
-            if tac_table_line_idx
-                .is_some_and(|owner| crate::renderer::composer::owned_tac_prefix_rows(para, owner))
-                && before_text > 0.0
+            if tac_table_line_idx.is_some_and(|owner| {
+                crate::renderer::composer::owned_tac_prefix_rows(para, owner)
+                    || crate::renderer::composer::visible_text_tac_prefix_rows(para, owner)
+            }) && before_text > 0.0
                 && st.current_height + fmt.line_content_height(0..tac_table_line_idx.unwrap(), 0.0)
                     <= available
                 && !st.pre_emitted_host_paras.contains(&para_idx)

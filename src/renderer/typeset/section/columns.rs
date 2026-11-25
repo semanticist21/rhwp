@@ -376,16 +376,23 @@ impl TypesetEngine {
         // 제약 없는 텍스트 zone은 실제 format 결과의 첫 줄 수용 판정을 사용한다.
         // 개체·keep 제약을 포함한 zone의 기존 밴드 예약은 유지한다.
         // 구역 간격을 아는 문서는 영역 끝·간격을 배치와 같게 재므로 새 영역 첫 줄이 들어가는지만 본다.
-        // ponytail: 개체를 품은 첫 문단은 줄 사이에서 쪽을 나누지 못하므로 그 문단 전체를 예약한다
-        // (한컴은 shortcut.hwp 간격 0 판 3쪽 끝 `모양` 줄만 남기고 헤더 띠 표 줄을 다음 쪽으로 넘긴다).
+        // 개체를 품은 첫 문단은 그 문단 전체를 예약한다. 다만 글자처럼 취급한 표 줄 앞에 보이는 글자
+        // 줄이 있으면 한컴처럼 그 글자 줄만 이 쪽에 남기고 표 줄을 다음 쪽으로 넘길 수 있으므로 첫 줄만
+        // 본다(shortcut.hwp 간격 0 판 3쪽 끝 `모양` 줄, 4쪽 머리 띠 표 `서식`).
         let reserved_height = if plain_text_zone {
             0.0
         } else if section_spacing_hu.is_some() {
             let first = &paragraphs[para_idx];
-            let has_object = first
-                .controls
-                .iter()
-                .any(|ctrl| !matches!(ctrl, Control::ColumnDef(_) | Control::SectionDef(_)));
+            let has_object = first.controls.iter().enumerate().any(|(index, ctrl)| {
+                !matches!(ctrl, Control::ColumnDef(_) | Control::SectionDef(_))
+                    && !(matches!(ctrl, Control::Table(table) if table.common.treat_as_char)
+                        && crate::renderer::composer::control_slot_line_index(first, index)
+                            .is_some_and(|owner| {
+                                crate::renderer::composer::visible_text_tac_prefix_rows(
+                                    first, owner,
+                                )
+                            }))
+            });
             let lines = if has_object {
                 &first.line_segs[..]
             } else {
