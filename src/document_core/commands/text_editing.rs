@@ -6996,11 +6996,21 @@ impl DocumentCore {
             .sections
             .get_mut(section_idx)
             .ok_or_else(|| HwpError::RenderError(format!("구역 {} 범위 초과", section_idx)))?;
-        let mut para: &mut Paragraph = section
+        let para: &mut Paragraph = section
             .paragraphs
             .get_mut(parent_para_idx)
             .ok_or_else(|| HwpError::RenderError(format!("문단 {} 범위 초과", parent_para_idx)))?;
+        Self::paragraphs_by_path_from(para, path)
+    }
 
+    /// `para`에서 시작해 path를 따라간 문단 목록. 바탕쪽 문단처럼 본문 밖 뿌리에서도 쓴다.
+    pub(crate) fn paragraphs_by_path_from<'a>(
+        mut para: &'a mut Paragraph,
+        path: &[(usize, usize, usize)],
+    ) -> Result<&'a mut Vec<Paragraph>, HwpError> {
+        if path.is_empty() {
+            return Err(HwpError::RenderError("경로가 비어있습니다".to_string()));
+        }
         for (i, &(ctrl_idx, cell_idx, cell_para_idx)) in path.iter().enumerate() {
             let is_last = i == path.len() - 1;
             let paragraphs = match para.controls.get_mut(ctrl_idx) {

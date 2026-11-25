@@ -10,7 +10,8 @@
 //! - 개요 문단은 바탕글로, 문단 번호는 번호 없는 문단 모양으로 바꾼다. 강제 쪽 나눔은 나눔만 끈다.
 //! - 구역 시작은 그 구역을 앞 구역에 합치고, 바탕쪽은 구역의 바탕쪽을 모두 지운다.
 //!
-//! 숨은 설명·메모 본문 안은 훑지 않는다(편집 주소가 없다).
+//! 문서 전체에서 지울 때는 한컴 12.30처럼 바탕쪽과 숨은 설명 안도 지운다. 그 자리는 캐럿 주소가
+//! 없어 찾아가기·블록 지우기가 받는 목록에는 넣지 않는다. 메모 본문 안은 한컴 12.30도 지우지 않는다.
 
 use crate::document_core::hyperlink::HyperlinkTarget;
 use crate::document_core::DocumentCore;
@@ -92,6 +93,9 @@ pub struct ControlCode {
     pub width: usize,
     #[serde(skip)]
     erase: Erase,
+    /// 바탕쪽 안 자리면 그 바탕쪽 번호. `para`는 그 바탕쪽의 문단이다.
+    #[serde(skip)]
+    master: Option<usize>,
 }
 
 impl ControlCode {
@@ -102,13 +106,17 @@ impl ControlCode {
             .collect()
     }
 
-    /// `other`가 이 자리의 컨트롤 안에 드는가.
+    /// `other`가 이 자리의 컨트롤(바탕쪽 지우기면 그 구역의 바탕쪽) 안에 드는가.
     fn contains(&self, other: &ControlCode) -> bool {
+        if self.erase == Erase::MasterPages {
+            return self.section == other.section && other.master.is_some();
+        }
         let Erase::Control(ci) = self.erase else {
             return false;
         };
         let (mine, theirs) = (self.steps(), other.steps());
         self.section == other.section
+            && self.master == other.master
             && self.para == other.para
             && theirs.len() > mine.len()
             && theirs[..mine.len()] == mine[..]
@@ -251,6 +259,8 @@ fn revision_kind(command: &str) -> Option<&'static str> {
 /// 지금 훑는 문단의 자리.
 struct Place {
     section: usize,
+    /// 바탕쪽 안이면 그 바탕쪽 번호.
+    master: Option<usize>,
     para: usize,
     path: Vec<ControlCodeStep>,
 }
@@ -258,6 +268,8 @@ struct Place {
 struct Walk<'a> {
     doc: &'a Document,
     kinds: &'a [String],
+    /// 문서 전체 지우기: 바탕쪽·숨은 설명 안도 훑는다.
+    deep: bool,
     out: Vec<ControlCode>,
 }
 
@@ -299,6 +311,7 @@ impl Walk<'_> {
             char,
             width,
             erase,
+            master: at.master,
         });
     }
 
@@ -389,7 +402,7 @@ impl Walk<'_> {
             };
             self.push_wide(&kinds, at, pos, erase, width);
         }
-        for (cell, area, apply_to, paragraphs) in child_lists(control) {
+        for (cell, area, apply_to, paragraphs) in child_lists(control, self.deep) {
             for (i, child) in paragraphs.iter().enumerate() {
                 at.path.push(ControlCodeStep {
                     control_index: ci,
@@ -405,8 +418,11 @@ impl Walk<'_> {
     }
 }
 
-/// 컨트롤이 품은 문단 목록과 그 셀 번호. 셀 경로 API가 짚는 것만 준다.
-fn child_lists(control: &Control) -> Vec<(usize, &'static str, Option<u8>, &[Paragraph])> {
+/// 컨트롤이 품은 문단 목록과 그 셀 번호. 셀 경로 API가 짚는 것만 준다. 숨은 설명은 `deep`일 때만 준다.
+fn child_lists(
+    control: &Control,
+    deep: bool,
+) -> Vec<(usize, &'static str, Option<u8>, &[Paragraph])> {
     let mut lists: Vec<(usize, &'static str, Option<u8>, &[Paragraph])> = Vec::new();
     match control {
         Control::Table(table) => {
@@ -446,6 +462,9 @@ fn child_lists(control: &Control) -> Vec<(usize, &'static str, Option<u8>, &[Par
             Some(crate::document_core::header_footer_apply_to_u8(f.apply_to)),
             &f.paragraphs,
         )),
+        Control::HiddenComment(comment) if deep => {
+            lists.push((0, "hiddenComment", None, &comment.paragraphs))
+        }
         _ => {}
     }
     lists
@@ -454,19 +473,36 @@ fn child_lists(control: &Control) -> Vec<(usize, &'static str, Option<u8>, &[Par
 impl DocumentCore {
     /// `kinds`(한컴 목록 이름) 갈래의 조판 부호 자리를 문서 차례로 준다.
     pub fn control_codes_native(&self, kinds: &[String]) -> Vec<ControlCode> {
+        self.control_codes_walk(kinds, false)
+    }
+
+    /// `deep`이면 바탕쪽·숨은 설명 안 자리도 준다(문서 전체 지우기).
+    fn control_codes_walk(&self, kinds: &[String], deep: bool) -> Vec<ControlCode> {
         let mut walk = Walk {
             doc: &self.document,
             kinds,
+            deep,
             out: Vec::new(),
         };
         for (section, s) in self.document.sections.iter().enumerate() {
             let mut at = Place {
                 section,
+                master: None,
                 para: 0,
                 path: Vec::new(),
             };
             if !s.section_def.master_pages.is_empty() {
                 walk.push(&["바탕쪽"], &at, 0, Erase::MasterPages);
+            }
+            if deep {
+                for (slot, master) in s.section_def.master_pages.iter().enumerate() {
+                    at.master = Some(slot);
+                    for (para, p) in master.paragraphs.iter().enumerate() {
+                        at.para = para;
+                        walk.paragraph(p, &mut at);
+                    }
+                }
+                at.master = None;
             }
             for (para, p) in s.paragraphs.iter().enumerate() {
                 at.para = para;
@@ -483,7 +519,7 @@ impl DocumentCore {
         kinds: &[String],
         indices: Option<&[usize]>,
     ) -> Result<usize, HwpError> {
-        let all = self.control_codes_native(kinds);
+        let all = self.control_codes_walk(kinds, indices.is_none());
         let chosen: Vec<&ControlCode> = all
             .iter()
             .enumerate()
@@ -504,6 +540,8 @@ impl DocumentCore {
         let mut sections: Vec<usize> = Vec::new();
         let mut merges: Vec<usize> = Vec::new();
         let mut masters: Vec<usize> = Vec::new();
+        // 지운 바탕쪽 안 자리 (구역, 바탕쪽, 바탕쪽 문단, 그 문단 자체의 자리인가).
+        let mut master_edits: Vec<(usize, usize, usize, bool)> = Vec::new();
         let mut styles_changed = false;
         // 뒤에서부터 지워야 앞 자리의 컨트롤·글자 번호가 그대로다.
         for code in targets.iter().rev() {
@@ -517,6 +555,17 @@ impl DocumentCore {
                     masters.push(code.section);
                     continue;
                 }
+                // 바탕쪽 하이퍼링크는 하이퍼링크 주소 API가 짚지 못해 필드만 푼다.
+                Erase::Hyperlink(ci, _) if code.master.is_some() => {
+                    if !self
+                        .code_paragraph_at(code, &steps)?
+                        .unwrap_field_control(ci)
+                    {
+                        return Err(HwpError::InvalidField(
+                            "필드 자리를 확인할 수 없습니다".into(),
+                        ));
+                    }
+                }
                 Erase::Hyperlink(_, field_id) => {
                     let target = HyperlinkTarget {
                         section: code.section,
@@ -528,9 +577,7 @@ impl DocumentCore {
                 }
                 Erase::Outline | Erase::Numbering => {
                     let outline = code.erase == Erase::Outline;
-                    let base = self
-                        .code_paragraph_mut(code.section, code.para, &steps)?
-                        .para_shape_id;
+                    let base = self.code_paragraph_at(code, &steps)?.para_shape_id;
                     // 한컴 12.30은 개요 문단을 바탕글 스타일과 그 문단 모양으로 바꾸고,
                     // 문단 번호는 번호만 뗀다.
                     let shape_id = if outline {
@@ -548,7 +595,7 @@ impl DocumentCore {
                             },
                         )
                     };
-                    let para = self.code_paragraph_mut(code.section, code.para, &steps)?;
+                    let para = self.code_paragraph_at(code, &steps)?;
                     if outline {
                         para.style_id = 0;
                     }
@@ -557,7 +604,8 @@ impl DocumentCore {
                     styles_changed = true;
                 }
                 erase => {
-                    let para = self.code_paragraph_mut(code.section, code.para, &steps)?;
+                    let master = code.master.is_some();
+                    let para = self.code_paragraph_at(code, &steps)?;
                     match erase {
                         Erase::Control(ci) => {
                             if let Control::Footnote(_) | Control::Endnote(_) = para.controls[ci] {
@@ -571,7 +619,7 @@ impl DocumentCore {
                                     self.render_normalization.text_reflowed_tables.remove(&key);
                                 }
                                 // 여러 문단에 걸친 필드는 뒤 문단의 끝 표지도 걷는다(글은 남는다).
-                                Control::Field(field) if field.field_id != 0 => {
+                                Control::Field(field) if field.field_id != 0 && !master => {
                                     if let Some((section, para, steps)) = self
                                         .remove_orphan_field_end(
                                             code.section,
@@ -611,6 +659,14 @@ impl DocumentCore {
                     }
                 }
             }
+            // 패스스루 저장을 끊어 지운 결과가 저장에 남게 한다.
+            self.document.sections[code.section].raw_stream = None;
+            sections.push(code.section);
+            // 바탕쪽은 머리말·꼬리말 편집 API처럼 다시 짜고 구역 정의에 맞춘다(활성 누름틀이 없다).
+            if let Some(slot) = code.master {
+                master_edits.push((code.section, slot, code.para, steps.is_empty()));
+                continue;
+            }
             if let Erase::Control(removed) | Erase::Field(removed) | Erase::Hyperlink(removed, _) =
                 code.erase
             {
@@ -626,9 +682,6 @@ impl DocumentCore {
                     },
                 );
             }
-            // 패스스루 저장을 끊어 지운 결과가 저장에 남게 한다.
-            self.document.sections[code.section].raw_stream = None;
-            sections.push(code.section);
             if steps.is_empty() {
                 body.push((code.section, code.para));
             } else {
@@ -637,6 +690,17 @@ impl DocumentCore {
         }
         if styles_changed {
             self.rebuild_resolved_styles();
+        }
+        master_edits.sort_unstable();
+        master_edits.dedup();
+        for &(section, slot, para, top) in &master_edits {
+            let apply_to = crate::document_core::MASTER_PAGE_APPLY_BASE + slot as u8;
+            if top {
+                self.reflow_hf_paragraph(section, true, apply_to, para);
+            }
+        }
+        for &(section, ..) in &master_edits {
+            self.sync_section_def_controls_from_section(section);
         }
         self.reflow_after_code_erase(body, nested, &sections);
         notes.sort_unstable();
@@ -709,6 +773,29 @@ impl DocumentCore {
             }
         }
         None
+    }
+
+    /// 조판 부호 자리의 문단. 바탕쪽 안 자리는 그 바탕쪽 문단에서 경로를 따라간다.
+    fn code_paragraph_at(
+        &mut self,
+        code: &ControlCode,
+        steps: &[Step],
+    ) -> Result<&mut Paragraph, HwpError> {
+        let Some(slot) = code.master else {
+            return self.code_paragraph_mut(code.section, code.para, steps);
+        };
+        let missing = || HwpError::RenderError("조판 부호 문단을 찾을 수 없습니다".into());
+        let root = self
+            .master_page_mut(code.section, slot)?
+            .paragraphs
+            .get_mut(code.para)
+            .ok_or_else(missing)?;
+        match steps.last() {
+            None => Ok(root),
+            Some(&(_, _, inner)) => Self::paragraphs_by_path_from(root, steps)?
+                .get_mut(inner)
+                .ok_or_else(missing),
+        }
     }
 
     pub(crate) fn code_paragraph_mut(

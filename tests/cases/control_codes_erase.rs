@@ -424,3 +424,74 @@ fn active_field_keeps_next_typed_character_after_erasing_an_earlier_mark() {
         serde_json::from_str(&doc.get_field_value_by_name("남을 필드").unwrap()).unwrap();
     assert_eq!(field["value"], "ABC");
 }
+
+/// 한컴 12.30 Mac(2026-11-26): 문서 전체 지우기는 바탕쪽·숨은 설명 안의 탭도 지우고 메모 본문 안은
+/// 그대로 둔다. 블록 지우기·찾아가기 목록에는 캐럿 주소가 없는 그 자리를 넣지 않는다.
+#[test]
+fn erasing_the_whole_document_reaches_master_pages_and_hidden_comments() {
+    let mut doc = lines(&["본\t문"]);
+    let created: serde_json::Value = serde_json::from_str(
+        &doc.create_master_page_native(0, r#"{"applyTo":0}"#)
+            .unwrap(),
+    )
+    .unwrap();
+    let apply_to = created["applyTo"].as_u64().unwrap() as u8;
+    doc.insert_text_in_header_footer_native(0, true, apply_to, 0, 0, "바\t탕")
+        .unwrap();
+    // 숨은 설명은 한컴 12.30 저장본의 꼴로 본문 앞에 넣는다.
+    let mut doc = rewrite_section(&doc, |xml| {
+        xml.replacen(
+            "<hp:t>본",
+            r#"<hp:ctrl><hp:hiddenComment><hp:subList id="" textDirection="HORIZONTAL" lineWrap="BREAK" vertAlign="TOP" linkListIDRef="0" linkListNextIDRef="0" textWidth="0" textHeight="0" hasTextRef="0" hasNumRef="0"><hp:p id="0" paraPrIDRef="0" styleIDRef="0" pageBreak="0" columnBreak="0" merged="0"><hp:run charPrIDRef="0"><hp:t>숨<hp:tab width="4000" leader="0" type="1"/>설명</hp:t></hp:run></hp:p></hp:subList></hp:hiddenComment></hp:ctrl><hp:t>본"#,
+            1,
+        )
+    });
+    let tab = names(&["탭"]);
+    // 찾아가기·블록 지우기 목록은 본문 탭만 준다.
+    assert_eq!(doc.control_codes_native(&tab).len(), 1);
+    assert_eq!(doc.erase_control_codes_native(&tab, None).unwrap(), 3);
+    let master_text = |core: &DocumentCore| {
+        core.document().sections[0].section_def.master_pages[0].paragraphs[0]
+            .text
+            .clone()
+    };
+    let comment_text = |core: &DocumentCore| {
+        core.document().sections[0].paragraphs[0]
+            .controls
+            .iter()
+            .find_map(|c| match c {
+                Control::HiddenComment(h) => Some(h.paragraphs[0].text.clone()),
+                _ => None,
+            })
+            .unwrap()
+    };
+    assert_eq!(texts(&doc), ["본문"]);
+    assert_eq!(master_text(&doc), "바탕");
+    assert_eq!(comment_text(&doc), "숨설명");
+    for bytes in [
+        doc.export_hwp_native().unwrap(),
+        doc.export_hwpx_native().unwrap(),
+    ] {
+        let reopened = DocumentCore::from_bytes(&bytes).unwrap();
+        assert_eq!(master_text(&reopened), "바탕");
+        assert_eq!(comment_text(&reopened), "숨설명");
+    }
+}
+
+#[test]
+fn erasing_master_pages_skips_codes_inside_them() {
+    let mut doc = lines(&["본문"]);
+    doc.create_master_page_native(0, r#"{"applyTo":0}"#)
+        .unwrap();
+    doc.insert_text_in_header_footer_native(0, true, 16, 0, 0, "바\t탕")
+        .unwrap();
+    assert_eq!(
+        doc.erase_control_codes_native(&names(&["바탕쪽", "탭"]), None)
+            .unwrap(),
+        1
+    );
+    assert!(doc.document().sections[0]
+        .section_def
+        .master_pages
+        .is_empty());
+}
