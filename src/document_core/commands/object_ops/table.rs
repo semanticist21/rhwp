@@ -1822,7 +1822,7 @@ impl DocumentCore {
                     .then(|| crate::renderer::composer::inline_picture_margins_hu(pic))
             };
             let room_before = room(pic);
-            let caption_created = Self::apply_picture_props_inner(pic, props_json, px);
+            let caption_created = Self::apply_picture_props_inner(pic, props_json, px, false);
             room_changed = room_before != room(pic);
             super::picture::reflow_picture_caption_if_width_changed(
                 pic,
