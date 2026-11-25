@@ -1792,6 +1792,15 @@ impl DocumentCore {
         // 리플로우 + 페이지네이션
         self.recompose_section(section_idx);
         self.paginate_if_needed();
+        // 떠 있는 어울림 개체를 붙이면 host 와 개체 옆 뒤 문단의 줄을 밴드 소유자가 다시 낸다
+        // (개체 넣기와 같은 경로). 밴드를 만들 수 없는 형상이면 종전 줄이 남는다.
+        if self.document.sections[section_idx].paragraphs[insert_para_idx]
+            .controls
+            .iter()
+            .any(crate::renderer::composer::control_owns_body_band)
+        {
+            let _ = self.apply_body_edit_through_picture_band(section_idx, insert_para_idx, |_| {});
+        }
 
         self.event_log.push(DocumentEvent::ContentPasted {
             section: section_idx,

@@ -1949,6 +1949,37 @@ impl DocumentCore {
                         styles,
                         dpi,
                     ),
+                    // 각주·미주 글도 한컴 12.30처럼 그 안 문단 기준 어울림·자리차지 개체 둘레로
+                    // 접는다. 편집 경로와 같은 소유자(`project_note_float_bands`)가 rhwp가 낸 줄뿐인
+                    // 주석만 다시 낸다. 한컴 저장 줄이 있는 주석은 그 줄이 권위다.
+                    // ponytail: 주석 영역 폭을 본문 폭으로 본다. 다단 쪽의 단 아래 각주는
+                    // 단 폭이 필요하다(편집 경로의 `footnote_column_frame_width`).
+                    Control::Footnote(note)
+                        if note
+                            .paragraphs
+                            .iter()
+                            .all(crate::renderer::para_has_no_stored_line_segs) =>
+                    {
+                        super::footnote_ops::project_note_float_bands(
+                            &mut note.paragraphs,
+                            width,
+                            styles,
+                            dpi,
+                        )
+                    }
+                    Control::Endnote(note)
+                        if note
+                            .paragraphs
+                            .iter()
+                            .all(crate::renderer::para_has_no_stored_line_segs) =>
+                    {
+                        super::footnote_ops::project_note_float_bands(
+                            &mut note.paragraphs,
+                            width,
+                            styles,
+                            dpi,
+                        )
+                    }
                     Control::Shape(shape) => {
                         let shape_width = shape.common().width;
                         if let Some(text) = shape.drawing_mut().and_then(|d| d.text_box.as_mut()) {
@@ -2032,21 +2063,31 @@ impl DocumentCore {
                     continue;
                 }
                 let band_paragraphs = &section.paragraphs[range.clone()];
-                // 저장 줄 없는 어울림 **그림** 밴드는 렌더 경로가 이미 따로 소유한다 — 줄을 새로
-                // 발행하는 것은 밴드 소유자가 새로 맡은 어울림 도형이 낀 밴드뿐이다.
-                let host_has_band_shape =
-                    section.paragraphs[host_index]
-                        .controls
-                        .iter()
-                        .any(|control| {
-                            matches!(control, Control::Shape(_)) && control_owns_body_band(control)
-                        });
-                if host_has_band_shape
-                    && band_paragraphs
-                        .iter()
-                        .all(|paragraph| paragraph.line_segs.is_empty())
+                if !band_paragraphs
+                    .iter()
+                    .all(crate::renderer::para_has_no_stored_line_segs)
                 {
-                    // 줄이 하나도 없다(HWPX) — 렌더 프레임 대신 밴드 소유자가 줄을 낸다.
+                    host_index += 1;
+                    continue;
+                }
+                if band_paragraphs
+                    .iter()
+                    .zip(&band.line_segs)
+                    .all(|(paragraph, rows)| {
+                        !paragraph.line_segs.is_empty()
+                            && Self::same_row_partition(&paragraph.line_segs, rows)
+                    })
+                {
+                    // rhwp 가 계산해 저장한 줄(HWP)을 밴드가 그대로 재현한다 — 그 줄이 밴드 줄이다.
+                    // 줄은 바꾸지 않고 출처 표지만 되살린다.
+                    for paragraph in &mut section.paragraphs[range.clone()] {
+                        paragraph.layout_float_band = true;
+                    }
+                } else {
+                    // 줄이 없거나(HWPX) rhwp 가 낸 줄이 밴드와 다르다(편집 중 밴드가 뒤 문단까지 닿지
+                    // 않은 채 저장해 host 만 깎이고 개체 옆 뒤 문단이 전폭인 HWP). 한/글은 같은 파일을
+                    // 열어 밴드로 다시 접으므로 밴드 소유자가 줄을 낸다. 그래야 HWP 로 다시 저장해도
+                    // 한/글 다시 저장본과 같은 줄 조각이 실린다.
                     for (paragraph, (line_segs, space_metrics)) in section.paragraphs[range.clone()]
                         .iter_mut()
                         .zip(band.line_segs.into_iter().zip(band.space_metrics))
@@ -2054,24 +2095,6 @@ impl DocumentCore {
                         paragraph.publish_float_band_rows(line_segs, space_metrics);
                     }
                     min_projected.get_or_insert(range.start);
-                } else if band_paragraphs
-                    .iter()
-                    .all(crate::renderer::para_has_no_stored_line_segs)
-                    && band_paragraphs
-                        .iter()
-                        .zip(&band.line_segs)
-                        .all(|(paragraph, rows)| {
-                            Self::same_row_partition(&paragraph.line_segs, rows)
-                        })
-                {
-                    // rhwp 가 계산해 저장한 줄(HWP)을 밴드가 그대로 재현한다 — 그 줄이 밴드 줄이다.
-                    // 줄은 바꾸지 않고 출처 표지만 되살린다. 재현하지 못하면 다른 소유자의 줄이다.
-                    for paragraph in &mut section.paragraphs[range.clone()] {
-                        paragraph.layout_float_band = true;
-                    }
-                } else {
-                    host_index += 1;
-                    continue;
                 }
                 host_index = range.end.max(host_index + 1);
             }
