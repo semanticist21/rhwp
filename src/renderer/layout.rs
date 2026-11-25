@@ -5486,7 +5486,7 @@ impl LayoutEngine {
         }
 
         super::text_direction::resolve_page(&mut tree.root);
-        super::text_decoration::resolve_page_phases(&mut tree.root);
+        super::text_decoration::resolve_page_phases(&mut tree);
         super::text_decoration::resolve_vertical_underlines(&mut tree);
         tree
     }

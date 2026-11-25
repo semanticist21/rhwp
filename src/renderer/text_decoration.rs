@@ -50,17 +50,30 @@ pub(crate) struct DecorationDots {
     pub step: f64,
 }
 
+/// 위 물결선 하나. 마루(`crest`, 기준선에 대한 오프셋)에서 시작해 반 주기마다 골과 마루를 오간다.
+#[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct DecorationWave {
+    pub crest: f64,
+    pub depth: f64,
+    pub period: f64,
+    pub width: f64,
+}
+
 #[derive(Debug, Clone, serde::Serialize)]
 pub(crate) struct TopUnderlineGeometry {
     pub phase: f64,
     pub strokes: Vec<DecorationStroke>,
     pub dots: Option<DecorationDots>,
+    /// 물결선은 출력마다 그리지 않고 쪽 후처리가 꺾은선 노드로 만든다.
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub waves: Vec<DecorationWave>,
 }
 
 impl TopUnderlineGeometry {
     /// 기준선에 대한 잉크의 위·아래 경계. 모든 출력과 clip이 같은 기하를 사용한다.
     pub fn vertical_bounds(&self) -> (f64, f64) {
-        self.strokes.iter().fold(
+        let bounds = self.strokes.iter().fold(
             self.dots
                 .as_ref()
                 .map_or((f64::INFINITY, f64::NEG_INFINITY), |dot| {
@@ -72,7 +85,13 @@ impl TopUnderlineGeometry {
                     bottom.max(stroke.offset + stroke.width / 2.0),
                 )
             },
-        )
+        );
+        self.waves.iter().fold(bounds, |(top, bottom), wave| {
+            (
+                top.min(wave.crest - wave.width / 2.0),
+                bottom.max(wave.crest + wave.depth + wave.width / 2.0),
+            )
+        })
     }
 }
 
@@ -83,7 +102,7 @@ pub(crate) fn top_underline_geometry(
     font_size: f64,
 ) -> Option<TopUnderlineGeometry> {
     use crate::model::style::UnderlineType;
-    if style.underline != UnderlineType::Top || style.underline_shape > 10 {
+    if style.underline != UnderlineType::Top || style.underline_shape > 12 {
         return None;
     }
     let size = style
@@ -112,6 +131,30 @@ pub(crate) fn top_underline_geometry(
                 radius: 0.03 * size,
                 step: size / 7.0,
             }),
+            waves: Vec::new(),
+        });
+    }
+    if shape >= 11 {
+        // 한컴 12.30 PDF(20pt): 물결은 마루 1.014em·골 0.894em 위, 주기 0.24em, 굵기 0.03em인
+        // 꺾은선이고 글 왼끝에서 마루로 시작한다. 이중 물결은 그 아래 0.09em에 하나 더 긋는다.
+        let crests: &[f64] = if shape == 11 {
+            &[1.014]
+        } else {
+            &[1.014, 0.924]
+        };
+        return Some(TopUnderlineGeometry {
+            phase,
+            strokes: Vec::new(),
+            dots: None,
+            waves: crests
+                .iter()
+                .map(|crest| DecorationWave {
+                    crest: -crest * size - raise,
+                    depth: 0.12 * size,
+                    period: 0.24 * size,
+                    width: 0.03 * size,
+                })
+                .collect(),
         });
     }
     let bands: &[(f64, f64)] = match shape {
@@ -132,7 +175,88 @@ pub(crate) fn top_underline_geometry(
             })
             .collect(),
         dots: None,
+        waves: Vec::new(),
     })
+}
+
+/// 물결을 `start..end` 구간의 꺾은선 (x, 기준선 오프셋)으로 편다. `phase`는 물결 원점에서
+/// `start`까지의 거리다. `round_end`면 끝을 반 주기 경계로 올린다(한컴은 글 끝을 넘겨
+/// 반 주기 끝에서 멈춘다).
+fn wave_points(
+    start: f64,
+    end: f64,
+    phase: f64,
+    wave: &DecorationWave,
+    round_end: bool,
+) -> Vec<(f64, f64)> {
+    let half = wave.period / 2.0;
+    if !(half > 0.0 && end > start) {
+        return Vec::new();
+    }
+    let at = |t: f64| {
+        let k = (t / half).floor();
+        let frac = t / half - k;
+        let down = k.rem_euclid(2.0) < 1.0;
+        (
+            start + t - phase,
+            wave.crest + wave.depth * if down { frac } else { 1.0 - frac },
+        )
+    };
+    let mut t_end = phase + end - start;
+    if round_end {
+        t_end = (t_end / half - 1e-9).ceil() * half;
+    }
+    let mut points = vec![at(phase)];
+    let mut k = (phase / half).floor() + 1.0;
+    while k * half < t_end - 1e-9 {
+        points.push(at(k * half));
+        k += 1.0;
+    }
+    points.push(at(t_end));
+    points
+}
+
+/// 위 물결선을 꺾은선 노드로 만든다.
+fn wave_nodes(
+    geometry: &TopUnderlineGeometry,
+    (start, end, baseline): (f64, f64, f64),
+    color: u32,
+    round_end: bool,
+    next_id: &mut dyn FnMut() -> super::render_tree::NodeId,
+) -> Vec<super::render_tree::RenderNode> {
+    use super::render_tree::{BoundingBox, PathNode, RenderNode, RenderNodeType};
+    use super::{PathCommand, ShapeStyle};
+    let mut nodes = Vec::new();
+    for wave in &geometry.waves {
+        let points = wave_points(start, end, geometry.phase, wave, round_end);
+        let Some(&(first_x, first_y)) = points.first() else {
+            continue;
+        };
+        let commands = std::iter::once(PathCommand::MoveTo(first_x, baseline + first_y))
+            .chain(
+                points[1..]
+                    .iter()
+                    .map(|&(x, y)| PathCommand::LineTo(x, baseline + y)),
+            )
+            .collect();
+        let last_x = points.last().map_or(first_x, |p| p.0);
+        let style = ShapeStyle {
+            stroke_color: Some(color),
+            stroke_width: wave.width,
+            ..Default::default()
+        };
+        nodes.push(RenderNode::new(
+            next_id(),
+            RenderNodeType::Path(PathNode::new(commands, style, None)),
+            BoundingBox::new(
+                first_x,
+                baseline + wave.crest - wave.width / 2.0,
+                last_x - first_x,
+                wave.depth + wave.width,
+            ),
+        ));
+    }
+    nodes
 }
 
 /// 짧은 선·긴 선과 간격의 공통 비율. Print 장치의 600dpi 반올림은 넣지 않는다.
@@ -305,30 +429,74 @@ pub(crate) fn underline_geometry(
             dash: vec![scale * 20.0, gap, dot, gap],
         }],
         dots: None,
+        waves: Vec::new(),
     })
 }
 
 /// 언어별 렌더링 런 경계는 원본 글자 모양 구간의 펜 경계가 아니다.
 /// 글꼴·크기·색을 실제로 바꾼 원본 구간과 비장식 간격에서는 위상을 다시 시작한다.
-pub(crate) fn resolve_page_phases(root: &mut super::render_tree::RenderNode) {
+pub(crate) fn resolve_page_phases(tree: &mut super::render_tree::PageRenderTree) {
+    let mut root = std::mem::replace(
+        &mut tree.root,
+        super::render_tree::RenderNode::new(
+            0,
+            super::render_tree::RenderNodeType::MasterPage,
+            super::render_tree::BoundingBox::new(0.0, 0.0, 0.0, 0.0),
+        ),
+    );
+    page_phases(&mut root, &mut || tree.next_id());
+    tree.root = root;
+}
+
+fn page_phases(
+    root: &mut super::render_tree::RenderNode,
+    next_id: &mut dyn FnMut() -> super::render_tree::NodeId,
+) {
     use super::render_tree::{RenderNodeType, TextRunNode};
     use super::text_direction::VisualTextPositions;
     use crate::model::style::UnderlineType;
     for child in &mut root.children {
-        resolve_page_phases(child);
+        page_phases(child, next_id);
     }
-    if !matches!(root.node_type, RenderNodeType::TextLine(_)) {
+    let RenderNodeType::TextLine(line) = &mut root.node_type else {
         return;
-    }
-    raise_top_underlines_over_objects(root);
+    };
+    let mut slots = std::mem::take(&mut line.top_underline_object_slots);
+    raise_top_underlines_over_objects(root, &mut slots);
     type Key = (u32, u8, u32, bool);
+    #[derive(Clone, Copy)]
+    enum Member {
+        Run(usize),
+        Slot(usize),
+    }
     struct Group {
         key: Key,
         baseline: f64,
         end: f64,
         origin: f64,
-        runs: Vec<usize>,
+        members: Vec<Member>,
     }
+    // 같은 글자 모양의 개체 자리가 그룹 끝에 맞닿아 있으면 그 폭까지 그룹을 잇는다.
+    let bridge = |group: &mut Group, slots: &[super::render_tree::TopUnderlineSlot]| {
+        while let Some(index) = (0..slots.len()).find(|&index| {
+            let slot = &slots[index];
+            (
+                slot.char_shape_id,
+                slot.style.underline_shape,
+                slot.style.underline_color,
+                true,
+            ) == group.key
+                && (slot.x0 - group.end).abs() < 1e-6
+                && (slot.baseline - group.baseline).abs() < 1e-6
+                && !group
+                    .members
+                    .iter()
+                    .any(|m| matches!(m, Member::Slot(i) if *i == index))
+        }) {
+            group.end = slots[index].x1;
+            group.members.push(Member::Slot(index));
+        }
+    };
     let mut groups: Vec<Group> = Vec::new();
     let mut active = false;
     for (index, node) in root.children.iter().enumerate() {
@@ -376,7 +544,12 @@ pub(crate) fn resolve_page_phases(root: &mut super::render_tree::RenderNode) {
             style.underline_color,
             style.underline == UnderlineType::Top,
         );
-        if active
+        let bridged = groups.last_mut().is_some_and(|g| {
+            let before = g.members.len();
+            bridge(g, &slots);
+            g.members.len() > before
+        });
+        if (active || bridged)
             && groups.last().is_some_and(|g| {
                 g.key == key && (g.baseline - baseline).abs() < 1e-6 && (g.end - start).abs() < 1e-6
             })
@@ -384,33 +557,154 @@ pub(crate) fn resolve_page_phases(root: &mut super::render_tree::RenderNode) {
             let g = groups.last_mut().unwrap();
             g.end = end;
             g.origin = g.origin.min(origin);
-            g.runs.push(index);
+            g.members.push(Member::Run(index));
         } else {
             groups.push(Group {
                 key,
                 baseline,
                 end,
                 origin,
-                runs: vec![index],
+                members: vec![Member::Run(index)],
             });
         }
         active = true;
     }
-    for group in groups {
-        for index in group.runs {
-            let node = &mut root.children[index];
-            if let RenderNodeType::TextRun(run) = &mut node.node_type {
-                run.style.top_underline_phase = Some(node.bbox.x - group.origin);
+    if let Some(g) = groups.last_mut() {
+        bridge(g, &slots);
+    }
+    // 그룹에 들지 않은 개체 자리(줄 첫 개체 등)는 제 왼끝을 원점으로 삼는다.
+    let mut slot_phase: Vec<Option<(f64, bool)>> = vec![None; slots.len()];
+    for group in &groups {
+        let last = group.members.len() - 1;
+        for (order, member) in group.members.iter().enumerate() {
+            match *member {
+                Member::Run(index) => {
+                    let node = &mut root.children[index];
+                    if let RenderNodeType::TextRun(run) = &mut node.node_type {
+                        run.style.top_underline_phase = Some(node.bbox.x - group.origin);
+                    }
+                }
+                Member::Slot(index) => {
+                    slot_phase[index] = Some((slots[index].x0 - group.origin, order == last));
+                }
             }
         }
     }
+    let mut extra = Vec::new();
+    // 물결 위 밑줄은 출력마다 그리지 않고 여기서 꺾은선으로 만든다. 그룹 끝 run만 반 주기 끝까지 긋는다.
+    for group in groups.iter().filter(|g| g.key.3 && g.key.1 >= 11) {
+        let last = group.members.len() - 1;
+        for (order, member) in group.members.iter().enumerate() {
+            let Member::Run(index) = *member else {
+                continue;
+            };
+            let node = &root.children[index];
+            let RenderNodeType::TextRun(run) = &node.node_type else {
+                continue;
+            };
+            let (font_size, baseline) = run
+                .style
+                .script_draw_metrics(run.style.effective_font_size(), node.bbox.y + run.baseline);
+            let Some(geometry) = top_underline_geometry(&run.style, font_size) else {
+                continue;
+            };
+            let end = node.bbox.x + soft_wrap_decoration_width(&root.children, index);
+            extra.extend(wave_nodes(
+                &geometry,
+                (node.bbox.x, end, baseline),
+                run.style.underline_color,
+                order == last,
+                next_id,
+            ));
+        }
+    }
+    // 한컴 12.30 PDF: 위 밑줄 글자 모양 자리의 글자처럼 둔 개체 폭에도 글과 같은 높이로 긋는다.
+    // ponytail: 개체 폭의 파선·점선은 개체 왼끝에서 위상을 다시 시작한다(물결만 앞 글에 잇는다).
+    for (index, slot) in slots.iter_mut().enumerate() {
+        let (phase, round_end) = slot_phase[index].unwrap_or((0.0, true));
+        slot.style.top_underline_phase = Some(phase);
+        let (font_size, baseline) = slot
+            .style
+            .script_draw_metrics(slot.style.effective_font_size(), slot.baseline);
+        let Some(geometry) = top_underline_geometry(&slot.style, font_size) else {
+            continue;
+        };
+        let color = slot.style.underline_color;
+        extra.extend(wave_nodes(
+            &geometry,
+            (slot.x0, slot.x1, baseline),
+            color,
+            round_end,
+            next_id,
+        ));
+        let mut strokes: Vec<(f64, f64, Vec<f64>)> = geometry
+            .strokes
+            .iter()
+            .map(|s| (s.offset, s.width, s.dash.clone()))
+            .collect();
+        if let Some(dot) = geometry.dots {
+            let d = dot.radius * 2.0;
+            strokes.push((dot.offset, d, vec![d, (dot.step - d).max(d)]));
+        }
+        for (offset, width, dash) in strokes {
+            let y = baseline + offset;
+            let style = super::LineStyle {
+                color,
+                width,
+                dash_pattern: (!dash.is_empty()).then_some(dash),
+                ..Default::default()
+            };
+            extra.push(super::render_tree::RenderNode::new(
+                next_id(),
+                RenderNodeType::Line(super::render_tree::LineNode::new(
+                    slot.x0, y, slot.x1, y, style,
+                )),
+                super::render_tree::BoundingBox::new(
+                    slot.x0,
+                    y - width / 2.0,
+                    slot.x1 - slot.x0,
+                    width,
+                ),
+            ));
+        }
+    }
+    root.children.extend(extra);
+}
+
+/// SVG 출력과 같은 장식 폭: soft-wrap 줄의 마지막 글 run은 줄 끝 공백을 뺀다(#6028).
+fn soft_wrap_decoration_width(children: &[super::render_tree::RenderNode], index: usize) -> f64 {
+    use super::render_tree::RenderNodeType;
+    let node = &children[index];
+    let RenderNodeType::TextRun(run) = &node.node_type else {
+        return node.bbox.width;
+    };
+    let last_text = children.iter().rposition(|child| {
+        matches!(&child.node_type, RenderNodeType::TextRun(r) if r.text.chars().any(|ch| ch != ' '))
+    });
+    if last_text != Some(index) || run.is_para_end || run.is_line_break_end {
+        return node.bbox.width;
+    }
+    let text = run.display_or_text();
+    let trailing = text.chars().rev().take_while(|ch| *ch == ' ').count();
+    if trailing == 0 {
+        return node.bbox.width;
+    }
+    let positions = run.replay_positions_for(text);
+    positions
+        .get(text.chars().count() - trailing)
+        .copied()
+        .unwrap_or(node.bbox.width)
 }
 
 /// 글자처럼 둔 개체가 글자보다 높은 줄의 위 밑줄을 그 개체 위끝으로 올린다.
 ///
 /// 한컴 12.30 PDF: 20pt 글 사이에 30mm 그림을 둔 줄의 위 밑줄은 그림 위끝 0.02em 위에
 /// 있고(글자만 있는 줄의 글자 위끝 0.02em 위와 같은 규칙), 글자 바로 위가 아니다.
-fn raise_top_underlines_over_objects(line: &mut super::render_tree::RenderNode) {
+/// 개체 자리의 위 밑줄도 같은 높이로 올린다.
+fn raise_top_underlines_over_objects(
+    line: &mut super::render_tree::RenderNode,
+    slots: &mut [super::render_tree::TopUnderlineSlot],
+) {
     use super::render_tree::RenderNodeType;
     use crate::model::style::UnderlineType;
     let object_top = line
@@ -438,30 +732,36 @@ fn raise_top_underlines_over_objects(line: &mut super::render_tree::RenderNode) 
     if !object_top.is_finite() {
         return;
     }
+    // 위 밑줄 기하는 글자 위끝(기준선 위 0.85em)에 맞춘 값이다.
+    let raise = |style: &super::TextStyle, baseline_y: f64| {
+        let (font_size, baseline) =
+            style.script_draw_metrics(style.effective_font_size(), baseline_y);
+        let size = style
+            .top_underline_font_size
+            .filter(|size| size.is_finite() && *size > 0.0)
+            .unwrap_or(font_size);
+        let raise = baseline - 0.85 * size - object_top;
+        (raise.is_finite() && raise > 0.01).then_some(raise)
+    };
     for node in &mut line.children {
         let RenderNodeType::TextRun(run) = &mut node.node_type else {
             continue;
         };
         let style = &run.style;
         if style.underline != UnderlineType::Top
-            || style.underline_shape > 10
+            || style.underline_shape > 12
             || run.rotation != 0.0
             || run.is_vertical
             || run.char_overlap.is_some()
         {
             continue;
         }
-        let (font_size, baseline) =
-            style.script_draw_metrics(style.effective_font_size(), node.bbox.y + run.baseline);
-        let size = style
-            .top_underline_font_size
-            .filter(|size| size.is_finite() && *size > 0.0)
-            .unwrap_or(font_size);
-        // 위 밑줄 기하는 글자 위끝(기준선 위 0.85em)에 맞춘 값이다.
-        let raise = baseline - 0.85 * size - object_top;
-        if raise.is_finite() && raise > 0.01 {
+        if let Some(raise) = raise(style, node.bbox.y + run.baseline) {
             run.style.top_underline_raise = Some(raise);
         }
+    }
+    for slot in slots {
+        slot.style.top_underline_raise = raise(&slot.style, slot.baseline);
     }
 }
 
@@ -478,7 +778,7 @@ pub(crate) fn raised_decoration_ink_bbox(
     use crate::model::style::UnderlineType;
 
     let style = &run.style;
-    let top_underline = style.underline == UnderlineType::Top && style.underline_shape <= 10;
+    let top_underline = style.underline == UnderlineType::Top && style.underline_shape <= 12;
     let emphasis = (1..=6).contains(&style.emphasis_dot);
     if !(top_underline || emphasis)
         || run.char_overlap.is_some()

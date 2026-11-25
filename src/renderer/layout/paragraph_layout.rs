@@ -1279,6 +1279,16 @@ fn tac_owned_by_prior_empty_line(comp: &ComposedParagraph, line_idx: usize, pos:
         .is_some_and(|prev| prev.runs.is_empty() && prev.char_start == pos)
 }
 
+/// 글자처럼 둔 개체 자리(제어 문자의 UTF-16 위치)의 글자 모양.
+fn tac_char_shape_id(para: &Paragraph, control: usize) -> Option<u32> {
+    let position = *para.control_utf16_positions().get(control)?;
+    para.char_shapes
+        .iter()
+        .rev()
+        .find(|shape| shape.start_pos <= position)
+        .map(|shape| shape.char_shape_id)
+}
+
 fn line_has_tac_control(comp: &ComposedParagraph, line_idx: usize) -> bool {
     let Some(line) = comp.lines.get(line_idx) else {
         return false;
@@ -11271,8 +11281,38 @@ impl LayoutEngine {
                             line_node.children.push(form_node);
                         }
                     }
+                    let slot_w = tac_w + tac_table_om.0 + tac_table_om.1;
+                    // 한컴 12.30 PDF: 개체 자리의 글자 모양에 위 밑줄이 있으면 개체 폭에도
+                    // 글과 같은 높이로 잇는다. 높이는 쪽 후처리가 줄의 개체 위끝으로 정한다.
+                    let top = |style: &TextStyle| {
+                        style.underline == UnderlineType::Top && style.underline_shape <= 12
+                    };
+                    let slot = para
+                        .and_then(|p| tac_char_shape_id(p, tac_ci))
+                        .filter(|_| slot_w > 0.0)
+                        .and_then(|id| {
+                            let style = if id == run.char_style_id {
+                                top(&text_style).then(|| text_style.clone())
+                            } else {
+                                Some(resolved_to_text_style(styles, id, run.lang_index))
+                                    .filter(|style| top(style))
+                            };
+                            style.map(|style| (id, style))
+                        });
+                    if let (Some((id, mut style)), RenderNodeType::TextLine(line)) =
+                        (slot, &mut line_node.node_type)
+                    {
+                        style.top_underline_font_size = Some(max_fs);
+                        line.top_underline_object_slots.push(TopUnderlineSlot {
+                            x0: x,
+                            x1: x + slot_w,
+                            baseline: text_y + baseline,
+                            char_shape_id: id,
+                            style,
+                        });
+                    }
                     // tac 폭만큼 x 전진 (+ TAC 표 outMargin 좌/우 — Issue #3396)
-                    x += tac_w + tac_table_om.0 + tac_table_om.1;
+                    x += slot_w;
                     sub_char_offset += 1;
                     // 다음 서식 런도 TAC가 차지한 논리 캐럿 한 칸을 이어받는다.
                     char_offset += 1;

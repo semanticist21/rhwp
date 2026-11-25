@@ -1084,6 +1084,20 @@ pub struct TextLineNode {
     pub line_index: Option<u32>,
     /// LINE_SEG vertical_pos (HWPUNIT, 디버그 오버레이/vpos-reset 검출용)
     pub vpos: Option<i32>,
+    /// 위 밑줄 글자 모양을 가진 글자처럼 둔 개체 자리. 쪽 후처리가 이 폭에 위 밑줄을 긋고 비운다.
+    #[serde(skip)]
+    pub top_underline_object_slots: Vec<TopUnderlineSlot>,
+}
+
+/// 글자처럼 둔 개체가 차지한 글자 칸과 그 자리의 글자 모양.
+#[derive(Debug, Clone)]
+pub struct TopUnderlineSlot {
+    pub x0: f64,
+    pub x1: f64,
+    /// 줄 기준선 y (px)
+    pub baseline: f64,
+    pub char_shape_id: u32,
+    pub style: TextStyle,
 }
 
 impl TextLineNode {
@@ -1097,6 +1111,7 @@ impl TextLineNode {
             para_index: None,
             line_index: None,
             vpos: None,
+            top_underline_object_slots: Vec::new(),
         }
     }
 
@@ -1115,6 +1130,7 @@ impl TextLineNode {
             line_index: None,
             vpos: None,
             caption_owner: None,
+            top_underline_object_slots: Vec::new(),
         }
     }
 
@@ -1135,6 +1151,7 @@ impl TextLineNode {
             line_index: Some(line_index),
             vpos: Some(vpos),
             caption_owner: None,
+            top_underline_object_slots: Vec::new(),
         }
     }
 }
