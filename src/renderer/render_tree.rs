@@ -1420,6 +1420,11 @@ pub struct ShapeTransform {
     /// 아핀 행렬 `[a, b, c, d, e, f]`이며, paint 단계가 공통 변환 묶음으로 내린다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skew: Option<[f64; 6]>,
+    /// 저장 행렬이 회전과 기울임을 함께 가진 그림(한/글 12.30이 돌린 그림의 외접 상자를 늘인 결과).
+    /// 노드 상자를 `[0, 1]²`로 본 좌표를 같은 상자 비율 좌표로 옮기는 `[a, b, c, d, e, f]`이며,
+    /// 회전·대칭·배율이 모두 이 행렬에 들어 있다. paint 단계가 노드 상자로 쪽 행렬을 만든다.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub frame_matrix: Option<[f64; 6]>,
 }
 
 impl ShapeTransform {
@@ -1432,6 +1437,29 @@ impl ShapeTransform {
         let cx = bbox.x + bbox.width / 2.0;
         let cy = bbox.y + bbox.height / 2.0;
         [a, b, c, d, cx - a * cx - c * cy, cy - b * cx - d * cy]
+    }
+
+    /// paint 단계의 기울임 행렬. 쪽 행렬 `skew`가 있으면 그것이고, 상자 비율 행렬
+    /// `frame_matrix`는 `bbox` 비율 좌표를 쪽 좌표로 펼친다.
+    pub fn paint_skew(&self, bbox: BoundingBox) -> Option<[f64; 6]> {
+        if let Some(skew) = self.skew {
+            return Some(skew);
+        }
+        let [a, b, c, d, e, f] = self.frame_matrix?;
+        let (w, h) = (bbox.width, bbox.height);
+        if w <= 0.0 || h <= 0.0 {
+            return None;
+        }
+        // X = x0 + w·N((X0 − x0)/w, (Y0 − y0)/h)의 x, Y도 같다.
+        let (pa, pb, pc, pd) = (a, b * h / w, c * w / h, d);
+        Some([
+            pa,
+            pb,
+            pc,
+            pd,
+            bbox.x + w * e - pa * bbox.x - pc * bbox.y,
+            bbox.y + h * f - pb * bbox.x - pd * bbox.y,
+        ])
     }
 
     /// 변환이 필요한지 여부
