@@ -727,7 +727,7 @@ impl DocumentCore {
             let was_tac = pic.common.treat_as_char;
             let had_caption = pic.caption.is_some();
             let caption_width_before = picture_caption_text_width(pic);
-            let caption_created = Self::apply_picture_props_inner(pic, props_json, px);
+            let caption_created = Self::apply_picture_props_with(pic, props_json, px, true);
             reflow_picture_caption_if_width_changed(
                 pic,
                 caption_width_before,
@@ -1226,6 +1226,17 @@ impl DocumentCore {
         props_json: &str,
         pixel_size: Option<(f64, f64)>,
     ) -> bool {
+        Self::apply_picture_props_with(pic, props_json, pixel_size, false)
+    }
+    /// `stretch_rotated`: 돌린 그림의 크기 변경을 한/글 12.30 본문 그림처럼 외접 상자 늘이기로 적용한다
+    /// (`stretch_rotated_picture_frame`). 표 셀·머리말 안 그림은 한/글 동작을 확인하지 않아
+    /// 기존처럼 회전 전 크기를 비율로 바꾼다.
+    fn apply_picture_props_with(
+        pic: &mut crate::model::image::Picture,
+        props_json: &str,
+        pixel_size: Option<(f64, f64)>,
+        stretch_rotated: bool,
+    ) -> bool {
         use crate::document_core::helpers::{json_bool, json_i16, json_i32, json_str, json_u32};
 
         let mut transform_before = Self::picture_transform_fingerprint(pic);
@@ -1236,7 +1247,8 @@ impl DocumentCore {
         // corpus 에 69건) 지문이 흔들리고 한컴 원본 렌더링 행렬이 지워졌다.
         let width = json_u32(props_json, "width").filter(|w| *w != pic.common.width);
         let height = json_u32(props_json, "height").filter(|h| *h != pic.common.height);
-        if (width.is_some() || height.is_some())
+        if stretch_rotated
+            && (width.is_some() || height.is_some())
             && Self::stretch_rotated_picture_frame(
                 pic,
                 width.unwrap_or(pic.common.width),
