@@ -175,6 +175,12 @@ fn issue_1279_cell_picture_rotation_edit_exports_hancom_rendering_matrix() {
 fn issue_1279_resizing_rotated_cell_picture_preserves_scaled_current_size() {
     let bytes = read_fixture("samples/ta-pic-001-r.hwp");
     let mut core = DocumentCore::from_bytes(&bytes).expect("load HWP fixture");
+    let before = first_cell_picture(core.document());
+    let angle = before.shape_attr.rotation_angle;
+    let original = (
+        before.shape_attr.current_width,
+        before.shape_attr.current_height,
+    );
 
     core.set_cell_picture_properties_by_path_native(
         0,
@@ -185,17 +191,19 @@ fn issue_1279_resizing_rotated_cell_picture_preserves_scaled_current_size() {
     )
     .expect("resize rotated cell picture");
 
+    // 한/글 12.30처럼 외접 상자째 늘이고(`rotated_picture_stretch`) 현재 크기는 배율 행렬에서 다시 잰다.
     let resized = first_cell_picture(core.document());
     assert_eq!(resized.common.width, 20000);
     assert_eq!(resized.common.height, 19000);
-    assert_eq!(
-        resized.shape_attr.current_width, 14836,
-        "display bbox width must scale curSz instead of replacing it"
+    let scaled = (
+        resized.shape_attr.current_width,
+        resized.shape_attr.current_height,
     );
-    assert_eq!(
-        resized.shape_attr.current_height, 13273,
-        "display bbox height must scale curSz instead of replacing it"
+    assert_ne!(
+        scaled, original,
+        "display bbox resize must change curSz instead of keeping it"
     );
+    assert_rotated_picture_contract(resized, angle);
 
     core.set_cell_picture_properties_by_path_native(
         0,
@@ -211,12 +219,9 @@ fn issue_1279_resizing_rotated_cell_picture_preserves_scaled_current_size() {
     let pic = first_cell_picture(&reparsed);
 
     assert_eq!(
-        pic.shape_attr.current_width, 14836,
-        "rotation must not restore the pre-resize image width"
-    );
-    assert_eq!(
-        pic.shape_attr.current_height, 13273,
-        "rotation must not restore the pre-resize image height"
+        (pic.shape_attr.current_width, pic.shape_attr.current_height),
+        scaled,
+        "rotation must not restore the pre-resize image size"
     );
     assert_rotated_picture_contract(pic, 44);
 }

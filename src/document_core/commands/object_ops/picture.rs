@@ -732,7 +732,7 @@ impl DocumentCore {
             let was_tac = pic.common.treat_as_char;
             let had_caption = pic.caption.is_some();
             let caption_width_before = picture_caption_text_width(pic);
-            let caption_created = Self::apply_picture_props_inner(pic, props_json, px, true);
+            let caption_created = Self::apply_picture_props_inner(pic, props_json, px);
             reflow_picture_caption_if_width_changed(
                 pic,
                 caption_width_before,
@@ -1009,7 +1009,7 @@ impl DocumentCore {
             let old_inline_size =
                 was_tac.then(|| crate::renderer::composer::inline_picture_line_box_hu(pic));
             let caption_width_before = picture_caption_text_width(pic);
-            caption_created = Self::apply_picture_props_inner(pic, props_json, px, false);
+            caption_created = Self::apply_picture_props_inner(pic, props_json, px);
             reflow_picture_caption_if_width_changed(
                 pic,
                 caption_width_before,
@@ -1231,14 +1231,12 @@ impl DocumentCore {
     /// [Task #825] Picture 속성 JSON 적용 (mutation only). 후처리 (AutoNumber /
     /// recompose / paginate / event log) 는 호출자 책임.
     /// 반환: caption_created (true 면 호출자가 AutoNumber 후처리 필요).
-    /// `stretch_rotated`: 돌린 그림의 크기 변경을 한/글 12.30 본문 그림처럼 외접 상자 늘이기로 적용한다
-    /// (`stretch_rotated_picture_frame`). 표 셀·머리말 안 그림은 한/글 동작을 확인하지 않아
-    /// 기존처럼 회전 전 크기를 비율로 바꾼다.
+    /// 돌린 그림의 크기 변경은 한/글 12.30처럼 외접 상자 늘이기로 적용한다
+    /// (`stretch_rotated_picture_frame`). 한/글은 본문·표 셀·머리말 그림 모두 그렇게 늘인다.
     pub(crate) fn apply_picture_props_inner(
         pic: &mut crate::model::image::Picture,
         props_json: &str,
         pixel_size: Option<(f64, f64)>,
-        stretch_rotated: bool,
     ) -> bool {
         use crate::document_core::helpers::{json_bool, json_i16, json_i32, json_str, json_u32};
 
@@ -1250,8 +1248,7 @@ impl DocumentCore {
         // corpus 에 69건) 지문이 흔들리고 한컴 원본 렌더링 행렬이 지워졌다.
         let width = json_u32(props_json, "width").filter(|w| *w != pic.common.width);
         let height = json_u32(props_json, "height").filter(|h| *h != pic.common.height);
-        if stretch_rotated
-            && (width.is_some() || height.is_some())
+        if (width.is_some() || height.is_some())
             && Self::stretch_rotated_picture_frame(
                 pic,
                 width.unwrap_or(pic.common.width),

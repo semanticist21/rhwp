@@ -3,6 +3,8 @@
 //! 배율 행렬에 기울임 성분을 넣는다.
 //! 표본: `rotated.hwpx`(30도 돌린 그림), 한/글 12.30이 그 그림을 Shift+→ 세 번
 //! (`hancom_shift_right.hwpx`, 외접 너비 +849), 너비 150mm(`hancom_width_150mm.hwpx`)로 늘여 저장한 HWPX.
+//! 표 셀 안 그림: `cell_rotated.hwpx`(1×1 표 칸의 30도 돌린 떠 있는 그림), 한/글 12.30이 그 그림을
+//! Shift+→ 한 번(`cell_hancom_shift_right.hwpx`, 외접 너비 +283) 늘여 저장한 HWPX.
 #![cfg(not(target_arch = "wasm32"))]
 
 use std::path::Path;
@@ -186,4 +188,132 @@ fn rotated_picture_stretch_keyboard_steps_keep_top_left() {
             (0.0, 14729.0),
         ],
     );
+}
+
+/// 첫 표 첫 칸 첫 문단의 그림.
+fn cell_picture(core: &DocumentCore) -> &rhwp::model::image::Picture {
+    core.document().sections[0]
+        .paragraphs
+        .iter()
+        .flat_map(|para| &para.controls)
+        .find_map(|c| match c {
+            Control::Table(t) => t.cells[0].paragraphs[0]
+                .controls
+                .iter()
+                .find_map(|c| match c {
+                    Control::Picture(p) => Some(p),
+                    _ => None,
+                }),
+            _ => None,
+        })
+        .expect("셀 그림")
+}
+
+/// 크기·현재 크기·회전 중심과 그리기 행렬(배율·기울임·이동).
+fn frame(pic: &rhwp::model::image::Picture) -> (u32, u32, u32, u32, i32, [f64; 6]) {
+    let sa = &pic.shape_attr;
+    (
+        pic.common.width,
+        pic.common.height,
+        sa.current_width,
+        sa.current_height,
+        sa.rotation_center.x,
+        [
+            sa.render_sx,
+            sa.render_b,
+            sa.render_tx,
+            sa.render_c,
+            sa.render_sy,
+            sa.render_ty,
+        ],
+    )
+}
+
+fn assert_same_frame(got: &rhwp::model::image::Picture, want: &rhwp::model::image::Picture) {
+    let (g, w) = (frame(got), frame(want));
+    assert_eq!(
+        (g.0, g.1, g.2, g.3, g.4),
+        (w.0, w.1, w.2, w.3, w.4),
+        "{g:?} / {w:?}"
+    );
+    for (a, b) in g.5.iter().zip(w.5) {
+        assert!((a - b).abs() < 0.5, "그리기 행렬 {g:?} / {w:?}");
+    }
+}
+
+#[test]
+fn rotated_picture_stretch_in_table_cell_matches_hancom() {
+    // 한/글 12.30은 표 셀 안 돌린 그림도 본문처럼 외접 상자째 가로로만 늘여 기울인다.
+    let hancom = open("cell_hancom_shift_right.hwpx");
+    let mut core = open("cell_rotated.hwpx");
+    let (para, _) = core.document().sections[0]
+        .paragraphs
+        .iter()
+        .enumerate()
+        .find_map(|(p, para)| {
+            para.controls
+                .iter()
+                .position(|c| matches!(c, Control::Table(_)))
+                .map(|c| (p, c))
+        })
+        .expect("표");
+    let path = r#"[{"controlIndex":0,"cellIndex":0,"cellParaIndex":0}]"#;
+    core.set_cell_picture_properties_by_path_native(0, para, path, 0, r#"{"width":11077}"#)
+        .expect("width");
+    assert_same_frame(cell_picture(&core), cell_picture(&hancom));
+    for bytes in [
+        core.export_hwpx_native().expect("hwpx"),
+        core.export_hwp_native().expect("hwp"),
+    ] {
+        let reopened = DocumentCore::from_bytes(&bytes).expect("reopen");
+        assert_same_frame(cell_picture(&reopened), cell_picture(&hancom));
+    }
+}
+
+#[test]
+fn rotated_picture_stretch_in_header_matches_body() {
+    // 머리말 바로 안 돌린 그림도 같은 외접 상자 늘이기다(표 셀 그림을 머리말로 옮겨 견준다).
+    let hancom = open("cell_hancom_shift_right.hwpx");
+    let mut core = open("cell_rotated.hwpx");
+    core.create_header_footer_native(0, true, 0)
+        .expect("header");
+    let picture = Control::Picture(Box::new(cell_picture(&core).clone()));
+    let (outer_para, outer_ctrl) = core.document().sections[0]
+        .paragraphs
+        .iter()
+        .enumerate()
+        .find_map(|(p, para)| {
+            para.controls
+                .iter()
+                .position(|c| matches!(c, Control::Header(_)))
+                .map(|c| (p, c))
+        })
+        .expect("머리말");
+    let Control::Header(header) =
+        &mut core.document_mut().sections[0].paragraphs[outer_para].controls[outer_ctrl]
+    else {
+        panic!("머리말")
+    };
+    let inner = &mut header.paragraphs[0];
+    inner.controls.push(picture);
+    inner.ctrl_data_records.push(None);
+    let inner_ctrl = inner.controls.len() - 1;
+    core.set_header_footer_picture_properties_native(
+        0,
+        outer_para,
+        outer_ctrl,
+        0,
+        inner_ctrl,
+        r#"{"width":11077}"#,
+    )
+    .expect("width");
+    let Control::Header(header) =
+        &core.document().sections[0].paragraphs[outer_para].controls[outer_ctrl]
+    else {
+        panic!("머리말")
+    };
+    let Control::Picture(pic) = &header.paragraphs[0].controls[inner_ctrl] else {
+        panic!("그림")
+    };
+    assert_same_frame(pic, cell_picture(&hancom));
 }

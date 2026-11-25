@@ -101,14 +101,16 @@ fn issue_6355_non_transform_props_keep_raw_rendering() {
 #[test]
 fn issue_6355_changed_transform_props_invalidate_raw_rendering() {
     let (mut core, _original) = loaded();
-    let wider = cell_picture(&core).common.width + 2000;
+    // 돌린 그림의 크기 변경은 한/글처럼 외접 상자 늘이기 행렬을 새로 쓰므로(`rotated_picture_stretch`)
+    // 저장 행렬을 지우는 변환 속성은 대칭으로 본다.
+    let flipped = !cell_picture(&core).shape_attr.horz_flip;
 
     core.set_cell_picture_properties_by_path_native(
         0,
         0,
         CELL_PATH,
         0,
-        &format!(r#"{{"width":{wider}}}"#),
+        &format!(r#"{{"horzFlip":{flipped}}}"#),
     )
     .expect("set changed transform property");
 
