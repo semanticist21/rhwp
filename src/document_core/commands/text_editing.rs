@@ -7190,7 +7190,8 @@ impl DocumentCore {
         let text = normalized.as_ref();
         // 깊이 1 표는 일반 셀 삽입 경로가 셀 폭 리플로우와 vpos 재계산을 이미 담당한다.
         // IME가 cellPath를 항상 전달하더라도 같은 편집 계약을 사용해야 한다.
-        if path.len() == 1 {
+        // 본문 각주·미주(한 단계 경로)는 셀이 아니므로 아래 경로 편집이 그 주석 문단을 고친다.
+        if path.len() == 1 && !self.path_terminates_at_note(section_idx, parent_para_idx, path) {
             let (control_idx, cell_idx, cell_para_idx) = path[0];
             return self.replace_text_in_cell_field_impl(
                 section_idx,
@@ -7891,6 +7892,53 @@ mod tests {
             cell_equation_after_insert(false),
             ("가\tX다".to_string(), 3)
         );
+    }
+
+    /// 본문 각주 "주석"의 끝(글자 4)에 수식을 둔 뒤, 그 자리에 넣은 글이 수식 앞·뒤 어느 쪽에 서는지.
+    fn footnote_equation_after_insert(after: bool) -> (String, usize) {
+        use crate::model::control::Control;
+
+        let mut core = DocumentCore::new_empty();
+        core.create_blank_document_native().unwrap();
+        core.insert_text_native(0, 0, 0, "ab").unwrap();
+        core.insert_footnote_native(0, 0, 1).unwrap();
+        let ctrl = core.document.sections[0].paragraphs[0]
+            .controls
+            .iter()
+            .position(|c| matches!(c, Control::Footnote(_)))
+            .unwrap();
+        let end = core.document.sections[0].paragraphs[0].controls[ctrl]
+            .clone();
+        let Control::Footnote(note) = end else { unreachable!() };
+        let start = note.paragraphs[0].text.chars().count();
+        core.insert_text_in_footnote_native(0, 0, ctrl, 0, start, "주석")
+            .unwrap();
+        let path = [(ctrl, 0, 0)];
+        core.insert_equation_by_path_native(0, 0, &path, start + 2, "a", 1000, 0)
+            .unwrap();
+        core.insert_text_in_cell_by_path_at(0, 0, &path, start + 2, "X", after)
+            .unwrap();
+        let Control::Footnote(note) = &core.document.sections[0].paragraphs[0].controls[ctrl]
+        else {
+            panic!("expected footnote");
+        };
+        let para = &note.paragraphs[0];
+        let equation = para
+            .controls
+            .iter()
+            .position(|c| matches!(c, Control::Equation(_)))
+            .expect("수식이 각주 문단에 남아야 한다");
+        (
+            para.text.chars().skip(start).collect(),
+            para.control_text_positions()[equation] - start,
+        )
+    }
+
+    #[test]
+    fn insert_text_in_cell_by_path_at_places_text_after_inline_object_in_body_footnote() {
+        // 본문 각주 경로(한 단계)도 개체 뒤 캐럿에서 친 글을 개체 뒤에 둔다.
+        assert_eq!(footnote_equation_after_insert(true), ("주석X".to_string(), 2));
+        assert_eq!(footnote_equation_after_insert(false), ("주석X".to_string(), 3));
     }
 
     #[test]
