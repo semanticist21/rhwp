@@ -9,8 +9,8 @@ use std::path::Path;
 
 use rhwp::document_core::DocumentCore;
 use rhwp::model::control::Control;
-use rhwp::paint::{GroupKind, LayerBuilder, LayerNode, LayerNodeKind, RenderProfile};
-use rhwp::renderer::render_tree::{RenderNode, RenderNodeType};
+use rhwp::paint::{GroupKind, LayerBuilder, LayerNode, LayerNodeKind, PaintOp, RenderProfile};
+use rhwp::renderer::render_tree::BoundingBox;
 
 const HU: f64 = 96.0 / 7200.0;
 /// 표본 그림의 개체 틀 왼쪽 위(종이 기준 가로 10783, 세로 26226).
@@ -40,49 +40,40 @@ fn picture_at(core: &DocumentCore) -> (usize, usize) {
         .expect("그림")
 }
 
-fn find_image(node: &RenderNode) -> Option<&RenderNode> {
-    if matches!(node.node_type, RenderNodeType::Image(_)) {
-        return Some(node);
-    }
-    node.children.iter().find_map(find_image)
-}
-
-fn transforms(node: &LayerNode, out: &mut Vec<[f64; 6]>) {
+/// layer 트리에서 그림 그리기 연산의 상자와 그 연산을 감싼 paint 묶음 행렬(없으면 단위 행렬).
+fn image_ops(node: &LayerNode, matrix: [f64; 6], out: &mut Vec<(BoundingBox, [f64; 6])>) {
     match &node.kind {
         LayerNodeKind::Group {
             children,
             group_kind,
             ..
         } => {
-            if let GroupKind::Group(group) = group_kind {
-                out.extend(group.paint_transform);
-            }
-            children.iter().for_each(|c| transforms(c, out));
+            let matrix = match group_kind {
+                GroupKind::Group(group) => group.paint_transform.unwrap_or(matrix),
+                _ => matrix,
+            };
+            children.iter().for_each(|c| image_ops(c, matrix, out));
         }
         LayerNodeKind::ClipRect { child, .. } | LayerNodeKind::ClipPath { child, .. } => {
-            transforms(child, out)
+            image_ops(child, matrix, out)
         }
-        LayerNodeKind::Leaf { .. } => {}
+        LayerNodeKind::Leaf { ops } => out.extend(ops.iter().filter_map(|op| match op {
+            PaintOp::Image { bbox, .. } => Some((*bbox, matrix)),
+            _ => None,
+        })),
     }
 }
 
 /// 그린 그림의 네 꼭짓점(왼쪽 위·오른쪽 위·오른쪽 아래·왼쪽 아래, 쪽 px).
-/// 기울인 그림은 노드 상자에 그린 뒤 paint 묶음 행렬로 옮긴다. 그 행렬이 layer 트리에 있어야 한다.
+/// 기울인 그림은 그림 상자에 그린 뒤 paint 묶음 행렬로 옮긴다.
 fn drawn_corners(core: &DocumentCore) -> [(f64, f64); 4] {
     let tree = core.build_page_render_tree(0).expect("page");
-    let node = find_image(&tree.root).expect("그림 노드");
-    let RenderNodeType::Image(image) = &node.node_type else {
-        unreachable!()
-    };
-    let m = image
-        .transform
-        .paint_skew(node.bbox)
-        .expect("기울인 그림은 저장 행렬로 그린다");
     let layers = LayerBuilder::new(RenderProfile::Screen).build(&tree);
     let mut found = Vec::new();
-    transforms(&layers.root, &mut found);
-    assert!(found.contains(&m), "paint 묶음 행렬 {m:?} 없음: {found:?}");
-    let b = node.bbox;
+    image_ops(&layers.root, [1.0, 0.0, 0.0, 1.0, 0.0, 0.0], &mut found);
+    let [(b, m)] = found[..] else {
+        panic!("그림 하나: {found:?}")
+    };
     [
         (b.x, b.y),
         (b.x + b.width, b.y),
