@@ -1235,6 +1235,7 @@ pub struct ParaShapeMods {
     // 줄바꿈 모드
     pub english_break_unit: Option<u8>, // 0=단어, 1=하이픈, 2=글자
     pub korean_break_unit: Option<u8>,  // 0=어절, 1=글자
+    pub condense: Option<u8>,           // 최소 공백(%), attr1 bits 9..15
     // 탭 설정 탭 속성
     pub tab_def_id: Option<u16>,
     // 번호/글머리표 ID
@@ -1327,6 +1328,10 @@ impl ParaShapeMods {
         }
         if let Some(v) = self.korean_break_unit {
             ps.attr1 = (ps.attr1 & !(0x01 << 7)) | ((v as u32 & 0x01) << 7);
+        }
+        if let Some(v) = self.condense {
+            // 한/글처럼 0~75%로 막는다(HWPX 파서와 같은 상한).
+            ps.attr1 = (ps.attr1 & !(0x7f << 9)) | ((u32::from(v).min(75)) << 9);
         }
         if let Some(v) = self.tab_def_id {
             ps.tab_def_id = v;

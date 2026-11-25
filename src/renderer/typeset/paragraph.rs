@@ -451,9 +451,30 @@ pub(super) fn place_split_paragraph_with_storage<S: crate::storage::Storage>(
         }
         let avail_for_lines = fragment_avail;
         let split::SplitBoundary {
-            end_line,
-            cumulative,
+            mut end_line,
+            mut cumulative,
         } = boundary;
+        // 외톨이줄 보호·문단 보호: 미주 재조판(`reflow_fit`)과 같은 규칙으로 쪽에서 끊는다.
+        // 문단 보호는 문단을 통째로, 외톨이줄 보호는 첫 줄 하나나 끝 줄 하나만 쪽에 따로
+        // 남기지 않는다. 저장 쪽 경계(강제 경계)는 한/글이 이미 이 규칙으로 정한 자리라 따른다.
+        // 첫 쪽에서 한 번만 미루므로 쪽보다 긴 문단도 다음 쪽 맨 위부터 나뉜다.
+        let mut defer_whole = false;
+        if let Some(style) = styles
+            .para_styles
+            .get(para.para_shape_id as usize)
+            .filter(|_| end_line < line_count && fragment_forced_break_line != Some(end_line))
+        {
+            let movable = on_entry_page && cursor_line == 0 && !st.current_items.is_empty();
+            if style.keep_lines {
+                defer_whole = movable;
+            } else if style.widow_orphan {
+                if line_count - end_line < 2 && end_line > cursor_line + 1 {
+                    end_line -= 1;
+                    cumulative = fmt.line_advances_sum(cursor_line..end_line);
+                }
+                defer_whole = movable && end_line < 2;
+            }
+        }
         // 본문 항목이 아직 없는 쪽을 앞 쪽에서 이어받은 각주가 채웠고, 그 각주만 없으면
         // 이 조각이 들어갈 자리라면 본문은 다음 쪽에서 시작한다(한/글 2020 Print #9014 2쪽).
         // 쪽마다 이어받은 각주 줄이 한 줄 이상 소비되므로 이월은 끝난다.
@@ -483,7 +504,8 @@ pub(super) fn place_split_paragraph_with_storage<S: crate::storage::Storage>(
             require_full_advance,
             &st.current_items,
             carried_notes_hold_body,
-        ) else {
+        )
+        .filter(|_| !defer_whole) else {
             st.advance_column_or_new_page_with_storage(storage)?;
             if cursor_line == 0
                 && try_absorb_empty_page_start_with_storage(

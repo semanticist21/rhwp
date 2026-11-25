@@ -48,9 +48,14 @@ pub(super) fn char_shape_mods_affect_text_flow(mods: &crate::model::style::CharS
 /// 번호·글머리표의 종류·수준·정의 ID도 공통 목록 영역을 바꾼다.
 /// 저장된 기존 줄 캐시로 내보내면 한컴이 마커 없는 배치를 재사용하므로 무효화한다.
 ///
+/// - `single_line`/`condense`: 한 줄로 입력은 줄을 나누지 않고, 최소 공백은 줄 끝 공백을
+///   줄여 낱말을 앞 줄에 넣는다 — 둘 다 줄 경계를 바꾼다.
+/// - `vertical_align`: 줄 나눔은 같지만 다시 짠 줄만 세로 정렬점을 기준선 자리에 발행한다
+///   (`publish_vertical_alignment_baselines`). 다시 짜지 않으면 옛 기준선으로 그리고 저장한다.
+///
 /// 나머지 필드(alignment, spacing_before/after, widow_orphan,
-/// keep_with_next, keep_lines, page_break_before, font_line_height, single_line,
-/// auto_space_kr_en/num, vertical_align, tab_def_id, border_fill_id,
+/// keep_with_next, keep_lines, page_break_before, font_line_height,
+/// auto_space_kr_en/num, tab_def_id, border_fill_id,
 /// border_spacing, border_connect, border_ignore_margin)는 `reflow_line_segs`/
 /// `fill_lines`가 읽지 않는다 — 정렬은 이미 배치된 줄 안에서의 렌더링 배분일 뿐이고,
 /// 문단 테두리/배경은 레이아웃 완료 후 장식 사각형으로만 그려지며(layout.rs
@@ -69,6 +74,9 @@ pub(super) fn para_shape_mods_affect_text_flow(mods: &crate::model::style::ParaS
         || mods.head_type.is_some()
         || mods.para_level.is_some()
         || mods.numbering_id.is_some()
+        || mods.single_line.is_some()
+        || mods.condense.is_some()
+        || mods.vertical_align.is_some()
 }
 
 /// 문단 머리의 기하가 달라지면 외부 소비자의 이전 줄 배치를 재사용하지 않는다.
@@ -93,6 +101,9 @@ pub(super) fn cell_para_shape_affects_vpos(
         || before.margin_right != after.margin_right
         || before.indent != after.indent
         || (before.attr1 ^ after.attr1) & (0b111 << 5) != 0 // 영어·한글 줄나눔 단위
+        || (before.attr1 ^ after.attr1) & (0x7f << 9) != 0 // 최소 공백
+        || (before.attr1 ^ after.attr1) & (0b11 << 20) != 0 // 세로 정렬(기준선 발행)
+        || (before.attr2 ^ after.attr2) & 0b11 != 0 // 한 줄로 입력
         || before.head_type != after.head_type
         || before.numbering_id != after.numbering_id
         || before.para_level != after.para_level
@@ -993,6 +1004,7 @@ impl DocumentCore {
                 let vertical_align = (a1 >> 20) & 0x03;
                 let english_break_unit = (a1 >> 5) & 0x03;
                 let korean_break_unit = (a1 >> 7) & 0x01;
+                let condense = ((a1 >> 9) & 0x7f).min(75);
                 let border_connect = (a1 >> 28) & 1 != 0;
                 let border_ignore_margin = (a1 >> 29) & 1 != 0;
                 let raw_spacing = raw_ps.map_or_else(String::new, |raw| {
@@ -1011,7 +1023,7 @@ impl DocumentCore {
                         "\"widowOrphan\":{},\"keepWithNext\":{},\"keepLines\":{},\"pageBreakBefore\":{},",
                         "\"fontLineHeight\":{},\"singleLine\":{},",
                         "\"autoSpaceKrEn\":{},\"autoSpaceKrNum\":{},\"verticalAlign\":{},",
-                        "\"englishBreakUnit\":{},\"koreanBreakUnit\":{},",
+                        "\"englishBreakUnit\":{},\"koreanBreakUnit\":{},\"condense\":{},",
                         "\"tabAutoLeft\":{},\"tabAutoRight\":{},\"tabStops\":[{}],\"defaultTabSpacing\":{},",
                         "{},\"borderSpacing\":[{},{},{},{}],",
                         "\"borderConnect\":{},\"borderIgnoreMargin\":{}}}"
@@ -1027,7 +1039,7 @@ impl DocumentCore {
                     widow_orphan, keep_with_next, keep_lines, page_break_before,
                     font_line_height, single_line,
                     auto_space_kr_en, auto_space_kr_num, vertical_align,
-                    english_break_unit, korean_break_unit,
+                    english_break_unit, korean_break_unit, condense,
                     tab_auto_left, tab_auto_right, tab_stops_json, default_tab_spacing,
                     border_fill_json,
                     border_spacing[0], border_spacing[1], border_spacing[2], border_spacing[3],
@@ -1044,7 +1056,7 @@ impl DocumentCore {
                         "\"widowOrphan\":false,\"keepWithNext\":false,\"keepLines\":false,\"pageBreakBefore\":false,",
                         "\"fontLineHeight\":false,\"singleLine\":false,",
                         "\"autoSpaceKrEn\":false,\"autoSpaceKrNum\":false,\"verticalAlign\":0,",
-                        "\"englishBreakUnit\":0,\"koreanBreakUnit\":0,",
+                        "\"englishBreakUnit\":0,\"koreanBreakUnit\":0,\"condense\":0,",
                         "\"tabAutoLeft\":false,\"tabAutoRight\":false,\"tabStops\":[],\"defaultTabSpacing\":{},",
                         "\"borderFillId\":0,",
                         "\"borderLeft\":{{\"type\":0,\"width\":0,\"color\":\"#000000\"}},",
@@ -3427,10 +3439,8 @@ mod tests {
 
         let mods = ParaShapeMods {
             font_line_height: Some(true),
-            single_line: Some(true),
             auto_space_kr_en: Some(true),
             auto_space_kr_num: Some(true),
-            vertical_align: Some(1),
             ..Default::default()
         };
         assert!(!para_shape_mods_affect_text_flow(&mods));
