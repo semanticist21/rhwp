@@ -342,6 +342,7 @@ pub(crate) fn extract_shape_transform(
         vert_flip: sa.vert_flip,
         image_frame_ratio: None,
         skew: None,
+        frame_matrix: None,
     }
 }
 

@@ -1231,16 +1231,22 @@ fn text_run_ops(
 
 fn node_skew(node: &RenderNode) -> Option<[f64; 6]> {
     match &node.node_type {
-        RenderNodeType::Rectangle(rect) => rect.transform.skew,
+        RenderNodeType::Rectangle(rect) => rect.transform.paint_skew(node.bbox),
         RenderNodeType::Ellipse(ellipse) => ellipse.transform.skew,
         RenderNodeType::Path(path) => path.transform.skew,
+        // 회전과 기울임을 함께 저장한 그림은 노드 상자에 바로 그리고 저장 행렬로 옮긴다.
+        RenderNodeType::Image(image) => image.transform.paint_skew(node.bbox),
         _ => None,
     }
 }
 
 fn clear_skew(node: &mut RenderNode) {
     match &mut node.node_type {
-        RenderNodeType::Rectangle(rect) => rect.transform.skew = None,
+        RenderNodeType::Rectangle(rect) => {
+            rect.transform.skew = None;
+            rect.transform.frame_matrix = None;
+        }
+        RenderNodeType::Image(image) => image.transform.frame_matrix = None,
         RenderNodeType::Ellipse(ellipse) => ellipse.transform.skew = None,
         RenderNodeType::Path(path) => path.transform.skew = None,
         _ => {}

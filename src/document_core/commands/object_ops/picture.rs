@@ -355,6 +355,116 @@ impl DocumentCore {
         // 세우는 것도 지우는 것도 근거가 없으므로 파싱된 값을 보존한다. HWP5 저장에는
         // `flip` 만 나가고 `rotate_image` 는 HWPX `rotateimage` 의 원천이다.
     }
+    /// 한/글 12.30처럼 돌린 독립 그림의 개체 크기(회전 외접 상자)를 바꾸면 외접 상자의 왼쪽 위를 두고
+    /// 쪽 가로·세로로만 늘여 그림을 기울인다. 이동·회전 행렬은 두고 배율 행렬에 늘인 몫을 넣으며,
+    /// 현재 크기는 배율 행렬의 대각 성분 × 원래 크기, 회전 중심은 외접 상자 가운데다.
+    /// 돌리지 않았거나 묶음 안 그림이거나 행렬 쌍이 하나가 아니면 아무것도 바꾸지 않고 false다.
+    fn stretch_rotated_picture_frame(
+        pic: &mut crate::model::image::Picture,
+        width: u32,
+        height: u32,
+    ) -> bool {
+        type M = [f64; 6];
+        fn compose(a: &M, b: &M) -> M {
+            [
+                a[0] * b[0] + a[1] * b[3],
+                a[0] * b[1] + a[1] * b[4],
+                a[0] * b[2] + a[1] * b[5] + a[2],
+                a[3] * b[0] + a[4] * b[3],
+                a[3] * b[1] + a[4] * b[4],
+                a[3] * b[2] + a[4] * b[5] + a[5],
+            ]
+        }
+        fn invert(m: &M) -> Option<M> {
+            let det = m[0] * m[4] - m[1] * m[3];
+            if !det.is_finite() || det.abs() < 1e-12 {
+                return None;
+            }
+            let (a, b, c, d) = (m[4] / det, -m[1] / det, -m[3] / det, m[0] / det);
+            Some([a, b, -(a * m[2] + b * m[5]), c, d, -(c * m[2] + d * m[5])])
+        }
+        let sa = &pic.shape_attr;
+        let (old_w, old_h) = (f64::from(pic.common.width), f64::from(pic.common.height));
+        let (org_w, org_h) = (f64::from(sa.original_width), f64::from(sa.original_height));
+        if sa.rotation_angle.rem_euclid(360) == 0
+            || sa.group_level != 0
+            || pic.common.treat_as_char
+            || old_w <= 0.0
+            || old_h <= 0.0
+            || org_w <= 0.0
+            || org_h <= 0.0
+            || width == 0
+            || height == 0
+        {
+            return false;
+        }
+        // 저장 행렬(없으면 저장기가 만들 행렬): 개수 u16, 이동, (배율, 회전) 쌍.
+        let raw = match crate::serializer::control::try_shape_rendering_bytes(
+            sa,
+            &crate::storage::Unbounded,
+        ) {
+            Ok(raw) => raw,
+            Err(never) => match never {},
+        };
+        let read = |at: usize| -> Option<M> {
+            let mut m = [0.0; 6];
+            for (i, v) in m.iter_mut().enumerate() {
+                let p = at + i * 8;
+                *v = f64::from_le_bytes(raw.get(p..p + 8)?.try_into().ok()?);
+            }
+            m.iter().all(|v| v.is_finite()).then_some(m)
+        };
+        if raw.len() != 2 + 3 * 48 || u16::from_le_bytes([raw[0], raw[1]]) != 1 {
+            return false;
+        }
+        let (Some(trans), Some(scale), Some(rotation)) = (read(2), read(50), read(98)) else {
+            return false;
+        };
+        let placed = compose(&trans, &rotation);
+        let frame = compose(&placed, &scale);
+        // 외접 상자 왼쪽 위를 두고 늘인다(한컴 저장본에서는 0, 0이다).
+        let corners = [(0.0, 0.0), (org_w, 0.0), (0.0, org_h), (org_w, org_h)].map(|(x, y)| {
+            (
+                frame[0] * x + frame[1] * y + frame[2],
+                frame[3] * x + frame[4] * y + frame[5],
+            )
+        });
+        let left = corners.iter().map(|p| p.0).fold(f64::INFINITY, f64::min);
+        let top = corners.iter().map(|p| p.1).fold(f64::INFINITY, f64::min);
+        let (kx, ky) = (f64::from(width) / old_w, f64::from(height) / old_h);
+        let stretch = [kx, 0.0, left * (1.0 - kx), 0.0, ky, top * (1.0 - ky)];
+        let Some(unplace) = invert(&placed) else {
+            return false;
+        };
+        let scale = compose(&compose(&unplace, &stretch), &compose(&placed, &scale));
+        let result = compose(&placed, &scale);
+        if !scale.iter().chain(&result).all(|v| v.is_finite()) {
+            return false;
+        }
+        let mut raw = Vec::with_capacity(2 + 3 * 48);
+        raw.extend_from_slice(&1u16.to_le_bytes());
+        for value in trans.iter().chain(&scale).chain(&rotation) {
+            raw.extend_from_slice(&value.to_le_bytes());
+        }
+        let sa = &mut pic.shape_attr;
+        sa.raw_rendering = raw;
+        [
+            sa.render_sx,
+            sa.render_b,
+            sa.render_tx,
+            sa.render_c,
+            sa.render_sy,
+            sa.render_ty,
+        ] = result;
+        // 한/글 12.30 저장본(`hc-rot-b`)의 curSz는 배율 행렬 대각 성분 × orgSz를 버림한 값이다.
+        sa.current_width = (scale[0].abs() * org_w).floor().max(1.0) as u32;
+        sa.current_height = (scale[4].abs() * org_h).floor().max(1.0) as u32;
+        sa.rotation_center.x = (width / 2) as i32;
+        sa.rotation_center.y = (height / 2) as i32;
+        pic.common.width = width;
+        pic.common.height = height;
+        true
+    }
     fn apply_picture_display_width(pic: &mut crate::model::image::Picture, width: u32) {
         pic.shape_attr.current_width = super::common::rotated_local_size(
             pic.common.width,
@@ -617,7 +727,7 @@ impl DocumentCore {
             let was_tac = pic.common.treat_as_char;
             let had_caption = pic.caption.is_some();
             let caption_width_before = picture_caption_text_width(pic);
-            let caption_created = Self::apply_picture_props_inner(pic, props_json, px);
+            let caption_created = Self::apply_picture_props_inner(pic, props_json, px, true);
             reflow_picture_caption_if_width_changed(
                 pic,
                 caption_width_before,
@@ -889,7 +999,7 @@ impl DocumentCore {
             let old_inline_size =
                 was_tac.then(|| crate::renderer::composer::inline_picture_occupied_size_hu(pic));
             let caption_width_before = picture_caption_text_width(pic);
-            caption_created = Self::apply_picture_props_inner(pic, props_json, px);
+            caption_created = Self::apply_picture_props_inner(pic, props_json, px, false);
             reflow_picture_caption_if_width_changed(
                 pic,
                 caption_width_before,
@@ -1111,26 +1221,40 @@ impl DocumentCore {
     /// [Task #825] Picture 속성 JSON 적용 (mutation only). 후처리 (AutoNumber /
     /// recompose / paginate / event log) 는 호출자 책임.
     /// 반환: caption_created (true 면 호출자가 AutoNumber 후처리 필요).
+    /// `stretch_rotated`: 돌린 그림의 크기 변경을 한/글 12.30 본문 그림처럼 외접 상자 늘이기로 적용한다
+    /// (`stretch_rotated_picture_frame`). 표 셀·머리말 안 그림은 한/글 동작을 확인하지 않아
+    /// 기존처럼 회전 전 크기를 비율로 바꾼다.
     pub(crate) fn apply_picture_props_inner(
         pic: &mut crate::model::image::Picture,
         props_json: &str,
         pixel_size: Option<(f64, f64)>,
+        stretch_rotated: bool,
     ) -> bool {
         use crate::document_core::helpers::{json_bool, json_i16, json_i32, json_str, json_u32};
 
-        let transform_before = Self::picture_transform_fingerprint(pic);
+        let mut transform_before = Self::picture_transform_fingerprint(pic);
         let mut rotation_changed = false;
 
         // 크기 변경 — [#6806] 키가 있어도 값이 같으면 건드리지 않는다. 종전에는 게터가 낸
         // 봉지를 그대로 되먹여도 `current_*` 가 `common.*` 로 덮여(파싱값이 1 어긋난 문서가
         // corpus 에 69건) 지문이 흔들리고 한컴 원본 렌더링 행렬이 지워졌다.
-        if let Some(w) = json_u32(props_json, "width") {
-            if w != pic.common.width {
+        let width = json_u32(props_json, "width").filter(|w| *w != pic.common.width);
+        let height = json_u32(props_json, "height").filter(|h| *h != pic.common.height);
+        if stretch_rotated
+            && (width.is_some() || height.is_some())
+            && Self::stretch_rotated_picture_frame(
+                pic,
+                width.unwrap_or(pic.common.width),
+                height.unwrap_or(pic.common.height),
+            )
+        {
+            // 새로 쓴 저장 행렬이 곧 변환이다. 아래 지문 비교가 그 행렬을 지우지 않게 한다.
+            transform_before = Self::picture_transform_fingerprint(pic);
+        } else {
+            if let Some(w) = width {
                 Self::apply_picture_display_width(pic, w);
             }
-        }
-        if let Some(h) = json_u32(props_json, "height") {
-            if h != pic.common.height {
+            if let Some(h) = height {
                 Self::apply_picture_display_height(pic, h);
             }
         }

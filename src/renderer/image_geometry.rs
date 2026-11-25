@@ -200,6 +200,12 @@ pub(crate) fn source_geometry(
 /// 저장본은 실제 합성 행렬이 그림의 방향을 정한다.
 /// 편집 중에는 아직 저장 행렬이 없으므로 편집 플래그를 사용한다.
 pub(crate) fn picture_transform(picture: &Picture) -> ShapeTransform {
+    if let Some(frame_matrix) = picture_frame_matrix(picture) {
+        return ShapeTransform {
+            frame_matrix: Some(frame_matrix),
+            ..ShapeTransform::default()
+        };
+    }
     let shape = &picture.shape_attr;
     let mut transform = crate::renderer::layout::extract_picture_transform(picture);
     if shape.raw_rendering.is_empty() || shape.group_level != 0 {
@@ -243,9 +249,56 @@ pub(crate) fn picture_transform(picture: &Picture) -> ShapeTransform {
     transform
 }
 
+/// 한/글 12.30은 돌린 그림의 외접 상자를 늘이면 외접 상자의 왼쪽 위를 두고 쪽 가로·세로로만 늘여,
+/// 회전 행렬은 두고 배율 행렬에 기울임을 넣는다. 저장 합성 행렬의 두 축이 직교하지 않는 독립 그림은
+/// 원래 크기 그림을 그 행렬로 그린다. 반환값은 개체 틀(`common` 크기)의 비율 좌표 사이 행렬이다
+/// (`ShapeTransform::frame_matrix`). 직교하는 회전·대칭·배율은 기존 회전 경로가 그린다.
+pub(crate) fn picture_frame_matrix(picture: &Picture) -> Option<[f64; 6]> {
+    let shape = &picture.shape_attr;
+    let (ow, oh) = (
+        f64::from(shape.original_width),
+        f64::from(shape.original_height),
+    );
+    let (fw, fh) = (
+        f64::from(picture.common.width),
+        f64::from(picture.common.height),
+    );
+    if shape.raw_rendering.is_empty()
+        || shape.group_level != 0
+        || !shape.has_saved_affine_geometry()
+        || ow <= 0.0
+        || oh <= 0.0
+        || fw <= 0.0
+        || fh <= 0.0
+    {
+        return None;
+    }
+    let (a, b, c, d) = (
+        shape.render_sx,
+        shape.render_b,
+        shape.render_c,
+        shape.render_sy,
+    );
+    // 그림의 가로축 (a, c)와 세로축 (b, d)가 직교하면 기울임이 없다.
+    if (a * b + c * d).abs() <= 1e-6 * a.hypot(c) * b.hypot(d) {
+        return None;
+    }
+    Some([
+        a * ow / fw,
+        c * ow / fh,
+        b * oh / fw,
+        d * oh / fh,
+        shape.render_tx / fw,
+        shape.render_ty / fh,
+    ])
+}
+
 /// 저장·편집 경로가 기록한 회전 전 크기와 회전 후 외접 크기의 비율.
 /// 묶음의 독립 행렬이나 다른 크기 계약에는 이 비율을 추정하지 않는다.
 pub(crate) fn picture_pre_rotation_ratio(picture: &Picture) -> Option<[f64; 2]> {
+    if picture_frame_matrix(picture).is_some() {
+        return None;
+    }
     let shape = &picture.shape_attr;
     let angle = shape.rotation_angle.rem_euclid(360);
     let (w, h) = (

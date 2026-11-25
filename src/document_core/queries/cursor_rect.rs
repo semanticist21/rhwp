@@ -3291,6 +3291,23 @@ impl DocumentCore {
 
         // 표 캡션은 cell_index=65534 센티널로 렌더 트리에도 동일하게 저장됨
 
+        // 글상자(도형) 글에는 셀 상자가 없다. 렌더 트리의 글상자 안 표도 같은 본문 문단·컨트롤 번호를
+        // 실으므로, 표가 아닌 컨트롤에서 셀 상자를 찾으면 그 안 표의 칸에 캐럿이 갇힌다.
+        let owner_is_table = self
+            .document
+            .sections
+            .get(section_idx)
+            .and_then(|s| s.paragraphs.get(parent_para_idx))
+            .and_then(|p| p.controls.get(control_idx))
+            .is_some_and(|c| matches!(c, Control::Table(_)));
+        let table_cell_bounds = |root: &RenderNode| {
+            if owner_is_table {
+                find_table_cell_bounds_in_node(root, parent_para_idx, control_idx, cell_idx)
+            } else {
+                None
+            }
+        };
+
         // [#4128] 대상 셀 위치가 실제로 렌더되는 페이지로 좁힌다 (해석 실패 시 legacy 폴백 내장)
         let pages = self.find_pages_for_cell_position(
             section_idx,
@@ -3323,8 +3340,7 @@ impl DocumentCore {
             ) {
                 return Ok(hit);
             }
-            let cell_bounds =
-                find_table_cell_bounds_in_node(&tree.root, parent_para_idx, control_idx, cell_idx);
+            let cell_bounds = table_cell_bounds(&tree.root);
             if let Some(hit) = find_cursor_in_cell_node(
                 &tree.root,
                 self.get_cell_paragraph_ref(
@@ -3365,8 +3381,7 @@ impl DocumentCore {
             .unwrap_or(pages[0]);
         let mut tree = self.build_page_tree(first_page)?;
         tree.root.remove_page_areas();
-        let first_page_cell_bounds =
-            find_table_cell_bounds_in_node(&tree.root, parent_para_idx, control_idx, cell_idx);
+        let first_page_cell_bounds = table_cell_bounds(&tree.root);
 
         fn find_cell_run(
             node: &RenderNode,
