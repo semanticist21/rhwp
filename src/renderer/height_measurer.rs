@@ -2259,9 +2259,11 @@ impl HeightMeasurer {
                     && !p.line_segs.iter().any(|seg| {
                         seg.tag & crate::model::paragraph::LineSeg::TAG_IMPLEMENTATION_PROPERTY == 0
                     });
-                let tac_bottom = |common: &CommonObjAttr| -> f64 {
+                // 글자처럼 그림의 위·아래 캡션(간격 + 캡션)도 그 줄 상자에 든다(`inline_picture_line_box_hu`).
+                // 다시 짠 줄은 캡션까지 셀을 키우므로, 줄을 싣지 않은 HWPX를 다시 열어도 같게 센다.
+                let tac_bottom = |common: &CommonObjAttr, caption_hu: i32| -> f64 {
                     if para_no_ls_empty && common.treat_as_char {
-                        hwpunit_to_px(common.height as i32, self.dpi)
+                        hwpunit_to_px(common.height as i32 + caption_hu, self.dpi)
                     } else {
                         0.0
                     }
@@ -2287,11 +2289,17 @@ impl HeightMeasurer {
                             } else {
                                 bottom
                             };
-                            bottom.max(tac_bottom(&pic.common))
+                            let caption_hu =
+                                crate::renderer::composer::inline_picture_line_box_hu(pic).1
+                                    - crate::renderer::composer::inline_picture_occupied_size_hu(
+                                        pic,
+                                    )
+                                    .1;
+                            bottom.max(tac_bottom(&pic.common, caption_hu))
                         }
                         Control::Shape(shape) => self
                             .cell_wrap_object_visual_bottom(shape.common())
-                            .max(tac_bottom(shape.common())),
+                            .max(tac_bottom(shape.common(), 0)),
                         _ => 0.0,
                     })
                     .fold(0.0f64, f64::max);

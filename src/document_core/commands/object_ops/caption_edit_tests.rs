@@ -1519,3 +1519,100 @@ fn cell_fit_inline_picture_caption_grows_the_row() {
         "{last:?} {cell_box:?}"
     );
 }
+
+/// 저장한 HWP·HWPX를 다시 열어도 셀 크기 그림의 캡션만큼 자란 행이 그대로다.
+#[test]
+fn cell_fit_inline_picture_caption_row_survives_reopen() {
+    let mut core = blank();
+    let table = core.create_table_native(0, 0, 0, 1, 2).expect("표");
+    let table_ctrl = json_usize(&table, "controlIdx");
+    let table_para = json_usize(&table, "paraIdx");
+    let picture = core
+        .insert_picture_in_cell_native(
+            0,
+            table_para,
+            0,
+            &[(table_ctrl, 0, 0)],
+            &png(),
+            6000,
+            4000,
+            1,
+            1,
+            "png",
+            "",
+            None,
+            None,
+        )
+        .expect("셀 그림");
+    let inner = json_usize(&picture, "controlIdx");
+    let path = format!(r#"[{{"controlIndex":{table_ctrl},"cellIndex":0,"cellParaIndex":0}}]"#);
+    for props in [
+        r#"{"treatAsChar":true}"#,
+        r#"{"hasCaption":true,"captionDirection":"Bottom","captionSpacing":850}"#,
+    ] {
+        core.set_cell_picture_properties_by_path_native(0, table_para, &path, inner, props)
+            .expect("셀 그림 속성");
+    }
+    let grown = first_cell_box(&core).height;
+    for (format, bytes) in [
+        ("hwp", core.export_hwp_native().expect("HWP")),
+        ("hwpx", core.export_hwpx_native().expect("HWPX")),
+    ] {
+        let reopened = DocumentCore::from_bytes(&bytes).expect("열기");
+        let Control::Table(table) =
+            &reopened.document.sections[0].paragraphs[table_para].controls[table_ctrl]
+        else {
+            panic!("표");
+        };
+        let height = first_cell_box(&reopened).height;
+        assert!(
+            (height - grown).abs() < 0.5,
+            "{format}: {height} != {grown}, cell {:?} segs {:?}",
+            table.cells[0].height,
+            table.cells[0].paragraphs[0].line_segs
+        );
+    }
+}
+
+/// 홀로 선 글자처럼 그림의 아래 캡션은 줄 높이에 들지만, 캡션 글 오른쪽 빈자리를 눌러도 본문
+/// 문단이 아니라 그 캡션이 된다(캡션 상자 폭 전체가 캡션이다).
+#[test]
+fn lone_inline_picture_caption_box_right_of_text_hits_the_caption() {
+    let mut core = blank();
+    let result = core
+        .insert_picture_native(
+            0,
+            0,
+            0,
+            &[],
+            &png(),
+            22500,
+            15000,
+            1,
+            1,
+            "png",
+            "",
+            None,
+            None,
+        )
+        .expect("그림");
+    let ctrl = json_usize(&result, "controlIdx");
+    core.set_picture_properties_native(0, 0, ctrl, r#"{"treatAsChar":true}"#)
+        .expect("글자처럼 취급");
+    core.set_picture_properties_native(
+        0,
+        0,
+        ctrl,
+        r#"{"hasCaption":true,"captionDirection":"Bottom","captionSpacing":850}"#,
+    )
+    .expect("캡션");
+    let (line, _) = caption_lines(&core).remove(0);
+    assert!(line.width > 100.0, "{line:?}");
+    let hit: serde_json::Value = serde_json::from_str(
+        &core
+            .hit_test_native(0, line.x + line.width - 2.0, line.y + line.height / 2.0)
+            .expect("누르기"),
+    )
+    .expect("JSON");
+    assert_eq!(hit["cellPath"][0]["controlIndex"], ctrl, "{hit}");
+}

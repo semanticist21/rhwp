@@ -2908,6 +2908,41 @@ impl DocumentCore {
             return Ok(format_hit(&runs[idx], offset, page_num));
         }
 
+        // 글자처럼 그림의 위·아래 캡션은 줄 높이에 들어 본문 줄의 y 범위 안에 놓인다. 캡션 글
+        // 옆 빈자리도 캡션 상자 안이면 본문·주석 줄보다 그 캡션을 고른다(떠 있는 그림 캡션과 같게).
+        fn collect_caption_lines(node: &RenderNode, out: &mut Vec<(u32, (f64, f64, f64, f64))>) {
+            if matches!(
+                node.node_type,
+                RenderNodeType::Header | RenderNodeType::Footer
+            ) {
+                return;
+            }
+            if let RenderNodeType::TextLine(line) = &node.node_type {
+                if line.caption_owner.is_some() {
+                    let b = &node.bbox;
+                    out.push((node.id, (b.x, b.y, b.width, b.height)));
+                }
+            }
+            for child in &node.children {
+                collect_caption_lines(child, out);
+            }
+        }
+        let mut caption_lines = Vec::new();
+        collect_caption_lines(&tree.root, &mut caption_lines);
+        for (id, (bx, by, bw, bh)) in caption_lines {
+            if x < bx || x > bx + bw || y < by || y > by + bh {
+                continue;
+            }
+            let mut line_runs: Vec<&RunInfo> =
+                runs.iter().filter(|r| r.line_id == Some(id)).collect();
+            if line_runs.is_empty() {
+                continue;
+            }
+            line_runs.sort_by(|a, b| a.bbox_x.total_cmp(&b.bbox_x));
+            let (idx, offset) = resolve_x_on_line(&line_runs, x);
+            return Ok(format_hit(line_runs[idx], offset, page_num));
+        }
+
         // 클릭 좌표가 속한 칼럼 결정 (다단 지원)
         let click_column = self.find_column_at_x(page_num, x);
 
