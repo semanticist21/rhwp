@@ -1815,11 +1815,15 @@ impl DocumentCore {
             let had_caption = pic.caption.is_some();
             let px = Self::picture_pixel_size(pic, &self.document.bin_data_content);
             let caption_width_before = super::picture::picture_caption_text_width(pic);
-            // 글자처럼 취급 그림의 줄 안 자리(옆 캡션 폭·간격 포함)가 바뀌면 셀 문단을 다시 나눈다.
+            // 글자처럼 취급 그림의 줄 안 자리(옆 캡션 폭·간격 포함)나 줄 상자(위·아래 캡션 포함)가
+            // 바뀌면 셀 문단을 다시 나눈다. 한컴 12.30은 아래 캡션만큼 셀 줄과 행을 늘린다.
             let room = |pic: &crate::model::image::Picture| {
-                pic.common
-                    .treat_as_char
-                    .then(|| crate::renderer::composer::inline_picture_margins_hu(pic))
+                pic.common.treat_as_char.then(|| {
+                    (
+                        crate::renderer::composer::inline_picture_margins_hu(pic),
+                        crate::renderer::composer::inline_picture_line_box_hu(pic),
+                    )
+                })
             };
             let room_before = room(pic);
             let caption_created = Self::apply_picture_props_inner(pic, props_json, px, false);

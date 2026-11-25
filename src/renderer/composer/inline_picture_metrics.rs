@@ -60,11 +60,35 @@ pub(crate) fn inline_picture_occupied_size_hu(picture: &Picture) -> (i32, i32) {
     )
 }
 
+/// 줄 구성이 예약하는 글자처럼 그림 상자. 바깥 여백 상자에 위·아래 캡션(간격 + 캡션 높이)을
+/// 더한다. 한컴 12.30: 22500×15000 그림 + 아래 캡션(간격 850, 한 줄 1000) → 줄 높이 16850.
+/// 그리기는 같은 상자를 `tac_object_box_height_px`로 따로 세므로 바깥 여백에는 넣지 않는다.
+/// 옆 캡션은 그림 높이에서 잘리므로 높이를 늘리지 않는다.
+pub(crate) fn inline_picture_line_box_hu(picture: &Picture) -> (i32, i32) {
+    use crate::model::shape::CaptionDirection;
+    let (width, height) = inline_picture_occupied_size_hu(picture);
+    let vertical = picture.caption.as_ref().is_some_and(|c| {
+        matches!(
+            c.direction,
+            CaptionDirection::Top | CaptionDirection::Bottom
+        )
+    });
+    if !vertical {
+        return (width, height);
+    }
+    let boxed = super::captioned_shape_height_px(
+        f64::from(height),
+        &picture.caption,
+        crate::renderer::HWPUNIT_PER_INCH,
+    );
+    (width, height.max(boxed.round() as i32))
+}
+
 pub(super) fn inline_picture_occupied_size_hu_with_storage<S: crate::storage::Storage>(
     picture: &Picture,
     _storage: &S,
 ) -> Result<(i32, i32), S::Error> {
-    Ok(inline_picture_occupied_size_hu(picture))
+    Ok(inline_picture_line_box_hu(picture))
 }
 
 /// HWP 5.0 표 44의 세로 정렬점. 줄 구성과 실제 그림 원점이 같은 값을 사용한다.

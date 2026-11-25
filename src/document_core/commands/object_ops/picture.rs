@@ -701,13 +701,18 @@ impl DocumentCore {
                         .then(|| crate::renderer::composer::inline_picture_occupied_size_hu(pic)),
                 )
             });
-        // 글자처럼 취급 그림의 줄 안 자리(바깥 여백 + 효과 + 옆 캡션). 옆 캡션을 넣거나 폭·간격을 바꾸면
-        // 밴드 기하는 그대로여도 줄을 다시 나눠야 한다.
+        // 글자처럼 취급 그림의 줄 안 자리(바깥 여백 + 효과 + 옆 캡션)와 줄 상자(+ 위·아래 캡션). 캡션을
+        // 넣거나 폭·간격을 바꾸면 밴드 기하는 그대로여도 줄을 다시 나눠야 한다.
         let inline_room_before = self
             .resolve_picture_control_ref(section_idx, parent_para_idx, control_idx)
             .ok()
             .filter(|pic| pic.common.treat_as_char)
-            .map(crate::renderer::composer::inline_picture_margins_hu);
+            .map(|pic| {
+                (
+                    crate::renderer::composer::inline_picture_margins_hu(pic),
+                    crate::renderer::composer::inline_picture_line_box_hu(pic),
+                )
+            });
 
         let caption_styles = self.resolve_render_styles();
         let (dpi, hwp3_layout) = (self.dpi, self.document.layout_profile().hwp3_layout());
@@ -867,7 +872,12 @@ impl DocumentCore {
             .resolve_picture_control_ref(section_idx, parent_para_idx, control_idx)
             .ok()
             .filter(|pic| pic.common.treat_as_char)
-            .map(crate::renderer::composer::inline_picture_margins_hu);
+            .map(|pic| {
+                (
+                    crate::renderer::composer::inline_picture_margins_hu(pic),
+                    crate::renderer::composer::inline_picture_line_box_hu(pic),
+                )
+            });
         let band_changed = band_geometry_before != band_geometry_after;
         if band_changed || inline_room_before != inline_room_after {
             // 재투영 실패는 이 편집의 실패가 아니다 — 밴드를 만들 수 없는 형상이면
@@ -997,7 +1007,7 @@ impl DocumentCore {
             let was_tac = pic.common.treat_as_char;
             let px = Self::picture_pixel_size(pic, &self.document.bin_data_content);
             let old_inline_size =
-                was_tac.then(|| crate::renderer::composer::inline_picture_occupied_size_hu(pic));
+                was_tac.then(|| crate::renderer::composer::inline_picture_line_box_hu(pic));
             let caption_width_before = picture_caption_text_width(pic);
             caption_created = Self::apply_picture_props_inner(pic, props_json, px, false);
             reflow_picture_caption_if_width_changed(
@@ -1010,7 +1020,7 @@ impl DocumentCore {
             let now_tac = pic.common.treat_as_char;
             let changed_inline_size = now_tac
                 && old_inline_size.is_some_and(|old| {
-                    old != crate::renderer::composer::inline_picture_occupied_size_hu(pic)
+                    old != crate::renderer::composer::inline_picture_line_box_hu(pic)
                 });
             // 본문 setter 와 같은 이유로 여기서도 packed attr 을 동기화한다 —
             // 머리말/꼬리말 경로도 같은 tac 토글 마이그레이션을 수행한다 (Issue #3781).

@@ -1408,3 +1408,114 @@ fn clipped_side_caption_lines_are_not_hit() {
     .expect("JSON");
     assert_eq!(hit["cellPath"][0]["controlIndex"], ctrl, "{hit}");
 }
+
+/// 한컴 12.30은 홀로 선 글자처럼 그림의 아래 캡션(간격 + 캡션 줄)까지 줄 높이에 넣는다
+/// (`hc-a.hwp`: 22500×15000 그림, 간격 850, 캡션 한 줄 1000 → 줄 16850, 기준선 14323).
+/// 캡션을 빼고 15000으로 잡으면 그림이 앞 줄 위로 올라가 그려진다.
+#[test]
+fn lone_inline_picture_bottom_caption_grows_its_line() {
+    let mut core = blank();
+    let result = core
+        .insert_picture_native(
+            0,
+            0,
+            0,
+            &[],
+            &png(),
+            22500,
+            15000,
+            1,
+            1,
+            "png",
+            "",
+            None,
+            None,
+        )
+        .expect("그림");
+    let ctrl = json_usize(&result, "controlIdx");
+    core.set_picture_properties_native(0, 0, ctrl, r#"{"treatAsChar":true}"#)
+        .expect("글자처럼 취급");
+    core.set_picture_properties_native(
+        0,
+        0,
+        ctrl,
+        r#"{"hasCaption":true,"captionDirection":"Bottom","captionSpacing":850}"#,
+    )
+    .expect("캡션");
+    let seg = &core.document.sections[0].paragraphs[0].line_segs[0];
+    assert_eq!(
+        (seg.line_height, seg.baseline_distance),
+        (16850, 14323),
+        "{seg:?}"
+    );
+}
+
+/// 셀 크기에 맞추어 넣은 글자처럼 그림에 아래 캡션을 달면 한컴 12.30처럼 셀 줄과 행이 캡션까지
+/// 자란다(`hc-b.hwp`: 1500×1000 그림 + 간격 850 + 캡션 → 셀 줄 높이 12450).
+#[test]
+fn cell_fit_inline_picture_caption_grows_the_row() {
+    let mut core = blank();
+    let table = core.create_table_native(0, 0, 0, 1, 2).expect("표");
+    let table_ctrl = json_usize(&table, "controlIdx");
+    let table_para = json_usize(&table, "paraIdx");
+    let picture = core
+        .insert_picture_in_cell_native(
+            0,
+            table_para,
+            0,
+            &[(table_ctrl, 0, 0)],
+            &png(),
+            6000,
+            4000,
+            1,
+            1,
+            "png",
+            "",
+            None,
+            None,
+        )
+        .expect("셀 그림");
+    let inner = json_usize(&picture, "controlIdx");
+    let path = format!(r#"[{{"controlIndex":{table_ctrl},"cellIndex":0,"cellParaIndex":0}}]"#);
+    core.set_cell_picture_properties_by_path_native(
+        0,
+        table_para,
+        &path,
+        inner,
+        r#"{"treatAsChar":true}"#,
+    )
+    .expect("글자처럼 취급");
+    core.set_cell_picture_properties_by_path_native(
+        0,
+        table_para,
+        &path,
+        inner,
+        r#"{"hasCaption":true,"captionDirection":"Bottom","captionSpacing":850}"#,
+    )
+    .expect("셀 그림 캡션");
+    let Control::Table(table) =
+        &core.document.sections[0].paragraphs[table_para].controls[table_ctrl]
+    else {
+        panic!("표");
+    };
+    let cell = &table.cells[0];
+    let Control::Picture(pic) = &cell.paragraphs[0].controls[inner] else {
+        panic!("그림");
+    };
+    let caption = pic.caption.as_ref().expect("캡션");
+    let caption_height = caption.paragraphs[0]
+        .line_segs
+        .last()
+        .map(|seg| seg.vertical_pos + seg.line_height)
+        .expect("캡션 줄");
+    let line = cell.paragraphs[0].line_segs[0].line_height;
+    assert_eq!(line, 4000 + 850 + caption_height, "셀 줄");
+
+    // 그린 캡션 글줄이 자란 셀 안에 든다.
+    let cell_box = first_cell_box(&core);
+    let last = caption_lines(&core).last().expect("캡션 글줄").0;
+    assert!(
+        last.y + last.height <= cell_box.y + cell_box.height + 0.5,
+        "{last:?} {cell_box:?}"
+    );
+}

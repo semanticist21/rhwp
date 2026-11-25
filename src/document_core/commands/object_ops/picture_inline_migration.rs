@@ -75,7 +75,7 @@ impl DocumentCore {
         pic.common.vertical_offset = 0;
         crate::serializer::control::sync_anchor_bits(&mut pic.common);
 
-        let picture_height_hu = crate::renderer::composer::inline_picture_occupied_size_hu(pic).1;
+        let picture_height_hu = crate::renderer::composer::inline_picture_line_box_hu(pic).1;
         if !para.text.is_empty() {
             reflow_text_host(para, frame, styles, dpi);
             return;

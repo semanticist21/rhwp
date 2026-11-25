@@ -3725,7 +3725,7 @@ fn inline_control_line_height_hwp(para: &Paragraph) -> Option<i32> {
         .iter()
         .filter_map(|ctrl| match ctrl {
             Control::Picture(pic) if pic.common.treat_as_char => {
-                Some(super::inline_picture_occupied_size_hu(pic).1)
+                inline_control_size_hwp(ctrl).map(|(_, height)| height)
             }
             Control::Shape(shape) if shape.common().treat_as_char => {
                 Some(tac_shape_box_hu(shape).1)

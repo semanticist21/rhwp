@@ -47,8 +47,9 @@ mod stored_marker_frames;
 mod stored_tac_host_frame;
 mod stored_word_tail;
 pub(crate) use inline_picture_metrics::{
-    inline_picture_ascent_ratio, inline_picture_effect_outsets_hu, inline_picture_margins_hu,
-    inline_picture_occupied_size_hu, inline_picture_size_hu, inline_side_caption_hu,
+    inline_picture_ascent_ratio, inline_picture_effect_outsets_hu, inline_picture_line_box_hu,
+    inline_picture_margins_hu, inline_picture_occupied_size_hu, inline_picture_size_hu,
+    inline_side_caption_hu,
 };
 pub(crate) use stored_tac_host_frame::stored_tac_host_frame;
 pub(crate) use stored_word_tail::{
