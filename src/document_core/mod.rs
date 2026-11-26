@@ -259,6 +259,9 @@ pub struct DocumentCore {
     pub(crate) fallback_font: String,
     /// 레이아웃 엔진 (자동 번호 카운터 포함)
     pub(crate) layout_engine: LayoutEngine,
+    /// 호스트가 준 설치 글꼴 파일: (소문자 글꼴 이름, 진하게) → 파일. 빈 파일은 없는 글꼴이다.
+    /// 문서를 바꾸거나 다시 세워도 남아 커닝을 켠 글자 모양에 다시 등록한다.
+    pub(crate) host_kerning_fonts: std::collections::HashMap<(String, bool), std::sync::Arc<[u8]>>,
     /// 내부 클립보드
     pub(crate) clipboard: Option<ClipboardData>,
     /// 표 셀 행/열 바꿈 복사 버퍼
@@ -594,6 +597,10 @@ impl DocumentCore {
             &mut self.document.sections,
             &self.styles,
         );
+        // 편집으로 생긴 커닝 글자 모양에도 호스트 글꼴을 붙이고, 새 스타일 세트에 커닝 측정 문맥을 다시 건다.
+        // 그래야 뒤따르는 문단 재조판이 커닝한 폭으로 줄을 나눈다.
+        self.register_host_kerning_slots();
+        self.ensure_exact_font_measurement_contexts();
         equation_frames_changed
     }
 
@@ -657,6 +664,7 @@ impl DocumentCore {
             dpi: DEFAULT_DPI,
             fallback_font: DEFAULT_FALLBACK_FONT.to_string(),
             layout_engine: LayoutEngine::new(DEFAULT_DPI),
+            host_kerning_fonts: Default::default(),
             clipboard: None,
             table_transpose_clipboard: None,
             paste_cascade_count: 0,

@@ -761,6 +761,17 @@
       ]
     },
     {
+      "repositoryPath": "tests/fixtures/fonts/RHWPExactKerningSpaceSmoke.ttf",
+      "sha256": "abc65b67a74d5a5620ce235dc09543e66a6378077fbf320e920db3797d5345ff",
+      "license": "MIT",
+      "licenseFiles": [
+        "LICENSE"
+      ],
+      "copyrightNotices": [
+        "Copyright (c) 2025-2026 Edward Kim"
+      ]
+    },
+    {
       "repositoryPath": "tests/fixtures/fonts/RHWPHftOutline.otf",
       "sha256": "c3eb4ea18997f2a79442f80e51e421bfe496edb431a9247f27dafd4fcc305dda",
       "license": "MIT",

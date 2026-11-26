@@ -1251,7 +1251,7 @@ impl DocumentCore {
         self.styles.horizontal_shaping_context = shaping;
     }
 
-    fn ensure_exact_font_measurement_contexts(&mut self) {
+    pub(crate) fn ensure_exact_font_measurement_contexts(&mut self) {
         let generation = self.layout_engine.exact_font_source_registry_counts().3;
         let slot_count = self.layout_engine.exact_font_source_registry_counts().0;
         let (instance_request_count, instance_request_generation) = self
@@ -1323,6 +1323,7 @@ impl DocumentCore {
                     })
             });
         if !has_embedded_source {
+            self.register_host_kerning_slots();
             return;
         }
 
@@ -1446,6 +1447,94 @@ impl DocumentCore {
             }
         }
         self.refresh_exact_font_measurement_contexts();
+        // 내장 글꼴이 먼저 slot을 차지하고, 남은 커닝 slot에 호스트 글꼴을 붙인다.
+        self.register_host_kerning_slots();
+    }
+
+    /// 커닝을 켠 글자 모양의 한글 밖 언어 글꼴 중 문서에 내장되지 않았고 호스트가 아직 파일을 주지 않은 것.
+    /// (문서의 글꼴 이름, 진하게)를 처음 나온 차례로 돌려준다.
+    pub fn kerning_font_requests(&self) -> Vec<(String, bool)> {
+        let info = &self.document.doc_info;
+        let mut requests: Vec<(String, bool)> = Vec::new();
+        for shape in info.char_shapes.iter().filter(|shape| shape.kerning) {
+            for language in 1..shape.font_ids.len() {
+                let Some(font) = info
+                    .font_faces
+                    .get(language)
+                    .and_then(|fonts| fonts.get(shape.font_ids[language] as usize))
+                else {
+                    continue;
+                };
+                let request = (font.name.clone(), shape.bold);
+                if font.is_embedded
+                    || self
+                        .host_kerning_fonts
+                        .contains_key(&(font.name.to_lowercase(), shape.bold))
+                    || requests.contains(&request)
+                {
+                    continue;
+                }
+                requests.push(request);
+            }
+        }
+        requests
+    }
+
+    /// 호스트가 준 설치 글꼴 파일을 기억하고, 그 글꼴을 쓰는 커닝 글자 모양에 등록한다.
+    /// 빈 파일은 없는 글꼴로 기억해 다시 묻지 않는다. 새로 등록해 다시 조판했으면 true.
+    pub fn register_kerning_font_native(&mut self, name: &str, bold: bool, bytes: &[u8]) -> bool {
+        self.host_kerning_fonts
+            .insert((name.to_lowercase(), bold), std::sync::Arc::from(bytes));
+        if !self.register_host_kerning_slots() {
+            return false;
+        }
+        self.relayout_after_exact_font_registration();
+        true
+    }
+
+    /// 커닝을 켠 글자 모양·한글 밖 언어 slot 중 비어 있고 그 글꼴의 호스트 파일이 있는 것을 등록한다.
+    /// 등록한 slot이 있으면 측정 문맥을 새 registry로 바꾸고 true를 돌려준다.
+    /// 커닝을 끈 글자 모양은 등록하지 않아 그 글자의 측정·그리기는 그대로다.
+    pub(crate) fn register_host_kerning_slots(&mut self) -> bool {
+        if self.host_kerning_fonts.is_empty() {
+            return false;
+        }
+        let info = &self.document.doc_info;
+        let mut registered = false;
+        for (id, shape) in info.char_shapes.iter().enumerate() {
+            if !shape.kerning {
+                continue;
+            }
+            for language in 1..shape.font_ids.len() {
+                let slot = ExactFontSlot::new(id as u32, language);
+                if self.layout_engine.exact_font_source_handle(slot).is_some() {
+                    continue;
+                }
+                let Some(bytes) = info
+                    .font_faces
+                    .get(language)
+                    .and_then(|fonts| fonts.get(shape.font_ids[language] as usize))
+                    .filter(|font| !font.is_embedded)
+                    .and_then(|font| {
+                        self.host_kerning_fonts
+                            .get(&(font.name.to_lowercase(), shape.bold))
+                    })
+                    .filter(|bytes| !bytes.is_empty())
+                else {
+                    continue;
+                };
+                // 상한·충돌은 embedded 등록처럼 fail-closed로 그 slot만 커닝하지 않는다.
+                registered |= matches!(
+                    self.layout_engine
+                        .register_exact_font_source(slot, bytes, 0),
+                    Ok(ExactFontRegistryRegistration::Registered)
+                );
+            }
+        }
+        if registered {
+            self.refresh_exact_font_measurement_contexts();
+        }
+        registered
     }
 
     /// 페이지 렌더 트리를 생성하여 반환한다 (native bridge / 외부 렌더러용).

@@ -448,6 +448,7 @@ impl DocumentCore {
                 .string(DEFAULT_FALLBACK_FONT)
                 .map_err(storage_error)?,
             layout_engine: LayoutEngine::new(DEFAULT_DPI),
+            host_kerning_fonts: Default::default(),
             clipboard: None,
             table_transpose_clipboard: None,
             paste_cascade_count: 0,
@@ -3838,6 +3839,18 @@ impl DocumentCore {
         self.capture_loaded_source_frames();
     }
 
+    /// 새 exact source로 바뀐 측정을 문서 전체에 다시 조판한다.
+    pub(crate) fn relayout_after_exact_font_registration(&mut self) {
+        self.recompose_all_with_horizontal_shaping();
+        self.mark_all_sections_dirty();
+        self.measured_tables.clear();
+        self.measured_sections.clear();
+        self.dirty_paragraphs.clear();
+        self.para_column_map.clear();
+        self.invalidate_page_tree_cache();
+        self.paginate_if_needed();
+    }
+
     /// Host font selection이 확정한 exact face를 글자모양·언어 slot에 등록한다.
     ///
     /// family 이름으로 source를 재탐색하지 않는다. 동일 slot/source 재등록은 멱등이고,
@@ -3875,14 +3888,7 @@ impl DocumentCore {
             })?;
 
         if registration == ExactFontRegistryRegistration::Registered {
-            self.recompose_all_with_horizontal_shaping();
-            self.mark_all_sections_dirty();
-            self.measured_tables.clear();
-            self.measured_sections.clear();
-            self.dirty_paragraphs.clear();
-            self.para_column_map.clear();
-            self.invalidate_page_tree_cache();
-            self.paginate_if_needed();
+            self.relayout_after_exact_font_registration();
         }
 
         let status = match registration {

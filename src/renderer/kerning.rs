@@ -2424,6 +2424,15 @@ pub(crate) fn compute_kerning_pair_candidate(
         );
     }
 
+    // 한컴은 빈칸이 낀 쌍을 커닝하지 않는다(12.30 Mac, Arial `To AV`의 `빈칸·A`).
+    // 쌍 보정은 앞 글리프의 advance에 붙으므로 그 글자나 다음 글자가 빈칸이면 버린다.
+    let characters: Vec<char> = text.chars().collect();
+    let next_to_space = |index: usize| {
+        characters[index].is_whitespace()
+            || characters
+                .get(index + 1)
+                .is_some_and(|character| character.is_whitespace())
+    };
     let mut position_deltas = Vec::new();
     let mut total_x_advance_delta = 0_i64;
     for (index, ((glyph, off_position), on_position)) in off
@@ -2433,6 +2442,9 @@ pub(crate) fn compute_kerning_pair_candidate(
         .zip(on.glyph_positions())
         .enumerate()
     {
+        if next_to_space(index) {
+            continue;
+        }
         let delta = KerningGlyphPositionDelta {
             glyph_index: index,
             glyph_id: glyph.glyph_id,

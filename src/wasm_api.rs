@@ -995,6 +995,28 @@ impl HwpDocument {
         .map_err(JsValue::from)
     }
 
+    /// 커닝을 켠 글자 모양이 한글 밖 언어에 쓰는, 내장되지 않았고 아직 파일을 받지 않은 글꼴.
+    /// `[{"name":"Arial","bold":false}]`
+    #[wasm_bindgen(js_name = kerningFontRequests)]
+    pub fn kerning_font_requests(&self) -> String {
+        serde_json::Value::Array(
+            self.core
+                .kerning_font_requests()
+                .into_iter()
+                .map(|(name, bold)| serde_json::json!({ "name": name, "bold": bold }))
+                .collect(),
+        )
+        .to_string()
+    }
+
+    /// 호스트 설치 글꼴 파일을 그 글꼴 이름·굵기의 커닝 글꼴로 준다. 빈 파일은 없는 글꼴이다.
+    /// 새로 커닝해 다시 조판했으면 true.
+    #[wasm_bindgen(js_name = registerKerningFont)]
+    pub fn register_kerning_font(&mut self, name: &str, bold: bool, font_bytes: &[u8]) -> bool {
+        self.core
+            .register_kerning_font_native(name, bold, font_bytes)
+    }
+
     /// 문서 내 지속 HFT 윤곽 등록의 소유 판정에 쓰이는 선언과 현재 환경.
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen(js_name = getHftOutlineFontContext)]

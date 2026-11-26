@@ -217,7 +217,9 @@ def analyze_font_bytes(
         font.close()
 
 
-def synthetic_font(*, gpos: bool, legacy: bool) -> bytes:
+def synthetic_font(
+    *, gpos: bool, legacy: bool, pairs: str = "pos A V -80; pos T o -40;"
+) -> bytes:
     glyph_order = [".notdef", "space", "A", "V", "T", "o", "W", "H"]
     builder = FontBuilder(1000, isTTF=True)
     builder.setupGlyphOrder(glyph_order)
@@ -261,7 +263,7 @@ def synthetic_font(*, gpos: bool, legacy: bool) -> bytes:
         addOpenTypeFeaturesFromString(
             font,
             "languagesystem DFLT dflt; languagesystem latn dflt; "
-            "feature kern { pos A V -80; pos T o -40; } kern;",
+            f"feature kern {{ {pairs} }} kern;",
         )
     if legacy:
         table = newTable("kern")
