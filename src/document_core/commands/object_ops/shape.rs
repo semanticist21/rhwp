@@ -2011,6 +2011,121 @@ impl DocumentCore {
             applied
         )))
     }
+
+    /// 표 셀·글상자·머리말/꼬리말·각주 안(경로가 비면 본문 구역) 그리기 개체와 그림의 배치 순서를 바꾼다.
+    ///
+    /// [`Self::change_shape_z_order_native`] 는 본문 구역의 그리기 개체만 견준다. 한/글은 그림도
+    /// 같은 순서로 맨 앞·뒤로 보내고, 다른 편집 영역의 개체는 그 영역(같은 문단 목록) 안에서 견준다.
+    /// 경로는 `setCellShapePropertiesByPath` 와 같고 마지막 단계의 문단 목록이 견줄 범위다.
+    /// operation: "front" | "back" | "forward" | "backward". 반환 `{"ok":true,"zOrder":N,"moved":bool}`.
+    pub fn change_object_z_order_by_path_native(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path_json: &str,
+        control_idx: usize,
+        operation: &str,
+    ) -> Result<String, HwpError> {
+        if !matches!(operation, "front" | "back" | "forward" | "backward") {
+            return Err(HwpError::RenderError(format!(
+                "알 수 없는 operation: {}",
+                operation
+            )));
+        }
+        let path = if path_json.is_empty() || path_json == "[]" {
+            Vec::new()
+        } else {
+            Self::parse_cell_path_json(path_json)?
+        };
+        let section = self.document.sections.get_mut(section_idx).ok_or_else(|| {
+            HwpError::RenderError(format!("구역 인덱스 {} 범위 초과", section_idx))
+        })?;
+        // 경로 마지막 단계의 k번째 문단. 본문이면 구역 문단이다.
+        fn list_para<'a>(
+            section: &'a mut crate::model::document::Section,
+            parent_para_idx: usize,
+            path: &[(usize, usize, usize)],
+            k: usize,
+        ) -> Option<&'a mut Paragraph> {
+            if path.is_empty() {
+                return section.paragraphs.get_mut(k);
+            }
+            let mut at = path.to_vec();
+            at.last_mut()?.2 = k;
+            DocumentCore::resolve_cell_paragraph_mut(section, parent_para_idx, &at).ok()
+        }
+        fn z_of(ctrl: &mut Control) -> Option<&mut i32> {
+            match ctrl {
+                Control::Shape(shape) => Some(&mut shape.common_mut().z_order),
+                Control::Picture(picture) => Some(&mut picture.common.z_order),
+                _ => None,
+            }
+        }
+        // (z_order, 문단, 컨트롤) — 렌더링 순서와 같다.
+        let mut infos: Vec<(i32, usize, usize)> = Vec::new();
+        let mut k = 0;
+        while let Some(para) = list_para(section, parent_para_idx, &path, k) {
+            for (ci, ctrl) in para.controls.iter_mut().enumerate() {
+                if let Some(z) = z_of(ctrl) {
+                    infos.push((*z, k, ci));
+                }
+            }
+            k += 1;
+        }
+        infos.sort();
+        let target_para = path.last().map_or(parent_para_idx, |step| step.2);
+        let target = infos
+            .iter()
+            .position(|&(_, pi, ci)| pi == target_para && ci == control_idx)
+            .ok_or_else(|| {
+                HwpError::RenderError("순서를 바꿀 그리기 개체나 그림이 아닙니다".to_string())
+            })?;
+        let current = infos[target].0;
+        let last = infos.len() - 1;
+        // 본문 도형 순서와 같은 규칙: 맨 앞·뒤는 끝 값 너머로, 한 칸은 이웃과 맞바꾼다.
+        let mut changes: Vec<(usize, usize, i32)> = Vec::new();
+        match operation {
+            "front" if target < last => changes.push((target_para, control_idx, infos[last].0 + 1)),
+            "back" if target > 0 => changes.push((target_para, control_idx, infos[0].0 - 1)),
+            "forward" | "backward" => {
+                let neighbor = if operation == "forward" {
+                    infos.get(target + 1)
+                } else {
+                    target.checked_sub(1).and_then(|i| infos.get(i))
+                };
+                if let Some(&(z, pi, ci)) = neighbor {
+                    if z == current {
+                        let step = if operation == "forward" { 1 } else { -1 };
+                        changes.push((target_para, control_idx, current + step));
+                    } else {
+                        changes.push((target_para, control_idx, z));
+                        changes.push((pi, ci, current));
+                    }
+                }
+            }
+            _ => {}
+        }
+        let new_z = changes.first().map_or(current, |c| c.2);
+        for &(pi, ci, z) in &changes {
+            if let Some(slot) = list_para(section, parent_para_idx, &path, pi)
+                .and_then(|para| para.controls.get_mut(ci))
+                .and_then(z_of)
+            {
+                *slot = z;
+            }
+        }
+        let moved = !changes.is_empty();
+        if moved {
+            section.raw_stream = None;
+            self.finish_loaded_source_cache_after_object_edit(section_idx);
+            self.paginate_if_needed();
+            self.invalidate_page_tree_cache();
+        }
+        Ok(crate::document_core::helpers::json_ok_with(&format!(
+            "\"zOrder\":{},\"moved\":{}",
+            new_z, moved
+        )))
+    }
     /// 그룹 자식 개체들을 비례 스케일 (크기/위치/도형좌표 포함)
     fn scale_group_children(children: &mut [crate::model::shape::ShapeObject], sx: f64, sy: f64) {
         use crate::model::shape::ShapeObject as SO;

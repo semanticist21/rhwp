@@ -22,6 +22,8 @@ mod props_check;
 mod shape;
 mod table;
 mod table_creation;
+#[cfg(test)]
+mod z_order_by_path_tests;
 
 pub use table_creation::{TableColumnWidths, TableCreationOptions};
 

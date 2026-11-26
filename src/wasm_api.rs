@@ -6786,6 +6786,28 @@ impl HwpDocument {
         .map_err(|e| e.into())
     }
 
+    /// 표 셀·글상자·머리말/꼬리말·각주 안(경로가 비면 본문) 그리기 개체·그림의 배치 순서를 바꾼다.
+    /// 경로는 `setCellShapePropertiesByPath` 와 같다. operation: "front" | "back" | "forward" | "backward"
+    /// 반환: `{"ok":true,"zOrder":N,"moved":bool}`
+    #[wasm_bindgen(js_name = changeObjectZOrderByPath)]
+    pub fn change_object_z_order_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+        control_idx: u32,
+        operation: &str,
+    ) -> Result<String, JsValue> {
+        self.change_object_z_order_by_path_native(
+            section_idx as usize,
+            parent_para_idx as usize,
+            path_json,
+            control_idx as usize,
+            operation,
+        )
+        .map_err(|e| e.into())
+    }
+
     /// Shape z 순서 절대 대입(#5769 후속) — 속성쌍 커맨드의 undo/redo 경로.
     /// pairs_json: `[{"ppi":N,"ci":N,"z":N},...]`
     /// 반환: JSON `{"ok":true,"applied":N}`

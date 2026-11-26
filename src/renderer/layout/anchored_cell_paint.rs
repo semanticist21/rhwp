@@ -41,10 +41,9 @@ impl LayoutEngine {
             cell_ctx,
             styles,
         );
-        if cell_ctx.is_some_and(|ctx| !ctx.in_textbox)
-            && !picture.common.treat_as_char
-            && matches!(picture.common.text_wrap, TextWrap::BehindText)
-        {
+        // 셀의 떠 있는 그림도 셀 도형처럼 배치 순서(z)로 그린다. 쪽 그리기로 빼는 것은 글 뒤 그림뿐이다.
+        if cell_ctx.is_some_and(|ctx| !ctx.in_textbox) && !picture.common.treat_as_char {
+            let behind = matches!(picture.common.text_wrap, TextWrap::BehindText);
             let stable_index = cell_ctx
                 .and_then(|ctx| ctx.path.last())
                 .map(|entry| {
@@ -52,12 +51,13 @@ impl LayoutEngine {
                 })
                 .unwrap_or(0);
             let mut layer = RenderLayerInfo::new(
-                Some(TextWrap::BehindText),
+                Some(picture.common.text_wrap),
                 picture.common.z_order,
                 stable_index,
             );
             // 셀의 편집 소유는 ImageNode.cell_context에 남기고 그리기 소속만 구분한다.
-            if !picture.common.flow_with_text
+            if behind
+                && !picture.common.flow_with_text
                 && !crate::model::border_paint::is_cell_frame_attributes(&picture.common)
             {
                 layer.independent_page_paint = parent_node
