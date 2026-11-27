@@ -1989,6 +1989,25 @@ impl crate::model::bin_data::BinDataResolver for Hwp5BinResolver {
     /// 복호화는 크기 1:1 변환이라 deflate bomb 위험이 없으므로 수행한다. 반환
     /// 바이트는 원본 스트림과 같은 압축 상태이며, OLE size prefix 도 (압축 안에)
     /// 그대로 들어 있다 — 저장 경로가 이 바이트를 그대로 기록하면 왕복 무손실이다.
+    fn resolve_password_ciphertext(
+        &self,
+        key: &str,
+        password: &[u8],
+    ) -> Option<crate::model::bin_data::StoredBinData> {
+        if !self.encrypted || self.password.as_deref() != Some(password) {
+            return None;
+        }
+        let mut cfb = match self.cfb.lock() {
+            Ok(cfb) => cfb,
+            Err(poisoned) => poisoned.into_inner(),
+        };
+        let bytes = cfb.read_bin_data(key).ok()?;
+        Some(crate::model::bin_data::StoredBinData {
+            compressed: self.compressed_streams.get(key).copied().unwrap_or(false),
+            bytes,
+        })
+    }
+
     fn resolve_raw(&self, key: &str) -> Option<crate::model::bin_data::StoredBinData> {
         let raw = {
             let mut cfb = match self.cfb.lock() {

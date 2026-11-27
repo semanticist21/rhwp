@@ -748,6 +748,14 @@ where
         // 보존한다. 편집·추가한 바이트는 저장 형태가 없어 아래 경로로 다시 만든다.
         // 저장 압축 상태가 이 문서가 기대하는 상태와 다르면(암호 저장의 압축 강제 등)
         // 통과시키지 않는다.
+        // 같은 비밀번호로 연 암호 원본은 암호문을 그대로 옮긴다. 다시 암호화해도 같은 바이트다.
+        if let Some(ciphertext) = password
+            .and_then(|value| content.data.load_password_ciphertext(value))
+            .filter(|stored| stored.compressed == should_compress)
+        {
+            streams.push((path, ciphertext.bytes));
+            continue;
+        }
         if let Some(stored) = content
             .data
             .load_raw()

@@ -159,6 +159,15 @@ pub trait BinDataResolver:
         None
     }
 
+    /// 원본이 같은 비밀번호로 HWP5 암호화한 스트림이면 그 암호문을 그대로 반환한다.
+    ///
+    /// 같은 키·평문의 HWP5 암호문은 늘 같으므로, 바뀌지 않은 항목을 같은 비밀번호로
+    /// 저장할 때 복호화와 재암호화(비트마다 AES 한 블록)를 모두 건너뛴다. `compressed`는
+    /// 복호화한 평문의 압축 상태다. 암호 원본이 아니거나 비밀번호가 다르면 `None` 이다.
+    fn resolve_password_ciphertext(&self, _key: &str, _password: &[u8]) -> Option<StoredBinData> {
+        None
+    }
+
     /// 원본 ZIP 엔트리가 deflate 로 저장돼 있으면 그 압축 바이트와 CRC-32·비압축 크기를
     /// 반환한다 (압축 해제 없음). HWPX 저장이 바뀌지 않은 엔트리를 다시 압축하지 않고
     /// 옮길 때 쓴다. ZIP 컨테이너가 아니거나 deflate 가 아니면 `None` 이다 (기본값).
@@ -308,6 +317,16 @@ impl BinDataBytes {
         match self {
             BinDataBytes::Loaded(_) => None,
             BinDataBytes::Lazy { resolver, key } => resolver.resolve_raw(key),
+        }
+    }
+
+    /// 같은 비밀번호로 암호화한 원본 스트림의 암호문 (`resolve_password_ciphertext`).
+    pub fn load_password_ciphertext(&self, password: &[u8]) -> Option<StoredBinData> {
+        match self {
+            BinDataBytes::Loaded(_) => None,
+            BinDataBytes::Lazy { resolver, key } => {
+                resolver.resolve_password_ciphertext(key, password)
+            }
         }
     }
 
