@@ -1874,7 +1874,7 @@ impl DocumentCore {
             let table = self.cell_table_mut(section_idx, parent_para_idx, site)?;
             let original_height = table.common.height;
             let height_surplus = top_u32("height")
-                .map(|_| table.row_height_surplus(&drawn_rows))
+                .map(|_| table.occupied_row_height_surplus(&drawn_rows))
                 .unwrap_or_default();
             let direct_border_fill_id = if has_border_fill_change {
                 None

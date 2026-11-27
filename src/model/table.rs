@@ -1777,13 +1777,22 @@ impl Table {
     }
 
     /// 여러 행의 저장 외곽 높이가 행 점유 합보다 크면 그 여유분을 편집 후에도 보존한다.
+    /// 경계선 끌기는 표시 높이에 끈 만큼만 더하므로 저장 셀 높이 합과의 차이를 그대로 둔다.
     pub(crate) fn row_height_surplus(&self, drawn_rows: &[HwpUnit]) -> HwpUnit {
+        self.surplus_over(self.edited_row_height_sum(drawn_rows))
+    }
+
+    /// 셀 높이를 값으로 정할 때의 여유분. 저장 셀 높이보다 내용으로 자란 행(새 표의 최소 셀
+    /// 높이 등)은 그린 높이로 세어, 그 차이를 여유분으로 보고 정한 높이 위에 더하지 않는다.
+    pub(crate) fn occupied_row_height_surplus(&self, drawn_rows: &[HwpUnit]) -> HwpUnit {
+        self.surplus_over(self.row_height_sum(drawn_rows, true))
+    }
+
+    fn surplus_over(&self, rows: HwpUnit) -> HwpUnit {
         if self.row_count <= 1 {
             return 0;
         }
-        self.common
-            .height
-            .saturating_sub(self.row_height_sum(drawn_rows, true))
+        self.common.height.saturating_sub(rows)
     }
 
     pub(crate) fn sync_ctrl_height_from_rows(&mut self, drawn_rows: &[HwpUnit], surplus: HwpUnit) {
