@@ -53,6 +53,7 @@ import * as _keyboard from './input-handler-keyboard';
 import * as _text from './input-handler-text';
 import * as _picture from './input-handler-picture';
 import { computeHangingIndentPx } from './hanging-indent';
+import { paragraphLengthFromPx } from '@/core/paragraph-spacing';
 import { isPageLocalTextEditCommand, type PageLocalTextEditOptions } from './input-edit-invalidation';
 import type { NavigationKeyInput } from './navigation-keymap';
 import { isPointNearBoxBorder } from './table-border-hit';
@@ -65,13 +66,12 @@ import { CaretLayoutReveal } from './caret-layout-reveal';
 import { emitHeaderFooterModeChanged } from './header-footer-mode';
 import { CellBlockLetterImeGuard } from '@/command/contextual-shortcut';
 import { ImeNavigationGuard } from './ime-navigation-guard';
-import { fieldPinKey } from './control-place';
+import { atOtherSelectedField, fieldInfoAt, selectedFieldAt, type F11Field } from './control-place';
 
 const SVG_NS = 'http://www.w3.org/2000/svg';
 const DRAG_SCROLL_EDGE_PX = 48;
 const DRAG_SCROLL_MIN_STEP_PX = 2;
 const DRAG_SCROLL_MAX_STEP_PX = 20;
-const PX_TO_RAW_2X = 150;
 const PX_TO_HWPUNIT = 75;
 const DOCUMENT_PAGINATION_IDLE_FLUSH_DELAY_MS = 120;
 // 최초 입력의 paint 기회를 확보하고 반복 입력이 이 추가 예약 지연을 연장하지 않게 한다.
@@ -172,9 +172,6 @@ const FORMAT_COPY_PARA_KEYS: Array<keyof ParaProperties> = [
   'alignment',
   'lineSpacing',
   'lineSpacingType',
-  'marginLeft',
-  'marginRight',
-  'indent',
   'headType',
   'paraLevel',
   'numberingId',
@@ -214,10 +211,6 @@ function pickDefined<T extends object, K extends keyof T>(source: T, keys: K[]):
     if (source[key] !== undefined) result[key] = source[key];
   }
   return result;
-}
-
-function pxToRaw2x(px: number): number {
-  return Math.round(px * PX_TO_RAW_2X);
 }
 
 function availableDropWidthPx(pageInfo: PageInfo, pageX: number): number {
@@ -264,10 +257,10 @@ function fitDroppedImageSizeRaw(
 
 function normalizeFormatCopyParaProps(props: Partial<ParaProperties>): Partial<ParaProperties> {
   const normalized = pickDefined(props, FORMAT_COPY_PARA_KEYS);
-  if (props.marginLeft !== undefined) normalized.marginLeft = pxToRaw2x(props.marginLeft);
-  if (props.marginRight !== undefined) normalized.marginRight = pxToRaw2x(props.marginRight);
-  if (props.indent !== undefined) normalized.indent = pxToRaw2x(props.indent);
   // 구 엔진의 반올림된 px는 단위 비트를 잃는다. 확인된 저장값만 복사한다.
+  if (props.marginLeftRaw !== undefined) normalized.marginLeft = props.marginLeftRaw;
+  if (props.marginRightRaw !== undefined) normalized.marginRight = props.marginRightRaw;
+  if (props.indentRaw !== undefined) normalized.indent = props.indentRaw;
   if (props.spacingBeforeRaw !== undefined) normalized.spacingBefore = props.spacingBeforeRaw;
   if (props.spacingAfterRaw !== undefined) normalized.spacingAfter = props.spacingAfterRaw;
   return normalized;
@@ -359,10 +352,7 @@ export class InputHandler {
   /** 누름틀 끝 경계에서 오른쪽 이동으로 필드 밖에 머문 상태 */
   private fieldEndExitKey: string | null = null;
   /** F11로 고른 누름틀. 같은 글자 자리의 누름틀은 자리로 가릴 수 없어 컨트롤 번호로 붙든다. */
-  f11Field: {
-    key: string; place: ControlPlace; controlIndex: number;
-    info: { fieldId?: number; fieldType?: string; guideName?: string };
-  } | null = null;
+  f11Field: F11Field | null = null;
   /** 누름틀을 포함한 붙여넣기 직후 마지막 필드 끝을 바깥 위치로 고정한다 */
   private pastedFieldEndOutsidePending = false;
   /** 모양 복사로 기억한 글자/문단 모양 */
@@ -528,6 +518,14 @@ export class InputHandler {
 
   // 직선 끝점 드래그 상태
   private isLineEndpointDragging = false;
+  private connectorMidpointDrag: {
+    ref: { sec: number; ppi: number; ci: number; cellPath?: CellPathLike };
+    axis: 'x' | 'y';
+    start: number;
+    original: number;
+    zoom: number;
+    applied: number;
+  } | null = null;
   private lineEndpointState: {
     ref: { sec: number; ppi: number; ci: number; type: string };
     endpoint: 'start' | 'end';
@@ -554,6 +552,7 @@ export class InputHandler {
   private compositionAnchor: DocumentPosition | null = null;
   private compositionLength = 0; // 문서에 삽입된 조합 텍스트 길이
   private compositionBodyLogical = false;
+  private compositionAreaTextStart: number | null = null;
   /** [#7489] 수정 모드에서 이번 조합이 덮어쓴 글자. null 이면 첫 조합 글자에서 정한다. */
   private _compositionCovered: string | null = '';
   /** [#7489] 이번 조합이 덮기 직전 문단 조각. 조합 취소면 되살리고, 확정이면 기록에 넘긴다. */
@@ -2815,7 +2814,7 @@ export class InputHandler {
             cellIdx: cellIndex,
             cellParaIdx: cellParaIndex,
           }],
-          { indent: -pxToRaw2x(hangingPx) },
+          { indent: -paragraphLengthFromPx(hangingPx) },
         );
         return true;
       }
@@ -2831,7 +2830,7 @@ export class InputHandler {
       const hangingPx = computeHangingIndentPx(cursorRect.x, firstLineStartRect.x);
       this.executeParaFormatCommand(
         [{ kind: 'body', sec: pos.sectionIndex, para: pos.paragraphIndex }],
-        { indent: -pxToRaw2x(hangingPx) },
+        { indent: -paragraphLengthFromPx(hangingPx) },
       );
       return true;
     } catch (err) {
@@ -3219,6 +3218,7 @@ export class InputHandler {
    * 하면 된다(계급 2 근절·확장점). 비선택/비활성 항목은 no-op.
    */
   private resetDerivedStateAfterHistoryJump(): void {
+    this.f11Field = null;
     // [#2303] 위치 기반 개체/표 선택 ref({sec, ppi, ci})는 undo 로 어긋나 이후 개체 속성
     // 커맨드가 WASM 예외("지정된 컨트롤이 그림이 아닙니다")로 실패 → 선택 모드 해제.
     if (this.cursor.isInPictureObjectSelection()) {
@@ -4073,7 +4073,7 @@ export class InputHandler {
   private adjustExitedFieldEndCaretRect(rect: CursorRect): CursorRect {
     const pos = this.cursor.getPosition();
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       if (!fi.inField || fi.fieldType !== 'clickhere' || !fi.isGuide || !fi.guideName) {
         return rect;
       }
@@ -4553,7 +4553,7 @@ export class InputHandler {
   /** 클릭 좌표가 글상자의 경계선 위인지 판정한다 */
   private isShapeBorderClick(
     pageX: number, pageY: number,
-    shape: { sec: number; ppi: number; ci: number },
+    shape: { sec: number; ppi: number; ci: number; type?: 'shape' | 'group' },
   ): boolean {
     return _picture.isShapeBorderClick.call(this, pageX, pageY, shape);
   }
@@ -4757,6 +4757,7 @@ export class InputHandler {
     this.textarea.value = '';
     this.caret.hide();
     this.fieldMarker.hide();
+    this.f11Field = null;
     this.cursor.clearSelection();
     this.selectionRenderer.clear();
     this.history.clear(this.wasm);
@@ -4885,7 +4886,7 @@ export class InputHandler {
   private getFormFieldInfoAt(pos: DocumentPosition): any | null {
     if (this.cursor.isInHeaderFooter() || this.cursor.isInFootnote()) return null;
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       if (!fi?.inField) return null;
       if (fi.fieldType !== 'clickhere') return null;
       return fi;
@@ -5255,7 +5256,7 @@ export class InputHandler {
     const pos = posOverride ?? this.cursor.getPosition();
     let restorePos: DocumentPosition | null = null;
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       if (fi.inField && fi.fieldType === 'clickhere') {
         restorePos = {
           ...pos,
@@ -5308,7 +5309,7 @@ export class InputHandler {
   confirmRemoveCurrentField(): boolean {
     const pos = this.cursor.getPosition();
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       if (!fi.inField || fi.fieldType !== 'clickhere') return false;
     } catch {
       return false;
@@ -5329,7 +5330,7 @@ export class InputHandler {
   tryExitCurrentFieldEnd(): boolean {
     const pos = this.cursor.getPosition();
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       const start = fi.startCharIdx ?? -1;
       const end = fi.endCharIdx ?? -1;
       if (!fi.inField || fi.fieldType !== 'clickhere' || start < 0 || end < 0) return false;
@@ -5353,7 +5354,7 @@ export class InputHandler {
   tryExitCurrentFieldStart(): boolean {
     const pos = this.cursor.getPosition();
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       const start = fi.startCharIdx ?? -1;
       const end = fi.endCharIdx ?? -1;
       if (!fi.inField || fi.fieldType !== 'clickhere' || start < 0 || end < 0) return false;
@@ -5375,7 +5376,7 @@ export class InputHandler {
   tryEnterExitedFieldStart(): boolean {
     const pos = this.cursor.getPosition();
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       if (!fi.inField || fi.fieldType !== 'clickhere' || !this.isAtExitedFieldStart(pos, fi)) {
         return false;
       }
@@ -5391,7 +5392,7 @@ export class InputHandler {
   tryEnterExitedFieldEnd(): boolean {
     const pos = this.cursor.getPosition();
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       if (!fi.inField || fi.fieldType !== 'clickhere' || !this.isAtExitedFieldEnd(pos, fi)) {
         return false;
       }
@@ -5407,7 +5408,7 @@ export class InputHandler {
   markCurrentFieldStartOutside(): boolean {
     const pos = this.cursor.getPosition();
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       const start = fi.startCharIdx ?? -1;
       const end = fi.endCharIdx ?? -1;
       if (!fi.inField || fi.fieldType !== 'clickhere' || start < 0 || end < 0) return false;
@@ -5430,7 +5431,7 @@ export class InputHandler {
   markCurrentFieldEndOutside(): boolean {
     const pos = this.cursor.getPosition();
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       const start = fi.startCharIdx ?? -1;
       const end = fi.endCharIdx ?? -1;
       if (!fi.inField || fi.fieldType !== 'clickhere' || start < 0 || end < 0) return false;
@@ -5456,7 +5457,7 @@ export class InputHandler {
 
   private isExitedFieldStartPosition(pos: DocumentPosition): boolean {
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       return fi.inField
         && fi.fieldType === 'clickhere'
         && this.isAtExitedFieldStart(pos, fi);
@@ -5474,7 +5475,7 @@ export class InputHandler {
   prepareClickHereInputPosition(): DocumentPosition {
     const pos = this.cursor.getPosition();
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       const start = fi.startCharIdx ?? -1;
       if (!fi.inField || fi.fieldType !== 'clickhere' || !fi.isGuide || start < 0) {
         return pos;
@@ -5495,9 +5496,9 @@ export class InputHandler {
   }
 
   /** 그 자리의 누름틀을 활성으로 둔다. F11로 고른 누름틀이 그 자리에 있으면 그것을 둔다. 바뀌면 true. */
-  activateFieldAt(pos: DocumentPosition): boolean {
+  activateFieldAt(pos: DocumentPosition, selected = selectedFieldAt(this.wasm, pos, this.f11Field)): boolean {
     const pin = this.f11Field;
-    if (pin && pin.key === fieldPinKey(pos)) return this.wasm.setActiveFieldAt(pin.place, pin.controlIndex);
+    if (pin && (selected || atOtherSelectedField(pos, pin))) return this.wasm.setActiveFieldAt(pin.place, pin.controlIndex);
     this.f11Field = null;
     return this.wasm.setActiveField(pos);
   }
@@ -5507,7 +5508,7 @@ export class InputHandler {
     this.f11Field = null;
     const pos = this.cursor.getPosition();
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       const guidePos = this.findEmptyClickHereGuideHitPosition(pos);
       if (guidePos) {
         this.fieldStartExitKey = null;
@@ -5600,7 +5601,7 @@ export class InputHandler {
   /** 현재 위치가 빈 누름틀 안내문 영역인지 확인한다. */
   isClickHereGuidePosition(pos: DocumentPosition): boolean {
     try {
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const fi = fieldInfoAt(this.wasm, pos, this.f11Field);
       return fi.inField && fi.fieldType === 'clickhere' && fi.isGuide === true;
     } catch {
       return false;
@@ -5613,7 +5614,10 @@ export class InputHandler {
     this.fieldStartExitKey = null;
     this.fieldEndExitKey = null;
     this.fieldMarker.hide();
-    this.wasm.clearActiveField();
+    // 다음 키는 화면 갱신 전에 올 수 있다. 방금 입력한 F11 누름틀의 경계 소속을 유지한다.
+    if (!selectedFieldAt(this.wasm, this.cursor.getPosition(), this.f11Field)) {
+      this.wasm.clearActiveField();
+    }
     this.eventBus.emit('document-changed');
     requestAnimationFrame(() => {
       this.updateCaret();
@@ -5684,7 +5688,9 @@ export class InputHandler {
     }
     try {
       const pos = this.cursor.getPosition();
-      const fi = this.wasm.getFieldInfoAt(pos);
+      const selected = selectedFieldAt(this.wasm, pos, this.f11Field);
+      if (!selected && !atOtherSelectedField(pos, this.f11Field)) this.f11Field = null;
+      const fi = selected ?? this.wasm.getFieldInfoAt(pos);
       if (fi.inField && fi.startCharIdx !== undefined && fi.endCharIdx !== undefined) {
         if (this.isAtExitedFieldStart(pos, fi) || this.isAtExitedFieldEnd(pos, fi)) {
           if (wasVisible) this.fieldMarker.hide();
@@ -5695,7 +5701,7 @@ export class InputHandler {
         this.fieldStartExitKey = null;
         this.fieldEndExitKey = null;
         // 활성 필드 설정 → 안내문 숨김 + 페이지 캐시 무효화
-        const fieldChanged = this.activateFieldAt(pos);
+        const fieldChanged = this.activateFieldAt(pos, selected);
         const zoom = this.viewportManager.getZoom();
         const rects = this.getClickHereBoundaryRects(pos, fi.startCharIdx, fi.endCharIdx);
         if (!rects) return;
@@ -5729,7 +5735,7 @@ export class InputHandler {
   /** 커서가 누름틀 필드 내부인가? */
   isInField(): boolean {
     try {
-      const fi = this.wasm.getFieldInfoAt(this.cursor.getPosition());
+      const fi = fieldInfoAt(this.wasm, this.cursor.getPosition(), this.f11Field);
       return fi.inField;
     } catch { return false; }
   }
@@ -5737,7 +5743,7 @@ export class InputHandler {
   /** 현재 커서 위치의 필드 정보를 반환한다. */
   getFieldInfo(): { fieldId: number; fieldType: string; guideName: string } | null {
     try {
-      const fi = this.wasm.getFieldInfoAt(this.cursor.getPosition());
+      const fi = fieldInfoAt(this.wasm, this.cursor.getPosition(), this.f11Field);
       if (fi.inField && fi.fieldId !== undefined) {
         return { fieldId: fi.fieldId, fieldType: fi.fieldType ?? '', guideName: fi.guideName ?? '' };
       }

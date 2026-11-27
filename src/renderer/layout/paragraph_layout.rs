@@ -1033,6 +1033,14 @@ pub(super) fn empty_no_lineseg_paragraph_metrics(
     let line_spacing_type = para_style
         .map(|style| style.line_spacing_type)
         .unwrap_or(LineSpacingType::Percent);
+    // [#8582] 워드 호환 문서의 빈 문단은 끝 표지(영문 슬롯 글꼴)의 배율로 잰 크기다.
+    // typeset·height_measurer 의 같은 보정과 맞춰 그리기 y 가 장부와 갈라지지 않게 한다.
+    let font_size = crate::renderer::composer::word_compat_empty_paragraph_font_size(
+        para,
+        styles,
+        line_spacing_type,
+    )
+    .map_or(font_size, |scaled| font_size.max(scaled));
     let (line_height, line_spacing_px) = crate::renderer::corrected_line_metrics(
         0.0,
         0.0,
@@ -6960,10 +6968,33 @@ impl LayoutEngine {
                 .filter(|run| crate::renderer::composed_run_reserves_font_height(run))
                 .map(|r| r.line_box_font_size(styles))
                 .fold(0.0f64, f64::max);
+            // [#8582] 워드 호환 문서의 글자 줄 한 줄 높이(px). 기준선을 그 3/4 에 둔다.
+            let mut word_line_size = None;
             if let Some(paragraph) = para {
                 max_fs = max_fs.max(crate::renderer::composed_line_reference_font_size(
                     comp_line, paragraph, styles,
                 ));
+                // [#8582] 워드 호환 문서는 줄 글자 크기 자리에 한 줄 높이를 쓴다. 저장 줄 높이를
+                // 쓰지 않고 글자 크기로 줄 상자를 다시 뽑는 경로(칸 문단 등)가 배율을 잃지 않게 한다.
+                let line_end = comp_line.char_start
+                    + comp_line
+                        .runs
+                        .iter()
+                        .map(|run| run.text.chars().count())
+                        .sum::<usize>();
+                if let Some(size) = crate::renderer::composer::word_compat_line_font_size(
+                    paragraph,
+                    styles,
+                    para_style
+                        .map(|style| style.line_spacing_type)
+                        .unwrap_or(LineSpacingType::Percent),
+                    comp_line.char_start..line_end,
+                    // 문단 끝 표지 배율·보정은 줄 상자(저장·재조판 줄 높이)가 이미 담는다.
+                    false,
+                ) {
+                    max_fs = max_fs.max(size);
+                    word_line_size = (size > 0.0).then_some(max_fs);
+                }
             }
             if let Some((_, _, font_size)) = empty_no_lineseg_metrics {
                 max_fs = font_size;
@@ -7226,14 +7257,10 @@ impl LayoutEngine {
                             matches!(p.controls.get(*ci), Some(Control::Table(t)) if t.common.treat_as_char)
                         })
                 });
-            // 문단 세로 정렬이 가운데이면 저장 BL은 TH/2의 정렬점이다(HWP5 표 44).
-            // 수식과 글자가 같은 줄에서 이 점을 곧바로 문자 기준선으로 쓰면
-            // 큰 수식 줄의 글자가 올라간다. 온전한 저장 줄과 같은 소유 구간인
-            // 수식 전용 TAC 줄만 해석하고, 재구성·다른 개체의 프레임은 유지한다.
-            let stored_equation_center = (!runs_all_whitespace
-                && !has_tac_shape
-                && !source_metrics_reflowed
-                && max_fs > 0.0
+            // 가운데 정렬 저장 줄의 BL은 상자 중심이다(HWP5 표 44).
+            // 같은 줄에 속한 도형·수식은 저장 정렬점을 쓰고 문자는 자기 상자
+            // 위에서 0.85em의 기준선을 갖는다. 그림·표가 섞인 줄은 기존 계약을 쓴다.
+            let stored_object_center = (!source_metrics_reflowed
                 && para_style.is_some_and(|style| style.vertical_alignment == 2)
                 && !line_tac_offsets_for_width.is_empty()
                 && para.is_some_and(|p| {
@@ -7244,18 +7271,48 @@ impl LayoutEngine {
                                 && source.line_height == comp_line.line_height
                                 && source.baseline_distance == comp_line.baseline_distance
                         })
-                        && line_tac_offsets_for_width.iter().all(|(_, _, ci)| {
-                            matches!(p.controls.get(*ci), Some(Control::Equation(e)) if e.common.treat_as_char)
-                        })
                 }))
             .then_some(hwpunit_to_px(comp_line.baseline_distance, self.dpi));
-            let baseline = if let Some(center) = stored_equation_center {
-                // 최소 글꼴 기준선으로 clamp한 값이 아닌 원래 정렬점을 소비한다.
+            let stored_equation_center = stored_object_center.filter(|_| {
+                !runs_all_whitespace
+                    && !has_tac_shape
+                    && max_fs > 0.0
+                    && para.is_some_and(|p| {
+                        line_tac_offsets_for_width.iter().all(|(_, _, ci)| {
+                            matches!(p.controls.get(*ci), Some(Control::Equation(e))
+                                if e.common.treat_as_char)
+                        })
+                    })
+            });
+            let stored_shape_center = stored_object_center.filter(|_| {
+                has_tac_shape && para.is_some_and(|p| {
+                    line_tac_offsets_for_width.iter().all(|(_, _, ci)| {
+                        matches!(p.controls.get(*ci), Some(Control::Shape(shape))
+                            if shape.common().treat_as_char
+                              && !matches!(shape.as_ref(), crate::model::shape::ShapeObject::Picture(_)))
+                    })
+                })
+            });
+            let object_baseline = stored_shape_center.unwrap_or(object_baseline);
+            let text_center = stored_equation_center
+                .or(stored_shape_center.filter(|_| !runs_all_whitespace && max_fs > 0.0));
+            let baseline = if let Some(center) = text_center {
                 center + max_fs * (0.85 - 0.5)
             } else if centered_inline_table_baseline {
                 baseline + max_fs * (0.85 - 0.5)
             } else {
                 baseline
+            };
+            // [#8582] 워드 호환 문서의 글자 줄(개체 없음)은 기준선이 한 줄 높이의 3/4 이다.
+            let baseline = match word_line_size {
+                Some(size)
+                    if line_tac_offsets_for_width.is_empty()
+                        && text_center.is_none()
+                        && empty_no_lineseg_metrics.is_none() =>
+                {
+                    size * 0.75
+                }
+                _ => baseline,
             };
             // 들여쓰기/내어쓰기: 문단 여백은 무조건 적용
             // - 보통(ind=0): 모든 줄 margin_left
@@ -8011,9 +8068,10 @@ impl LayoutEngine {
                 } else {
                     line_spacing_px
                 };
-            if equation_tac_extra_rows > 0 {
-                line_node.bbox.height = line_flow_height;
-                if let RenderNodeType::TextLine(ref mut text_line) = line_node.node_type {
+            if let RenderNodeType::TextLine(text_line) = &mut line_node.node_type {
+                text_line.source_flow = Some((comp_line.char_start, render_line_spacing_px));
+                if equation_tac_extra_rows > 0 {
+                    line_node.bbox.height = line_flow_height;
                     text_line.line_height = line_flow_height;
                 }
             }
@@ -12372,6 +12430,11 @@ impl LayoutEngine {
                         // 셀의 그림·표는 기존 소유 경로가 출력한다. 앞 도형의 가로
                         // 줄 소속만 공유하고, 다른 개체를 여기서 중복 출력하지 않는다.
                         if !empty_line_tac_allowed {
+                            if let Control::Picture(picture) = ctrl {
+                                let (left, _, _, _) =
+                                    tac_picture_outer_margins_px(picture, self.dpi);
+                                tree.defer_picture_left(line_node, tac_ci, img_x + left);
+                            }
                             img_x += tac_w;
                             empty_line_mark_x = img_x;
                             empty_line_logical_end += 1;

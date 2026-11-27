@@ -120,7 +120,7 @@ struct NativeOtfProgram {
     cff: bool,
     static_truetype: bool,
     visible_notdef_advance: Option<f64>,
-    verified_hft_bold_tracking: bool,
+    verified_legacy_font_bold_tracking: bool,
     visible_old_hangul_advances: Arc<BTreeMap<char, f64>>,
 }
 
@@ -158,10 +158,37 @@ impl NativeOtfMetrics {
 
     /// 선택한 주 프로그램 자체의 공백 전진. 뒤 fallback의 공백은 사용하지 않는다.
     /// useFontSpace의 원본 선언을 확인한 호출자만 사용한다.
+    /// 전진이 0이면 유효한 공백 폭이 없으므로 호출자가 기본 폭을 사용한다.
     pub(crate) fn selected_program_space_advance_em(
         &self,
         identity: &super::font_environment::FontProgramIdentity,
     ) -> Option<f64> {
+        let face = self.selected_program_face(identity)?;
+        let glyph = face.glyph_index(' ').filter(|glyph| glyph.0 != 0)?;
+        let advance = face
+            .glyph_hor_advance(glyph)
+            .filter(|&advance| advance > 0)?;
+        let em = face.units_per_em();
+        (em > 0).then(|| f64::from(advance) / f64::from(em))
+    }
+
+    /// 명시적으로 선택한 원본 프로그램의 cmap만 확인한다.
+    pub(crate) fn selected_program_has_glyph(
+        &self,
+        identity: &super::font_environment::FontProgramIdentity,
+        character: char,
+    ) -> Option<bool> {
+        let face = self.selected_program_face(identity)?;
+        Some(
+            face.glyph_index(character)
+                .is_some_and(|glyph| glyph.0 != 0),
+        )
+    }
+
+    fn selected_program_face(
+        &self,
+        identity: &super::font_environment::FontProgramIdentity,
+    ) -> Option<ttf_parser::Face<'_>> {
         let program = self.programs.iter().find(|program| {
             identity.matches(
                 &program.source_digest,
@@ -169,11 +196,7 @@ impl NativeOtfMetrics {
                 program.source_face_index,
             )
         })?;
-        let face = ttf_parser::Face::parse(&program.bytes, program.face_index).ok()?;
-        let glyph = face.glyph_index(' ').filter(|glyph| glyph.0 != 0)?;
-        let advance = face.glyph_hor_advance(glyph)?;
-        let em = face.units_per_em();
-        (em > 0).then(|| f64::from(advance) / f64::from(em))
+        ttf_parser::Face::parse(&program.bytes, program.face_index).ok()
     }
 
     /// 뒤 대체 후보가 아닌 실제 주 프로그램의 cmap을 확인한다.
@@ -285,6 +308,31 @@ impl NativeOtfMetrics {
         self.glyph_metric(character)
             .is_some_and(|(_, faux, _, _)| faux)
     }
+
+    /// 원본 전진을 유지하는 한양중고딕의 검증된 표시용 TrueType이다.
+    pub(crate) fn uses_h2gtrm_faux_bold(&self) -> bool {
+        const H2GTRM_SOURCE_SHA256: [u8; 32] = [
+            0x0b, 0x18, 0xf8, 0x1f, 0x9d, 0x46, 0x3f, 0x6c, 0x49, 0x88, 0x53, 0xaf, 0x3b, 0xda,
+            0xd5, 0x77, 0xe9, 0xc8, 0x81, 0xa5, 0xb5, 0x9d, 0xc7, 0xef, 0x4c, 0x43, 0x28, 0x75,
+            0x88, 0xd6, 0x96, 0xd5,
+        ];
+        // 브라우저용 SFNT는 format 4의 끝 .notdef 항목과 head 체크섬을
+        // 보정한다. 원본과 실제 문자 매핑, 윤곽, hmtx는 같다.
+        const H2GTRM_BROWSER_SHA256: [u8; 32] = [
+            0xfe, 0xbb, 0x15, 0xc4, 0xb7, 0x9d, 0xff, 0xd4, 0x8f, 0x74, 0x24, 0xd6, 0x56, 0xfa,
+            0x84, 0x56, 0x58, 0x65, 0x75, 0x21, 0x6f, 0x00, 0x7a, 0x40, 0xd9, 0x62, 0x80, 0x1d,
+            0x0a, 0x52, 0x80, 0xfd,
+        ];
+        self.programs.first().is_some_and(|program| {
+            program.static_truetype
+                && program.faux_bold
+                && matches!(
+                    program.source_digest,
+                    H2GTRM_SOURCE_SHA256 | H2GTRM_BROWSER_SHA256
+                )
+        })
+    }
+
     pub fn advance_em(&self, character: char) -> Option<f64> {
         self.glyph_metric(character)
             .map(|(advance, _, _, _)| advance)
@@ -330,7 +378,7 @@ impl NativeOtfMetrics {
                     (
                         f64::from(width) / f64::from(face.units_per_em()),
                         program.faux_bold,
-                        program.verified_hft_bold_tracking,
+                        program.verified_legacy_font_bold_tracking,
                         program_index,
                     )
                 });
@@ -431,14 +479,8 @@ impl NativePuaFonts {
         selection_digest.update(face_index.to_be_bytes());
         let selection_digest: [u8; 32] = selection_digest.finalize().into();
         let faux_bold = bold && !face.is_bold();
-        let verified_hft_bold_tracking = face.names().into_iter().any(|name| {
-            matches!(
-                name.name_id,
-                ttf_parser::name_id::FAMILY | ttf_parser::name_id::TYPOGRAPHIC_FAMILY
-            ) && name.to_string().is_some_and(|family| {
-                super::legacy_font_advances::has_verified_hft_bold_tracking_family(&family)
-            })
-        });
+        let verified_legacy_font_bold_tracking =
+            super::legacy_font_advances::tracking::has_verified_program_family(face.names());
         // CFF도 cmap/hmtx만 측정에 사용한다. 원본 신원·형식은 위에서 보존하고
         // 윤곽은 별도 paint 저장소가 소유하므로 측정 세션에 중복 보관하지 않는다.
         let compact = metric_sfnt::compact_metrics(bytes, face_index);
@@ -498,7 +540,7 @@ impl NativePuaFonts {
             cff,
             static_truetype,
             visible_notdef_advance,
-            verified_hft_bold_tracking,
+            verified_legacy_font_bold_tracking,
             visible_old_hangul_advances: Arc::new(visible_old_hangul_advances),
         });
         self.otf_programs

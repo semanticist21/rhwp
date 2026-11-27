@@ -26,6 +26,7 @@ pub(crate) mod footnote_frames;
 #[cfg(target_arch = "wasm32")]
 pub(crate) mod mipmap_sampling;
 pub use conjoining_jamo::IsolatedJamoFont;
+pub(crate) mod ellipse;
 pub(crate) mod emphasis;
 pub(crate) mod enclosed_pua_geometry;
 pub(crate) mod endnote_spacing;
@@ -51,8 +52,6 @@ pub(crate) mod gradient_geometry;
 pub(crate) mod hancom_pua;
 pub mod height_cursor;
 pub mod height_measurer;
-pub(crate) mod hft_ascii_evidence;
-pub(crate) mod hft_outline;
 pub(crate) mod hidden_pictures;
 pub mod html;
 pub(crate) mod hwp3_caption_host;
@@ -68,7 +67,9 @@ pub mod kitty;
 pub mod layer_renderer;
 pub mod layout;
 pub(crate) mod layout_frame;
+pub(crate) mod legacy_ascii_evidence;
 pub(crate) mod legacy_font_advances;
+pub(crate) mod legacy_font_outline;
 pub(crate) mod line_style;
 mod measured_glyph_supplier;
 pub(crate) mod metafile_geometry;
@@ -429,6 +430,9 @@ pub struct TextStyle {
     /// HWP3 원본의 HFT 굵기 전진 계약을 적용한다.
     #[serde(skip_serializing)]
     pub source_hwp3_hft_bold: bool,
+    /// 실제 공급 글꼴에서 확인한 합성 굵기 전진. 출력 세션 안에서만 사용한다.
+    #[serde(skip_serializing)]
+    pub h2gtrm_faux_bold_tracking: bool,
     /// 원본 글자 스타일에서 크기를 해소했는지. 명시적인 0과 미지정을 구별한다.
     #[serde(skip_serializing)]
     pub resolved_font_size: bool,
@@ -650,7 +654,7 @@ pub struct TextStyle {
     #[serde(skip_serializing)]
     pub ascii_punct_latin: Option<Box<LatinSlotMetrics>>,
 }
-crate::storage::clone_fields!(TextStyle, {literal_soft_hyphen, text_paint, continuous_shadow, inherited_half_space_em, script_metrics, shadow_offset_percent, space_compression, literal_figure_space, literal_figure_space_em, native_pua_metrics, native_otf_metrics, bidi_layout, emphasis_skip_first_cluster, top_underline_font_size, top_underline_phase, top_underline_raise, supplemental_metrics, isolated_jamo_font, font_family, font_size, char_offset, position_in_box, fixed_glyph_advances, source_font_is_hft, source_font_is_ttf, selected_primary_font_program, source_verified_hft_bold_tracking, source_hwp3_hft_bold, resolved_font_size, print_ink_font_size, font_position, hft_print_frame, print_text_device_frame, preserve_glyph_ink, natural_program_metrics, source_dc_frame, latin_decimal_halfwidth, color, bold, italic, underline, strikethrough, kerning, letter_spacing, ratio, default_tab_width, tab_stops, auto_tab_right, auto_left_tab_position, available_width, line_x_offset, text_start_offset, right_tab_block_width_override, tab_leaders, inline_tabs, extra_word_spacing, unjustified_leading_spaces, extra_char_spacing, cell_advance_scale, extra_dash_advance, outline_type, shadow_type, shadow_color, shadow_offset_x, shadow_offset_y, emboss, engrave, superscript, subscript, emphasis_dot, underline_shape, strike_shape, underline_color, strike_color, shade_color, font_metric_trusted, glyph_fallback_advance_explicit, metric_font_family, original_glyph_metric_family, font_space_em, layout_half_space, layout_half_space_em, regenerated_font_metrics, hft_hangul_face, hft_font_face, hft_fullwidth_dot, ascii_punct_latin});
+crate::storage::clone_fields!(TextStyle, {literal_soft_hyphen, text_paint, continuous_shadow, inherited_half_space_em, script_metrics, shadow_offset_percent, space_compression, literal_figure_space, literal_figure_space_em, native_pua_metrics, native_otf_metrics, bidi_layout, emphasis_skip_first_cluster, top_underline_font_size, top_underline_phase, top_underline_raise, supplemental_metrics, isolated_jamo_font, font_family, font_size, char_offset, position_in_box, fixed_glyph_advances, source_font_is_hft, source_font_is_ttf, selected_primary_font_program, source_verified_hft_bold_tracking, source_hwp3_hft_bold, h2gtrm_faux_bold_tracking, resolved_font_size, print_ink_font_size, font_position, hft_print_frame, print_text_device_frame, source_dc_frame, preserve_glyph_ink, natural_program_metrics, latin_decimal_halfwidth, color, bold, italic, underline, strikethrough, kerning, letter_spacing, ratio, default_tab_width, tab_stops, auto_tab_right, auto_left_tab_position, available_width, line_x_offset, text_start_offset, right_tab_block_width_override, tab_leaders, inline_tabs, extra_word_spacing, unjustified_leading_spaces, extra_char_spacing, cell_advance_scale, extra_dash_advance, outline_type, shadow_type, shadow_color, shadow_offset_x, shadow_offset_y, emboss, engrave, superscript, subscript, emphasis_dot, underline_shape, strike_shape, underline_color, strike_color, shade_color, font_metric_trusted, glyph_fallback_advance_explicit, metric_font_family, original_glyph_metric_family, font_space_em, layout_half_space, layout_half_space_em, regenerated_font_metrics, hft_hangul_face, hft_font_face, hft_fullwidth_dot, ascii_punct_latin});
 
 /// [#7418] 영문 슬롯의 기본 메트릭 — [`TextStyle::ascii_punct_latin`] 참조.
 #[derive(Debug, Clone, PartialEq)]
@@ -878,6 +882,7 @@ impl Default for TextStyle {
             selected_primary_font_program: None,
             source_verified_hft_bold_tracking: false,
             source_hwp3_hft_bold: false,
+            h2gtrm_faux_bold_tracking: false,
             resolved_font_size: false,
             print_ink_font_size: None,
             font_position: None,
@@ -996,7 +1001,7 @@ pub struct ShapeStyle {
     pub stroke_width: f64,
     /// 테두리 종류
     pub stroke_dash: StrokeDash,
-    /// 투명도 (0.0=완전투명, 1.0=불투명)
+    /// 채우기 불투명도 (0.0=완전 투명, 1.0=불투명).
     pub opacity: f64,
     /// 선 투명도 (0=불투명 ~ 255=투명). 채우기 투명도와 따로 선에만 건다.
     #[serde(skip_serializing_if = "is_opaque")]
@@ -2935,6 +2940,25 @@ pub(crate) fn tac_table_host_line_metrics(
     ))
 }
 
+/// 저장 줄 없이 다시 만드는 제어 전용 문단의 나눔 표시 글자 크기.
+fn unstored_control_paragraph_end_font_size(
+    para: &crate::model::paragraph::Paragraph,
+    styles: &crate::renderer::style_resolver::ResolvedStyleSet,
+) -> Option<f64> {
+    if !para.line_segs.is_empty() {
+        return None;
+    }
+    let end = para.char_shapes.last()?;
+    if end.start_pos.checked_add(1) != Some(para.char_count) {
+        return None;
+    }
+    para.empty_control_stream_position(0)?;
+    styles
+        .char_styles
+        .get(end.char_shape_id as usize)
+        .map(|style| style.font_size)
+}
+
 /// [#7079] 합성 TAC 줄의 leading — 호스트 문단의 글자 크기와 문단 줄간격에서 나온다.
 ///
 /// 저장 사다리 둘이 그 값을 못박는다. 156060125 2쪽은 `p[11] vpos=30525 lh=600 ls=0`
@@ -2963,16 +2987,16 @@ pub(crate) fn tac_object_stack_line_leading_px(
     if !para.line_segs.is_empty() {
         return 0.0;
     }
-    let Some(char_shape_id) = para
-        .char_shape_id_at(0)
-        .or_else(|| para.char_shapes.first().map(|shape| shape.char_shape_id))
-    else {
+    // 제어 문자만 있는 완전한 원본 스트림에서는 문단 나눔 표시의
+    // 글자 모양을 줄 뒤 간격에 쓴다. 개체의 물리 높이는 해당 상자에서 나온다.
+    let Some(font_size) = unstored_control_paragraph_end_font_size(para, styles).or_else(|| {
+        para.char_shape_id_at(0)
+            .or_else(|| para.char_shapes.first().map(|shape| shape.char_shape_id))
+            .and_then(|id| styles.char_styles.get(id as usize))
+            .map(|style| style.font_size)
+    }) else {
         return 0.0;
     };
-    let Some(char_style) = styles.char_styles.get(char_shape_id as usize) else {
-        return 0.0;
-    };
-    let font_size = char_style.font_size;
     if font_size <= 0.0 {
         return 0.0;
     }
@@ -4697,11 +4721,17 @@ pub(crate) fn textless_host_line_above_topbottom_float(
 }
 
 /// 띠에 흡수된 빈 host 줄([`empty_host_line_absorbed_by_topbottom_float`])이 흐름에서 돌려받는
-/// 높이(px). 문단 측정은 `위 간격 + 줄 높이 + 줄간격 + 아래 간격` 을 이미 더했고, 띠는 문단
-/// 시작에서 `max(위 간격, 세로 오프셋)` 아래에 놓이므로 위 간격을 넘는 오프셋만큼은 돌려주지
-/// 않는다. 다음 문단은 띠 아래끝에서 시작하므로 host 의 아래 간격도 띠 안에 든다([#8795]
+/// 높이(px). 문단 측정은 `위 간격 + 줄 높이 + 줄간격 + 아래 간격` 을 이미 더했고, 띠(바깥 여백을
+/// 포함한 개체 상자)는 배치 `layout_body_picture` 와 같이 문단 시작 + 세로 오프셋에서 시작해
+/// 위 여백 뒤에 개체를 둔다. 그래서 측정이 더한 높이 가운데 `세로 오프셋 + 위 여백` 을 넘는
+/// 부분을 돌려준다. 다음 문단은 띠 아래끝에서 시작하므로 host 의 아래 간격도 띠 안에 든다([#8795]
 /// 1351000-201500141 pi975: 아래 간격 1000HU, 다음 저장 vpos 32185 = 오프셋 307 + 그림 31878.
 /// 배치 `layout_shape_item` 도 그림 아래끝에서 다음 문단을 잇는다).
+///
+/// 위 간격은 띠 시작을 미루지 않는다([#8997] 1543000-202100035 s2 pi952: 위 간격 500·오프셋 0·
+/// 위아래 여백 283HU 의 캡션 그림, 다음 문단 저장 vpos 20984 = 500 + 283 + 19918 + 283 —
+/// 문단 시작은 저장 줄 vpos 500 에서 위 간격을 뺀 0 이고, 한컴 Print 의 캡션 위끝도 본문 위끝 +
+/// 위 여백이다).
 pub(crate) fn absorbed_host_line_return_px(
     para: &crate::model::paragraph::Paragraph,
     common: &crate::model::shape::CommonObjAttr,
@@ -4719,9 +4749,12 @@ pub(crate) fn absorbed_host_line_return_px(
         crate::renderer::float_placement::signed_hwpunit(common.vertical_offset),
         dpi,
     );
-    (hwpunit_to_px(seg.line_height + seg.line_spacing, dpi) + spacing_after_px.max(0.0)
-        - (offset - spacing_before_px.max(0.0)).max(0.0))
-    .max(0.0)
+    let margin_top = hwpunit_to_px(common.margin.top as i32, dpi);
+    spacing_before_px.max(0.0)
+        + hwpunit_to_px(seg.line_height + seg.line_spacing, dpi)
+        + spacing_after_px.max(0.0)
+        - offset
+        - margin_top
 }
 
 /// 앞 문단이 저장 사다리에서 차지한 끝 — 마지막 줄 아래끝과, 앞 문단 자신의 문단 기준

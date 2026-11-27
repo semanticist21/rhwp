@@ -1051,6 +1051,19 @@ fn try_char_style_to_text_style<S: crate::renderer::style_resolver::storage::Sto
             fixed_glyph_advances: false,
             source_font_is_hft: cs.source_hft_for_lang(lang_index),
             source_font_is_ttf: cs.source_ttf_for_lang(lang_index),
+            // 원본 굵기 전진의 확인에는 공급 프로그램의 신원만 필요하다.
+            // 표시용 치환에 자연 폭을 허용하지 않은 슬롯도 전진 확인은 같은 프로그램을 쓴다.
+            h2gtrm_faux_bold_tracking: cs.requests_h2gtrm_bold_tracking(lang_index)
+                && !styles.has_exact_font_source(char_style_id, lang_index)
+                && styles
+                    .native_pua_fonts
+                    .get_otf_for_source(
+                        cs.font_family_for_lang(lang_index),
+                        cs.bold,
+                        cs.italic,
+                        true,
+                    )
+                    .is_some_and(|font| font.uses_h2gtrm_faux_bold()),
             selected_primary_font_program: cs
                 .font_families_primary_program
                 .get(lang_index)
@@ -2437,19 +2450,20 @@ fn measure_scalar_advance<'a>(
         let source_ttf = latin.map_or(style.source_font_is_ttf, |slot| slot.source_font_is_ttf);
         let regular_bold_advance = !source_hft && (source_ttf || original_glyph_face.is_none());
         let implicit_symbol_em = font_metrics_data::implicit_symbol_advance_em(chars[i]);
-        let verified_non_hft_em = (!source_hft && metric_character == '\u{25AA}')
-            .then(|| {
-                font_metrics_data::find_metric(
-                    css_primary_face(measured_family),
-                    measured_bold,
-                    style.italic,
-                )
-            })
-            .flatten()
-            .and_then(|found| {
-                font_metrics_data::verified_non_hft_glyph_width(found.metric, metric_character)
-                    .map(|width| f64::from(width) / f64::from(found.metric.em_size))
-            });
+        let verified_non_hft_em = (!source_hft
+            && matches!(metric_character, '\u{25AA}' | '\u{25E6}'))
+        .then(|| {
+            font_metrics_data::find_metric(
+                css_primary_face(measured_family),
+                measured_bold,
+                style.italic,
+            )
+        })
+        .flatten()
+        .and_then(|found| {
+            font_metrics_data::verified_non_hft_glyph_width(found.metric, metric_character)
+                .map(|width| f64::from(width) / f64::from(found.metric.em_size))
+        });
         let original_glyph_em = implicit_symbol_em
             .or_else(|| {
                 original_glyph_face.and_then(|face| {
@@ -2999,6 +3013,15 @@ fn measure_scalar_advance<'a>(
                     0.0
                 }
             } else if source_hft_metric
+                // 9/11/13pt 한컴 Print 굵기 대조의 음절 원점 전진을 유지한다.
+                // 주 TrueType은 한글 음절 U+AC00..U+D7A3 전부를 직접 공급한다.
+                || (latin.is_none()
+                    && ('가'..='힣').contains(&c)
+                    && (style.h2gtrm_faux_bold_tracking || (matches!(
+                        style.metric_font_family.as_deref(),
+                        Some("한양중고딕" | "한양중고딕 (HFT)")
+                    )
+                    && otf_metrics.is_some_and(|font| font.uses_h2gtrm_faux_bold()))))
                 || (style.source_font_is_hft && width_source == "heuristicFullwidth")
             {
                 font_size * 0.05
@@ -3939,7 +3962,7 @@ mod tests {
     /// 회귀 시(원명 미해소 → 휴리스틱 폴백) embedded 커버리지 구멍이
     /// 셀 재래핑 줄수를 바꾼다 (#2430 재래핑 오발동의 재발 형태).
     #[test]
-    fn issue_2430_hft_faces_ascii_embedded_coverage() {
+    fn issue_2430_legacy_faces_ascii_embedded_coverage() {
         let fs = 40.0 / 3.0; // 10pt = 13.333px
         for fam in [
             "한양신명조",

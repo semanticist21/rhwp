@@ -1494,7 +1494,7 @@ impl DocumentCore {
             .map(|tree| tree.as_ref().clone())
     }
 
-    fn with_profile_page_tree<T>(
+    pub(in crate::document_core) fn with_profile_page_tree<T>(
         &self,
         page_num: u32,
         profile: RenderProfile,
@@ -1514,6 +1514,37 @@ impl DocumentCore {
         &self,
         page_num: u32,
         profile: RenderProfile,
+    ) -> Result<Arc<PageLayerTree>, HwpError> {
+        self.build_page_layer_tree_with_paint_fonts(page_num, profile, None)
+    }
+
+    fn print_alpha_order_before(&self, page: u32) -> Result<u8, HwpError> {
+        if self.print_alpha_prefix.borrow().is_empty() {
+            self.print_alpha_prefix.borrow_mut().push(0);
+        }
+        loop {
+            let (previous, order) = {
+                let prefix = self.print_alpha_prefix.borrow();
+                if let Some(&order) = prefix.get(page as usize) {
+                    return Ok(order);
+                }
+                (prefix.len() - 1, prefix.last().copied().unwrap_or(0))
+            };
+            let (count, _) =
+                self.with_profile_page_tree(previous as u32, RenderProfile::Print, |tree| {
+                    Ok(LayerBuilder::page_print_alpha_count(tree))
+                })?;
+            self.print_alpha_prefix
+                .borrow_mut()
+                .push(order.wrapping_add(count));
+        }
+    }
+
+    pub(super) fn build_page_layer_tree_with_paint_fonts(
+        &self,
+        page_num: u32,
+        profile: RenderProfile,
+        supplied_fonts: Option<&crate::paint::metafile_fonts::MetafileFonts>,
     ) -> Result<Arc<PageLayerTree>, HwpError> {
         // Canvas 화면의 보충 폭은 인쇄 조판의 정본이 아니다. SVG·Native와
         // 마찬가지로 호출자가 전체 인쇄 쪽수 조회 전에 portable로 전환해야 한다.
@@ -1564,11 +1595,23 @@ impl DocumentCore {
         }
         let fingerprint = self
             .layer_output_options_fingerprint(profile, crate::paint::LayerJsonOptions::default());
-        if let Some(variants) = self.page_layer_tree_cache.borrow().get(idx) {
-            if let Some((_, tree)) = variants.iter().find(|(value, _)| *value == fingerprint) {
-                return Ok(Arc::clone(tree));
+        // Native가 빌린 쪽별 공급은 문서에 등록한 글꼴 세대와 다르다.
+        if supplied_fonts.is_none() {
+            if let Some(variants) = self.page_layer_tree_cache.borrow().get(idx) {
+                if let Some((_, tree)) = variants.iter().find(|(value, _)| *value == fingerprint) {
+                    return Ok(Arc::clone(tree));
+                }
             }
         }
+        let prior_print_alpha_order = if profile == RenderProfile::Print
+            && page_num != 0
+            && self.with_profile_page_tree(page_num, profile, |tree| {
+                Ok(LayerBuilder::page_print_alpha_count(tree).1)
+            })? {
+            self.print_alpha_order_before(page_num)?
+        } else {
+            0
+        };
         let show_editor_visuals = profile.shows_editor_visuals();
         let output_options = LayerOutputOptions {
             show_paragraph_marks: show_editor_visuals && self.show_paragraph_marks,
@@ -1738,6 +1781,7 @@ impl DocumentCore {
                         crate::renderer::DEFAULT_DPI
                     },
             );
+            let paint_fonts = supplied_fonts.unwrap_or(&self.metafile_fonts);
             let mut builder = LayerBuilder::new(profile)
                 .with_layout_dpi(self.dpi)
                 .with_metafile_fonts(&if profile == RenderProfile::Print
@@ -1745,9 +1789,9 @@ impl DocumentCore {
                         || crate::paint::text_shadow::needs_font_metrics(&tree.root)
                         || crate::paint::dot_leader::needs_font_program(&tree.root))
                 {
-                    metafile_fonts::with_document_fonts(&self.metafile_fonts, &self.document)
+                    metafile_fonts::with_document_fonts(paint_fonts, &self.document)
                 } else {
-                    self.metafile_fonts.clone()
+                    paint_fonts.clone()
                 })
                 .with_metafile_catalogue(
                     if !self.hangul2024_compat
@@ -1762,15 +1806,17 @@ impl DocumentCore {
                 .with_metafile_device_pixel_width(metafile_pixel)
                 .with_hancom2024_print_bitmap(self.hangul2024_compat)
                 .with_print_png_rgb555(self.print_png_rgb555)
+                .with_print_bmp_full_color(self.print_bmp_full_color)
                 .with_output_options(output_options)
                 .with_bin_data_epoch(self.bin_data_epoch)
                 .with_prior_print_solid_fill(prior_print_solid_fill)
+                .with_prior_print_alpha_order(prior_print_alpha_order)
                 .with_hangul2024_print(hangul2024_print)
                 .with_print_crop_marks(self.document.print_crop_marks());
             Ok(builder.build_with_print_footer(tree, &embedded_fonts, print_footer))
         })?;
         let layer_tree = Arc::new(layer_tree);
-        {
+        if supplied_fonts.is_none() {
             let mut cache = self.page_layer_tree_cache.borrow_mut();
             if cache.len() <= idx {
                 cache.resize_with(idx + 1, Vec::new);
@@ -1821,7 +1867,7 @@ impl DocumentCore {
         let tree = self.build_page_tree(page_num)?;
         let _overflows = self.layout_engine.take_overflows();
         let mut renderer = SvgRenderer::new();
-        renderer.source_font_coverage = self.hft_outline_fonts.pua_coverage.clone();
+        renderer.source_font_coverage = self.legacy_font_outlines.pua_coverage.clone();
         renderer.show_paragraph_marks = self.show_paragraph_marks;
         renderer.show_control_codes = self.show_control_codes;
         renderer.debug_overlay = self.debug_overlay;
@@ -1865,7 +1911,7 @@ impl DocumentCore {
         let profile = layer_tree.profile;
 
         let mut renderer = SvgLayerRenderer::new();
-        renderer.inner_mut().source_font_coverage = self.hft_outline_fonts.pua_coverage.clone();
+        renderer.inner_mut().source_font_coverage = self.legacy_font_outlines.pua_coverage.clone();
         let embedded_fonts = self.collect_embedded_font_bytes_by_name();
         for (family, bytes) in &embedded_fonts {
             let _ = renderer
@@ -2150,7 +2196,7 @@ impl DocumentCore {
     ) -> Result<String, HwpError> {
         let tree = self.build_page_layer_tree_with_profile(page_num, profile)?;
         let mut renderer = SvgLayerRenderer::new();
-        renderer.inner_mut().source_font_coverage = self.hft_outline_fonts.pua_coverage.clone();
+        renderer.inner_mut().source_font_coverage = self.legacy_font_outlines.pua_coverage.clone();
         let embedded_fonts = self.collect_embedded_font_bytes_by_name();
         for (family, bytes) in &embedded_fonts {
             let _ = renderer
@@ -4201,12 +4247,12 @@ impl DocumentCore {
         format!("{{\"runs\":[{}]}}", runs.join(","))
     }
 
-    /// [#4694] 셀/글상자 안 ole 노드의 컨테이너 문맥 방출 — Image 방출(#1151/#1161)과
+    /// [#4694] 셀/글상자 안 OLE·묶음의 컨테이너 문맥 방출 — Image 방출(#1151/#1161)과
     /// 동형. 이것이 비면 studio 선택 ref 가 본문 직속과 구분 불가한 3좌표로 떨어져,
     /// 같은 문단에 앵커된 다른 차트를 조용히 여는 오매칭이 성립한다. 단일 레벨 스칼라
     /// (`cellIdx`/`cellParaIdx`/`outerTableControlIdx`)는 studio 의 by_path 폴백 조립과의
     /// 하위호환, `cellPath` 가 정본이다. 본문 직속(None)은 빈 문자열 — 기존 JSON 그대로.
-    fn ole_layout_context_json(ctx: Option<&crate::renderer::layout::CellContext>) -> String {
+    fn control_layout_context_json(ctx: Option<&crate::renderer::layout::CellContext>) -> String {
         let Some(ctx) = ctx else {
             return String::new();
         };
@@ -4237,7 +4283,7 @@ impl DocumentCore {
 
     /// [#7005] 칸 안 도형(사각형·직선·타원·path)의 칸 좌표 JSON.
     ///
-    /// `ole_layout_context_json` 과 같은 계약이다 — **`cellPath` 가 정본**이고 단일 레벨
+    /// `control_layout_context_json` 과 같은 계약이다 — **`cellPath` 가 정본**이고 단일 레벨
     /// 스칼라는 studio 하위호환이다. 도형 노드는 `CellContext` 대신 #1138 의 평평한 3필드를
     /// 들고 있으므로 그것으로 1단계 경로를 만든다. 셋은 같은 `table_cell_ref` 에서 함께
     /// 오므로 전부 있거나 전부 없다.
@@ -4646,7 +4692,7 @@ impl DocumentCore {
                             public_section(Some(control_ref.section_index)).unwrap_or(control_ref.section_index),
                             public_para(control_ref.para_index),
                             control_ref.control_index,
-                            DocumentCore::ole_layout_context_json(raw_node.cell_context.as_ref()),
+                            DocumentCore::control_layout_context_json(raw_node.cell_context.as_ref()),
                             layer_str
                         ));
                         return;
@@ -4667,7 +4713,7 @@ impl DocumentCore {
                             public_section(Some(control_ref.section_index)).unwrap_or(control_ref.section_index),
                             public_para(control_ref.para_index),
                             control_ref.control_index,
-                            DocumentCore::ole_layout_context_json(placeholder_node.cell_context.as_ref()),
+                            DocumentCore::control_layout_context_json(placeholder_node.cell_context.as_ref()),
                             layer_str
                         ));
                         return;
@@ -4736,7 +4782,12 @@ impl DocumentCore {
                             "{{\"type\":\"group\",\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1},\"secIdx\":{},\"paraIdx\":{},\"controlIdx\":{}{}{}}}",
                             node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height,
                             si, public_para(pi), ci,
-                            DocumentCore::shape_cell_context_json(None, None, None, &node.container_path),
+                            // 글상자 안·중첩 칸 묶음은 레이아웃이 남긴 전체 컨테이너 경로가 정본이다.
+                            if node.container_path.is_empty() {
+                                DocumentCore::control_layout_context_json(group_node.cell_context.as_ref())
+                            } else {
+                                DocumentCore::shape_cell_context_json(None, None, None, &node.container_path)
+                            },
                             layer_str
                         ));
                         return; // 자식 개별 수집하지 않음 — 묶음 전체가 하나의 컨트롤
@@ -6605,8 +6656,35 @@ impl DocumentCore {
                     profile.hwpx_container() && !profile.legacy_hwp3_stored_geometry(),
                     storage,
                 )?;
-            let source_paragraphs = cached_frames.as_deref().unwrap_or(&section.paragraphs);
             let pd = &section.section_def.page_def;
+            use crate::renderer::render_normalization::stored_equation_ladder::EquationFlowSource;
+            let equation_flow_source = if self.source_format == crate::parser::FileFormat::Hml {
+                Some(EquationFlowSource::ShapeFreeHml)
+            } else if profile.hwp5_stored_pagination_layout() && !profile.session_edited() {
+                Some(EquationFlowSource::SavedHwp)
+            } else if profile.hwpx_container()
+                && profile.hwpx_stored_layout()
+                && !profile.session_edited()
+            {
+                Some(EquationFlowSource::SavedHwpx)
+            } else {
+                None
+            };
+            let stored_equation_ladder = if let Some(source) = equation_flow_source {
+                crate::renderer::render_normalization::stored_equation_ladder::normalize_with_storage(
+                    cached_frames.as_deref().unwrap_or(&section.paragraphs),
+                    &self.document.doc_info,
+                    pd,
+                    source,
+                    storage,
+                )?
+            } else {
+                None
+            };
+            let source_paragraphs = stored_equation_ladder
+                .as_deref()
+                .or(cached_frames.as_deref())
+                .unwrap_or(&section.paragraphs);
             let body_area = PageAreas::from_page_def(pd).body_area;
             let body_h_hu = body_area.height();
             let body_bottom_hu = body_area.bottom;
@@ -6655,6 +6733,7 @@ impl DocumentCore {
                     self.dpi,
                     profile.hwpx_stored_layout() && !profile.hwp5_origin_hwpx(),
                     owned_hwp5_cells,
+                    profile.hwp5_stored_pagination_layout() && !profile.session_edited(),
                     storage,
                 )?
             } else {
@@ -6726,6 +6805,7 @@ impl DocumentCore {
                 None
             };
             let paragraph_geometry_changed = cached_frames.is_some()
+                || stored_equation_ladder.is_some()
                 || stored_word_tails.is_some()
                 || math_textboxes.is_some()
                 || math_tables.is_some();
@@ -7008,7 +7088,14 @@ impl DocumentCore {
                     {
                         continue;
                     }
+                    let direct_cell_text = self
+                        .render_normalization
+                        .text_reflowed_tables
+                        .owns_cell_text_reflow(&key);
                     overlay.register_text_reflowed_table_with_storage(table, storage)?;
+                    if direct_cell_text {
+                        overlay.register_cell_text_reflow_start(table, table, storage)?;
+                    }
                     if let Some(Control::Table(normalized)) = self
                         .render_normalization
                         .sections
@@ -7018,6 +7105,9 @@ impl DocumentCore {
                         .and_then(|paragraph| paragraph.controls.get(control_index))
                     {
                         overlay.register_text_reflowed_table_with_storage(normalized, storage)?;
+                        if direct_cell_text {
+                            overlay.register_cell_text_reflow_start(table, normalized, storage)?;
+                        }
                     }
                 }
             }
@@ -8185,6 +8275,9 @@ impl DocumentCore {
     pub(crate) fn invalidate_page_tree_cache_from(&self, from_page: u32) {
         let mut cache = self.page_tree_cache.borrow_mut();
         let from = from_page as usize;
+        self.print_alpha_prefix
+            .borrow_mut()
+            .truncate(from.saturating_add(1));
         for i in from..cache.len() {
             cache[i] = None;
         }
@@ -8205,6 +8298,9 @@ impl DocumentCore {
     /// 한 페이지의 렌더 트리와 그 파생 표현을 함께 무효화한다.
     pub(crate) fn invalidate_page_tree_cache_page(&self, page_num: u32) {
         let idx = page_num as usize;
+        self.print_alpha_prefix
+            .borrow_mut()
+            .truncate(idx.saturating_add(1));
         if let Some(slot) = self.page_tree_cache.borrow_mut().get_mut(idx) {
             *slot = None;
         }
@@ -8493,6 +8589,7 @@ impl DocumentCore {
     /// 페이지 렌더 트리 캐시 전체 무효화.
     pub(crate) fn invalidate_page_tree_cache(&self) {
         self.page_tree_cache.borrow_mut().clear();
+        self.print_alpha_prefix.borrow_mut().clear();
         self.header_footer_preview_tree_cache.borrow_mut().take();
         self.layer_tree_json_cache.borrow_mut().clear();
         self.page_layer_tree_cache.borrow_mut().clear();

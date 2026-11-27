@@ -46,6 +46,8 @@ pub(in crate::renderer::typeset) struct BlockRowScanVars {
     pub(in crate::renderer::typeset) reflow_blank_avail_for_rows: Option<f64>,
     /// 각주 refit이 필요한 표에서는 병합 칸의 빈 쪽 끝 띠를 미리 소유하지 않는다.
     pub(in crate::renderer::typeset) has_table_footnotes: bool,
+    /// 이미 수용한 쪽 각주의 위끝까지 남은 행 영역. 조각별 큐의 미래 각주는 별개다.
+    pub(in crate::renderer::typeset) existing_note_opening_rows: Option<f64>,
     pub(in crate::renderer::typeset) header_overhead: f64,
     pub(in crate::renderer::typeset) landscape_rowbreak_bleed: bool,
     pub(in crate::renderer::typeset) landscape_whole_row_tolerance: f64,
@@ -58,6 +60,8 @@ pub(in crate::renderer::typeset) struct BlockRowScanVars {
     pub(in crate::renderer::typeset) source_first_fragment_row_end: Option<usize>,
     pub(in crate::renderer::typeset) start_cut_is_block: bool,
     pub(in crate::renderer::typeset) start_row_height_override: Option<f64>,
+    pub(in crate::renderer::typeset) remaining_child_row: Option<(usize, f64)>,
+    pub(in crate::renderer::typeset) deferred_opening_row_height: Option<f64>,
     pub(in crate::renderer::typeset) source_terminal_suffix_start: Option<usize>,
     /// 첫 조각에서 0행의 보호 rowspan 묶음을 0행 뒤에서 자른다(이월 게이트의 결정).
     pub(in crate::renderer::typeset) opening_block_cuts_after_first_row: bool,

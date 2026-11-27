@@ -708,6 +708,13 @@ export class HwpDocument {
      */
     exportSelectionInCellHtmlEx(options_json: string): string;
     /**
+     * 주소 문단(`getBookmarks`의 `place` 꼴 JSON)의 글자 자리에서 앞(`forward`면 뒤)으로 가장 가까운
+     * 선택 가능 컨트롤을 찾는다. 표 셀·글상자·캡션·각주·미주·머리말·꼬리말 안이면 그 영역을 먼저 훑고
+     * 그 영역을 가진 컨트롤로 나온다. 결과의 `place`는 그 컨트롤이 든 문단 주소이고, 필드면 그 범위를 준다.
+     * `from_control`이 0 이상이면 글자 자리 대신 그 컨트롤 앞(뒤) 형제부터 찾는다.
+     */
+    findNearestControlAt(place_json: string, char_offset: number, from_control: number, forward: boolean): string;
+    /**
      * 커서에서 이전 방향으로 가장 가까운 선택 가능 컨트롤을 찾는다 (F11 키).
      */
     findNearestControlBackward(section_idx: number, para_idx: number, char_offset: number): string;
@@ -1102,6 +1109,10 @@ export class HwpDocument {
      */
     getFieldInfoAtInCellEx(options_json: string): string;
     /**
+     * 지정한 누름틀이 글자 위치를 포함하면 해당 필드 정보와 현재 범위를 반환한다.
+     */
+    getFieldInfoForControlAt(place_json: string, control_idx: number, char_offset: number): string;
+    /**
      * 문서 내 모든 필드 목록을 JSON 배열로 반환한다.
      *
      * 반환: `[{fieldId, fieldType, name, guide, command, value, location}]`
@@ -1204,7 +1215,7 @@ export class HwpDocument {
      */
     getHeaderFooterPreviewPage(section_idx: number): string;
     /**
-     * 문서 내 지속 HFT 윤곽 등록의 소유 판정에 쓰이는 선언과 현재 환경.
+     * 인쇄용 글꼴 윤곽을 연결할 때 사용하는 원본 글꼴 선언과 현재 환경.
      */
     getHftOutlineFontContext(): string;
     /**
@@ -1715,6 +1726,7 @@ export class HwpDocument {
      * 반환: JSON `{cellSpacing, paddingLeft, paddingRight, paddingTop, paddingBottom, pageBreak, repeatHeader}`
      */
     getTableProperties(section_idx: number, parent_para_idx: number, control_idx: number): string;
+    getTextAtCellCaretByPath(section_idx: number, parent_para_idx: number, path_json: string, offset: number, count: number): string;
     /**
      * 문단에 텍스트박스가 있는 Shape 컨트롤이 있으면 해당 control_index를 반환한다.
      * 없으면 -1을 반환한다.
@@ -2180,6 +2192,16 @@ export class HwpDocument {
      */
     mergeTableWithNext(section_idx: number, parent_para_idx: number, control_idx: number): string;
     /**
+     * 꺾인·곡선 연결선의 가운데 점(안쪽 제어점 둘)을 그 축으로 옮긴다 (HWPUNIT 거리).
+     * 축은 `getShapeProperties`의 `connectorMidAxis`("x"·"y")이며, 그 축의 거리만 쓴다.
+     */
+    moveConnectorMidpoint(sec: number, para: number, ci: number, dx: number, dy: number): string;
+    /**
+     * 가운데 점 이동의 경로 변형: 표 셀·글상자·머리말/꼬리말 안 연결선.
+     * `cell_path_json`은 `setCellShapePropertiesByPath`와 같은 경로다.
+     */
+    moveConnectorMidpointByPath(sec: number, parent_para: number, cell_path_json: string, ci: number, dx: number, dy: number): string;
+    /**
      * 개체를 한 걸음 옮긴다 — 웹한글컨트롤 `ShapeObjMove*`(걸음 56 HWPUNIT).
      */
     moveControlAt(para_in_list: number, control_index: number, dx: number, dy: number): string;
@@ -2395,7 +2417,7 @@ export class HwpDocument {
      */
     registerExactFontSource(char_shape_id: number, language_index: number, font_bytes: Uint8Array, face_index: number): string;
     /**
-     * 실제 FontFace의 원본 HFT 프로그램을 paint 전용으로 등록한다. 재조판하지 않는다.
+     * FontFace에 적재한 글꼴을 인쇄용 윤곽으로 등록한다. 쪽 배치는 그대로 유지한다.
      */
     registerHftOutlineFont(family: string, bytes: Uint8Array, face_index: number): boolean;
     /**
@@ -2561,6 +2583,10 @@ export class HwpDocument {
      */
     replaceText(sec: number, para: number, char_offset: number, length: number, new_text: string): string;
     /**
+     * Studio의 커서 좌표는 인라인 개체도 한 자리로 센다. 문자 범위 API와 구별한다.
+     */
+    replaceTextAtCellCaretByPath(section_idx: number, parent_para_idx: number, path_json: string, offset: number, count: number, text: string): string;
+    /**
      * 표 셀 내부의 짧은 IME 조합 문자열을 원자적으로 교체하고 전체 페이지네이션은 지연한다.
      */
     replaceTextInCellDeferredPagination(section_idx: number, parent_para_idx: number, control_idx: number, cell_idx: number, cell_para_idx: number, char_offset: number, delete_count: number, text: string): string;
@@ -2618,6 +2644,11 @@ export class HwpDocument {
      * 활성 필드를 설정한다 (본문 문단 — 안내문 숨김용).
      */
     setActiveField(section_idx: number, para_idx: number, char_offset: number): boolean;
+    /**
+     * 주소 문단(`place` 꼴 JSON)의 `control_idx` 누름틀을 활성 필드로 둔다. 같은 글자 자리의 여러 누름틀 가운데
+     * 고른 것에 입력이 들게 한다. 바뀌었으면 true다.
+     */
+    setActiveFieldAt(place_json: string, control_idx: number): boolean;
     /**
      * path 기반: 중첩 표 셀 내 활성 필드를 설정한다.
      */
@@ -2913,6 +2944,7 @@ export class HwpDocument {
      * 반환: JSON `{"ok":true}`
      */
     setPictureProperties(section_idx: number, parent_para_idx: number, control_idx: number, props_json: string): string;
+    setPrintBmpFullColor(enabled: boolean): void;
     /**
      * 인쇄 작업 문맥을 선택한다. 일반 화면과 원본 문서에는 반영하지 않는다.
      */
@@ -3417,6 +3449,7 @@ export interface InitOutput {
     readonly hwpdocument_exportSelectionInCellHtml: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number, number, number];
     readonly hwpdocument_exportSelectionInCellHtmlByPath: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number, number, number];
     readonly hwpdocument_exportSelectionInCellHtmlEx: (a: number, b: number, c: number) => [number, number, number, number];
+    readonly hwpdocument_findNearestControlAt: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly hwpdocument_findNearestControlBackward: (a: number, b: number, c: number, d: number) => [number, number];
     readonly hwpdocument_findNearestControlForward: (a: number, b: number, c: number, d: number) => [number, number];
     readonly hwpdocument_findNextEditableControl: (a: number, b: number, c: number, d: number, e: number) => [number, number];
@@ -3496,6 +3529,7 @@ export interface InitOutput {
     readonly hwpdocument_getFieldInfoAtByPath: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number];
     readonly hwpdocument_getFieldInfoAtInCell: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number];
     readonly hwpdocument_getFieldInfoAtInCellEx: (a: number, b: number, c: number) => [number, number];
+    readonly hwpdocument_getFieldInfoForControlAt: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly hwpdocument_getFieldList: (a: number) => [number, number];
     readonly hwpdocument_getFieldValue: (a: number, b: number) => [number, number, number, number];
     readonly hwpdocument_getFieldValueByName: (a: number, b: number, c: number) => [number, number, number, number];
@@ -3601,6 +3635,7 @@ export interface InitOutput {
     readonly hwpdocument_getTableDimensions: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly hwpdocument_getTableDimensionsByPath: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly hwpdocument_getTableProperties: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly hwpdocument_getTextAtCellCaretByPath: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
     readonly hwpdocument_getTextBoxControlIndex: (a: number, b: number, c: number) => number;
     readonly hwpdocument_getTextFileText: (a: number) => [number, number];
     readonly hwpdocument_getTextFileUnicode: (a: number) => [number, number];
@@ -3679,6 +3714,8 @@ export interface InitOutput {
     readonly hwpdocument_mergeTableCells: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly hwpdocument_mergeTableCellsEx: (a: number, b: number, c: number) => [number, number, number, number];
     readonly hwpdocument_mergeTableWithNext: (a: number, b: number, c: number, d: number) => [number, number, number, number];
+    readonly hwpdocument_moveConnectorMidpoint: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+    readonly hwpdocument_moveConnectorMidpointByPath: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
     readonly hwpdocument_moveControlAt: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly hwpdocument_moveInlineControl: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly hwpdocument_moveLineEndpoint: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => [number, number, number, number];
@@ -3753,6 +3790,7 @@ export interface InitOutput {
     readonly hwpdocument_replaceOne: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
     readonly hwpdocument_replaceRangeInHeaderFooter: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number, number];
     readonly hwpdocument_replaceText: (a: number, b: number, c: number, d: number, e: number, f: number, g: number) => [number, number, number, number];
+    readonly hwpdocument_replaceTextAtCellCaretByPath: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number, number, number];
     readonly hwpdocument_replaceTextInCellDeferredPagination: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number, j: number) => [number, number, number, number];
     readonly hwpdocument_resizeControlAt: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly hwpdocument_resizeTableCells: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
@@ -3764,6 +3802,7 @@ export interface InitOutput {
     readonly hwpdocument_searchAllText: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly hwpdocument_searchText: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number, i: number) => [number, number, number, number];
     readonly hwpdocument_setActiveField: (a: number, b: number, c: number, d: number) => number;
+    readonly hwpdocument_setActiveFieldAt: (a: number, b: number, c: number, d: number) => [number, number, number];
     readonly hwpdocument_setActiveFieldByPath: (a: number, b: number, c: number, d: number, e: number, f: number) => number;
     readonly hwpdocument_setActiveFieldInCell: (a: number, b: number, c: number, d: number, e: number, f: number, g: number, h: number) => number;
     readonly hwpdocument_setActiveFieldInCellEx: (a: number, b: number, c: number) => number;
@@ -3821,6 +3860,7 @@ export interface InitOutput {
     readonly hwpdocument_setPageNumberPosition: (a: number, b: number, c: number, d: number, e: number) => [number, number, number, number];
     readonly hwpdocument_setParaShapeId: (a: number, b: number, c: number, d: number) => [number, number, number, number];
     readonly hwpdocument_setPictureProperties: (a: number, b: number, c: number, d: number, e: number, f: number) => [number, number, number, number];
+    readonly hwpdocument_setPrintBmpFullColor: (a: number, b: number) => void;
     readonly hwpdocument_setPrintJobContext: (a: number, b: number, c: number) => [number, number];
     readonly hwpdocument_setPrintPngRgb555: (a: number, b: number) => void;
     readonly hwpdocument_setSectionDef: (a: number, b: number, c: number, d: number) => [number, number, number, number];

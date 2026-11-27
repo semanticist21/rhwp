@@ -407,6 +407,12 @@ export interface ParaProperties {
   marginLeft?: number;       // px (96dpi, zoom=1 기준, ResolvedParaStyle)
   marginRight?: number;      // px (96dpi, zoom=1 기준, ResolvedParaStyle)
   indent?: number;           // px (96dpi, zoom=1 기준, ResolvedParaStyle)
+  marginLeftRaw?: number;    // 단위 비트를 포함한 문서 저장값
+  marginRightRaw?: number;
+  indentRaw?: number;
+  marginLeftPx?: number;     // CHAR를 바탕글 크기로 해석한 실제 표시 길이
+  marginRightPx?: number;
+  indentPx?: number;
   spacingBefore?: number;    // px (96dpi, zoom=1 기준)
   spacingAfter?: number;     // px (96dpi, zoom=1 기준)
   spacingBeforePx?: number;  // Resolved layout distance, including CHAR units
@@ -659,6 +665,9 @@ export interface ShapeProperties {
   borderOutlineStyle?: number;
   lineType?: number;         // 0=없음, 1=실선, 2=파선, 3=점선, 4=일점쇄선, 5=이점쇄선, ...
   lineEndShape?: number;     // 0=둥근, 1=평면
+  connectorMidX?: number;
+  connectorMidY?: number;
+  connectorMidAxis?: 'x' | 'y';
   arrowStart?: number;       // 0=없음, 1~6=화살표 모양
   arrowEnd?: number;
   arrowStartSize?: number;   // 0~8
@@ -1355,6 +1364,7 @@ export interface LayerPatternFill {
 
 export interface LayerLineStyle {
   color?: string;
+  strokeOpacity?: number;
   width?: number;
   dash?: LayerStrokeDash;
   /** Physical on/off lengths supplied by the shared border layout. */
@@ -1376,6 +1386,7 @@ export interface LayerShapeStyle {
   strokeWidth?: number;
   strokeDash?: LayerStrokeDash;
   opacity?: number;
+  strokeOpacity?: number;
   pattern?: LayerPatternFill;
   shadow?: LayerShadowStyle;
 }
