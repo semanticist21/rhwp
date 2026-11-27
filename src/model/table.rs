@@ -1722,6 +1722,12 @@ impl Table {
     /// - 병합 셀이 걸치지 않은 높이 0 행은 내용으로 높이가 정해지므로 그린 높이(`drawn_rows`, HU)로 센다.
     ///   400HU로 세면 표 높이가 실제 행보다 작아져 글자처럼 취급한 표가 다른 행을 눌러 그린다.
     pub(crate) fn edited_row_height_sum(&self, drawn_rows: &[HwpUnit]) -> HwpUnit {
+        self.row_height_sum(drawn_rows, false)
+    }
+
+    /// 행 점유 합. `occupied`면 편집 전의 실제 점유로, 저장 높이보다 내용으로 자란 행(새 표의
+    /// 최소 셀 높이 등)도 그린 높이로 센다.
+    fn row_height_sum(&self, drawn_rows: &[HwpUnit], occupied: bool) -> HwpUnit {
         let drawn_rows = if drawn_rows.len() == usize::from(self.row_count) {
             drawn_rows
         } else {
@@ -1735,9 +1741,11 @@ impl Table {
             .enumerate()
             .map(|(row, &height)| {
                 let drawn = drawn_rows.get(row).copied().filter(|&h| h > 0);
+                let spanned = spanned.get(row).copied().unwrap_or(false);
                 u64::from(match (height, drawn) {
-                    (0, Some(drawn)) if !spanned.get(row).copied().unwrap_or(false) => drawn,
+                    (0, Some(drawn)) if !spanned => drawn,
                     (0, _) => 400,
+                    (height, Some(drawn)) if occupied && !spanned => height.max(drawn),
                     _ => height,
                 })
             })
@@ -1775,7 +1783,7 @@ impl Table {
         }
         self.common
             .height
-            .saturating_sub(self.edited_row_height_sum(drawn_rows))
+            .saturating_sub(self.row_height_sum(drawn_rows, true))
     }
 
     pub(crate) fn sync_ctrl_height_from_rows(&mut self, drawn_rows: &[HwpUnit], surplus: HwpUnit) {

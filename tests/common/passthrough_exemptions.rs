@@ -819,18 +819,6 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
     ),
     (
         "commands/text_editing.rs",
-        "insert_text_in_cell_by_path",
-        Exempt::DelegatesTo("replace_text_in_cell_by_path"),
-        "[#9398] 단일 칸은 insert_text_in_cell_native에 위임한다. 중첩 칸은 replace_text_in_cell_by_path가 변경한 구역의 raw_stream을 무효화한다.",
-    ),
-    (
-        "commands/text_editing.rs",
-        "delete_text_in_cell_by_path",
-        Exempt::DelegatesTo("replace_text_in_cell_by_path"),
-        "[#9398] 단일 칸은 delete_text_in_cell_native에 위임한다. 중첩 칸은 replace_text_in_cell_by_path가 변경한 구역의 raw_stream을 무효화한다.",
-    ),
-    (
-        "commands/text_editing.rs",
         "insert_text_in_cell_native",
         Exempt::DelegatesTo("replace_text_in_cell_native_impl"),
         "얇은 래퍼 — 실제 삽입·무효화는 `_impl` 이 수행.",
@@ -1134,12 +1122,6 @@ const EXEMPT: &[(&str, &str, Exempt, &str)] = &[
         "copy_table_cells_native",
         Exempt::SessionState,
         "셀 블록 복사 — 블록만 남긴 표 사본을 `self.clipboard` 에만 기록(표 복사 copy_control_native 와 같다).",
-    ),
-    (
-        "queries/bookmark_query.rs",
-        "set_active_field_at",
-        Exempt::SessionState,
-        "주소의 컨트롤 번호로 고른 활성 필드 포커스 + 렌더 캐시 무효화. 직렬화 비대상.",
     ),
     (
         "commands/text_editing.rs",

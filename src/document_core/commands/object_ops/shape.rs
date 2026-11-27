@@ -3563,14 +3563,14 @@ mod resize_clamp_tests {
         };
         if let Control::Shape(s) = &mut core.document.sections[0].paragraphs[p].controls[c] {
             let sa = s.shape_attr_mut();
+            // 기울이지 않은 이동 행렬. 기울인 도형의 크기 편집은 행렬을 배율로 합성한다(shape_skew).
             sa.raw_rendering = vec![1, 2, 3];
-            sa.render_b = 1.0;
             sa.render_tx = 4500.0;
         }
         core.set_shape_properties_native(0, p, c, r#"{"horzOffset":1500,"vertOffset":750}"#)
             .expect("move");
         assert_eq!(shape_common(&core, p, c).horizontal_offset, 1500);
-        assert_eq!(stored(&core), (vec![1, 2, 3], 1.0, 4500.0));
+        assert_eq!(stored(&core), (vec![1, 2, 3], 0.0, 4500.0));
         core.set_shape_properties_native(0, p, c, r#"{"width":12000}"#)
             .expect("resize");
         assert_eq!(stored(&core), (Vec::new(), 0.0, 0.0));

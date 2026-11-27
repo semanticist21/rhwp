@@ -7567,7 +7567,8 @@ impl DocumentCore {
             // 사라지는 문단의 스코프 메타 — undo(split)가 되돌릴 값이다 (Task #2342).
             let removed_meta = Some(removed.capture_meta());
             let prev = &mut paras[prev_idx];
-            let merge_point = prev.text.chars().count();
+            // 나누기와 같은 논리 자리(인라인 개체도 한 자리)로 이음매를 준다.
+            let merge_point = logical_paragraph_length(prev);
             prev.merge_from(&removed);
             (vpos, merge_point, removed_meta)
         };

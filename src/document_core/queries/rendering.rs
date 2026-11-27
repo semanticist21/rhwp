@@ -4782,8 +4782,8 @@ impl DocumentCore {
                             "{{\"type\":\"group\",\"x\":{:.1},\"y\":{:.1},\"w\":{:.1},\"h\":{:.1},\"secIdx\":{},\"paraIdx\":{},\"controlIdx\":{}{}{}}}",
                             node.bbox.x, node.bbox.y, node.bbox.width, node.bbox.height,
                             si, public_para(pi), ci,
-                            // 글상자 안·중첩 칸 묶음은 레이아웃이 남긴 전체 컨테이너 경로가 정본이다.
-                            if node.container_path.is_empty() {
+                            // 칸 문맥이 없는 글상자 안 묶음은 레이아웃이 남긴 전체 컨테이너 경로를 낸다.
+                            if group_node.cell_context.is_some() || node.container_path.is_empty() {
                                 DocumentCore::control_layout_context_json(group_node.cell_context.as_ref())
                             } else {
                                 DocumentCore::shape_cell_context_json(None, None, None, &node.container_path)
