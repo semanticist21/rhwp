@@ -1,7 +1,7 @@
 //! 텍스트 삽입/삭제/문단 분리·병합/범위 삭제/문단 쿼리 관련 native 메서드
 
 use super::super::helpers::{
-    get_textbox_from_shape, logical_paragraph_length, logical_to_text_slot,
+    get_textbox_from_shape, logical_paragraph_length, logical_to_text_offset, logical_to_text_slot,
 };
 use super::super::queries::rendering::FocusedPageTreePatch;
 use super::clipboard::{passed_objects, split_slot_rank, text_to_split_logical_slot, ALL_OBJECTS};

@@ -1448,10 +1448,6 @@ pub struct ShapeTransform {
     /// 회전·대칭·배율이 모두 이 행렬에 들어 있다. paint 단계가 노드 상자로 쪽 행렬을 만든다.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub frame_matrix: Option<[f64; 6]>,
-    /// 한/글 개체 속성의 가로·세로 기울이기. 원래 크기로 그린 도형을 쪽 공간에서 옮기는
-    /// 아핀 행렬 `[a, b, c, d, e, f]`이며, paint 단계가 공통 변환 묶음으로 내린다.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub skew: Option<[f64; 6]>,
 }
 
 impl ShapeTransform {

@@ -966,8 +966,9 @@ impl DocumentCore {
             .unwrap_or((0, 0, 0));
         let dialog_indent_px = margin_px(raw_indent);
         // HWP3 원본의 왼쪽 여백은 이어지는 줄 기준이므로 첫 줄 위치로 표시한다.
+        let is_hwp3_native = self.document.layout_profile().hwp3_native_layout();
         let dialog_margin_left_px = margin_px(raw_left)
-            + if self.document.layout_profile().hwp3_native_layout() {
+            + if is_hwp3_native {
                 dialog_indent_px.min(0.0)
             } else {
                 0.0
