@@ -411,6 +411,3 @@ fn first_page_border_fill_hide_replaces_first_page_only() {
     assert_eq!(fill["borderPages"], "exceptFirst");
     assert_eq!(fill["fillPages"], "exceptFirst");
 }
-
-/// `hancom-even-start.hwp`: 둘째 구역을 짝수 시작으로 둔 시험 문서를 한컴 12.30이 HWP로 저장한 것.
-/// 한컴은 HWP 구역 정의 속성 bit 20-21에 짝수를 1, 홀수를 2로 쓴다.
