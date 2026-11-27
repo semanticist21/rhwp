@@ -389,6 +389,7 @@ impl Paginator {
         let is_hwp3_variant = opts.is_hwp3_variant;
         let source_uses_inline_field_reset = source_context.source_uses_inline_field_reset;
         let hwp3_converted_missing_lineseg = source_context.hwp3_converted_missing_lineseg;
+        let saved_vertical_ladder = source_context.saved_vertical_ladder;
         let stored_geometry_policy = source_context.stored_geometry_policy;
         // [Task #1007] 페이지 본문 영역 높이 (HWPUNIT) — variant cross-paragraph
         // vpos reset 감지 THRESHOLD 계산용.
@@ -753,6 +754,13 @@ impl Paginator {
                                 para_idx,
                                 super::super::px_to_hwpunit(st.layout.body_area.height, self.dpi),
                             ),
+                        super::stored_ladder_keeps_empty_line(
+                            saved_vertical_ladder,
+                            para,
+                            paragraphs.get(para_idx + 1),
+                            para_styles,
+                            self.dpi,
+                        ),
                     )
                 {
                     hidden_empty_lines += 1;
@@ -3083,6 +3091,7 @@ impl Paginator {
                             end_row_height_override: None,
                             start_row_height_override: None,
                             straddle_row_relief: Vec::new(),
+                            remaining_child_row: None,
                             straddle_page_bands: Vec::new(),
                             fragment_row_heights: None,
                             fragment_block_frames: Vec::new(),
@@ -3114,6 +3123,7 @@ impl Paginator {
                     end_row_height_override: None,
                     start_row_height_override: None,
                     straddle_row_relief: Vec::new(),
+                    remaining_child_row: None,
                     straddle_page_bands: Vec::new(),
                     fragment_row_heights: None,
                     fragment_block_frames: Vec::new(),
@@ -3154,7 +3164,8 @@ impl Paginator {
             pages, paragraphs, storage,
         )?;
         let mut assigner =
-            crate::renderer::page_number::PageNumberAssigner::new_for_pages(&events.new_numbers, 1);
+            crate::renderer::page_number::PageNumberAssigner::new_for_pages(&events.new_numbers, 1)
+                .with_parity_adjusts(&events.parity_adjusts);
         // 머리말/꼬리말은 한번 설정되면 이후 페이지에도 유지 (누적).
         // 선택 규칙은 typeset.rs 와 공유한다 (#3234).
         let mut active_hf = crate::renderer::pagination::ActiveHeaderFooter::default();

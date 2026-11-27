@@ -314,7 +314,7 @@ impl SvgRenderer {
             | super::LineRenderType::ThickThinDouble
             | super::LineRenderType::ThinThickThinTriple => {
                 self.draw_multi_line(x1, y1, x2, y2, width, &color, &style.line_type);
-                self.draw_arrow_heads(&super::arrow::line_heads((x1, y1, x2, y2), style), style);
+                self.draw_arrow_heads(&super::arrow::line_heads((x1, y1, x2, y2), style), style, 0);
                 return;
             }
             _ => {}
@@ -1952,6 +1952,10 @@ impl SvgRenderer {
         style: &ShapeStyle,
         gradient: Option<&GradientFillInfo>,
     ) {
+        if let Some(commands) = super::ellipse::patterned_outline(cx, cy, rx, ry, style) {
+            self.draw_path_with_gradient(&commands, style, gradient);
+            return;
+        }
         let mut attrs = format!("cx=\"{}\" cy=\"{}\" rx=\"{}\" ry=\"{}\"", cx, cy, rx, ry);
 
         attrs.push_str(&self.build_fill_attr(
@@ -1966,7 +1970,6 @@ impl SvgRenderer {
                 color_to_svg(stroke),
                 style.stroke_width
             ));
-            // 타원 테두리도 직선·사각형·패스와 같은 선 종류 패턴을 쓴다.
             stroke_pattern::append_attrs(&mut attrs, style.stroke_dash, style.stroke_width);
             if style.stroke_alpha > 0 {
                 attrs.push_str(&format!(
@@ -2502,7 +2505,7 @@ impl SvgRenderer {
                     .flatten()
             });
         let crop_reference = if mime_type == "image/x-wmf" {
-            super::metafile_geometry::wmf_crop_reference(img.original_size_hu)
+            super::metafile_geometry::wmf_crop_reference(img.original_size_hu, Some(data), img.crop)
         } else {
             img.original_size_hu
         };
@@ -3555,10 +3558,15 @@ impl SvgRenderer {
         let Some(style) = &path.line_style else {
             return;
         };
-        self.draw_arrow_heads(&super::arrow::connector_heads(path), style);
+        self.draw_arrow_heads(&super::arrow::connector_heads(path), style, style.alpha);
     }
 
-    fn draw_arrow_heads(&mut self, heads: &[super::arrow::ArrowHead], style: &LineStyle) {
+    fn draw_arrow_heads(
+        &mut self,
+        heads: &[super::arrow::ArrowHead],
+        style: &LineStyle,
+        alpha: u8,
+    ) {
         for head in heads {
             self.draw_path(
                 &head.commands,
@@ -3566,6 +3574,8 @@ impl SvgRenderer {
                     fill_color: Some(if head.filled { style.color } else { 0xFFFFFF }),
                     stroke_color: if head.filled { None } else { Some(style.color) },
                     stroke_width: (style.width * 0.3).max(0.5),
+                    opacity: super::alpha_to_opacity(alpha),
+                    stroke_alpha: alpha,
                     ..Default::default()
                 },
             );

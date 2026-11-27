@@ -241,7 +241,7 @@ pub struct DocumentCore {
     pub(crate) styles: ResolvedStyleSet,
     native_pua_fonts: std::sync::Arc<crate::renderer::native_pua_fonts::NativePuaFonts>,
     pub(crate) canvas_metrics: Option<canvas_metrics::CanvasMetricSession>,
-    pub(crate) hft_outline_fonts: crate::renderer::hft_outline::HftOutlineFonts,
+    pub(crate) legacy_font_outlines: crate::renderer::legacy_font_outline::HftOutlineFonts,
     pub(crate) metafile_fonts: crate::paint::metafile_fonts::MetafileFonts,
     pub(crate) font_environment: Option<crate::renderer::font_environment::FontEnvironment>,
     pub(crate) host_font_environment: Option<host_font_environment::HostFontEnvironment>,
@@ -292,7 +292,8 @@ pub struct DocumentCore {
     /// 문서 출처가 아니므로 provenance 가 아닌 여기서 들고,
     /// [`Self::effective_layout_profile`] 이 profile 에 합성한다.
     pub(crate) hangul2024_compat: bool,
-    pub(crate) print_png_rgb555: bool,
+    pub(crate) print_png_rgb555: Option<bool>,
+    pub(crate) print_bmp_full_color: bool,
     print_job_context: Option<PrintJobContext>,
     /// 구역별 표 측정 데이터 (페이지네이션 결과 보존)
     pub(crate) measured_tables: Vec<Vec<MeasuredTable>>,
@@ -331,6 +332,8 @@ pub struct DocumentCore {
     /// Native의 공유 조회는 node·text·image payload를 깊게 복제하지 않는다.
     /// 기존 소유값 조회는 호출자가 독립적으로 수정할 수 있는 clone을 반환한다.
     pub(crate) page_layer_tree_cache: RefCell<Vec<Vec<(u16, Arc<PageLayerTree>)>>>,
+    /// 페이지 시작 전까지 인쇄된 투명 PNG의 순번. 의미 트리와 함께 무효화한다.
+    pub(crate) print_alpha_prefix: RefCell<Vec<u8>>,
     /// 그림 신원 키(`imageKey`)의 문서 단위 세대 번호 (Task #3315).
     ///
     /// `bin_data_id` 는 append-only 라 세션 중 id→바이트가 안정하지만, undo 스냅샷
@@ -615,10 +618,27 @@ impl DocumentCore {
         }
     }
 
+    /// Print JPEG 변환에 원본 24·32비트 BI_RGB DIB의 색을 사용한다.
+    pub fn set_print_bmp_full_color(&mut self, enabled: bool) {
+        if self.print_bmp_full_color != enabled {
+            self.print_bmp_full_color = enabled;
+            self.invalidate_page_tree_cache();
+        }
+    }
+
     /// 한컴 Print 장치의 PNG 압축 전 색상 변환을 조판 세대와 별도로 지정한다.
     pub fn set_print_png_rgb555(&mut self, enabled: bool) {
-        if self.print_png_rgb555 != enabled {
-            self.print_png_rgb555 = enabled;
+        self.set_print_png_color_policy(enabled.then_some(true));
+    }
+
+    /// Print JPEG 전달 시 불투명 PNG의 원본 RGB를 유지한다.
+    pub fn set_print_png_full_color(&mut self, enabled: bool) {
+        self.set_print_png_color_policy(enabled.then_some(false));
+    }
+
+    fn set_print_png_color_policy(&mut self, rgb555: Option<bool>) {
+        if self.print_png_rgb555 != rgb555 {
+            self.print_png_rgb555 = rgb555;
             self.invalidate_page_tree_cache();
         }
     }
@@ -647,7 +667,7 @@ impl DocumentCore {
             styles: ResolvedStyleSet::default(),
             native_pua_fonts: Default::default(),
             canvas_metrics: None,
-            hft_outline_fonts: Default::default(),
+            legacy_font_outlines: Default::default(),
             metafile_fonts: Default::default(),
             font_environment: None,
             host_font_environment: None,
@@ -672,7 +692,8 @@ impl DocumentCore {
             debug_overlay: false,
             respect_vpos_reset: false,
             hangul2024_compat: false,
-            print_png_rgb555: false,
+            print_png_rgb555: None,
+            print_bmp_full_color: false,
             print_job_context: None,
             measured_tables: Vec::new(),
             dirty_sections: Vec::new(),
@@ -686,6 +707,7 @@ impl DocumentCore {
             header_footer_preview_tree_cache: RefCell::new(None),
             layer_tree_json_cache: RefCell::new(Vec::new()),
             page_layer_tree_cache: RefCell::new(Vec::new()),
+            print_alpha_prefix: RefCell::new(Vec::new()),
             bin_data_epoch: 0,
             loaded_unreferenced_bin_data: std::collections::BTreeSet::new(),
             batch_mode: false,

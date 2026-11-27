@@ -36,6 +36,11 @@ Native·fresh WASM 양쪽 모두 전쪽 98% 이상으로 보정하고, 가능한
 동일한 글꼴을 확보해 적용할 수 없어 그 차이만 남은 쪽의 예외와 별도의 px 회귀 자격은
 [페이지별 제출 판정](../verification/visual_verification_governance.md#페이지별-tsv와-pr-재검토-필수-조건)을 따른다.
 
+체리픽 통합 담당자는 조판·렌더링 변경을 제출하기 전에 원 PR별 Native·fresh WASM 전쪽 TSV를
+최종 후보와 같은 조건으로 쪽마다 비교한다. 원 PR보다 낮은 쪽이 하나라도 있으면 원인을 확인하고
+해결한 뒤 전쪽을 다시 검증한다. 하락이나 증적 누락이 남으면 제출·승인·병합을 보류한다.
+[원 PR 대비 시각 하락 확인](multi_pr_update_branch.md#원-pr-대비-시각-하락-확인)을 따른다.
+
 조판 영향 PR은 편람 검사와 함께 **기여자 공통 보호 검사**도 제출 전 최종 head에서 실행한다.
 공개 웹폰트로 재현을 확인한 4개 문서의 Native/fresh WASM을 한 번에 검사하며,
 입력·기존 Print PDF·측정 조건을 자동 선택한다. 한컴 설치·MCP·비공개 기준 글꼴는 필요하지 않다.
@@ -44,6 +49,8 @@ Native·fresh WASM 양쪽 모두 전쪽 98% 이상으로 보정하고, 가능한
 해당 문서의 정본 raw 표시값 하락이면 제출을 보류한다. 이 검사는 변경 대상 문서 자체의
 시각 검증과 통합 담당자의 정본 전체 특별 검증을 대체하지 않는다.
 
+Native와 fresh WASM 시각 검증에서 원본 글꼴을 고를 때는
+[시각 검증의 글꼴 선택 순서](../verification/visual_sweep_guide.md#시각-검증의-글꼴-선택-순서)를 따른다.
 보호 문서의 글꼴 조건은 [공식 공급 자료](../../verification/protected-font-supply/README.md),
 실행·재검증은 [공급 재현 절차](../verification/visual_sweep_guide.md#정본-보호-문서의-글꼴-공급-재현)를 따른다.
 보호 시각 비교에는 필요한 기준 글꼴을 공급하고, Rust 회귀에는 아래 최소 글꼴 환경을 사용한다.
@@ -121,13 +128,11 @@ SHA-256·이전/보존 경로·활성 유지/제거 목록·복원 조건을 기
 worktree 안의 별도 `target/pr-review`를 새로 만들지 않는다. Cargo의 캐시를 재사용하더라도 실제
 산출물의 소유와 최종 head 검증을 확인한다.
 
-같은 target에서 base와 후보 worktree를 번갈아 빌드하면 공통 경로의 실행 파일이나
-`deps/librhwp.rlib`가 다른 worktree의 산출물로 덮일 수 있다. Cargo가 빠르게 성공하거나 실행 파일의
-해시가 바뀌었다는 사실만으로 후보 라이브러리가 연결됐다고 판정하지 않는다. worktree를 바꾼 뒤
-소유가 의심되면 공유 target을 삭제하지 말고 해당 worktree의 **라이브러리와 실행 파일을 함께**
-다시 빌드한다. 상세 빌드 로그에서 두 소스 unit의 재컴파일을 확인하고, 후보의 알려진 동작을
-대표 입력으로 실행해 base와 구분한다. 실행 파일은 worktree별로 복사해 SHA-256을 기록한 뒤
-시각 비교에 사용한다. 검증 중 발견된 잘못된 비교는 근거에서 제거하고 실제 후보로 다시 수행한다.
+같은 target에서 기준과 후보를 번갈아 빌드하면 공통 경로의 실행 파일이나 `deps/librhwp.rlib`가
+직전에 다른 소스로 만든 산출물로 덮일 수 있다. 산출물의 소유가 의심되면 해당 소스의 **라이브러리와
+실행 파일을 함께** 다시 빌드해 상세 로그로 두 소스 unit의 재컴파일을 확인한다. 실제 변경 경계에
+해당하는 대표 입력을 실행해 기준과 후보의 동작을 확인한다. 잘못된 산출물로 비교했다면 실제 후보로
+다시 수행한다.
 
 `target/pr-review`는 **이동하거나 이름을 바꾸지 않는다**. 일부 통합 테스트의 `CARGO_BIN_EXE_*` fallback은
 컴파일 당시 절대 target 경로를 가질 수 있어, 빌드 뒤 directory를 옮기면 실행 파일을 찾지 못한다. 최초
@@ -178,6 +183,23 @@ HWP/HWPX의 Native·fresh WASM 네 결과 모두 **나머지 382쪽은 raw 100.0
 Print와 100% 일치시키는 보정을 이번 PR 검증의 완료 조건으로 요구하지 않으며, 100%를
 강제하는 회귀 기대값도 추가하지 않는다. 130쪽은 전쪽 TSV에 포함하고 실제 raw와
 review·overlay에서 확인한 WMF 차이를 그대로 기록한다.
+
+### 최신 devel 비교용 빌드 보존
+
+`git fetch upstream devel` 후 로컬 `devel`의 SHA가 `upstream/devel`과 같으면, 기본 rhwp 작업공간에서
+`devel`을 빌드해 비교용 산출물을 확보한다. 작업 트리가 깨끗하고 실행 중인 빌드·테스트가 없는지
+확인한 뒤 수행하며, 이 경우 비교용 임시 worktree 생성을 생략한다. 새 리뷰는 후보 브랜치로 전환하기
+전에 기준 빌드를 확보한다.
+
+공용 `target/pr-review`에서 완성한 Native 실행 파일과 WASM 패키지를 후보 빌드 전에
+`output/pr-review/<검토명>/base-tools/` 아래에 고정한다. 기준 source SHA, 빌드 명령·옵션,
+실행 파일과 WASM의 JS·바이너리 SHA-256을 같은 검토 디렉터리에 기록한다. 이미 같은 SHA·빌드
+조건으로 고정한 산출물이 있고 해시가 일치하면 재사용한다. 시각 비교는 이 실행 파일을 `--rhwp-bin`,
+WASM 패키지를 `--wasm-pkg`로 지정한다. 후보 역시 별도 output 경로에 고정한다.
+
+후보 브랜치에서 실행 중인 검증이나 미커밋 변경이 있으면, 같은 SHA로 이미 고정한 기준 산출물을
+사용하거나 해당 작업이 끝난 뒤 기준을 준비한다. `devel` 동기화로 기준 SHA가 달라졌다면 그 SHA를
+빌드하고 보존한다.
 
 ### 리베이스로 반영한 PR의 기능 보존 검증
 
@@ -592,7 +614,7 @@ remote push, PR 생성, ready 전환, merge 승인과는 별개다.
 | --- | --- |
 | mydocs만 변경 | git diff --check, 문서 경로·링크·변경 범위 확인. Cargo 생략 |
 | Rust parser/model/CLI | 모든 Rust lint 묶음, focused test, release-test 전체. 단, 4.3.0의 검토 재사용 조건이면 focused test와 GitHub 전체 CI 근거 |
-| renderer/layout/typeset/WASM | focused test, release-test 전체, Native Skia 3종, wasm-pack build, 시각 증적. 단, 4.3.0의 검토 재사용 조건이면 focused test, WASM·시각 증적과 GitHub 전체 CI 근거 |
+| renderer/layout/typeset/WASM | focused test, release-test 전체, [CI와 같은 Native Skia 사전 검사](#ci와-같은-native-skia-사전-검사), wasm-pack build, 시각 증적. 단, 4.3.0의 검토 재사용 조건이면 focused test, WASM·시각 증적과 GitHub 전체 CI 근거 |
 | rhwp-studio만 변경 | TypeScript 검사, npm test, 실제 browser 동작 |
 | npm/editor public API·transport·type | 아래 package 검증 |
 | CI workflow | [GitHub 저장소 운영 매뉴얼](../github_operations.md)의 변경 등급에 따른 workflow 구문·정책 테스트·required check 영향·최신 GitHub Actions 결과 |
@@ -841,17 +863,88 @@ cargo fmt --all -- --check
 cargo clippy --locked --all-targets -- -D warnings
 ~~~
 
-renderer 영향 PR의 Native Skia 공식 회귀 범위는 다음 3종이다.
+### CI와 같은 Native Skia 사전 검사
+
+렌더러·조판·글꼴 공급·Native 출력 경로 또는 해당 Skia 회귀를 바꾼 제출 후보는 같은 head의
+[CI 정의](../../../.github/workflows/ci.yml)에서 `Native Skia tests` 단계의 `release-test` 명령을 확인한다.
+최소 글꼴 환경에서 `native-skia` 라이브러리와 그 단계가 호출하는 통합 모듈을 모두 순차 실행한다.
+일반 nextest와 누락 그림·직접 PDF 집중 검사만 실행하면 `native-skia` 기능 전용 모듈이 빠질 수 있다.
+예를 들어 쪽별 인쇄 글꼴 준비를 바꾸면 `skia_native_glyph_replay`의 실제 PNG 연속 그림자 검사도 실행한다.
+
+검증 기록에 head·OS·글꼴 격리 조건과 각 모듈의 실행 건수·결과를 남긴다. 모듈이 0건을 실행했다면
+성공으로 집계하기 전에 `--prepare`로 현행 suite를 생성했는지, 모듈명 필터가 실제 suite를
+선택했는지 확인한다. 각 OS의 결과는 그 OS에서 수집한 항목에 적용한다. 변경이 여러 OS 전용 경로에
+걸치면 그 경로를 각 대상 OS에서 실행하거나 같은 head의 해당 OS CI 근거를 확인한다.
+4.3.0의 같은 head CI 재사용 조건은 그대로 적용한다.
+
+#### macOS의 Native Skia 실행
+
+위 macOS 절에 따라 CoreText에서 추가 설치 글꼴을 차단한 검증 프로세스 안에서 아래
+POSIX 명령을 실행한다. `sandbox-exec`를 사용한다면 `--prepare`와 Cargo를 모두 확인한
+프로필 안에서 실행한다. macOS 전용 `cfg`의 실제 수집 건수도 확인한다.
+
+#### Linux의 Native Skia 실행
+
+위 Ubuntu 예시처럼 `bwrap` 또는 검증한 격리 환경에서 글꼴 직접 탐색 경로와 Fontconfig 공급을
+제한한 뒤 아래 POSIX 명령을 실행한다. 배포판에 맞는 Fontconfig·FreeType 개발용 링크 파일도
+확인한다. Debian·Ubuntu는 `libfontconfig-dev`와 `libfreetype-dev`를 사용하며, 릴리스에 따라
+`libfontconfig1-dev`와 `libfreetype6-dev` 패키지명으로 제공될 수 있다. Linux 전용 검사가
+실제로 수집되는지 확인한다.
+
+#### macOS·Linux 공통 실행 명령
+
+격리 환경의 저장소 루트에서 실행한다. 이 명령과 아래 Windows 명령은 현재 CI 정의에서 동일한
+통합 모듈 목록을 읽는다. CI의 실행 형식이 바뀌면 실제 명령을 확인해서 전체 목록을 실행한다.
 
 ~~~bash
-cargo test --locked --profile release-test --target-dir "${rhwp_review_target_dir:?기본 작업공간에서 공용 target 경로를 먼저 고정하세요}" --features native-skia --lib
-node scripts/run-rust-test.mjs issue_2225_missing_picture_placeholder -- \
-  --cargo-profile release-test --target-dir "${rhwp_review_target_dir:?기본 작업공간에서 공용 target 경로를 먼저 고정하세요}" --features native-skia
-node scripts/run-rust-test.mjs render_p37_direct_pdf_export -- \
-  --cargo-profile release-test --target-dir "${rhwp_review_target_dir:?기본 작업공간에서 공용 target 경로를 먼저 고정하세요}" --features native-skia
+(
+  set -e
+  export CARGO_TARGET_DIR="${rhwp_review_target_dir:?기본 작업공간에서 공용 target 경로를 먼저 고정하세요}"
+  rhwp_skia_cases="$(awk '
+    /^      - name: Native Skia tests$/ { step = 1 }
+    step && /^[[:space:]]+release-test\)$/ { profile = 1; next }
+    profile && /^[[:space:]]+;;$/ { exit }
+    profile && $1 == "node" && $2 == "scripts/run-rust-test.mjs" && $3 == "--cargo-test" { print $4 }
+  ' .github/workflows/ci.yml)"
+  test -n "$rhwp_skia_cases"
+  node scripts/rust-test-suite-manifest.mjs --prepare
+  cargo test --locked --profile release-test --features native-skia --lib
+  printf '%s\n' "$rhwp_skia_cases" | while IFS= read -r rhwp_skia_case; do
+    node scripts/run-rust-test.mjs --cargo-test "$rhwp_skia_case" -- \
+      --profile release-test --features native-skia || exit "$?"
+  done
+)
 ~~~
 
-fresh WASM은 아래 환경별 경로 중 하나를 완료한다. Docker 설치 여부와 관계없이 Native Skia 3종과
+#### Windows의 Native Skia 실행
+
+위 Windows 절에 따라 시스템 및 사용자 글꼴을 확인한 최소 글꼴 환경에서 PowerShell을 연다.
+아래 명령은 같은 검증용 target을 재사용한다. Windows 전용 DirectWrite 검사도 실제 수집되는지 확인한다.
+
+~~~powershell
+if (-not $rhwpReviewTargetDir) { throw '공용 target 경로를 먼저 고정하세요' }
+$env:CARGO_TARGET_DIR = $rhwpReviewTargetDir
+Remove-Item Env:RHWP_FONT_PATH -ErrorAction SilentlyContinue
+$workflow = Get-Content -Raw .github/workflows/ci.yml
+$nativeStep = [regex]::Match($workflow, '(?m)^      - name: Native Skia tests\r?$')
+if (-not $nativeStep.Success) { throw 'CI의 Native Skia 검사 단계를 찾지 못했습니다' }
+$releaseBlock = [regex]::Match($workflow.Substring($nativeStep.Index), '(?ms)^\s+release-test\)\r?\n(.*?)^\s+;;\r?$')
+if (-not $releaseBlock.Success) { throw 'Native Skia의 release-test 명령을 찾지 못했습니다' }
+$modulePattern = '(?m)^\s+node scripts/run-rust-test\.mjs --cargo-test ([a-z0-9_]+) --'
+$modules = [regex]::Matches($releaseBlock.Groups[1].Value, $modulePattern)
+if ($modules.Count -eq 0) { throw 'Native Skia 통합 모듈을 찾지 못했습니다' }
+node scripts/rust-test-suite-manifest.mjs --prepare
+if ($LASTEXITCODE -ne 0) { throw 'Rust suite 생성 실패' }
+cargo test --locked --profile release-test --features native-skia --lib
+if ($LASTEXITCODE -ne 0) { throw 'Native Skia 라이브러리 검사 실패' }
+foreach ($module in $modules) {
+  $case = $module.Groups[1].Value
+  node scripts/run-rust-test.mjs --cargo-test $case -- --profile release-test --features native-skia
+  if ($LASTEXITCODE -ne 0) { throw "Native Skia 통합 검사 실패 ($case)" }
+}
+~~~
+
+fresh WASM은 아래 환경별 경로 중 하나를 완료한다. Docker 설치 여부와 관계없이 Native Skia와
 WASM·브라우저·시각 검증의 적용 범위는 동일하다.
 
 `native-skia`가 Cargo feature이고 `skia`는 feature가 아니다. 따라서
@@ -1114,7 +1207,7 @@ embed E2E를 추가한다. 기본값 변경은 옵션을 생략한 smoke에서�
 VITE_URL=http://127.0.0.1:7700 npm --prefix rhwp-studio run e2e:embed
 ~~~
 
-대형 복합 변경 또는 승인된 전체 검증은 build, release lib, release-test, Native Skia 3종, fmt,
+대형 복합 변경 또는 승인된 전체 검증은 build, release lib, release-test, CI와 같은 Native Skia 사전 검사, fmt,
 diff check, clippy, doc test, TypeScript, npm test, 환경에 맞는 fresh WASM build를 이 순서로 실행한다.
 마지막 WASM 단계는 위 Docker 또는 호스트 경로 중 하나를 완료하며, Docker 사용 불가를 생략
 사유로 삼지 않는다.
@@ -1126,11 +1219,7 @@ cargo nextest run --locked \
   --cargo-profile release-test \
   --target-dir "${rhwp_review_target_dir:?기본 작업공간에서 공용 target 경로를 먼저 고정하세요}" \
   --tests --test-threads <현재_환경에_맞는_값> --no-fail-fast
-cargo test --locked --profile release-test --target-dir "${rhwp_review_target_dir:?기본 작업공간에서 공용 target 경로를 먼저 고정하세요}" --features native-skia --lib
-node scripts/run-rust-test.mjs issue_2225_missing_picture_placeholder -- \
-  --cargo-profile release-test --target-dir "${rhwp_review_target_dir:?기본 작업공간에서 공용 target 경로를 먼저 고정하세요}" --features native-skia
-node scripts/run-rust-test.mjs render_p37_direct_pdf_export -- \
-  --cargo-profile release-test --target-dir "${rhwp_review_target_dir:?기본 작업공간에서 공용 target 경로를 먼저 고정하세요}" --features native-skia
+# 위 'CI와 같은 Native Skia 사전 검사'의 라이브러리와 통합 모듈을 모두 실행한다.
 cargo fmt --all -- --check
 git diff --check
 cargo clippy --locked --all-targets --target-dir "${rhwp_review_target_dir:?기본 작업공간에서 공용 target 경로를 먼저 고정하세요}" -- -D warnings

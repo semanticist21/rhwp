@@ -1,7 +1,7 @@
 //! 텍스트 삽입/삭제/문단 분리·병합/범위 삭제/문단 쿼리 관련 native 메서드
 
 use super::super::helpers::{
-    get_textbox_from_shape, logical_paragraph_length, logical_to_text_slot,
+    get_textbox_from_shape, logical_paragraph_length, logical_to_text_offset, logical_to_text_slot,
 };
 use super::super::queries::rendering::FocusedPageTreePatch;
 use super::clipboard::{passed_objects, split_slot_rank, text_to_split_logical_slot, ALL_OBJECTS};
@@ -1481,9 +1481,10 @@ pub(super) fn insert_area_text(
     if text.is_empty() || !has_clickhere_field_range(para) {
         return para.insert_text_at(char_offset, text);
     }
-    para.replace_text_keeping_slots(char_offset, 0, text, active, false);
+    let inserted_at = char_offset.min(para.text.chars().count());
+    para.replace_text_keeping_slots(inserted_at, 0, text, active, char_offset > inserted_at);
     para.invalidate_layout_inputs();
-    char_offset.min(para.text.chars().count())
+    inserted_at
 }
 
 /// 서식 글도 일반 입력과 같은 활성 누름틀·개체 앞뒤 소속으로 넣는다.
@@ -7330,6 +7331,82 @@ impl DocumentCore {
         )))
     }
 
+    /// 커서로 선택한 글의 실제 범위. 중첩 칸의 읽기·입력·되돌리기가 같은 축을 쓴다.
+    pub(crate) fn cell_caret_text_range(
+        &self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        offset: usize,
+        count: usize,
+    ) -> Result<(usize, usize, bool), HwpError> {
+        let para = self.resolve_paragraph_by_path(section_idx, parent_para_idx, path)?;
+        let (start, after_control) = logical_to_text_offset(para, offset);
+        let end = if count == 0 {
+            start
+        } else {
+            logical_to_text_offset(para, offset.saturating_add(count)).0
+        };
+        Ok((start, end.saturating_sub(start), after_control))
+    }
+
+    pub(crate) fn replace_text_in_cell_by_path(
+        &mut self,
+        section_idx: usize,
+        parent_para_idx: usize,
+        path: &[(usize, usize, usize)],
+        offset: usize,
+        count: usize,
+        text: &str,
+        at_caret: bool,
+    ) -> Result<String, HwpError> {
+        let normalized = normalize_text_newlines(text);
+        let text = normalized.as_ref();
+        let (start, count, after_control) = if at_caret {
+            self.cell_caret_text_range(section_idx, parent_para_idx, path, offset, count)?
+        } else {
+            (offset, count, false)
+        };
+        let active = active_field_control(
+            self.active_field.as_ref(),
+            section_idx,
+            parent_para_idx,
+            Some(path),
+        );
+        let cell_para = self.get_cell_paragraph_mut_by_path(section_idx, parent_para_idx, path)?;
+        replace_paragraph_text(cell_para, start, count, text, active, after_control);
+
+        let inner_cell_para_idx = path.last().map(|entry| entry.2).unwrap_or(0);
+        self.reflow_cell_paragraph_by_path(section_idx, parent_para_idx, path, inner_cell_para_idx);
+        self.recalculate_cell_paragraph_vpos_by_path(
+            section_idx,
+            parent_para_idx,
+            path,
+            inner_cell_para_idx,
+            None,
+        );
+
+        // 최외곽 표 dirty 마킹
+        let outer_ctrl = path[0].0;
+        self.mark_cell_control_dirty(section_idx, parent_para_idx, outer_ctrl);
+
+        // 최내곽 실제 셀 폭으로 위에서 reflow한 뒤 section pagination을 갱신한다.
+        self.document.sections[section_idx].raw_stream = None;
+        self.mark_section_dirty(section_idx);
+        self.paginate_if_needed();
+
+        self.event_log.push(DocumentEvent::CellTextChanged {
+            section: section_idx,
+            para: parent_para_idx,
+            ctrl: outer_ctrl,
+            cell: path[0].1,
+        });
+        Ok(super::super::helpers::json_ok_with(&format!(
+            "\"charOffset\":{}",
+            offset + text.chars().count()
+        )))
+    }
+
     /// path 기반 셀 내 범위 삭제 (중첩 표 지원). `deleteRangeInCell`(flat)의 cellPath 변형.
     ///
     /// flat deleteRangeInCell 은 controlIndex/cellIndex 를 최외곽(cellPath[0]) 축으로 받아
@@ -7490,7 +7567,8 @@ impl DocumentCore {
             // 사라지는 문단의 스코프 메타 — undo(split)가 되돌릴 값이다 (Task #2342).
             let removed_meta = Some(removed.capture_meta());
             let prev = &mut paras[prev_idx];
-            let merge_point = prev.text.chars().count();
+            // 나누기와 같은 논리 자리(인라인 개체도 한 자리)로 이음매를 준다.
+            let merge_point = logical_paragraph_length(prev);
             prev.merge_from(&removed);
             (vpos, merge_point, removed_meta)
         };

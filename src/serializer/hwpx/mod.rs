@@ -146,6 +146,12 @@ where
     // 3. Contents/header.xml — Stage 1 동적 생성 (IR 기반)
     let header_xml = header::write_header_with_storage(doc, &ctx, storage)?;
     z.write_deflated("Contents/header.xml", &header_xml)?;
+    use crate::model::document_compatibility::DocumentCompatibility;
+    if let Some(bytes) =
+        DocumentCompatibility::from_records(&doc.doc_info).nonpreset_bytes(&header_xml)
+    {
+        z.write_deflated(DocumentCompatibility::HWPX_ENTRY, &bytes)?;
+    }
     let mut hwp3_page_ownership =
         crate::model::hwp3_page_ownership::PageOwnership::for_document(doc, &header_xml);
     if let Some(bytes) =
@@ -522,9 +528,10 @@ where
     if let Some(marker) = doc.hwpx_aux_entry(HWP5_ORIGIN_HWPX_MARKER_PATH) {
         z.write_deflated(HWP5_ORIGIN_HWPX_MARKER_PATH, marker)?;
     }
-    // 문단 축 마커와 조판 계보는 별개다. 변환 HWP의 HWPX 조판 계약도 이어 준다.
-    if doc.provenance.hwpx_lineage {
-        z.write_deflated(crate::model::document::HWPX_ORIGIN_HWPX_MARKER_PATH, b"1")?;
+    // [#9039] HWP 줄 규칙을 쓰는 HWPX 계보(`/RhwpHwpxOrigin` = 1) — 다시 열 때 같은 저장
+    // 줄을 XML 규칙으로 다시 짜지 않도록 값을 그대로 옮긴다.
+    if let Some(marker) = doc.hwpx_origin_hwp_line_rules() {
+        z.write_deflated(crate::model::document::HWPX_ORIGIN_HWPX_MARKER_PATH, marker)?;
     }
     // HWP3-origin 마커 — 재열람 시 hwp3_lineage 복원(왕복 레이아웃 등식).
     if let Some(marker) = doc.hwpx_aux_entry(crate::model::document::HWP3_ORIGIN_HWPX_MARKER_PATH) {
@@ -543,18 +550,11 @@ where
             crate::model::document::HWP5_ORIGIN_HWPX_PARAGRAPH_AXIS,
         )?;
     }
-    // rhwp 원본 마커를 싣는 산출물은 alpha 를 정수로 썼다고 표시한다. 표지가 없는 예전
-    // 저장본은 다시 열 때 비율 alpha 로 읽는다(`parse_hwpx`).
-    if doc.hwpx_aux_entry(HWP5_ORIGIN_HWPX_MARKER_PATH).is_some()
-        || doc
-            .hwpx_aux_entry(crate::model::document::HWP3_ORIGIN_HWPX_MARKER_PATH)
-            .is_some()
-    {
-        z.write_deflated(
-            crate::model::document::RHWP_BYTE_ALPHA_HWPX_MARKER_PATH,
-            b"1",
-        )?;
-    }
+    // 채움 alpha를 바이트로 기록한 패키지는 구버전 복원 옵션으로 다시 열어도 같은 값이다.
+    z.write_deflated(
+        crate::model::document::RHWP_BYTE_ALPHA_HWPX_MARKER_PATH,
+        b"1",
+    )?;
     if doc.layout_profile().hwp3_external_realign() {
         z.write_deflated(
             crate::model::document::HWP3_EXTERNAL_REALIGN_HWPX_PATH,

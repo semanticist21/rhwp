@@ -28,11 +28,11 @@ pub(super) fn extend(commands: &mut Vec<serde_json::Value>) {
             command["flags"] = serde_json::json!([
                 "--page", "-p", "--output", "-o", "--font-path", "--profile", "--compat",
                 "--font-environment", "--dpi", "--scale", "--json", "--metadata-only",
-                "--render-tree-output", "--print-png-rgb555"
+                "--render-tree-output", "--print-png-rgb555", "--print-png-full-color", "--print-bmp-full-color"
             ]);
             command["recordFields"] = serde_json::json!([
                 "schemaVersion", "source", "backend", "comparisonProfile", "layoutGeneration",
-                "printPngRgb555", "outputDir", "pageCount", "renderedCount", "pages"
+                "printPngRgb555", "printPngFullColor", "outputDir", "pageCount", "renderedCount", "pages"
             ]);
             command
         },
@@ -99,7 +99,7 @@ pub(super) fn extend(commands: &mut Vec<serde_json::Value>) {
         cmd_json(
             "export-hwpx",
             "HWP→HWPX 변환 저장 (--verify 게이트 exit 3/4, --json 봉투)",
-            &["--verify", "--verify-pages", "--json"],
+            &["--verify", "--verify-pages", "--json", "--recover-legacy-alpha"],
             &[
                 "schemaVersion",
                 "source",

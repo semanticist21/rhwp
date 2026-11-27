@@ -61,6 +61,59 @@ pub(super) fn continuation_closing_advance(
 }
 
 impl LayoutEngine {
+    /// A projected paragraph-before slot belongs to the next visible child line.
+    /// Keep its source index in the cut so the reopened child retains its origin.
+    pub(super) fn mixed_child_next_paragraph_spacing(
+        &self,
+        table: &Table,
+        cell: &Cell,
+        units: &[CellUnit],
+        start: usize,
+        end: usize,
+        styles: &ResolvedStyleSet,
+    ) -> Option<f64> {
+        let [prior, spacing, next] = units.get(end.checked_sub(2)?..=end)? else {
+            return None;
+        };
+        if end - 2 < start
+            || [prior, spacing, next].iter().any(|unit| {
+                unit.para_idx != spacing.para_idx
+                    || !unit.mixed_nested_fragment
+                    || unit.mixed_nested_recursive
+                    || unit.mixed_nested_trailing
+            })
+            || spacing.mixed_nested_source_para_idx.is_some()
+            || spacing.mixed_nested_content_height != 0.0
+            || prior.mixed_nested_content_height <= 0.0
+            || next.mixed_nested_content_height <= 0.0
+        {
+            return None;
+        }
+        let prior_para = prior.mixed_nested_source_para_idx?;
+        let next_para = next.mixed_nested_source_para_idx?;
+        if next_para != prior_para + 1 {
+            return None;
+        }
+        let child = cell
+            .paragraphs
+            .get(spacing.para_idx)?
+            .controls
+            .iter()
+            .find_map(|control| match control {
+                crate::model::control::Control::Table(child) => Some(child.as_ref()),
+                _ => None,
+            })?;
+        if !self.native_terminal_rowbreak_child_source_cursor_eligible(table, cell, child) {
+            return None;
+        }
+        let source = child.cells.first()?.paragraphs.get(next_para)?;
+        let before = styles
+            .para_styles
+            .get(source.para_shape_id as usize)?
+            .spacing_before;
+        (before > 0.0 && spacing.height == before).then_some(before)
+    }
+
     /// 같은 자식 글줄 행의 중간에서 열고 닫는 블록 조각. 자식 RowCut이 이미
     /// 마지막 줄의 전진을 제외했으므로 부모는 그 상자와 실제 바깥 여백만 소비한다.
     pub(super) fn continued_plain_child_frame_height(
@@ -310,6 +363,7 @@ impl LayoutEngine {
         // 다음 쪽에 통째로 들어갈 행도 한/글은 쪽 바닥에서 나눈다. 저장 줄로는 한/글이 한 쪽에 둔
         // 행과 가릴 수 없으므로, 이 세션의 편집이 지은 칸 줄(`cell_lines_edited`)이 있는 행만 그렇게
         // 나눈다. 저장할 때는 그 나눔 자리를 한/글처럼 되감아 적는다(`nested_row_page_starts`).
+        // 칸의 단일 단 정의 등 자체 배치 상자가 없는 표식도 같은 글줄을 사용한다.
         driver_units.len() > 1
             && (outgrows_page
                 || driver_units.iter().any(|unit| unit.reflowed_line_slot)
@@ -325,7 +379,7 @@ impl LayoutEngine {
                     && cell
                         .paragraphs
                         .iter()
-                        .all(|paragraph| paragraph.controls.is_empty())
+                        .all(crate::renderer::cell_paragraph_has_only_text_metadata)
             })
     }
 

@@ -19,6 +19,7 @@ use std::collections::HashMap;
 struct ImagePaintFrame {
     source: BoundingBox,
     paint: BoundingBox,
+    device_alpha_bands: bool,
 }
 
 impl ImagePaintFrame {
@@ -46,7 +47,8 @@ pub struct LayerBuilder {
     image_frames: HashMap<NodeId, ImagePaintFrame>,
     metafile_device_pixel_width: Option<f64>,
     hancom2024_print_bitmap: bool,
-    print_png_rgb555: bool,
+    print_png_rgb555: Option<bool>,
+    print_bmp_full_color: bool,
     metafile_fonts: super::metafile_fonts::MetafileFonts,
     prior_print_solid_fill: bool,
     hangul2024_print: bool,
@@ -54,6 +56,8 @@ pub struct LayerBuilder {
     metafile_catalogue: Option<std::sync::Arc<super::metafile_print::Catalogue>>,
     shape_group_depth: usize,
     print_crop_marks: bool,
+    prior_print_alpha_order: u8,
+    print_alpha_order: u8,
 }
 
 impl LayerBuilder {
@@ -69,7 +73,8 @@ impl LayerBuilder {
             image_frames: HashMap::new(),
             metafile_device_pixel_width: None,
             hancom2024_print_bitmap: false,
-            print_png_rgb555: false,
+            print_png_rgb555: None,
+            print_bmp_full_color: false,
             metafile_fonts: Default::default(),
             prior_print_solid_fill: false,
             hangul2024_print: false,
@@ -77,6 +82,8 @@ impl LayerBuilder {
             metafile_catalogue: None,
             shape_group_depth: 0,
             print_crop_marks: false,
+            prior_print_alpha_order: 0,
+            print_alpha_order: 0,
         }
     }
 
@@ -100,8 +107,13 @@ impl LayerBuilder {
         self
     }
 
-    pub(crate) fn with_print_png_rgb555(mut self, enabled: bool) -> Self {
+    pub(crate) fn with_print_png_rgb555(mut self, enabled: Option<bool>) -> Self {
         self.print_png_rgb555 = enabled;
+        self
+    }
+
+    pub(crate) fn with_print_bmp_full_color(mut self, enabled: bool) -> Self {
+        self.print_bmp_full_color = enabled;
         self
     }
 
@@ -126,6 +138,33 @@ impl LayerBuilder {
     pub(crate) fn with_prior_print_solid_fill(mut self, filled: bool) -> Self {
         self.prior_print_solid_fill = filled;
         self
+    }
+
+    pub(crate) fn with_prior_print_alpha_order(mut self, order: u8) -> Self {
+        self.prior_print_alpha_order = order;
+        self
+    }
+
+    pub(crate) fn page_print_alpha_count(tree: &PageRenderTree) -> (u8, bool) {
+        fn visit(node: &RenderNode, count: &mut u8, found: &mut bool) {
+            if !node.visible || node.editor_only {
+                return;
+            }
+            if let RenderNodeType::Image(image) = &node.node_type {
+                if !image.is_nonprinting_picture()
+                    && crate::renderer::image_resolver::print_transparent_png(image)
+                {
+                    *count = count.wrapping_add(1);
+                    *found = true;
+                }
+            }
+            for child in crate::renderer::paint_order::children(node) {
+                visit(child, count, found);
+            }
+        }
+        let (mut count, mut found) = (0, false);
+        visit(&tree.root, &mut count, &mut found);
+        (count, found)
     }
 
     pub(crate) fn with_hangul2024_print(mut self, enabled: bool) -> Self {
@@ -192,7 +231,8 @@ impl LayerBuilder {
         };
 
         let context = PagePaintContext::new(self.profile, page_width, page_height)
-            .with_hangul2024_print(self.hangul2024_print);
+            .with_hangul2024_print(self.hangul2024_print)
+            .with_implicit_footer_number(tree.frame.implicit_print_footer_number);
         self.image_page_size = (page_width, page_height);
         fn first_column(node: &RenderNode) -> Option<(f64, f64)> {
             if matches!(node.node_type, RenderNodeType::Column(_)) {
@@ -205,6 +245,7 @@ impl LayerBuilder {
         let logical_width = page_width;
         let (page_width, page_height) = context.output_size();
         self.page_context = Some(context);
+        self.print_alpha_order = self.prior_print_alpha_order;
         self.image_frames.clear();
 
         let mut children = self.build_children(&tree.root);
@@ -428,6 +469,7 @@ impl LayerBuilder {
                     section_index: None,
                     para_index: None,
                     control_index: None,
+                    cell_context: None,
                 }),
             )
             .with_layer(node.layer);
@@ -480,6 +522,7 @@ impl LayerBuilder {
                         section_index: rect.section_index,
                         para_index: rect.para_index,
                         control_index: rect.control_index,
+                        cell_context: None,
                     }),
                 )
                 .with_layer(node.layer);
@@ -498,6 +541,14 @@ impl LayerBuilder {
             )]),
             RenderNodeType::TextRun(run) => {
                 let mut run = run.clone();
+                let bbox = self.page_context.map_or(node.bbox, |context| {
+                    context.place_implicit_footer_number(
+                        node.id,
+                        &mut run,
+                        node.bbox,
+                        self.layout_dpi,
+                    )
+                });
                 if run
                     .char_overlap
                     .as_ref()
@@ -532,7 +583,7 @@ impl LayerBuilder {
                             super::dot_leader::prepare(&self.metafile_fonts, node.bbox, &mut run);
                     }
                 }
-                let mut ops = text_run_ops(node.bbox, run, self.output_options, previous_text);
+                let mut ops = text_run_ops(bbox, run, self.output_options, previous_text);
                 ops.extend(
                     leader_paths
                         .into_iter()
@@ -553,6 +604,9 @@ impl LayerBuilder {
                 let pixel = self
                     .metafile_device_pixel_width
                     .filter(|_| self.hancom2024_print_bitmap);
+                let image_owner = rect
+                    .image_frame_owner
+                    .and_then(|owner| self.image_frames.get(&owner));
                 if let Some(context) = self.page_context {
                     // 그림의 물리 띠·외곽 pen은 비트맵 색상 세대와 별개의
                     // Print 계약이다. 독립 2022·2024 Print가 같은 600dpi
@@ -560,21 +614,20 @@ impl LayerBuilder {
                     context.picture_border_pen(
                         &mut rect,
                         Some(self.layout_dpi / crate::renderer::print_picture_pen::DEVICE_DPI),
+                        self.shape_group_depth > 0,
+                        image_owner.is_some_and(|owner| owner.device_alpha_bands),
                     );
                 }
-                let image_frame = rect
-                    .image_frame_owner
-                    .and_then(|owner| self.image_frames.get(&owner))
-                    .map(|frame| {
-                        let source = if rect.picture_border_width_hu == Some(0) {
-                            frame.source
-                        } else {
-                            node.bbox
-                        };
-                        self.page_context
-                            .and_then(|context| context.picture_border_frame(source, &rect))
-                            .unwrap_or_else(|| frame.border_frame(node.bbox))
-                    });
+                let image_frame = image_owner.map(|frame| {
+                    let source = if rect.picture_border_width_hu == Some(0) {
+                        frame.source
+                    } else {
+                        node.bbox
+                    };
+                    self.page_context
+                        .and_then(|context| context.picture_border_frame(source, &rect))
+                        .unwrap_or_else(|| frame.border_frame(node.bbox))
+                });
                 let frame = image_frame.unwrap_or_else(|| {
                     self.page_context.map_or(node.bbox, |context| {
                         context.rectangle_frame(node, &mut rect, pixel)
@@ -593,7 +646,11 @@ impl LayerBuilder {
                         })
                     }
                 };
-                if let Some(fill_frame) = fill_frame {
+                if let Some(ring) = image_owner
+                    .and_then(|owner| super::picture_border::cosmetic_ring(owner.paint, &rect))
+                {
+                    Some(vec![ring])
+                } else if let Some(fill_frame) = fill_frame {
                     let fill = super::rectangle_fill::take_fill(&mut rect);
                     Some(vec![
                         PaintOp::rectangle(map_fill(fill_frame, &fill), fill),
@@ -608,6 +665,11 @@ impl LayerBuilder {
             }
             RenderNodeType::Path(path) => Some(vec![PaintOp::path(node.bbox, path.clone())]),
             RenderNodeType::Image(image) => {
+                let transparent_png = self.profile == RenderProfile::Print
+                    && crate::renderer::image_resolver::print_transparent_png(image);
+                if transparent_png {
+                    self.print_alpha_order = self.print_alpha_order.wrapping_add(1);
+                }
                 let pixel = self
                     .metafile_device_pixel_width
                     .filter(|_| self.hancom2024_print_bitmap);
@@ -636,6 +698,7 @@ impl LayerBuilder {
                         ImagePaintFrame {
                             source: node.bbox,
                             paint: frame,
+                            device_alpha_bands: false,
                         },
                     );
                 }
@@ -667,7 +730,15 @@ impl LayerBuilder {
                     let soft_edge_prepared = soft_edge_payload.is_some();
                     let group_projection = (self.shape_group_depth > 0
                         && image_fill_clip.is_none())
-                    .then(|| super::group_picture::project(&image, frame, self.layout_dpi))
+                    .then(|| {
+                        super::group_picture::project(
+                            &image,
+                            frame,
+                            self.layout_dpi,
+                            self.print_png_rgb555,
+                            self.print_bmp_full_color,
+                        )
+                    })
                     .flatten();
                     if let Some((full, projected, payload)) = group_projection {
                         // 묶음 안 그림은 틀로 자른다. 효과는 그 clip 밖의 형제로 둔다.
@@ -691,7 +762,29 @@ impl LayerBuilder {
                         } else {
                             None
                         };
-                        let mut resolved = resolved_effect
+                        let device_alpha =
+                            (transparent_png && self.shape_group_depth == 0 && !soft_edge_prepared)
+                                .then(|| self.page_context?.alpha_device_frame(node, &image))
+                                .flatten()
+                                .and_then(|(device_frame, grid)| {
+                                    let payload = grid.payload(&image, self.print_alpha_order)?;
+                                    Some((device_frame, payload))
+                                });
+                        let has_device_alpha = device_alpha.is_some();
+                        let mut resolved = device_alpha
+                            .map(|(device_frame, payload)| {
+                                frame = device_frame;
+                                self.image_frames.insert(
+                                    node.id,
+                                    ImagePaintFrame {
+                                        source: node.bbox,
+                                        paint: frame,
+                                        device_alpha_bands: true,
+                                    },
+                                );
+                                payload
+                            })
+                            .or(resolved_effect)
                             .or_else(|| {
                                 (self.profile == RenderProfile::Print)
                                     .then(|| {
@@ -700,6 +793,7 @@ impl LayerBuilder {
                                             frame,
                                             self.layout_dpi,
                                             self.print_png_rgb555,
+                                            self.print_bmp_full_color,
                                         )
                                     })
                                     .flatten()
@@ -755,6 +849,24 @@ impl LayerBuilder {
                                     &self.metafile_fonts,
                                 )
                             });
+                        if self.profile == RenderProfile::Print && !self.hancom2024_print_bitmap {
+                            if let Some(payload) = resolved.as_mut() {
+                                super::metafile_print::place_device_strokes(
+                                    &image,
+                                    node.bbox,
+                                    self.image_page_size,
+                                    self.image_reference_origin,
+                                    self.layout_dpi,
+                                    payload,
+                                );
+                                super::metafile_print::place_monochrome_tiles(
+                                    &image,
+                                    node.bbox,
+                                    self.layout_dpi,
+                                    payload,
+                                );
+                            }
+                        }
                         if let Some(window) =
                             crate::renderer::image_resolver::resolve_print_jpeg_window(
                                 &mut image,
@@ -785,7 +897,7 @@ impl LayerBuilder {
                                 frame.attach(&mut payload.data);
                             }
                         }
-                        if self.profile == RenderProfile::Print {
+                        if self.profile == RenderProfile::Print && !has_device_alpha {
                             if let Some((alpha_frame, payload)) =
                                 crate::renderer::print_raster::PrintRasterFrame::new(
                                     self.image_page_size,

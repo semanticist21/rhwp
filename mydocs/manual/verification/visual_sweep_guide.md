@@ -2,7 +2,7 @@
 kind: guide
 status: active
 canonical: mydocs/manual/verification/visual_verification_governance.md
-last_verified: 2026-11-22
+last_verified: 2026-11-24
 ---
 
 # PDF/PNG visual sweep 가이드
@@ -24,12 +24,17 @@ collaborator·maintainer의 추가 책임이다.** 일반 기여자에게 비공
 쪽수·페이지 분할 변경은 전체 문서를 비교하며 평균값·높은 페이지 선별로 미달을 숨기지 않는다.
 기준 PDF는 [원본 저장 버전에 맞는 한컴 Print 출력](../mcp_hwp2024Convert_usage.md#기준-pdf-인쇄-계약)을 따른다.
 공식 대조 자료는 같은 원본을 Windows 데스크톱 **한컴 2020 또는 2024의 `Hancom PDF`
-프린터로 인쇄(Print)**한 PDF만 사용한다. 실제 제품·버전·프린터·출력 경로를 확인한다.
-웹한글기안기, Cairo, `Microsoft Print to PDF`, PDF 저장·내보내기, 다른 한컴 버전의
+프린터로 인쇄(Print)**한 PDF를 기본으로 사용한다. 실제 제품·버전·프린터·출력 경로를 확인한다.
+MCP가 인쇄 오류로 대체 저장한 PDF는 [한컴 Print 버그 예외](visual_verification_governance.md#한컴-print-오류-시-mcp-대체-저장본-수용)를 적용한다.
+웹한글기안기, Cairo, `Microsoft Print to PDF`, 위 예외에 해당하지 않는 PDF 저장·내보내기, 다른 한컴 버전의
 출력은 출처를 명시한 참고 자료로 활용한다.
 Cairo는 원본 저장 제품에 맞는 MCP 엔진으로, `Creator: Hwp 2022`는 MCP 2024로 다시
 인쇄한 후 전쪽을 비교한다.
 [기준 PDF 출처와 재출력](../pr_review/visual_fixture_evidence.md#35-시각-검증-원칙)을 따른다.
+새 기준 PDF를 만들거나 기존 쌍의 출처를 확인할 때는
+[Print 영수증 작성·대조 절차](../mcp_hwp2024Convert_usage.md#print-영수증을-남기고-다시-확인하기)에
+따라 생성 기록과 원본·PDF의 SHA-256을 대조한다. MCP 대체 저장본은
+[대체 저장 응답 보존 절차](../mcp_hwp2024Convert_usage.md#인쇄-오류-시-pdf-대체-저장본-확인)를 따른다.
 작업 중 TSV·실행 로그·중간 JSON은 ignored `output/pr-review/<id>/`에 보존한다.
 최종 제출용 TSV는 PR 본문에 전체 원문을 넣거나, 본문 크기 제한 시 원본 asset의 링크로 제출한다.
 아래 [본문 삽입·저장소 링크](#tsv-원문-본문-삽입과-저장소-링크)를 따른다. 실행 로그·중간 JSON은 Git에 커밋하지 않는다.
@@ -61,6 +66,18 @@ RGBA·LA·팔레트 PNG의 투명 영역은 **흰 종이 위에 합성한 RGB**�
 - **표 셀의 visible line 경계 침범 또는 visible-ending 자연 text 폭 위험 후보**
 - **명시적 SVG clip이 glyph 근사 band의 상·하단을 2px 이상 부분 절단하는 후보**
 - **구조 heuristic에 걸리지 않는 glyph·PUA·제품명 표시 차이**의 review 후보
+
+### MCP가 PDF 인쇄 오류로 대체 저장한 경우
+
+1. 성공 상태·다운로드 응답에서 같은 job ID·요청 엔진과 `pdf_output_mode`·`comment`를 확인하고
+   [거버넌스의 수용 조건](visual_verification_governance.md#한컴-print-오류-시-mcp-대체-저장본-수용)을 충족하는지 판정한다.
+2. 저장본의 실제 파일·해시·쪽수와 전쪽 래스터화 결과를 확인한다. 구조 검사는 OLE 차트의
+   모양·내용·미세 간격까지 보증하지 않으므로 알려진 오류 영역도 직접 판독한다.
+3. 「한컴 Print 버그 예외 — MCP PDF 대체 저장본」과 응답의 `comment` 원문을 review에 남기고
+   그 PDF를 기존 비교 명령의 기준 PDF로 지정한다. 실제 엔진에 맞는 `--compat`와
+   rhwp의 `print` 프로필을 유지한다.
+4. 같은 저장본으로 base·후보의 전쪽 Native/fresh WASM TSV와 대표 review·overlay를 산출한다.
+   기존 일치율·쪽수·내용 보존·확대 판독 기준에 따라 검증을 계속한다.
 
 ### 기여자 공통 보호 검사
 
@@ -391,12 +408,37 @@ PR을 재검토한다.** Native/WASM 교차 비교나 다른 backend 점수의 �
 [devel 대비 실루엣 하락 재검토](visual_verification_governance.md#upstream-devel-대비-페이지별-실루엣-하락-재검토)를 따른다.
 현재 자동90% gate 또는 `not_evaluated`만으로 이 비교를 완료했다고 쓰지 않는다.
 
+### 시각 검증의 글꼴 선택 순서
+
+Native와 fresh WASM 시각 검증에서는 **TTF → TTC → OTF → 대체 글꼴** 순서로 공급할
+글꼴을 선택한다. 각 단계에서 문서의 글꼴 이름·언어 슬롯과 실제 face를 대조한다.
+일치하는 face가 없거나 해당 face에 필요한 글리프가 없으면 다음 단계를 확인한다.
+선택한 파일명과 SHA-256을 기록하고 TTC는 컬렉션 내 face 인덱스도 기록한다.
+양쪽 backend의 실제 글리프 선택은 [동명 글꼴 확인](#동명-글꼴과-실제-사용-글리프-확인) 절차로 확인한다.
+
+이미 확정한 비교를 재현할 때는 기록된 공급 프로그램을 사용한다. 이 순서에 따라 공급 프로그램을
+바꾼 경우에는 같은 파일과 face를 기준·후보 양쪽에 공급하고 새 경로에서 두 결과를 다시 산출한다.
+
 ### 정본 보호 문서의 글꼴 공급 재현
 
 정본 보호 전쪽을 비교하는 collaborator·maintainer는 Linux·Windows·macOS 모두
 [공식 글꼴 공급 자료](../../verification/protected-font-supply/README.md)를 따른다.
 문서 key와 backend로 `manifest.json`의 조건을 선택해 공급 방식과 환경 JSON을 적용한다.
 파일명·프로그램 SHA·face와 실제 선택 기록을 대조한다. 일반 기여자에게 비공개 글꼴 확보를 요구하지 않는다.
+
+Native·fresh WASM 모두 실제 경로의 파일명이 `_MAC.otf`로 끝나는 글꼴을 공급 및 선택에서
+제외한다. 대소문자를 구분하지 않으며, 파일명을 바꾸거나 링크를 만들어 사용할 수 없다.
+보호 글꼴의 허용 조건을 변경할 때는 macOS·Windows·Linux에서 각각 모든 등록 문서를 두
+backend로 출력하고, 실제 선택과 페이지별 보호 하한을 확인한 뒤 PR을 제출한다.
+
+manifest 최상위의 `accepted_sha256_pairs`는 공통 허용 쌍이고, 문서 항목의 같은 필드는 해당 문서에만 적용한다.
+문서별 허용 쌍은 `scripts/check_protected_font.py --document <문서 key>`로 확인한다.
+기준과 후보에는 같은 파일을 같은 순서로 공급하고, 실제 사용한 SHA-256을 기록한다.
+
+이 대체 해시 등록과 검증 산출물 보존 절차는 정본 보호 문서에만 적용한다.
+전쪽 비교를 통과한 대체 해시는 공급 `manifest.json`의 해당 보호 문서 항목에 등록한다.
+대체 해시 확인을 위한 파일별 상세 SHA-256, 쪽별 비교 결과 등 실행 JSON과 로그는
+`output/pr-review/<작업명>/`에만 보존한다. `protected-font-supply/records/`에는 이 실행 산출물을 추가하지 않는다.
 
 글꼴 공급·설정이 바뀌면 새 output에서 같은 조건의 고정 base와 후보를 전쪽 비교한다.
 Rust 회귀의 [최소 글꼴 환경](../pr_review/local_validation.md#회귀-테스트의-최소-글꼴-환경)을
@@ -419,10 +461,9 @@ CDP `SystemInfo.getInfo`의 `gpu.featureStatus`를 함께 확인한다. 소프�
 `VISUAL_SWEEP_CHROME`의 실행 wrapper에 `--disable-gpu`를 지정하고 base와 후보를 같은 조건으로
 다시 산출한다. 원 GPU 결과도 보존하며 다른 실행의 쪽별 최고값을 합치지 않는다.
 
-공용 `target/pr-review`에서 base/head를 순차 빌드하면 각 실행 파일·WASM package를 별도
-output 경로에 고정하고 source·build 명령·파일 SHA를 기록한다. 빠른 Cargo 성공만으로
-producer를 확정하지 않는다. 실제 변경 경계의 출력으로 확인하고 잘못 복사한 산출물의 결과는
-무효로 구분한 뒤 재검증한다. 공유 target 전체를 삭제해 해결하지 않는다.
+기준·후보 빌드의 고정과 재사용은 [최신 devel 비교용 빌드 보존](../pr_review/local_validation.md#최신-devel-비교용-빌드-보존)을
+따른다. 로컬 `devel`이 최신 `upstream/devel`과 일치하면 기본 작업공간에서 빌드하고 기준을 `output`에
+고정한다. 실제 변경 경계의 출력으로 각 산출물의 소유를 확인한 뒤 시각 비교에 사용한다.
 
 ### macOS 외부 연결 그림 공급
 
@@ -783,6 +824,8 @@ cargo build --locked --target-dir /home/tsjang/rhwp/target/pr-review -j 8 --feat
 다른 host에서는 해당 host의 기본 rhwp 작업공간 아래 공용 `target/pr-review`로 바꾼다.
 Native PNG에는 Node·Chrome·SVG 임베딩 검사가 필요 없다. 한글 라벨의 cmap 확인에는
 Native·WASM 모두 Python `fonttools`가 필요하다(`python -m pip install fonttools`).
+WOFF2 글꼴을 공급하는 검증은 스윕과 같은 Python 환경에 `brotli`도 설치한다
+(`python -m pip install brotli`).
 WASM PNG에는 Node·Chrome과 외부 공급 글꼴 catalogue도 필요하다. SVG 진단의 필수 도구는 다음과 같다.
 
 스크립트는 실행 시작 시 다음 CLI와 Python 패키지가 있는지 확인한다.

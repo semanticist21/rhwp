@@ -1,3 +1,9 @@
+//! 관계형·고정형(저장 전후 선·채움 속성, 타원 너비에 따른 파선 시작점, 원본 투명도 바이트).
+//! 주석 갱신 2026-11-24T03:09:24+09:00 / 직전 파일 변경 d3bbdc94c4f6ec687807429a97b595c63f6fe9fb, 2026-11-24T02:46:57+09:00.
+//! 2026-11-24, Windows 한컴 2024 Print 대비 96 DPI 2px raw 실루엣. 원본 HWP·v0.9.1 HWPX 기본 해석·명시적 복구본은 각각 1쪽이며 Native·fresh WASM에서 모두 100.00%다.
+//! 가로 타원·크기 및 위치 변형·실선·그라데이션·묶음 등 13개의 1쪽 대조군도 각각 100.00%다. #9286 전 25쪽의 양쪽 최저는 100.00%다.
+//! 원본별 전쪽 측정은 `mydocs/pr/assets/semanticist21-20261124-rework/final/focus-pages.tsv`, 독립 인쇄 좌표는 같은 폴더의 `ellipse-print.tsv`에 있다.
+//!
 //! 관계형. 도형 개체 속성의 선(투명도·화살표 채움)·호 테두리·가로 정렬과 채우기 투명도를 검사한다.
 //! 선 투명도(HWP 인스턴스 ID 다음 바이트, HWPX `lineShape@alpha`)와 HWPX 채우기 투명도는 한/글
 //! 12.30처럼 0~255 정수다. 한/글에서 선 투명도 50%·채우기 30%를 준 사각형은 HWPX에
@@ -335,5 +341,141 @@ fn restricted_front_and_behind_shape_ignores_negative_para_offset() {
         let anchor = top(true, 0);
         assert!((top(true, -876) - anchor).abs() < 0.01, "{wrap}");
         assert!((top(false, -876) - (anchor - 11.68)).abs() < 0.01, "{wrap}");
+    }
+}
+
+/// 무표지 v0.9.1 파일의 같은 정수 1은 명시적 복원에서만 완전 투명으로 되돌린다.
+#[test]
+fn published_unmarked_alpha_recovery_is_explicit_and_survives_both_formats() {
+    let old = include_bytes!("../../samples/semanticist21-20261124-rework/old-transparent.hwpx");
+    let hwp = include_bytes!("../../samples/semanticist21-20261124-rework/old-transparent.hwp");
+    assert!(zip_entry(old, "META-INF/rhwp-hwp5-origin").is_none());
+    assert!(zip_entry(old, "META-INF/rhwp-byte-alpha").is_none());
+    let props = |doc: &DocumentCore| {
+        for (pi, para) in doc.document().sections[0].paragraphs.iter().enumerate() {
+            if let Some(ci) = para
+                .controls
+                .iter()
+                .position(|c| matches!(c, rhwp::model::control::Control::Shape(_)))
+            {
+                return serde_json::from_str::<serde_json::Value>(
+                    &doc.get_shape_properties_native(0, pi, ci).unwrap(),
+                )
+                .unwrap();
+            }
+        }
+        panic!("타원이 없다");
+    };
+    let original = DocumentCore::from_bytes(hwp).unwrap();
+    let recovered = DocumentCore::from_legacy_rhwp_hwpx(old, None).unwrap();
+    let standard = DocumentCore::from_bytes(old).unwrap();
+    assert_eq!(props(&original)["fillAlpha"], 255);
+    assert_eq!(props(&recovered)["fillAlpha"], 255);
+    assert_eq!(props(&standard)["fillAlpha"], 1);
+    assert!(DocumentCore::from_legacy_rhwp_hwpx(hwp, None).is_err());
+    for (source, fill) in [(&recovered, 255), (&standard, 1)] {
+        let normalized = source.export_hwpx_native().unwrap();
+        assert!(zip_entry(&normalized, "META-INF/rhwp-byte-alpha").is_some());
+        assert_eq!(
+            props(&DocumentCore::from_legacy_rhwp_hwpx(&normalized, None).unwrap())["fillAlpha"],
+            fill
+        );
+        for hwpx in [false, true] {
+            let mut doc = DocumentCore::from_bytes(&normalized).unwrap();
+            for _ in 0..2 {
+                let bytes = if hwpx {
+                    doc.export_hwpx_native()
+                } else {
+                    doc.export_hwp_native()
+                }
+                .unwrap();
+                doc = DocumentCore::from_bytes(&bytes).unwrap();
+                let fields = props(&doc);
+                assert_eq!(fields["fillAlpha"], fill);
+                assert_eq!(fields["lineAlpha"], 0);
+            }
+        }
+    }
+}
+
+/// 한컴 인쇄에서 첫 파선은 오른쪽 끝 직전에 시작해서 그 끝을 지나 아래쪽으로 이어진다.
+#[test]
+fn transparent_ellipse_preserves_the_printed_stroke_direction_after_saving() {
+    use svgtypes::{PathParser, PathSegment};
+    let portrait =
+        include_bytes!("../../samples/semanticist21-20261124-rework/old-transparent.hwp");
+    let landscape = include_bytes!("../../samples/semanticist21-20261124-rework/ellipse-wide.hwpx");
+    let [portrait_leads, landscape_leads] =
+        [portrait.as_slice(), landscape.as_slice()].map(|source| {
+            let original = DocumentCore::from_bytes(source).unwrap();
+            let saved = [
+                original.export_hwp_native().unwrap(),
+                original.export_hwpx_native().unwrap(),
+            ];
+            [source, &saved[0], &saved[1]].map(|bytes| {
+                let doc = DocumentCore::from_bytes(bytes).unwrap();
+                let svg = doc.render_page_svg_native(0).unwrap();
+                let xml = roxmltree::Document::parse(&svg).unwrap();
+                let mut contours = xml
+                    .descendants()
+                    .filter(|n| n.attribute("stroke") == Some("#972f78"));
+                let contour = contours.next().expect("원본 타원의 윤곽선");
+                assert!(contours.next().is_none(), "테두리 중복");
+                assert!(contour.attribute("stroke-dasharray").is_some());
+                assert_eq!(
+                    contour
+                        .attribute("fill-opacity")
+                        .unwrap()
+                        .parse::<f64>()
+                        .unwrap(),
+                    0.0
+                );
+                let path = contour.attribute("d").expect("파선의 시작점과 진행 방향");
+                let commands: Vec<_> = PathParser::from(path).collect::<Result<_, _>>().unwrap();
+                let PathSegment::MoveTo {
+                    abs: true,
+                    x: start_x,
+                    y: start_y,
+                } = commands[0]
+                else {
+                    panic!("닫힌 타원의 시작점");
+                };
+                let PathSegment::CurveTo {
+                    abs: true,
+                    x: east,
+                    y: equator,
+                    x2,
+                    y2,
+                    ..
+                } = commands[1]
+                else {
+                    panic!("첫 파선이 통과하는 오른쪽 끝");
+                };
+                assert!(start_x < east && start_y < y2 && y2 < equator);
+                assert_eq!(x2, east, "오른쪽 끝의 수직 접선");
+                let PathSegment::CurveTo {
+                    abs: true,
+                    x,
+                    y,
+                    y1,
+                    ..
+                } = commands[2]
+                else {
+                    panic!("오른쪽 끝에서 아래로 이어지는 호");
+                };
+                assert!(x < east && y > equator && y1 > equator);
+                assert!(matches!(
+                    commands.last(),
+                    Some(PathSegment::ClosePath { .. })
+                ));
+                equator - start_y
+            })
+        });
+    // 한컴 PDF의 첫 파선이 적도 위에서 시작하는 거리는 세로 타원이 더 길다.
+    for (portrait, landscape) in portrait_leads.into_iter().zip(landscape_leads) {
+        assert!(
+            portrait > landscape,
+            "인쇄본처럼 너비에 따라 첫 파선의 시작점이 달라야 한다"
+        );
     }
 }

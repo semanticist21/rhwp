@@ -23,11 +23,15 @@ pub(crate) fn page_starts_with_hidden_empty_lines(
     items: &[PageItem],
     hidden: &std::collections::HashSet<usize>,
     source_prefix_already_suppressed: bool,
+    stored_ladder_keeps_line: bool,
 ) -> bool {
     // 저장 줄이 없는 빈 문단은 실제 줄 상자를 소유할 수 있다. 저장 쪽의
     // 숨김 표식으로 추정하지 않고 기존 빈 문단 배치에 맡긴다.
     !source_prefix_already_suppressed
         && !para.line_segs.is_empty()
+        // 한/글이 저장한 사다리가 이 빈 줄의 전진을 이미 계상했으면 한/글은 이 줄을 감추지
+        // 않았다. 저장 조판을 그대로 따른다.
+        && !stored_ladder_keeps_line
         // 명시 쪽·구역 나누기를 소유한 문단은 사용자가 만든 줄 상자를
         // 유지한다. 저장 조판에서 추정한 자동 경계만 숨김 대상이 될 수 있다.
         && (!matches!(
@@ -41,6 +45,60 @@ pub(crate) fn page_starts_with_hidden_empty_lines(
             .chars()
             .all(|c| c.is_control() || c.is_whitespace())
         && page_has_only_hidden_empty_lines(items, hidden)
+}
+
+/// 쪽 첫 빈 문단의 저장 줄을 다음 문단의 저장 첫 줄이 「이 줄 위치 + 줄 높이 + 줄간격 + 이
+/// 문단 뒤 간격 + 다음 문단 앞 간격」에서 이어받으면, 한/글은 이 빈 줄을 감추지 않고 줄 상자를
+/// 남겼다(빈 줄 감추기 구역에서도 한/글 2020 Print 가 이 자리에 다음 내용을 둔다: 과업지시서
+/// 2쪽 빈 줄 0 + 1800 + 1080 = 「목 차」 2880, 시장구조조사 100쪽 0 + 1000 + 300 + 앞 간격
+/// 3320 = 「제3절 소결」 4620). 감춘 줄이면 다음 줄은 이 줄의 전진 없이 이어진다. 합성 줄과
+/// 파서가 누적해 만든 사다리(`saved_ladder` 거짓 — HWP3 원본)는 저장 증거가 아니다.
+pub(crate) fn stored_ladder_keeps_empty_line(
+    saved_ladder: bool,
+    para: &Paragraph,
+    next: Option<&Paragraph>,
+    para_styles: &[crate::renderer::style_resolver::ResolvedParaStyle],
+    dpi: f64,
+) -> bool {
+    use crate::model::paragraph::LineSeg;
+    if !saved_ladder {
+        return false;
+    }
+    let (Some(next), [line]) = (next, para.line_segs.as_slice()) else {
+        return false;
+    };
+    let Some(next_line) = next.line_segs.first() else {
+        return false;
+    };
+    if line.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY != 0
+        || next_line.tag & LineSeg::TAG_IMPLEMENTATION_PROPERTY != 0
+        || para.stored_text_partition_is_dirty()
+        || next.stored_text_partition_is_dirty()
+        || para.cell_format_vpos_dirty
+        || next.cell_format_vpos_dirty
+    {
+        return false;
+    }
+    let spacing = |p: &Paragraph, before: bool| {
+        para_styles
+            .get(p.para_shape_id as usize)
+            .map_or(0, |style| {
+                crate::renderer::px_to_hwpunit(
+                    if before {
+                        style.spacing_before
+                    } else {
+                        style.spacing_after
+                    },
+                    dpi,
+                )
+            })
+    };
+    let kept_end = i64::from(line.vertical_pos)
+        + i64::from(line.line_height)
+        + i64::from(line.line_spacing)
+        + i64::from(spacing(para, false))
+        + i64::from(spacing(next, true));
+    (i64::from(next_line.vertical_pos) - kept_end).abs() <= 1
 }
 
 pub(crate) fn page_has_only_hidden_empty_lines(
@@ -92,9 +150,26 @@ pub fn estimate_footnote_note_height(footnote: &Footnote, dpi: f64) -> f64 {
     }
 }
 
+/// 각주 구분선 띠의 상한(0.25mm).
+///
+/// [#8997] oracle10k 142 문서 2,921 쪽의 한컴 Print 벡터 좌표에서 첫 각주 줄 위끝 − 구분선
+/// 중심 − 「구분선 아래」 간격이 굵기 0.32·0.48·1.12·1.92·2.72px 모두 같은 0.95px 였다
+/// (rhwp 는 굵기 전체를 더했다). 쪽 아래에 붙는 구역의 위끝은 이 띠로 정해진다.
+/// 띠는 굵기(최소 0.5px)와 이 상한 중 작은 값이다 — 상한을 가는 선에도 그대로 쓰면
+/// 0.48px 이하 문서 7건에서 쪽이 늘었다(한컴 쪽수와 어긋남).
+pub(crate) const FOOTNOTE_SEPARATOR_BAND_MM: f64 = 0.25;
+
+pub(crate) fn footnote_separator_band_px(shape: &FootnoteShape, dpi: f64) -> f64 {
+    super::layout::border_width_to_px(shape.separator_line_width)
+        .max(0.5)
+        .min(FOOTNOTE_SEPARATOR_BAND_MM * dpi / 25.4)
+}
+
+/// 각주 구역에서 구분선이 차지하는 높이: 구분선 위 + 구분선 띠 + 구분선 아래 간격.
+/// 굵은 구분선의 굵기 전체는 이 높이에 들지 않는다([`FOOTNOTE_SEPARATOR_BAND_MM`]).
 pub fn footnote_separator_overhead_px(shape: &FootnoteShape, dpi: f64) -> f64 {
     super::hwpunit_to_px(shape.separator_above_margin_hu() as i32, dpi)
-        + super::layout::border_width_to_px(shape.separator_line_width).max(0.5)
+        + footnote_separator_band_px(shape, dpi)
         + super::hwpunit_to_px(shape.separator_below_margin_hu() as i32, dpi)
 }
 
@@ -1181,8 +1256,9 @@ pub struct OverlayRowFragment {
     pub opening_height: f64,
     pub remaining_height: f64,
     pub owns_stored_frame: bool,
+    pub fully_consumed: bool,
 }
-crate::storage::clone_fields!(OverlayRowFragment, {end_cut, opening_height, remaining_height, owns_stored_frame});
+crate::storage::clone_fields!(OverlayRowFragment, {end_cut, opening_height, remaining_height, owns_stored_frame, fully_consumed});
 
 /// [#4568] 쪽을 넘긴 overlay 표의 잔여 행 조각.
 #[derive(Debug, Clone)]
@@ -1344,6 +1420,8 @@ pub enum PageItem {
         /// 직전 조각에서 내용이 모두 소비된 시작 행의 남은 빈 물리 밴드 높이(px).
         /// `start_cut`은 해당 셀 내용을 숨기고 이 값은 테두리/셀 기하만 보존한다.
         start_row_height_override: Option<f64>,
+        /// 앞 조각이 예약한 자식 행의 미소비 물리 높이. 부모 행 컷과 독립적이다.
+        remaining_child_row: Option<Box<(usize, f64)>>,
         /// 앞 조각의 실제 병합 점유를 반영해 예약에서 확정한 행 높이.
         /// 비어 있으면 기존 측정 경로이며 paint는 확정값을 다시 분배하지 않는다.
         /// [#7531] 쪽을 넘어온 걸침 칸의 끝 행에서 앞 쪽 빈 띠만큼 덜 높이 `(행, px)`.
@@ -1420,6 +1498,7 @@ impl crate::storage::CloneWithStorage for PageItem {
                 row_cursor_is_nested,
                 end_row_height_override,
                 start_row_height_override,
+                remaining_child_row,
                 straddle_row_relief,
                 straddle_page_bands,
                 fragment_row_heights,
@@ -1444,6 +1523,7 @@ impl crate::storage::CloneWithStorage for PageItem {
                     start_row_height_override,
                     storage,
                 )?,
+                remaining_child_row: crate::storage::try_clone(remaining_child_row, storage)?,
                 straddle_row_relief: crate::storage::try_clone(straddle_row_relief, storage)?,
                 straddle_page_bands: crate::storage::try_clone(straddle_page_bands, storage)?,
                 fragment_row_heights: crate::storage::try_clone(fragment_row_heights, storage)?,
@@ -1691,6 +1771,7 @@ impl PageItem {
                 row_cursor_is_nested,
                 end_row_height_override,
                 start_row_height_override,
+                remaining_child_row,
                 straddle_row_relief,
                 straddle_page_bands,
                 fragment_row_heights,
@@ -1709,6 +1790,7 @@ impl PageItem {
                 row_cursor_is_nested: *row_cursor_is_nested,
                 end_row_height_override: *end_row_height_override,
                 start_row_height_override: *start_row_height_override,
+                remaining_child_row: remaining_child_row.clone(),
                 straddle_row_relief: straddle_row_relief.clone(),
                 straddle_page_bands: straddle_page_bands.clone(),
                 fragment_row_heights: fragment_row_heights.clone(),
@@ -2112,6 +2194,7 @@ crate::storage::clone_fields!(PaginationOpts, {hide_empty_line, respect_vpos_res
 #[derive(Debug, Clone, Copy, Default)]
 struct PaginationSourceContext {
     source_uses_inline_field_reset: bool,
+    saved_vertical_ladder: bool,
     hwp3_converted_missing_lineseg: bool,
     stored_geometry_policy: crate::model::provenance::StoredGeometryPolicy,
     stored_body_layout: bool,
@@ -2126,6 +2209,7 @@ impl PaginationSourceContext {
             source_uses_inline_field_reset: profile.hwpx_stored_layout()
                 || hwp3_converted_missing_lineseg,
             hwp3_converted_missing_lineseg,
+            saved_vertical_ladder: profile.saved_vertical_ladder(),
             stored_geometry_policy: profile.stored_geometry_policy(),
             stored_body_layout: !profile.session_edited()
                 && (profile.hwp5_stored_pagination_layout() || profile.hwpx_stored_layout()),
@@ -2135,6 +2219,7 @@ impl PaginationSourceContext {
     fn from_public_variant(is_hwp3_variant: bool) -> Self {
         Self {
             source_uses_inline_field_reset: is_hwp3_variant,
+            saved_vertical_ladder: !is_hwp3_variant,
             hwp3_converted_missing_lineseg: is_hwp3_variant,
             stored_geometry_policy: is_hwp3_variant.into(),
             stored_body_layout: false,

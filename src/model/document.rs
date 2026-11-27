@@ -26,9 +26,6 @@ pub const RHWP_BYTE_ALPHA_HWPX_MARKER_PATH: &str = "META-INF/rhwp-byte-alpha";
 /// 이전 `1` 산출물의 축 해석은 읽기 호환 경로에서 유지한다.
 pub const HWP5_ORIGIN_HWPX_PARAGRAPH_AXIS: &[u8] = b"2:paragraph-utf16";
 
-/// HWPX에서 변환한 HWP의 저장 조판 계보를 HWPX 재저장에서도 보존한다.
-pub const HWPX_ORIGIN_HWPX_MARKER_PATH: &str = "META-INF/rhwp-hwpx-origin";
-
 /// HWP3 원본에서 HWPX 로 export 한 산출물 마커 — 재열람 시 hwp3_lineage 를
 /// 복원해 직파싱 HWP3 와 같은 레이아웃 계약(저장-스텝 등)을 밟게 한다.
 /// 없으면 render-diff 왕복이 프로파일 차이만큼 갈라진다(hwp3-sample p7 14.9px).
@@ -63,6 +60,15 @@ pub const HWPX_ORIGIN_STREAM_PATH: &str = "/RhwpHwpxOrigin";
 /// 줄을 재구성해야 같은 조판 입력이 된다. 종전 값 `1` 은 이 계약 없이 쓴 변환본이므로
 /// 값으로 구분해 종전 파일의 읽기 규칙을 바꾸지 않는다.
 pub const HWPX_ORIGIN_SOURCE_LINES: &[u8] = b"2";
+
+/// [#9039] `/RhwpHwpxOrigin` 의 HWP 줄 규칙 값(`1`)을 HWPX 로 옮기는 ZIP 보조 엔트리.
+///
+/// 값 `1` 의 HWP 는 HWPX 계보(`hwpx_stored_layout`)로 조판하지만 저장 줄은 HWP 규칙으로
+/// 읽는다 — XML import 의 줄 재구성(원점에 머문 본문 사다리 재조판 등)을 하지 않는다.
+/// 이 계약을 싣지 않고 HWPX 로 저장하면 다시 열 때 같은 저장 줄이 XML 규칙으로 다시
+/// 짜여 원본과 갈라진다(`issue2439_…`: 33문단의 저장 줄 전부). 값은 원본 스트림 값을
+/// 그대로 싣고, HWPX → HWP 저장은 이 값을 `/RhwpHwpxOrigin` 으로 되돌린다.
+pub const HWPX_ORIGIN_HWPX_MARKER_PATH: &str = "META-INF/rhwp-hwpx-origin";
 
 /// [#3707] HWP3 출처 마커. `RhwpHwpxOrigin` 과 같은 방식이다.
 ///
@@ -575,6 +581,21 @@ impl Document {
         self.extra_streams.iter().any(|(path, value)| {
             path == HWPX_ORIGIN_STREAM_PATH && value == HWPX_ORIGIN_SOURCE_LINES
         })
+    }
+
+    /// [#9039] HWPX 계보로 조판하되 저장 줄은 HWP 규칙으로 읽는 문서의 출처 값.
+    ///
+    /// HWP 는 `/RhwpHwpxOrigin` 값이 [`HWPX_ORIGIN_SOURCE_LINES`] 가 아닐 때(종전 값 `1`),
+    /// HWPX 는 그 값을 옮겨 실은 [`HWPX_ORIGIN_HWPX_MARKER_PATH`] 가 있을 때 값을 돌려준다.
+    /// 두 형식에서 같은 문서가 같은 줄 읽기 규칙을 쓰도록 저장·읽기가 이 값을 공유한다.
+    pub fn hwpx_origin_hwp_line_rules(&self) -> Option<&[u8]> {
+        self.extra_streams
+            .iter()
+            .find(|(path, value)| {
+                path == HWPX_ORIGIN_STREAM_PATH && value != HWPX_ORIGIN_SOURCE_LINES
+            })
+            .map(|(_, value)| value.as_slice())
+            .or_else(|| self.hwpx_aux_entry(HWPX_ORIGIN_HWPX_MARKER_PATH))
     }
 
     /// [#2403 Stage 1] 레이아웃 호환 정책 질의 표면.

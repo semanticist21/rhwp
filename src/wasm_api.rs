@@ -247,7 +247,7 @@ fn render_page_to_canvas_filtered_with_profile_impl(
         canvas.set_height(scaled_canvas_extent(tree.page_height, scale));
 
         let mut renderer = WebCanvasRenderer::new(canvas)?;
-        renderer.set_hft_outline_fonts(&document.hft_outline_fonts);
+        renderer.set_hft_outline_fonts(&document.legacy_font_outlines);
         renderer.show_paragraph_marks = document.show_paragraph_marks;
         renderer.show_control_codes = document.show_control_codes;
         renderer.control_label_color = document.user_label_color();
@@ -315,7 +315,7 @@ fn render_page_patch_to_canvas_filtered_with_profile_impl(
     }
 
     let mut renderer = WebCanvasRenderer::new(canvas)?;
-    renderer.set_hft_outline_fonts(&document.hft_outline_fonts);
+    renderer.set_hft_outline_fonts(&document.legacy_font_outlines);
     renderer.show_paragraph_marks = document.show_paragraph_marks;
     renderer.show_control_codes = document.show_control_codes;
     renderer.control_label_color = document.user_label_color();
@@ -995,7 +995,7 @@ impl HwpDocument {
         .map_err(JsValue::from)
     }
 
-    /// 문서 내 지속 HFT 윤곽 등록의 소유 판정에 쓰이는 선언과 현재 환경.
+    /// 인쇄용 글꼴 윤곽을 연결할 때 사용하는 원본 글꼴 선언과 현재 환경.
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen(js_name = getHftOutlineFontContext)]
     pub fn get_hft_outline_font_context(&self) -> Result<String, JsValue> {
@@ -1015,7 +1015,7 @@ impl HwpDocument {
             .map_err(|error| JsValue::from_str(&error.to_string()))
     }
 
-    /// 실제 FontFace의 원본 HFT 프로그램을 paint 전용으로 등록한다. 재조판하지 않는다.
+    /// FontFace에 적재한 글꼴을 인쇄용 윤곽으로 등록한다. 쪽 배치는 그대로 유지한다.
     #[wasm_bindgen(js_name = registerHftOutlineFont)]
     pub fn register_hft_outline_font(
         &mut self,
@@ -1067,7 +1067,7 @@ impl HwpDocument {
     #[cfg(target_arch = "wasm32")]
     #[wasm_bindgen(js_name = clearTextFontOutline)]
     pub fn clear_text_font_outline_wasm(&mut self, family: &str) {
-        self.hft_outline_fonts.clear_outline_family(family);
+        self.legacy_font_outlines.clear_outline_family(family);
     }
 
     /// TTC 원본 신원을 보존한 paint 후보. FontFace용 정규화 사본과 구분한다.
@@ -1551,7 +1551,7 @@ impl HwpDocument {
             canvas.set_height(scaled_canvas_extent(tree.page_height, scale));
 
             let mut renderer = WebCanvasRenderer::new(canvas)?;
-            renderer.set_hft_outline_fonts(&self.hft_outline_fonts);
+            renderer.set_hft_outline_fonts(&self.legacy_font_outlines);
             renderer.show_paragraph_marks = self.show_paragraph_marks;
             renderer.show_control_codes = self.show_control_codes;
             renderer.control_label_color = self.user_label_color();
@@ -1616,7 +1616,7 @@ impl HwpDocument {
         canvas.set_height(scaled_canvas_extent(tree.root.bbox.height, scale));
 
         let mut renderer = WebCanvasRenderer::new(canvas)?;
-        renderer.set_hft_outline_fonts(&self.hft_outline_fonts);
+        renderer.set_hft_outline_fonts(&self.legacy_font_outlines);
         renderer.show_paragraph_marks = self.show_paragraph_marks;
         renderer.show_control_codes = self.show_control_codes;
         renderer.control_label_color = self.user_label_color();
@@ -1736,7 +1736,7 @@ impl HwpDocument {
         canvas.set_height(scaled_canvas_extent(tree.root.bbox.height, scale));
 
         let mut renderer = WebCanvasRenderer::new(canvas)?;
-        renderer.set_hft_outline_fonts(&self.hft_outline_fonts);
+        renderer.set_hft_outline_fonts(&self.legacy_font_outlines);
         renderer.show_paragraph_marks = self.show_paragraph_marks;
         renderer.show_control_codes = self.show_control_codes;
         renderer.control_label_color = self.user_label_color();
@@ -2580,6 +2580,57 @@ impl HwpDocument {
             after_inline_control,
         )
         .map_err(|e| e.into())
+    }
+
+    /// Studio의 커서 좌표는 인라인 개체도 한 자리로 센다. 문자 범위 API와 구별한다.
+    #[wasm_bindgen(js_name = replaceTextAtCellCaretByPath)]
+    pub fn replace_text_at_cell_caret_by_path(
+        &mut self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+        offset: u32,
+        count: u32,
+        text: &str,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        self.replace_text_in_cell_by_path(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            offset as usize,
+            count as usize,
+            text,
+            true,
+        )
+        .map_err(Into::into)
+    }
+
+    #[wasm_bindgen(js_name = getTextAtCellCaretByPath)]
+    pub fn get_text_at_cell_caret_by_path(
+        &self,
+        section_idx: u32,
+        parent_para_idx: u32,
+        path_json: &str,
+        offset: u32,
+        count: u32,
+    ) -> Result<String, JsValue> {
+        let path = DocumentCore::parse_cell_path(path_json)?;
+        let (start, length, _) = self.cell_caret_text_range(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            offset as usize,
+            count as usize,
+        )?;
+        self.get_text_in_cell_by_path(
+            section_idx as usize,
+            parent_para_idx as usize,
+            &path,
+            start,
+            length,
+        )
+        .map_err(Into::into)
     }
 
     #[wasm_bindgen(js_name = deleteTextInCellByPath)]
@@ -3856,6 +3907,20 @@ impl HwpDocument {
                 forward,
             )
             .map_err(|e| e.into())
+    }
+
+    /// 지정한 누름틀이 글자 위치를 포함하면 해당 필드 정보와 현재 범위를 반환한다.
+    #[wasm_bindgen(js_name = getFieldInfoForControlAt)]
+    pub fn get_field_info_for_control_at(
+        &self,
+        place_json: &str,
+        control_idx: u32,
+        char_offset: u32,
+    ) -> Result<String, JsValue> {
+        let place = crate::document_core::queries::parse_bookmark_place(place_json)?;
+        Ok(self
+            .core
+            .field_info_for_control_at(&place, control_idx as usize, char_offset as usize))
     }
 
     /// 주소 문단(`place` 꼴 JSON)의 `control_idx` 누름틀을 활성 필드로 둔다. 같은 글자 자리의 여러 누름틀 가운데

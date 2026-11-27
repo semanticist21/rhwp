@@ -14,6 +14,53 @@ use crate::renderer::typeset::{
 
 use super::{BlockTableInput, SplitTableEntry};
 
+/// 앞 쪽의 빈 줄 뒤에 새 쪽으로 이월한 표의 저장 끝이 이어지는지 확인한다.
+fn deferred_table_previous_page_blanks(
+    paragraphs: &[crate::model::paragraph::Paragraph],
+    para_idx: usize,
+    table: &crate::model::table::Table,
+) -> Option<std::ops::Range<usize>> {
+    use crate::model::paragraph::ColumnBreakType;
+
+    let host = paragraphs.get(para_idx)?;
+    let [anchor] = host.line_segs.as_slice() else {
+        return None;
+    };
+    if !matches!(host.controls.as_slice(), [Control::Table(_)])
+        || para_has_non_whitespace_text(host)
+        || host.stored_text_partition_is_dirty()
+        || is_synthetic_line_seg(anchor)
+        || anchor.vertical_pos <= 0
+    {
+        return None;
+    }
+
+    let first = para_idx + 1;
+    let table_end = i64::from(table.outer_margin_top)
+        + i64::from(table.common.height)
+        + i64::from(table.outer_margin_bottom);
+    for (index, next) in paragraphs.iter().enumerate().skip(first) {
+        let [line] = next.line_segs.as_slice() else {
+            break;
+        };
+        if !next.controls.is_empty()
+            || next.column_type != ColumnBreakType::None
+            || para_has_non_whitespace_text(next)
+            || next.stored_text_partition_is_dirty()
+            || is_synthetic_line_seg(line)
+        {
+            break;
+        }
+        if line.vertical_pos <= anchor.vertical_pos {
+            return (index > first
+                && line.vertical_pos < anchor.vertical_pos
+                && i64::from(line.vertical_pos) == table_end)
+                .then_some(first..index);
+        }
+    }
+    None
+}
+
 impl TypesetEngine {
     pub(super) fn prepare_block_table_continuation<'a>(
         &self,
@@ -59,6 +106,7 @@ impl TypesetEngine {
             mt,
             row_geometry_table,
             declared_table_height,
+            stored_completed_row_frames,
             ..
         } = entry;
         let row_count = mt.row_heights.len();
@@ -423,13 +471,18 @@ impl TypesetEngine {
             - st.current_footnote_height
             - st.current_zone_y_offset
             - st.current_bottom_fixed_exclusion;
-        let source_single_cell_row_frames = paragraphs_all.get(para_idx + 1).and_then(|next| {
-            layout_engine.native_single_cell_source_row_frames(para, next, table, styles)
+        let source_row_frames = stored_completed_row_frames.or_else(|| {
+            layout_engine.native_single_cell_source_row_frames(
+                para,
+                paragraphs_all.get(para_idx + 1)?,
+                table,
+                styles,
+            )
         });
-        let source_single_cell_first_frame_fits = st.col_count == 1
+        let source_row_first_frame_fits = st.col_count == 1
             && std::ptr::eq(table, row_geometry_table)
             && ft.table_footnotes.is_empty()
-            && source_single_cell_row_frames.is_some_and(|frame| {
+            && source_row_frames.as_ref().is_some_and(|frame| {
                 let base = st.vpos_page_base.unwrap_or(0);
                 frame.opening_anchor_hu >= base
                     && frame.opening_table_top_hu >= frame.opening_anchor_hu
@@ -451,12 +504,14 @@ impl TypesetEngine {
         .filter(|frame| {
             let positive_offset =
                 hwpunit_to_px((table.common.vertical_offset as i32).max(0), self.dpi);
+            let available = actual_first_boundary
+                - st.current_height
+                - ft.host_spacing.before
+                - positive_offset;
             st.current_height > 0.0
-                && st.current_height
-                    + ft.host_spacing.before
-                    + positive_offset
-                    + frame.opening_height
-                    <= actual_first_boundary + 0.5
+                && frame.opening_height <= available + 0.5
+                && (frame.deferred_picture_band_height.is_none()
+                    || frame.continuation_height > available)
                 && frame.continuation_height <= base_available
         });
 
@@ -1168,7 +1223,7 @@ impl TypesetEngine {
             // The same authenticated opening box that scan/paint consume fits
             // the real note boundary. An earlier safety-band probe must not
             // discard its page owner before that shared plan is consulted.
-            && !source_single_cell_first_frame_fits
+            && !source_row_first_frame_fits
             && (stored_page_top_tac_table
                 || (remaining_on_page_for_first_unit < split_unit_h && !st.current_items.is_empty()))
         {
@@ -1488,9 +1543,35 @@ impl TypesetEngine {
                         composed_all,
                         styles,
                     );
+                    // #8997 한컴 Print 90쪽. 실제 이월 지점에서 앞 쪽의 빈 줄과
+                    // 새 쪽의 표 끝을 구분한다. 저장 후속 vpos가 선언 높이와
+                    // 바깥 여백의 합이면 새 쪽에서는 옛 문단 오프셋을 반복하지 않는다.
+                    let previous_page_blanks = (st.col_count == 1
+                        && st.profile.hwp5_stored_pagination_layout()
+                        && !st.profile.session_edited()
+                        && is_para_topbottom_float(&table.common)
+                        && table.layout_page_break()
+                            == crate::model::table::TablePageBreak::RowBreak
+                        && table.common.flow_with_text
+                        && !table.common.allow_overlap
+                        && (table.common.vertical_offset as i32) > 0)
+                        .then(|| {
+                            deferred_table_previous_page_blanks(paragraphs_all, para_idx, table)
+                        })
+                        .flatten();
+                    let stored_blanks_relocated = previous_page_blanks.is_some();
+                    if let Some(blanks) = previous_page_blanks {
+                        for index in blanks {
+                            if !st.prefilled_paras.contains(&index) {
+                                st.place_unadvanced_empty_paragraph(index);
+                                st.mark_prefilled_paragraph(index);
+                            }
+                        }
+                    }
                     // 내용 유닛을 수용하지 못한 저장 흐름 표는 호스트 쪽을 떠났다.
                     // 거리 소진은 추정 임계값이 아니라 이 실제 전이에서 확정한다.
-                    first_anchor_offset_consumed = st.col_count == 1
+                    first_anchor_offset_consumed = stored_blanks_relocated
+                        || (st.col_count == 1
                     && (st.profile.hwpx_stored_layout()
                         || st.profile.hwp5_stored_pagination_layout())
                     && !st.profile.session_edited()
@@ -1521,7 +1602,7 @@ impl TypesetEngine {
                             && ft.caption_height > 0.0
                             && all_rows_h + first_frag_overhead > base_available))
                     && !table.common.allow_overlap
-                    && (table.common.vertical_offset as i32) > 0;
+                    && (table.common.vertical_offset as i32) > 0);
                     st.advance_column_or_new_page();
                 }
             }
@@ -1647,16 +1728,7 @@ impl TypesetEngine {
             table,
             self.dpi,
         ) + layout_engine
-            .saved_single_cell_terminal_host_spacing_px(table, para, styles)
-            + crate::renderer::layout::stored_unconsumed_rowbreak_host_advance_hu(
-                self.profile.get().hwp5_stored_pagination_layout(),
-                para,
-                table,
-                paragraphs_all.get(para_idx + 1),
-                st.pre_emitted_host_paras.contains(&para_idx),
-            )
-            .map(|advance| hwpunit_to_px(advance, self.dpi))
-            .unwrap_or(0.0);
+            .saved_single_cell_terminal_host_spacing_px(table, para, styles);
         // 호스트 배치를 처음 조회한 뒤 내용 소비 없는 이월로 조각이 바뀔 수 있다.
         // 실제 새 프레임에서 닫힌 원본 상자를 다시 결정하고,
         // 스캐너 예산과 확정 단계가 그 원점·흐름 끝을 함께 사용하게 한다.
@@ -1770,7 +1842,7 @@ impl TypesetEngine {
         // The authenticated cut and both boxes also own their original first
         // anchor. Reusing only the cut while keeping a drifted sequential
         // cursor places a correct fragment in the wrong part of the page.
-        let source_single_cell_first_placement = source_single_cell_row_frames.and_then(|frame| {
+        let source_row_first_placement = source_row_frames.as_ref().and_then(|frame| {
             if st.col_count != 1
                 || !std::ptr::eq(table, row_geometry_table)
                 || host_frame
@@ -1836,7 +1908,7 @@ impl TypesetEngine {
             });
         let relocated_picture_successor = relocated_picture_frame
             .then(|| {
-                let next = paragraphs_all.get(para_idx + 1)?;
+                let (_, next) = st.table_flow_successor(para_idx, paragraphs_all)?;
                 let top = if let Some(rows) = relocated_picture_caption_rows {
                     rows.iter().sum::<f64>()
                         + hwpunit_to_px(
@@ -1844,6 +1916,22 @@ impl TypesetEngine {
                                 + i32::from(table.outer_margin_bottom),
                             self.dpi,
                         )
+                } else if let Some(origin) = first_anchor_offset_consumed
+                    .then(|| {
+                        crate::renderer::float_placement::stored_relocated_measured_table_successor_origin(
+                            true,
+                            para,
+                            table,
+                            Some(next),
+                            ft.effective_height,
+                            self.dpi,
+                        )
+                    })
+                    .flatten()
+                {
+                    // 이미 앞 쪽에 둔 빈 줄을 건너뛴 첫 저장 줄이 온전한 표의
+                    // 실제 높이를 닫는다. 부분 컷의 논리 전진 높이를 더하지 않는다.
+                    origin
                 } else {
                     crate::renderer::float_placement::stored_relocated_picture_successor_origin(
                         true,
@@ -1866,7 +1954,7 @@ impl TypesetEngine {
             computed_host_tail,
             first_anchor_offset_consumed,
             opening_rowspan_block_cuts_after_first_row,
-            host_placement: source_single_cell_first_placement.or(fragment_host_placement),
+            host_placement: source_row_first_placement.or(fragment_host_placement),
             host_frame,
             empty_opening_row_frame,
             row_count,
@@ -1883,7 +1971,7 @@ impl TypesetEngine {
             source_text_first_frame_height: source_text_frame_top
                 .filter(|_| st.profile.hwp5_stored_pagination_layout())
                 .map(|_| hwpunit_to_px(table.common.height as i32, self.dpi)),
-            source_single_cell_row_frames,
+            source_row_frames,
             rowspan_touched,
             cut_row_heights: cut_row_h,
             whole_row_fit_heights: whole_row_fit_h,
@@ -1914,7 +2002,7 @@ impl TypesetEngine {
                     || (st.profile.hwp5_stored_pagination_layout()
                         && source_text_frame_top.is_some())
                     || empty_opening_row_frame.is_some()
-                    || source_single_cell_first_placement.is_some()
+                    || source_row_first_placement.is_some()
                     // [#8105] 한/글 실측(사다리 D): 쪽 끝 경계는 이미 놓인 각주 영역의 위(구분선 위
                     // 여백 포함)다 — 보수 안전띠는 없다(1130000 50쪽 표 pi=532 행 0 이 각주 위까지
                     // 통째로 든다). 각주가 없는 쪽은 띠도 없어 그대로 두고, 표 자신의 각주는 따로
@@ -1945,7 +2033,7 @@ impl TypesetEngine {
             .flatten(),
             first_fragment_saved_offset: {
                 let column = st.inline_flow_column();
-                source_single_cell_first_placement
+                source_row_first_placement
                     .map(|placement| placement.anchor_y)
                     .or_else(|| {
                         source_text_frame_top

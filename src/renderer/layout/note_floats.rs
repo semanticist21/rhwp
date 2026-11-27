@@ -188,7 +188,7 @@ impl LayoutEngine {
                         marker_section,
                         marker_para,
                         control_index,
-                        false,
+                        None,
                     );
                 }
                 Control::Shape(_) => {

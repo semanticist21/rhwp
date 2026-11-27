@@ -462,7 +462,10 @@ impl TypesetEngine {
             // (`cut_row_h`)로 자르되, #3820의 native HWP5 rewind 형상에서 온전한
             // 행을 남길지 판단할 때는 renderer가 paint할 footprint를 사용한다.
             let row_start_cut: &[usize] = if r == cursor_row { &start_cut } else { &[] };
-            let row_total = row_query.whole_row_height(row_start_cut, whole_row_fit_h);
+            let row_total = v
+                .deferred_opening_row_height
+                .filter(|_| r == cursor_row)
+                .unwrap_or_else(|| row_query.whole_row_height(row_start_cut, whole_row_fit_h));
             // 온전한 행 후보에는 rowspan 잔여 내용도 예약한다. 아래에서 실제
             // end_cut을 선택하면 row_cut_content_height로 분할 높이를 다시 측정하고,
             // 렌더러도 같은 end_cut을 받아 잔여 전체 높이 보정을 생략한다.
@@ -779,13 +782,28 @@ impl TypesetEngine {
             // Stored vpos-frame resets are source-owned physical fragment boundaries.
             // First take the ordinary budget cut, then extend only to the end of
             // the recorded source frame when that exact CellUnit boundary is known.
-            let (mut res, mut budget) = layout_engine.advance_row_cut_for_physical_band(
-                table,
-                r,
-                row_start_cut,
-                (avail_for_rows - consumed - cs_before + source_cell_rounding_slack).max(0.0),
-                styles,
-            );
+            let stored_nested_page_band = (!start_cut_is_block)
+                .then_some(v.reflow_blank_avail_for_rows)
+                .flatten()
+                .and_then(|limit| {
+                    layout_engine.advance_stored_nested_page_band(
+                        table,
+                        r,
+                        row_start_cut,
+                        (limit.min(avail_for_rows) - consumed - cs_before).max(0.0),
+                        v.remaining_child_row,
+                        styles,
+                    )
+                });
+            let (mut res, mut budget) = stored_nested_page_band.unwrap_or_else(|| {
+                layout_engine.advance_row_cut_for_physical_band(
+                    table,
+                    r,
+                    row_start_cut,
+                    (avail_for_rows - consumed - cs_before + source_cell_rounding_slack).max(0.0),
+                    styles,
+                )
+            });
             if std::env::var("RHWP_DIAG_SCAN").is_ok() {
                 eprintln!(
                     "DIAG_SCAN CUT_BASE r={} cursor={} avail={:.3} prior={:.3} cs={:.3} padding={:.3} content_budget={:.3} cut_budget={:.3} height={:.3} fully={} end_cut={:?}",
@@ -915,6 +933,47 @@ impl TypesetEngine {
                 "DIAG_SCAN CUT_TRY r={} budget={:.1} padding={:.1} consumed_h={:.1} fully={} end_cut={:?}",
                 r, budget, padding, res.consumed_height, res.fully_consumed, res.end_cut
             );
+            }
+            // 한 쪽의 기존 각주 위에서 가른 첫 조각은 표의 종료 바깥 여백을
+            // 아직 소비하지 않는다. 칸 모두의 저장 되감김이 선언 상자를 닫고
+            // 그 상자가 각주 영역 전에 들어갈 때에만 원본 컷과 물리 높이를 받는다.
+            let existing_note_opening_band = (!is_continuation
+                && cursor_row == 0
+                && r > cursor_row
+                && row_start_cut.is_empty()
+                && st.profile.hwp5_stored_pagination_layout()
+                && !st.profile.session_edited()
+                && !v.source_frame_origin_unverified
+                && v.existing_note_opening_rows.is_some()
+                && v.unreserved_outer_bottom > 0.0
+                && res.consumed_height > 0.0
+                && !res.fully_consumed)
+                .then(|| {
+                    layout_engine.stored_joint_row_opening_height(
+                        table,
+                        r,
+                        whole_row_fit_h,
+                        row_start_cut,
+                        &res.end_cut,
+                        styles,
+                    )
+                })
+                .flatten()
+                .filter(|height| {
+                    let frame_end = consumed + cs_before + height;
+                    frame_end > avail_for_rows
+                        && frame_end <= avail_for_rows + v.unreserved_outer_bottom
+                        && frame_end <= v.avail_for_rows
+                        && v.existing_note_opening_rows
+                            .is_some_and(|rows| frame_end <= rows)
+                });
+            if let Some(height) = existing_note_opening_band {
+                consumed += cs_before + height;
+                end_row = r + 1;
+                split_end_limit = res.consumed_height;
+                split_end_cut = res.end_cut;
+                end_row_height_override = Some(height);
+                return false;
             }
             // Native HWP5의 empty-host → 1×1 child → 내부 표 형상은 child 본문의
             // 앞 몇 줄만 쪽 끝에 두면 실제 ink가 다음 internal table보다 한 쪽 먼저

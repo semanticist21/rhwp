@@ -41,10 +41,19 @@ impl TypesetEngine {
         let table_footnotes = &input.prepared.table_footnotes;
         let table_footnotes_follow_terminal = table.cells.iter().any(|cell| cell.row_span > 1);
         let host_spacing_total = input.prepared.host_spacing_total;
-        let terminal_host_spacing = input.prepared.terminal_host_spacing;
         let relax_terminal_table_footnote_fit = input.prepared.relax_terminal_table_footnote_fit;
         let cursor_row = input.start.cursor_row;
         let is_continuation = input.start.is_continuation;
+        let terminal_host_spacing = input.prepared.terminal_host_spacing
+            + crate::renderer::layout::stored_unconsumed_rowbreak_host_advance_hu(
+                st.profile.hwp5_stored_pagination_layout(),
+                input.source.paragraph,
+                table,
+                input.source.paragraphs_all.get(para_idx + 1),
+                st.pre_emitted_host_paras.contains(&para_idx),
+                is_continuation,
+            )
+            .map_or(0.0, |advance| hwpunit_to_px(advance, self.dpi));
         let start_cut_is_block = input.start.start_cut_is_block;
         let start_row_height_override = input.start.start_row_height_override;
         let start_cut = &input.start.start_cut;
@@ -176,8 +185,25 @@ impl TypesetEngine {
                         .stored_empty_row_frame_height(row_geometry_table, row, styles)
                         .is_some_and(|minimum| height >= minimum)
             });
-        let source_first_row_frame =
-            layout_engine.saved_first_row_opening_frame(table, styles, st.layout.body_area.height);
+        let source_first_row_frame = input
+            .prepared
+            .source_row_frames
+            .as_ref()
+            .filter(|frame| frame.closing_is_blank)
+            .map(|frame| {
+                (
+                    frame.opening_cut.clone(),
+                    frame.opening_height,
+                    frame.closing_height,
+                )
+            })
+            .or_else(|| {
+                layout_engine.saved_first_row_opening_frame(
+                    table,
+                    styles,
+                    st.layout.body_area.height,
+                )
+            });
         let source_opening_row_frame = (!is_continuation
             && cursor_row == 0
             && start_cut.is_empty()
@@ -255,7 +281,7 @@ impl TypesetEngine {
         let mut partial_height: f64 =
             consumed + header_overhead + hwpunit_to_px(table.outer_cell_spacing_hu(), self.dpi);
         if let Some(accepted) = &block_acceptance {
-            partial_height += accepted.extra;
+            partial_height += accepted.height_delta;
         }
         if let Some((height, last_height)) = stored_complete_extent {
             partial_height = height;
@@ -1140,6 +1166,8 @@ impl TypesetEngine {
 
         if end_row >= row_count && split_end_limit == 0.0 {
             let skip_terminal_empty_sliver = is_continuation
+                // 스캔이 인증한 빈 종료 상자는 줄 유닛을 모두 소비한 뒤에도 물리 공간을 소유한다.
+                && !input.closes_blank_source_row()
                 // 재조판한 선언 잔여는 마지막 내용 유닛 뒤에도 실제 물리 공간을 차지한다.
                 // 이 프레임을 작은 빈 조각으로 간주해 지우지 않는다.
                 && !(start_row_height_override.is_some()
@@ -1280,6 +1308,31 @@ impl TypesetEngine {
                     ),
                 }
             } else {
+                // A whole nested row can start a continuation with no content cut.
+                // Use its accepted box so paint cannot fit it back into the first
+                // fragment's declared object height and clip the nested content.
+                if is_continuation
+                    && start_cut.is_empty()
+                    && !start_cut_is_block
+                    && end_row == cursor_row + 1
+                    && std::ptr::eq(table, row_geometry_table)
+                    && table.layout_page_break() == crate::model::table::TablePageBreak::RowBreak
+                    && table.cells.iter().any(|cell| {
+                        usize::from(cell.row) == cursor_row
+                            && cell.row_span == 1
+                            && cell.paragraphs.iter().any(|para| {
+                                para.controls.iter().any(|control| {
+                                    matches!(control, crate::model::control::Control::Table(_))
+                                })
+                            })
+                    })
+                {
+                    end_row_height_override = end_row_height_override.or_else(|| {
+                        accepted_end_row_box
+                            .filter(|&(row, _)| row == cursor_row)
+                            .map(|(_, height)| height)
+                    });
+                }
                 self.record_stored_fragment_rows(
                     st,
                     continuation,
@@ -1309,6 +1362,7 @@ impl TypesetEngine {
                     end_row_height_override,
                     start_row_height_override,
                     straddle_row_relief: straddle_row_relief.clone(),
+                    remaining_child_row: input.start.remaining_child_row.map(Box::new),
                     straddle_page_bands: straddle_page_bands.clone(),
                     fragment_row_heights: fragment_rows.clone(),
                     fragment_block_frames: fragment_block_frames.clone(),
@@ -1926,6 +1980,25 @@ impl TypesetEngine {
                         &accepted_straddle_cells,
                         styles,
                     )));
+        let completed_source_row_frame =
+            input
+                .prepared
+                .source_row_frames
+                .as_ref()
+                .is_some_and(|frame| {
+                    frame.closing_is_blank
+                        && cursor_row == 0
+                        && end_row == 1
+                        && split_block_start.is_none()
+                        && if is_continuation {
+                            start_cut.as_slice() == frame.opening_cut.as_slice()
+                                && split_end_cut.is_empty()
+                                && end_row_height_override == Some(frame.closing_height)
+                        } else {
+                            split_end_cut == frame.opening_cut
+                                && end_row_height_override == Some(frame.opening_height)
+                        }
+                });
         let complete_source_row_frame = split_block_start.is_none()
             && split_end_cut.is_empty()
             && split_end_limit <= 0.0
@@ -1994,6 +2067,21 @@ impl TypesetEngine {
             && (partial_height - hwpunit_to_px(table.common.height as i32, self.dpi)).abs()
                 <= hwpunit_to_px(1, self.dpi)
                     + f64::EPSILON * partial_height.abs().max(1.0) * (row_count + 1) as f64;
+        let remaining_child_row = input.start.remaining_child_row;
+        let next_child_row = end_row_height_override
+            .filter(|_| !row_cursor_is_nested && !start_cut_is_block && split_block_start.is_none())
+            .and_then(|height| {
+                layout_engine.stored_nested_page_band_at_height(
+                    row_geometry_table,
+                    cursor_row,
+                    start_cut,
+                    &split_end_cut,
+                    height - ledger_end_row_trim,
+                    remaining_child_row,
+                    styles,
+                )
+            })
+            .map(|band| band.remaining_child_row);
         st.append_item(PageItem::PartialTable {
             para_index: para_idx,
             control_index: ctrl_idx,
@@ -2012,6 +2100,7 @@ impl TypesetEngine {
                 .map(|height| height - ledger_end_row_trim),
             start_row_height_override,
             straddle_row_relief: straddle_row_relief.clone(),
+            remaining_child_row: remaining_child_row.map(Box::new),
             straddle_page_bands: accepted_straddle_cells.clone(),
             fragment_row_heights: fragment_rows.clone(),
             fragment_block_frames: fragment_block_frames.clone(),
@@ -2024,7 +2113,8 @@ impl TypesetEngine {
                 || source_single_cell_band.is_some()
                 || (is_continuation && stored_complete_extent.is_some())
                 || span_band_owns_end_row
-                || completed_empty_row_frame,
+                || completed_empty_row_frame
+                || completed_source_row_frame,
         });
         // 저장 호스트 원점이 없는 조각은 흐름 좌표로 같은 상자를 잰다 — 위는 흐름 커서 +
         // 호스트·세로 오프셋, 아래는 비끝 조각 상자 바닥(7062 2~9쪽 996.49 ↔ 정본 996.43).
@@ -2090,14 +2180,14 @@ impl TypesetEngine {
         if let Some((row, used, height)) = accepted_stored_row_frame {
             continuation.stored_row_box_sum = Some((row, used + height));
         }
-        // [#2238] 중간 조각의 가시 높이 기록 — used_height(페이지 확정 시 current_height)
-        // 표시용. 전진 직후 current_height 가 리셋되므로 흐름/기하 불변.
-        st.advance_flow_by(
-            host_before_overhead
-                + vert_offset_overhead
-                + partial_height
-                + fragment_outer_bottom_overhead,
-        );
+        // 첫 부동 조각이 앞의 같은 문단 개체와 앵커를 공유하면 scan에서 사용한
+        // 원점으로 하단을 대조한다. 앞 개체가 소비한 높이를 조각에 다시 더하지 않는다.
+        let fragment_end = budget.fragment_flow_origin
+            + host_before_overhead
+            + vert_offset_overhead
+            + partial_height
+            + fragment_outer_bottom_overhead;
+        st.align_flow_to(st.current_height.max(fragment_end));
         if terminal_cut_consumed {
             let terminal_successor_gap = is_continuation
                 .then(|| st.table_flow_successor(para_idx, input.source.paragraphs_all))
@@ -2338,9 +2428,9 @@ impl TypesetEngine {
             .as_ref().map(|(_, _, remaining)| *remaining)
             .or(empty_opening_next_height)
             .or_else(|| {
-                let frames = input.prepared.source_single_cell_row_frames?;
+                let frames = input.prepared.source_row_frames.as_ref()?;
                 (!is_continuation
-                    && next_cut.as_slice() == [frames.opening_end]
+                    && next_cut.as_slice() == frames.opening_cut.as_slice()
                     && end_row_height_override == Some(frames.opening_height))
                     .then_some(frames.closing_height)
             })
@@ -2783,7 +2873,18 @@ impl TypesetEngine {
             next_source_cut,
             has_intra_row_tail,
         );
-        continuation.start_row_height_override = next_start_row_height_override;
+        continuation.remaining_child_row = has_intra_row_tail.then_some(next_child_row).flatten();
+        let child_floor = layout_engine.stored_nested_page_parent_floor(
+            row_geometry_table,
+            &continuation.start_cut,
+            continuation.remaining_child_row,
+            styles,
+        );
+        continuation.start_row_height_override = match (next_start_row_height_override, child_floor)
+        {
+            (Some(a), Some(b)) => Some(a.max(b)),
+            (ordinary, child) => ordinary.or(child),
+        };
         continuation.stored_reset_band_row_box = span_band_row_box;
         if let Some(((_, row, cut, height), _)) = stored_rowspan_frame {
             continuation.row = row;

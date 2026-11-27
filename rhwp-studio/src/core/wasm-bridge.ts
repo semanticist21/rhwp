@@ -1766,13 +1766,19 @@ export class WasmBridge {
    */
   findNearestControlAt(place: ControlPlace, charOffset: number, fromControl: number, forward: boolean): NearestControl {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
-    return JSON.parse((this.doc as any).findNearestControlAt(JSON.stringify(place), charOffset, fromControl, forward));
+    return JSON.parse(this.doc.findNearestControlAt(JSON.stringify(place), charOffset, fromControl, forward));
+  }
+
+  /** 지정한 컨트롤의 실제 필드 범위가 캐럿을 포함하는지 조회한다. */
+  getFieldInfoForControlAt(place: ControlPlace, controlIndex: number, offset: number): FieldInfoResult {
+    if (!this.doc) return { inField: false };
+    return JSON.parse(this.doc.getFieldInfoForControlAt(JSON.stringify(place), controlIndex, offset));
   }
 
   /** 주소 문단의 controlIndex 누름틀을 활성 필드로 둔다. 같은 자리 누름틀 가운데 고른 것에 입력이 든다. 바뀌면 true. */
   setActiveFieldAt(place: ControlPlace, controlIndex: number): boolean {
     if (!this.doc) return false;
-    return (this.doc as any).setActiveFieldAt(JSON.stringify(place), controlIndex);
+    return this.doc.setActiveFieldAt(JSON.stringify(place), controlIndex);
   }
 
   /** 현재 위치 이후의 가장 가까운 선택 가능 컨트롤 (Shift+F11) */
@@ -2023,13 +2029,15 @@ export class WasmBridge {
 
   // ─── 중첩 표 path 기반 편집 API ──────────────────────────
 
-  insertTextInCellByPath(sec: number, parentPara: number, pathJson: string, charOffset: number, text: string): string {
+  insertTextInCellByPath(sec: number, parentPara: number, pathJson: string, charOffset: number, text: string, atCaret = false): string {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    if (atCaret) return this.doc.replaceTextAtCellCaretByPath(sec, parentPara, pathJson, charOffset, 0, text);
     return (this.doc as any).insertTextInCellByPath(sec, parentPara, pathJson, charOffset, text);
   }
 
-  deleteTextInCellByPath(sec: number, parentPara: number, pathJson: string, charOffset: number, count: number): string {
+  deleteTextInCellByPath(sec: number, parentPara: number, pathJson: string, charOffset: number, count: number, atCaret = false): string {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    if (atCaret) return this.doc.replaceTextAtCellCaretByPath(sec, parentPara, pathJson, charOffset, count, '');
     return (this.doc as any).deleteTextInCellByPath(sec, parentPara, pathJson, charOffset, count);
   }
 
@@ -2054,8 +2062,9 @@ export class WasmBridge {
     return this.doc.getTextInCell(sec, parentPara, controlIdx, cellIdx, cellParaIdx, charOffset, count);
   }
 
-  getTextInCellByPath(sec: number, parentPara: number, pathJson: string, charOffset: number, count: number): string {
+  getTextInCellByPath(sec: number, parentPara: number, pathJson: string, charOffset: number, count: number, atCaret = false): string {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    if (atCaret) return this.doc.getTextAtCellCaretByPath(sec, parentPara, pathJson, charOffset, count);
     return (this.doc as any).getTextInCellByPath(sec, parentPara, pathJson, charOffset, count);
   }
 
@@ -3015,6 +3024,15 @@ export class WasmBridge {
     (this.doc as any).moveLineEndpoint(sec, para, ci, sx, sy, ex, ey);
   }
 
+  moveConnectorMidpoint(sec: number, para: number, ci: number, dx: number, dy: number, path?: CellPathLike): void {
+    if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
+    if (path?.length) {
+      this.doc.moveConnectorMidpointByPath(sec, para, JSON.stringify(path), ci, dx, dy);
+    } else {
+      this.doc.moveConnectorMidpoint(sec, para, ci, dx, dy);
+    }
+  }
+
   updateConnectorsInSection(sec: number): void {
     if (!this.doc) return;
     (this.doc as any).updateConnectorsInSection(sec);
@@ -3348,28 +3366,39 @@ export class WasmBridge {
   private withLegacyParaSpacing(props: ParaProperties, listId: number, para: number): ParaProperties {
     const doc = this.doc;
     if (!doc || typeof doc.getParaShapeSet !== 'function') return props;
-    const { PrevSpacing, NextSpacing } = JSON.parse(doc.getParaShapeSet(listId, para));
+    const { LeftMargin, RightMargin, Indentation, PrevSpacing, NextSpacing } =
+      JSON.parse(doc.getParaShapeSet(listId, para));
     if (!Number.isInteger(PrevSpacing) || !Number.isInteger(NextSpacing)) return props;
-    const usesChar = PrevSpacing % 2 !== 0 || NextSpacing % 2 !== 0;
+    const usesChar = [LeftMargin, RightMargin, Indentation, PrevSpacing, NextSpacing]
+      .some(raw => Number.isInteger(raw) && raw % 2 !== 0);
     const base = usesChar ? JSON.parse(doc.getStyleDetail(0)).charProps?.fontSize : undefined;
     const charUnit = (base > 0 ? base : 1000) / 200;
     const toPx = (raw: number) => {
       const hu = raw % 2 === 0 ? raw / 2 : (raw - 1) / 2 * charUnit;
       return hu / 75;
     };
-    return {
+    const lengths = {
       ...props,
       spacingBeforeRaw: PrevSpacing,
       spacingAfterRaw: NextSpacing,
       spacingBeforePx: toPx(PrevSpacing),
       spacingAfterPx: toPx(NextSpacing),
     };
+    if ([LeftMargin, RightMargin, Indentation].every(Number.isInteger)) {
+      lengths.marginLeftRaw = LeftMargin;
+      lengths.marginRightRaw = RightMargin;
+      lengths.indentRaw = Indentation;
+      lengths.marginLeftPx = toPx(LeftMargin) + (this._loadedHwp3 ? Math.min(toPx(Indentation), 0) : 0);
+      lengths.marginRightPx = toPx(RightMargin);
+      lengths.indentPx = toPx(Indentation);
+    }
+    return lengths;
   }
 
   getParaPropertiesAt(sec: number, para: number, detail?: 'spacing'): ParaProperties {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
     const props = JSON.parse(this.doc.getParaPropertiesAt(sec, para));
-    if (detail !== 'spacing' || props.spacingBeforePx !== undefined) return props;
+    if (detail !== 'spacing' || (props.spacingBeforePx !== undefined && props.indentRaw !== undefined)) return props;
     let rootPara = para;
     for (let i = 0; i < sec; i++) rootPara += this.doc.getParagraphCount(i);
     return this.withLegacyParaSpacing(props, 0, rootPara);
@@ -3397,7 +3426,7 @@ export class WasmBridge {
   getCellParaPropertiesAt(sec: number, parentPara: number, controlIdx: number, cellIdx: number, cellParaIdx: number, detail?: 'spacing'): ParaProperties {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
     const props = JSON.parse(this.doc.getCellParaPropertiesAt(sec, parentPara, controlIdx, cellIdx, cellParaIdx));
-    if (detail !== 'spacing' || props.spacingBeforePx !== undefined) return props;
+    if (detail !== 'spacing' || (props.spacingBeforePx !== undefined && props.indentRaw !== undefined)) return props;
     return this.legacyCellParaSpacing(props, sec, parentPara, [
       { controlIndex: controlIdx, cellIndex: cellIdx, cellParaIndex: cellParaIdx },
     ]);
@@ -3411,7 +3440,7 @@ export class WasmBridge {
   getCellParaPropertiesAtByPath(sec: number, parentPara: number, pathJson: string, detail?: 'spacing'): ParaProperties {
     if (!this.doc) throw new Error('문서가 로드되지 않았습니다');
     const props = JSON.parse(this.doc.getCellParaPropertiesAtByPath(sec, parentPara, pathJson));
-    if (detail !== 'spacing' || props.spacingBeforePx !== undefined) return props;
+    if (detail !== 'spacing' || (props.spacingBeforePx !== undefined && props.indentRaw !== undefined)) return props;
     return this.legacyCellParaSpacing(props, sec, parentPara, JSON.parse(pathJson));
   }
 
