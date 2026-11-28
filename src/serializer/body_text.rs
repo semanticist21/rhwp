@@ -1695,16 +1695,11 @@ fn trace_field_end(marker: FieldEndMarker, pos: u32, ends: &mut Option<&mut [Opt
 
 fn field_end_marker(ctrl: &Control) -> FieldEndMarker {
     match ctrl {
-        Control::Field(field)
-            if field.field_type == crate::model::control::FieldType::Memo
-                || field.command.starts_with("MEMO/") =>
-        {
-            FieldEndMarker {
-                ctrl_id: tags::FIELD_MEMO,
-                memo_index: field.memo_index_from_command(),
-                trace_index: None,
-            }
-        }
+        Control::Field(field) if field.is_memo() => FieldEndMarker {
+            ctrl_id: tags::FIELD_MEMO,
+            memo_index: field.memo_index_from_command(),
+            trace_index: None,
+        },
         Control::Field(field) => FieldEndMarker {
             ctrl_id: field.ctrl_id,
             memo_index: 0,

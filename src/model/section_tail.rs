@@ -130,9 +130,7 @@ pub(crate) fn collect<'a, S: crate::storage::Storage>(
             for ctrl in &para.controls {
                 match ctrl {
                     Control::Field(field)
-                        if (field.field_type == crate::model::control::FieldType::Memo
-                            || field.command.starts_with("MEMO/"))
-                            && !field.memo_paragraphs.is_empty() =>
+                        if field.is_memo() && !field.memo_paragraphs.is_empty() =>
                     {
                         // The tail is keyed by the memo number; a field that kept
                         // only its command (HWPX conversion) must still match.

@@ -836,6 +836,12 @@ pub struct Field {
 }
 
 impl Field {
+    /// 예전 문서의 메모는 명령으로도 식별한다. 메일 머지의 명령은 사용자 필드 이름이다.
+    pub(crate) fn is_memo(&self) -> bool {
+        self.field_type == FieldType::Memo
+            || (self.field_type != FieldType::MailMerge && self.command.starts_with("MEMO/"))
+    }
+
     /// 현재 파일 이름만 표시하는 경로 필드다. 다른 경로 형식은 저장된 값을 유지한다.
     pub(crate) fn is_file_name(&self) -> bool {
         self.field_type == FieldType::Path && self.command == "$F"

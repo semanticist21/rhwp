@@ -570,7 +570,7 @@ pub fn tab_ext_is_placeholder(ext: &[u16; 7]) -> bool {
 /// 위 자리표의 정본 표기 — HWP5 이진 서식기가 내는 "데이터 없음" 마커와 같다.
 pub const TAB_EXT_PLACEHOLDER: [u16; 7] = [0, 0, 0, 0, 0, 0, 0x0009];
 
-/// 경계(시작·끝)에 친 글자를 품지 않는 필드: 웹 링크와 날짜·파일 경로·문서 요약 코드.
+/// 경계(시작·끝)에 친 글자를 품지 않는 필드: 웹 링크와 날짜·파일 경로·문서 요약·메일 머지 코드.
 /// 한/글은 날짜·파일 경로 코드의 글을 문서를 열 때와 다른 이름으로 저장할 때, 문서 요약
 /// 코드(상용구)의 글을 저장할 때와 문서 요약을 고칠 때 다시 쓴다. 코드 경계에서 친 글이
 /// 코드 안에 들어가면 그때 사라진다.
@@ -583,6 +583,7 @@ fn keeps_boundary_text_outside(control: Option<&Control>) -> bool {
             | FieldType::Date
             | FieldType::Path
             | FieldType::Summary
+            | FieldType::MailMerge
             | FieldType::Bookmark
     ))
 }
@@ -3673,7 +3674,7 @@ impl Paragraph {
                         .then(|| order(Slot::Control(r.control_idx)))
                         .flatten();
                     let end = order(Slot::End(ri));
-                    // 계산식·날짜·파일 경로·문서 요약 코드 경계의 입력은 필드 밖에 둔다.
+                    // 계산식·날짜·파일 경로·문서 요약·메일 머지 코드 경계의 입력은 필드 밖에 둔다.
                     let outside = matches!(
                         self.controls.get(r.control_idx),
                         Some(Control::Field(field))
@@ -3685,6 +3686,7 @@ impl Paragraph {
                                     | FieldType::Date
                                     | FieldType::Path
                                     | FieldType::Summary
+                                    | FieldType::MailMerge
                             )
                     );
                     match () {
@@ -4674,8 +4676,7 @@ impl Paragraph {
 /// A memo field: `FieldType::Memo`, or a field whose command names a memo
 /// (Hancom writes a memo's control id as `%unk`).
 fn is_memo_control(ctrl: Option<&Control>) -> bool {
-    matches!(ctrl, Some(Control::Field(field))
-        if field.field_type == FieldType::Memo || field.command.starts_with("MEMO/"))
+    matches!(ctrl, Some(Control::Field(field)) if field.is_memo())
 }
 
 #[cfg(test)]

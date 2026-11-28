@@ -9,7 +9,7 @@
 //! 메모·메일 머지·교정 부호·제목 차례). 한컴 12.30은 이것들을 지우면 필드만 풀고 글을 남긴다.
 #![cfg(not(target_arch = "wasm32"))]
 use rhwp::document_core::DocumentCore;
-use rhwp::model::control::Control;
+use rhwp::model::control::{Control, Field, FieldType};
 use rhwp::wasm_api::HwpDocument;
 use std::io::{Cursor, Read, Write};
 
@@ -96,6 +96,70 @@ fn title_marks_roundtrip_without_moving_text_or_bookmark() {
             ["앞✨뒤", "", "다른 제목"],
         );
         assert_eq!(reopened.get_bookmarks_native().unwrap(), before);
+    }
+}
+
+#[test]
+fn mail_merge_keeps_boundary_typing_and_uses_the_field_kind() {
+    let mut doc = lines(&["", "실제 메모 자리"]);
+    let name = "MEMO/항목";
+    let mark = "{{MEMO/항목}}";
+    let id = 42;
+    let (_, end) = doc
+        .insert_field_by_path(
+            0,
+            0,
+            &[],
+            0,
+            Field {
+                field_type: FieldType::MailMerge,
+                field_id: id,
+                ctrl_id: rhwp::parser::tags::FIELD_MAILMERGE,
+                command: name.to_string(),
+                ..Field::default()
+            },
+            mark,
+        )
+        .unwrap();
+    doc.insert_text_logical(0, 0, end as u32, "님").unwrap();
+    doc.insert_text_logical(0, 0, 0, "받는 사람 ").unwrap();
+    doc.insert_memo_at(0, 1, 0, 2, "작성자", name).unwrap();
+    for bytes in [
+        doc.export_hwp_native().unwrap(),
+        doc.export_hwpx_native().unwrap(),
+    ] {
+        let mut reopened = DocumentCore::from_bytes(&bytes).unwrap();
+        assert_eq!(
+            reopened
+                .control_codes_native(&["메일 머지".to_string()])
+                .len(),
+            1
+        );
+        assert_eq!(
+            reopened.control_codes_native(&["메모".to_string()]).len(),
+            1
+        );
+        let memos = reopened.get_memo_list_json();
+        assert_eq!(
+            serde_json::from_str::<Vec<serde_json::Value>>(&memos)
+                .unwrap()
+                .len(),
+            1
+        );
+        assert!(memos.contains(name));
+        let fields = reopened.field_targets_native();
+        let merge_id = fields
+            .iter()
+            .find(|target| target.command == name && target.para == 0)
+            .unwrap()
+            .field_id;
+        reopened
+            .set_field_text_by_path(0, 0, &[], merge_id, "홍길동")
+            .unwrap();
+        assert_eq!(
+            reopened.document().sections[0].paragraphs[0].text,
+            "받는 사람 홍길동님",
+        );
     }
 }
 

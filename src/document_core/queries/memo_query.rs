@@ -139,17 +139,13 @@ struct MemoHit {
     para_index: Option<usize>,
 }
 
-pub(crate) fn is_memo_field(field: &Field) -> bool {
-    field.field_type == FieldType::Memo || field.command.starts_with("MEMO/")
-}
-
 /// Memo numbers are document-wide; the next one is one past the largest.
 pub(crate) fn max_memo_number(doc: &Document) -> u32 {
     fn walk(paragraphs: &[Paragraph], max: &mut u32) {
         for para in paragraphs {
             for ctrl in &para.controls {
                 match ctrl {
-                    Control::Field(field) if is_memo_field(field) => {
+                    Control::Field(field) if field.is_memo() => {
                         *max = (*max).max(memo_number(field));
                     }
                     Control::Table(table) => {
@@ -275,7 +271,7 @@ pub(crate) fn renumber_memos(paragraphs: &mut [Paragraph], mut next: u32) -> u32
         for para in paragraphs {
             for ctrl in &mut para.controls {
                 match ctrl {
-                    Control::Field(field) if is_memo_field(field) => {
+                    Control::Field(field) if field.is_memo() => {
                         *next = (*next).max(1);
                         field.memo_index = *next;
                         field.command = rewritten_memo_command(field, *next);
@@ -487,7 +483,7 @@ pub(crate) fn make_memo_numbers_unique(doc: &mut Document) {
         let _ = walk(&mut section.paragraphs, |node| {
             if let Node::Control(Control::Field(field)) = node {
                 let number = memo_number(field);
-                if is_memo_field(field) && number != 0 && !seen.insert(number) {
+                if field.is_memo() && number != 0 && !seen.insert(number) {
                     next = next.saturating_add(1);
                     field.memo_index = next;
                     field.command = rewritten_memo_command(field, next);
@@ -536,7 +532,7 @@ pub(crate) fn prune_incomplete_memos(paragraphs: &mut [Paragraph]) -> Result<(),
         for para in paragraphs {
             for range in &para.field_ranges {
                 if let Some(Control::Field(field)) = para.controls.get(range.control_idx) {
-                    if is_memo_field(field) {
+                    if field.is_memo() {
                         memo_ids.insert(field.field_id);
                         closed.insert(field.field_id);
                     }
@@ -544,7 +540,7 @@ pub(crate) fn prune_incomplete_memos(paragraphs: &mut [Paragraph]) -> Result<(),
             }
             for ctrl in &para.controls {
                 match ctrl {
-                    Control::Field(field) if is_memo_field(field) => {
+                    Control::Field(field) if field.is_memo() => {
                         memo_ids.insert(field.field_id);
                     }
                     Control::Field(field) => scan(&field.memo_paragraphs, memo_ids, closed),
@@ -601,7 +597,7 @@ pub(crate) fn prune_incomplete_memos(paragraphs: &mut [Paragraph]) -> Result<(),
                 .enumerate()
                 .filter_map(|(index, ctrl)| match ctrl {
                     Control::Field(field)
-                        if is_memo_field(field) && !closed.contains(&field.field_id) =>
+                        if field.is_memo() && !closed.contains(&field.field_id) =>
                     {
                         Some(index)
                     }
@@ -743,7 +739,7 @@ pub(crate) fn delete_text_at_keeping_memos(
             continue;
         }
         if let Some(Control::Field(field)) = para.controls.get(range.control_idx) {
-            if is_memo_field(field) {
+            if field.is_memo() {
                 anchored_memos.push((range.control_idx, field.field_id));
             }
         }
@@ -769,7 +765,7 @@ pub(crate) fn delete_text_at_keeping_memos(
         let still_memo = matches!(
             para.controls.get(control_idx),
             Some(Control::Field(field))
-                if is_memo_field(field) && (field_id == 0 || field.field_id == field_id)
+                if field.is_memo() && (field_id == 0 || field.field_id == field_id)
         );
         if !still_memo {
             continue;
@@ -811,7 +807,7 @@ pub(crate) fn drop_memo_fields(paragraphs: &mut [Paragraph]) {
             let remove: Vec<bool> = para
                 .controls
                 .iter()
-                .map(|ctrl| matches!(ctrl, Control::Field(field) if is_memo_field(field)))
+                .map(|ctrl| matches!(ctrl, Control::Field(field) if field.is_memo()))
                 .collect();
             if remove.iter().any(|drop| *drop) {
                 let old_controls = std::mem::take(&mut para.controls);
@@ -981,7 +977,7 @@ fn hits_in_paragraph(
         let Some(Control::Field(field)) = para.controls.get(range.control_idx) else {
             continue;
         };
-        if !is_memo_field(field) {
+        if !field.is_memo() {
             continue;
         }
         let (id, para_index) = match location {
@@ -1015,7 +1011,7 @@ fn hits_in_paragraph(
         let Control::Field(field) = ctrl else {
             continue;
         };
-        if !is_memo_field(field) {
+        if !field.is_memo() {
             continue;
         }
         if para
@@ -1637,7 +1633,7 @@ impl DocumentCore {
         {
             let para = self.memo_paragraph_mut(&location)?;
             let field = match para.controls.get_mut(hit.control_idx) {
-                Some(Control::Field(field)) if is_memo_field(field) => field,
+                Some(Control::Field(field)) if field.is_memo() => field,
                 _ => return Err(MemoError::not_found(id)),
             };
             field.memo_paragraphs = paragraphs;
@@ -2094,7 +2090,7 @@ fn memo_overlaps(para: &Paragraph, start: usize, end: usize) -> bool {
         let Some(Control::Field(field)) = para.controls.get(range.control_idx) else {
             return false;
         };
-        if !is_memo_field(field) {
+        if !field.is_memo() {
             return false;
         }
         let (other_start, other_end) = (range.start_char_idx, range.end_char_idx);

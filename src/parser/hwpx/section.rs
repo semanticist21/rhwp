@@ -183,7 +183,7 @@ fn link_orphan_field_ends(paragraphs: &mut [Paragraph], open_fields: &mut Vec<(u
                 .iter()
                 .any(|range| range.control_idx == control_idx);
             if !closes_in_this_paragraph && field.field_id != 0 {
-                let memo_index = if crate::parser::body_text::field_is_memo(field) {
+                let memo_index = if field.is_memo() {
                     crate::parser::body_text::memo_field_number(field)
                 } else {
                     0

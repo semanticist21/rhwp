@@ -199,12 +199,11 @@ fn control_kinds(doc: &Document, control: &Control, at: &Place) -> Vec<&'static 
 
 /// 필드가 속하는 한컴 갈래. 교정 부호는 묶음 이름 `교정 부호`와 낱 이름을 함께 준다.
 fn field_kinds(field: &Field) -> Vec<&'static str> {
-    let memo_command = field.command.starts_with("MEMO/");
     if field.raw_type.as_deref() == Some("PROOFREADING_MARKS_CHANGE") {
         return vec!["교정 부호", "교정 부호:메모 고침표"];
     }
     let kind = match field.field_type {
-        _ if memo_command => "메모",
+        _ if field.is_memo() => "메모",
         FieldType::ClickHere => "누름틀",
         FieldType::Date => "현재 날짜",
         FieldType::DocDate => "만든 날짜",

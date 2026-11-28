@@ -188,9 +188,7 @@ fn assign_memo_paragraphs(
     for para in paragraphs {
         for ctrl in &mut para.controls {
             match ctrl {
-                Control::Field(field)
-                    if field_is_memo(field) && memo_field_number(field) == number =>
-                {
+                Control::Field(field) if field.is_memo() && memo_field_number(field) == number => {
                     if field.memo_paragraphs.is_empty() {
                         if let Some(body) = body.take() {
                             field.memo_paragraphs = body;
@@ -248,10 +246,6 @@ fn assign_memo_paragraphs(
         }
     }
     false
-}
-
-pub(crate) fn field_is_memo(field: &crate::model::control::Field) -> bool {
-    field.field_type == crate::model::control::FieldType::Memo || field.command.starts_with("MEMO/")
 }
 
 pub(crate) fn memo_field_number(field: &crate::model::control::Field) -> u32 {
@@ -351,7 +345,7 @@ fn link_orphan_field_ends_with(
             if !closed_here && field.field_id != 0 {
                 // 메모의 진짜 여는 글자는 `%%me`이고, 저장할 때는 한컴의
                 // 메모 전용 종료 표식(번호 포함)을 써야 한다.
-                let memo_index = if field_is_memo(field) {
+                let memo_index = if field.is_memo() {
                     memo_field_number(field)
                 } else {
                     0

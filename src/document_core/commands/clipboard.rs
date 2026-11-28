@@ -100,7 +100,7 @@ fn clipboard_paragraphs_contain_field(paragraphs: &[Paragraph]) -> bool {
             || para
                 .controls
                 .iter()
-                .any(|ctrl| matches!(ctrl, Control::Field(field) if crate::document_core::queries::memo_query::is_memo_field(field)))
+                .any(|ctrl| matches!(ctrl, Control::Field(field) if field.is_memo()))
     })
 }
 

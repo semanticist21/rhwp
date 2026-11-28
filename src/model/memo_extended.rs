@@ -7,7 +7,7 @@
 //! - HWPX: `<he:memosEx xmlns:he="http://www.hancom.co.kr/hwpml/2021/extended">` 안의
 //!   `<he:memo id="댓글" parentId="부모"/>`. content.hpf에 `memoextended` 항목으로 올린다.
 
-use super::control::{Control, FieldType};
+use super::control::Control;
 use super::document::Document;
 use super::identity::walk::{walk_ref, RefNode};
 use std::collections::HashSet;
@@ -99,7 +99,7 @@ pub fn memo_field_ids(doc: &Document) -> HashSet<u32> {
     for section in &doc.sections {
         let Ok(()) = walk_ref(&section.paragraphs, &crate::storage::Unbounded, |node| {
             if let RefNode::Control(Control::Field(field)) = node {
-                if field.field_type == FieldType::Memo || field.command.starts_with("MEMO/") {
+                if field.is_memo() {
                     ids.insert(field.field_id);
                 }
             }
