@@ -1615,11 +1615,21 @@ impl Paragraph {
 
     /// 제목 차례 표시 하나를 그 8유닛 자리와 함께 걷어낸다.
     pub(crate) fn remove_title_mark(&mut self, index: usize) {
-        if index >= self.title_marks.len() {
+        let Some(mark) = self.title_marks.get(index) else {
             return;
-        }
-        let char_idx = self.title_marks.remove(index).char_idx;
-        self.remove_leading_gap_slot(char_idx);
+        };
+        let char_idx = mark.char_idx;
+        let marks_before = self.title_marks[..index]
+            .iter()
+            .rev()
+            .take_while(|mark| mark.char_idx == char_idx)
+            .count();
+        let slot = (char_idx <= self.char_offsets.len() && char_idx <= self.text.chars().count())
+            .then(|| {
+                self.title_mark_gap_start(char_idx) + marks_before as u32 * CTRL_CHAR_CODE_UNITS
+            });
+        self.title_marks.remove(index);
+        self.remove_auxiliary_stream_slot(slot);
         if !self.title_marks.is_empty() {
             self.control_mask |= 1u32 << 0x0008;
         }
@@ -1645,7 +1655,11 @@ impl Paragraph {
             }),
             None => Some(0),
         };
-        if let Some(start) = gap_start {
+        self.remove_auxiliary_stream_slot(gap_start);
+    }
+
+    fn remove_auxiliary_stream_slot(&mut self, slot: Option<u32>) {
+        if let Some(start) = slot {
             self.remove_stream_slot(start, true);
             self.char_count = self.char_count.saturating_sub(CTRL_CHAR_CODE_UNITS);
         }

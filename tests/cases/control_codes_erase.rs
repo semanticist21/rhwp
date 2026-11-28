@@ -166,6 +166,18 @@ fn title_marks_keep_their_place_next_to_number_slots_and_field_ends() {
             [(0, 2), (0, 3), (1, end)],
         );
     }
+    let title = ["제목 차례".to_string()];
+    assert_eq!(doc.erase_control_codes_native(&title, None).unwrap(), 3);
+    assert!(doc.control_codes_native(&title).is_empty());
+    let [number_paragraph, field_paragraph] = &doc.document().sections[0].paragraphs[..] else {
+        panic!("두 문단이 남아야 합니다");
+    };
+    for (para, base) in [(number_paragraph, start), (field_paragraph, end_start)] {
+        assert_eq!(
+            (para.range_tags[0].start, para.range_tags[0].end),
+            (base + 2, base + 4)
+        );
+    }
 }
 
 #[test]
