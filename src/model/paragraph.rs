@@ -1555,6 +1555,41 @@ impl Paragraph {
         true
     }
 
+    /// 제목 차례 표시를 넣는다. 글자와 개체의 논리적 위치와 저장 줄은 그대로 둔다.
+    pub(crate) fn insert_title_mark(&mut self, char_idx: usize, ignore: bool) -> bool {
+        let mark = TitleMark { char_idx, ignore };
+        if self.title_marks.contains(&mark) {
+            return false;
+        }
+        // 직렬화 순서에서 이 갭의 고아 필드 끝과 기존 차례 표시 뒤에 새 표시가 온다.
+        let gap_start = char_idx.checked_sub(1).map_or(0, |prev| {
+            self.char_offsets[prev] + self.text.chars().nth(prev).map_or(1, Self::char_stream_len)
+        });
+        let slots_before = self
+            .orphan_field_ends
+            .iter()
+            .filter(|end| end.char_idx == char_idx && end.begin_ctrl_id != 0)
+            .count()
+            + self
+                .title_marks
+                .iter()
+                .filter(|existing| existing.char_idx == char_idx)
+                .count();
+        let insert_pos = gap_start + slots_before as u32 * CTRL_CHAR_CODE_UNITS;
+        for offset in &mut self.char_offsets[char_idx..] {
+            *offset += CTRL_CHAR_CODE_UNITS;
+        }
+        self.shift_position_metadata_for_stream_insertion(insert_pos, CTRL_CHAR_CODE_UNITS);
+        self.title_marks.insert(
+            self.title_marks.partition_point(|m| m.char_idx <= char_idx),
+            mark,
+        );
+        self.char_count += CTRL_CHAR_CODE_UNITS;
+        self.control_mask |= 1u32 << 0x0008;
+        self.has_para_text = true;
+        true
+    }
+
     /// 제목 차례 표시 하나를 그 8유닛 자리와 함께 걷어낸다.
     pub(crate) fn remove_title_mark(&mut self, index: usize) {
         if index >= self.title_marks.len() {

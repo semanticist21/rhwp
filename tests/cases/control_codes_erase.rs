@@ -56,6 +56,49 @@ fn lines(texts: &[&str]) -> HwpDocument {
     doc
 }
 
+#[test]
+fn title_marks_roundtrip_without_moving_text_or_bookmark() {
+    let mut doc = lines(&["앞✨뒤", "", "다른 제목"]);
+    doc.add_bookmark_native(0, 0, 2, "same-gap").unwrap();
+    let before = doc.get_bookmarks_native().unwrap();
+    assert!(doc.insert_title_mark_native(0, 0, 2, false).unwrap());
+    assert!(!doc.insert_title_mark_native(0, 0, 2, false).unwrap());
+    assert!(doc.insert_title_mark_native(0, 0, 3, true).unwrap());
+    assert!(doc.insert_title_mark_native(0, 1, 0, false).unwrap());
+    assert!(doc.insert_title_mark_native(0, 2, 5, false).unwrap());
+    assert!(doc.insert_title_mark_native(0, 2, 6, false).is_err());
+    assert_eq!(doc.get_bookmarks_native().unwrap(), before);
+    let kinds = ["제목 차례".to_string(), "차례 숨김".to_string()];
+    for bytes in [
+        doc.export_hwp_native().unwrap(),
+        doc.export_hwpx_native().unwrap(),
+    ] {
+        let reopened = DocumentCore::from_bytes(&bytes).unwrap();
+        assert_eq!(
+            reopened
+                .control_codes_native(&kinds)
+                .iter()
+                .map(|code| (code.kind, code.para, code.offset))
+                .collect::<Vec<_>>(),
+            [
+                ("차례 숨김", 0, 0),
+                ("제목 차례", 0, 2),
+                ("제목 차례", 1, 0),
+                ("제목 차례", 2, 5)
+            ],
+        );
+        assert_eq!(
+            reopened.document().sections[0]
+                .paragraphs
+                .iter()
+                .map(|p| p.text.as_str())
+                .collect::<Vec<_>>(),
+            ["앞✨뒤", "", "다른 제목"],
+        );
+        assert_eq!(reopened.get_bookmarks_native().unwrap(), before);
+    }
+}
+
 fn field(id: u32, ty: &str, params: &str, content: &str) -> String {
     format!(
         r#"<hp:ctrl><hp:fieldBegin id="{id}" type="{ty}" name="" editable="0" dirty="1" zorder="-1" fieldid="{id}" metaTag=""><hp:parameters cnt="2" name=""><hp:integerParam name="Prop">8</hp:integerParam>{params}</hp:parameters></hp:fieldBegin></hp:ctrl><hp:t>{content}</hp:t><hp:ctrl><hp:fieldEnd beginIDRef="{id}" fieldid="{id}"/></hp:ctrl>"#

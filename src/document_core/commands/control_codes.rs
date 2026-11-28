@@ -476,6 +476,28 @@ impl DocumentCore {
         self.control_codes_walk(kinds, false)
     }
 
+    /// 본문 캐럿에 제목 차례를 표시하거나, 문단 처음에 차례 숨김 표시를 넣는다.
+    pub fn insert_title_mark_native(
+        &mut self,
+        section: usize,
+        para: usize,
+        char_offset: usize,
+        hidden: bool,
+    ) -> Result<bool, HwpError> {
+        let host = self.code_paragraph_mut(section, para, &[])?;
+        let offset = if hidden { 0 } else { char_offset };
+        if offset > host.text.chars().count() || offset > host.char_offsets.len() {
+            return Err(HwpError::RenderError(
+                "제목 차례 위치를 확인해 주세요".into(),
+            ));
+        }
+        if !host.insert_title_mark(offset, !hidden) {
+            return Ok(false);
+        }
+        self.refresh_section_native(section)?;
+        Ok(true)
+    }
+
     /// `deep`이면 바탕쪽·숨은 설명 안 자리도 준다(문서 전체 지우기).
     fn control_codes_walk(&self, kinds: &[String], deep: bool) -> Vec<ControlCode> {
         let mut walk = Walk {
