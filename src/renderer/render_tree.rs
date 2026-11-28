@@ -263,6 +263,22 @@ pub enum ControlCode {
 }
 
 impl RenderNode {
+    /// An empty paragraph may reserve a line for layout and the caret with no paint.
+    /// Preserve whitespace, display substitutions, and runs with their own decorations.
+    pub(crate) fn is_empty_text_carrier(&self) -> bool {
+        matches!(self.node_type, RenderNodeType::TextLine(_))
+            && !self.children.is_empty()
+            && self.children.iter().all(|child| {
+                matches!(&child.node_type, RenderNodeType::TextRun(run)
+                    if run.text.is_empty()
+                        && run.display_or_text().is_empty()
+                        && run.border_fill_id == 0
+                        && crate::model::color::char_shade(run.style.shade_color).is_none()
+                        && run.style.tab_leaders.is_empty())
+                    && child.children.is_empty()
+            })
+    }
+
     /// 머리말·꼬리말·바탕쪽 부분 트리를 뺀다. 그 영역 표의 칸 글은 영역 문단 번호를 부모 문단으로
     /// 가져, 같은 문단·컨트롤 번호의 본문 표 칸과 주소가 겹친다. 본문 칸 캐럿·상자 조회가 쓴다.
     pub(crate) fn remove_page_areas(&mut self) {
@@ -1848,6 +1864,8 @@ pub struct ImageNode {
     /// 그림자·네온·반사와 테두리. 공통 paint가 그림 뒤·위의 래스터로 그린다.
     #[serde(skip)]
     pub picture_effects: Option<Box<crate::renderer::image_resolver::PictureEffectPaint>>,
+    #[serde(skip_serializing)]
+    pub outer_shadow: Option<crate::model::image::PictureOuterShadow>,
     /// 텍스트 흐름 wrap 모드 (Task #516, 다층 레이어 분리용).
     /// `None` 또는 `Some(Square/TopAndBottom/Tight/Through)` 는 본문 layer 에 포함되고,
     /// `Some(BehindText)` / `Some(InFrontOfText)` 는 overlay layer 로 분리 후보.
@@ -1973,6 +1991,7 @@ impl ImageNode {
             opacity: 1.0,
             soft_edge_radius_hu: None,
             picture_effects: None,
+            outer_shadow: None,
             text_wrap: None,
             external_path: None,
             header_footer_ref: None,

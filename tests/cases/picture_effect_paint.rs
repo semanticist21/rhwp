@@ -20,6 +20,10 @@ fn png() -> Vec<u8> {
 
 /// 32×32px(2400HU) 그림 하나와 그 효과.
 fn doc_with(effects: &str) -> HwpDocument {
+    doc_with_image(effects, &png())
+}
+
+fn doc_with_image(effects: &str, image: &[u8]) -> HwpDocument {
     let mut doc = HwpDocument::create_empty();
     doc.create_blank_document_native().unwrap();
     doc.insert_picture_native(
@@ -27,7 +31,7 @@ fn doc_with(effects: &str) -> HwpDocument {
         0,
         0,
         &[],
-        &png(),
+        image,
         2400,
         2400,
         32,
@@ -127,6 +131,23 @@ fn outer_shadow_is_drawn_behind_the_picture_offset_toward_its_direction() {
         let empty = alpha_at(&shadow.1, shadow.0, shadow.0.x + 1.0, shadow.0.y + 1.0);
         assert!(empty < 5, "왼쪽 위 바깥 {empty}");
     }
+}
+
+#[test]
+fn outer_shadow_follows_the_source_pixels_of_a_transparent_picture() {
+    let pixels = image::RgbaImage::from_fn(32, 32, |x, _| {
+        image::Rgba([200, 60, 40, if x < 16 { 255 } else { 0 }])
+    });
+    let mut data = std::io::Cursor::new(Vec::new());
+    pixels.write_to(&mut data, image::ImageFormat::Png).unwrap();
+    let doc = doc_with_image(OUTER_SHADOW, data.get_ref());
+    let list = images(&doc, RenderProfile::Screen);
+    assert_eq!(list.len(), 2);
+    let (shadow, picture) = (&list[0], &list[1]);
+    let shift = 8.0 * std::f64::consts::FRAC_1_SQRT_2;
+    let y = picture.0.y + 16.0 + shift;
+    assert!(alpha_at(&shadow.1, shadow.0, picture.0.x + 8.0 + shift, y) > 100);
+    assert!(alpha_at(&shadow.1, shadow.0, picture.0.x + 26.0 + shift, y) < 10);
 }
 
 #[test]

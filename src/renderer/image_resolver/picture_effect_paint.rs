@@ -69,6 +69,7 @@ pub(crate) fn prepare_picture_effects(
     frame: BoundingBox,
     dpi: f64,
     reflect_source: bool,
+    has_stored_shadow: bool,
 ) -> PictureEffectOps {
     let mut ops = PictureEffectOps::default();
     let Some(fx) = image.picture_effects.as_deref() else {
@@ -89,7 +90,9 @@ pub(crate) fn prepare_picture_effects(
     });
     let inside = |s: &&crate::model::image::PictureShadow| s.style.as_deref() == Some("INSIDE");
     // 그림 뒤는 그림자·네온·반사 차례로 쌓는다.
-    if let Some((s, strength, sigma, offset, color)) = shadow.filter(|(s, ..)| !inside(s)) {
+    if let Some((s, strength, sigma, offset, color)) =
+        shadow.filter(|(s, ..)| !has_stored_shadow && !inside(s))
+    {
         let t = Affine::new(
             shape.page,
             s.align_style.as_deref(),

@@ -52,6 +52,7 @@ pub(crate) use inline_picture_metrics::{
     inline_side_caption_hu,
 };
 pub(crate) use stored_tac_host_frame::stored_tac_host_frame;
+pub(crate) use stored_word_tail::hidden_field_guide_fits_one_row;
 pub(crate) use stored_word_tail::{
     project_current_body_box_rows, project_current_body_box_rows_with_storage,
     project_current_marker_geometry_rows, project_current_marker_geometry_rows_with_storage,

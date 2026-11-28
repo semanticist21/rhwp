@@ -2172,6 +2172,7 @@ fn parse_hwp3_object_dispatch(
         line.common.horz_rel_to = horz_rel_to;
         line.common.vert_rel_to = vert_rel_to;
         line.common.treat_as_char = base_pos == 0;
+        line.common.affect_line_spacing = info_buf[60] == 1;
 
         line.common.horizontal_offset =
             ((&info_buf[10..12]).read_i16::<LittleEndian>().unwrap_or(0) as i32 * 4) as u32;
@@ -2192,6 +2193,8 @@ fn parse_hwp3_object_dispatch(
 
         line.drawing.border_line.width = thickness as i32 * 4;
         line.drawing.border_line.color = color as u32;
+        // HWP3 표 47에는 선 종류 필드가 없다. 저장한 굵기의 연속선을 그린다.
+        line.drawing.border_line.attr = u32::from(thickness != 0);
 
         if shade > 0 && shade <= 100 {
             let mut fill = crate::model::style::Fill::default();
@@ -2267,6 +2270,9 @@ fn parse_hwp3_object_dispatch(
             0,
             use_decrypted_layout_contract,
         )?;
+        if is_endnote {
+            paragraph::normalize_saved_endnote_marker_size(nested_paragraphs, doc_char_shapes);
+        }
     } else if ch == 29 {
         // 상호 참조
         if header_val1 < 1000000 {
@@ -3930,6 +3936,10 @@ fn parse_paragraph_list_inner(
         } else {
             para.line_segs = line_segs;
         }
+        // [#9426] HWP3 줄 정보에는 하이픈 표지가 없다. 한/글의 HWP3 가져오기는 하이픈(24)
+        // 자리에서 나뉜 줄에 HWP5 LineSeg bit 19 를 세우고, 그 비트가 있어야 줄 끝 하이픈을
+        // 그린다. 비트 없이 저장하면 한/글은 같은 줄 나눔에서 하이픈을 지운다.
+        para.sync_auto_hyphenation_tags();
 
         // TAC 표의 줄 높이는 표 자체 높이지만 뒤 간격은 원래 글자 줄의
         // 간격이다. 표 높이에 배율을 곱하거나 일반 HWP3의 간격을 0으로
@@ -5289,10 +5299,10 @@ fn normalize_hwp3_note_line_vpos(paragraph: &mut crate::model::paragraph::Paragr
 ///
 /// 대상을 양쪽에서 잠근다 — 문서가 장식을 켰고(`suffix`), 첫 글자가 **자동 번호의
 /// 8유닛 자리표시자**이며(`char_offsets` 가 `0, 8` 로 시작), 그 다음 글자가 바로 그
-/// 장식 문자일 때만 한 글자를 뗀다. 범위 정보를 가진 문단(구역 태그·필드·제목 표시·
-/// 형광펜)은 건드리지 않는다 — 이 문단들에는 해당 채널이 없고, 있으면 오프셋을 함께
-/// 옮겨야 해서 이 수정의 범위가 아니다.
-fn strip_hwp3_note_number_suffix_literal(
+/// 장식 문자일 때만 한 글자를 떼고 자동 번호에 장식을 설정한다.
+/// 리터럴이 없는 문단에서는 자동 번호에 장식만 설정한다. 범위 정보를 가진
+/// 문단(구역 태그·필드·제목 표시·형광펜)의 리터럴은 오프셋과 함께 보존한다.
+fn normalize_hwp3_note_number_suffix(
     paragraphs: &mut [crate::model::paragraph::Paragraph],
     suffix: char,
 ) {
@@ -5304,18 +5314,13 @@ fn strip_hwp3_note_number_suffix_literal(
     let Some(para) = paragraphs.first_mut() else {
         return;
     };
-    if !matches!(
-        para.controls.first(),
-        Some(Control::AutoNumber(an))
-            if matches!(an.number_type, AutoNumberType::Footnote | AutoNumberType::Endnote)
-    ) {
+    let Some(Control::AutoNumber(marker)) = para.controls.first_mut() else {
         return;
-    }
-    if !para.range_tags.is_empty()
-        || !para.field_ranges.is_empty()
-        || !para.title_marks.is_empty()
-        || !para.markpen_marks.is_empty()
-    {
+    };
+    if !matches!(
+        marker.number_type,
+        AutoNumberType::Footnote | AutoNumberType::Endnote
+    ) {
         return;
     }
     // 자리표시자는 글자 하나지만 저장본에서 확장 컨트롤 8 코드유닛을 차지한다(#3504).
@@ -5328,6 +5333,14 @@ fn strip_hwp3_note_number_suffix_literal(
         return;
     }
     if chars.next() != Some(suffix) {
+        marker.suffix_char = suffix;
+        return;
+    }
+    if !para.range_tags.is_empty()
+        || !para.field_ranges.is_empty()
+        || !para.title_marks.is_empty()
+        || !para.markpen_marks.is_empty()
+    {
         return;
     }
 
@@ -5346,6 +5359,8 @@ fn strip_hwp3_note_number_suffix_literal(
         *offset = offset.saturating_sub(removed_units);
     }
     para.char_count = para.char_count.saturating_sub(removed_units);
+    // 자동 번호가 문서 옵션의 장식을 한 번 그리도록 리터럴을 옮긴다.
+    marker.suffix_char = suffix;
     for shape in &mut para.char_shapes {
         if shape.start_pos > removed_at {
             shape.start_pos = shape.start_pos.saturating_sub(removed_units);
@@ -5371,10 +5386,7 @@ fn fixup_hwp3_notes_in_controls(
                 state.footnote_number = state.footnote_number.saturating_add(1);
                 footnote.after_decoration_letter = ')' as u16;
                 footnote.number_shape = 0;
-                strip_hwp3_note_number_suffix_literal(
-                    &mut footnote.paragraphs,
-                    state.number_suffix,
-                );
+                normalize_hwp3_note_number_suffix(&mut footnote.paragraphs, state.number_suffix);
                 fixup_hwp3_notes_in_paragraphs(&mut footnote.paragraphs, state);
             }
             Control::Endnote(endnote) => {
@@ -5383,7 +5395,7 @@ fn fixup_hwp3_notes_in_controls(
                 state.endnote_number = state.endnote_number.saturating_add(1);
                 endnote.after_decoration_letter = ')' as u16;
                 endnote.number_shape = 0;
-                strip_hwp3_note_number_suffix_literal(&mut endnote.paragraphs, state.number_suffix);
+                normalize_hwp3_note_number_suffix(&mut endnote.paragraphs, state.number_suffix);
                 for paragraph in &mut endnote.paragraphs {
                     normalize_hwp3_note_line_vpos(paragraph);
                 }
@@ -5563,6 +5575,10 @@ fn ensure_hwp3_default_outline_numbering(
     for (head, number_format) in numbering.heads.iter_mut().zip(formats) {
         *head = NumberingHead {
             number_format,
+            // HWP3 개요 번호(표 62)는 실제 번호 뒤에서 본문이 이어진다.
+            // 한컴 변환본도 번호를 본문 앞의 문자로 저장한다. 변환한 번호 정의는
+            // 참조 한 자리 칸이 아닌 현재 번호의 전진을 공통 조판에서 소비한다.
+            attr: 1 << 2,
             // HWP3 기본 개요는 문단 글자 모양을 따르며 문서의 0번을 참조하지 않는다.
             char_shape_id: u32::MAX,
             ..Default::default()

@@ -648,6 +648,7 @@ impl LayoutEngine {
                 picture_effects: crate::renderer::image_resolver::PictureEffectPaint::from_picture(
                     picture,
                 ),
+                outer_shadow: picture.outer_shadow(),
                 effect: picture.image_attr.effect,
                 brightness: picture.image_attr.brightness,
                 contrast: picture.image_attr.contrast,
@@ -989,6 +990,7 @@ impl LayoutEngine {
                 picture_effects: crate::renderer::image_resolver::PictureEffectPaint::from_picture(
                     picture,
                 ),
+                outer_shadow: picture.outer_shadow(),
                 effect: picture.image_attr.effect,
                 brightness: picture.image_attr.brightness,
                 contrast: picture.image_attr.contrast,

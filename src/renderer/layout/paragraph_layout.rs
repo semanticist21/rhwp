@@ -12923,6 +12923,7 @@ fn make_picture_image_node(
             original_size_hu,
             soft_edge_radius_hu: pic.effects.soft_edge_radius,
             picture_effects: crate::renderer::image_resolver::PictureEffectPaint::from_picture(pic),
+            outer_shadow: pic.outer_shadow(),
             effect: pic.image_attr.effect,
             brightness: pic.image_attr.brightness,
             contrast: pic.image_attr.contrast,

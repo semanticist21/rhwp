@@ -534,6 +534,8 @@ impl LayerBuilder {
         let mut image_fill_clip = None;
         // 그림자·네온·반사는 그림 뒤, 안쪽 그림자는 그림 위(테두리는 형제 노드라 그 위).
         let mut picture_effects: Option<crate::renderer::image_resolver::PictureEffectOps> = None;
+        let mut image_band_bounds = None;
+        let mut picture_shadow = None;
         let own_ops = match &node.node_type {
             RenderNodeType::PageBackground(background) => Some(vec![PaintOp::page_background(
                 node.bbox,
@@ -685,6 +687,11 @@ impl LayerBuilder {
                     self.page_context
                         .map_or(node.bbox, |context| context.image_frame(node, image, pixel))
                 };
+                picture_shadow = crate::renderer::image_resolver::prepare_picture_shadow(
+                    image,
+                    frame,
+                    self.layout_dpi,
+                );
                 if image_fill_clip.is_none()
                     && !node.layer.as_ref().is_some_and(|layer| layer.master_page)
                     && (self.hancom2024_print_bitmap
@@ -748,10 +755,49 @@ impl LayerBuilder {
                                 frame,
                                 self.layout_dpi,
                                 true,
+                                picture_shadow.is_some(),
                             ));
                         let image = projected;
                         image_fill_clip = Some(frame);
                         vec![PaintOp::image(full, image, Some(payload))]
+                    } else if let Some(bands) = (self.profile == RenderProfile::Print
+                        && self.shape_group_depth == 0
+                        && !soft_edge_prepared
+                        && image_fill_clip.is_none())
+                    .then(|| {
+                        let device_frame = crate::renderer::print_raster::PrintRasterFrame::new(
+                            self.image_page_size,
+                            self.image_reference_origin,
+                            node.bbox,
+                            self.layout_dpi,
+                        )?;
+                        crate::renderer::image_resolver::print_jpeg_bands(
+                            &image,
+                            frame,
+                            self.layout_dpi,
+                            self.print_png_rgb555,
+                            device_frame,
+                        )
+                    })
+                    .flatten()
+                    {
+                        picture_effects =
+                            Some(crate::renderer::image_resolver::prepare_picture_effects(
+                                &image,
+                                frame,
+                                self.layout_dpi,
+                                true,
+                                picture_shadow.is_some(),
+                            ));
+                        image_band_bounds = Some(frame);
+                        // 띠의 출력 바이트는 원본 BinData와 독립이다.
+                        image.data = None;
+                        bands
+                            .into_iter()
+                            .map(|(bbox, payload)| {
+                                PaintOp::image(bbox, image.clone(), Some(payload))
+                            })
+                            .collect()
                     } else {
                         crate::renderer::image_resolver::publish_print_jpeg_crop(&mut image);
                         let device_effect = soft_edge_payload.as_ref().is_some_and(|p| {
@@ -797,6 +843,23 @@ impl LayerBuilder {
                                         )
                                     })
                                     .flatten()
+                            })
+                            .or_else(|| {
+                                if self.profile != RenderProfile::Print
+                                    || self.hancom2024_print_bitmap
+                                    || self.shape_group_depth > 0
+                                    || image_fill_clip.is_some()
+                                    || image.source_rect.is_some()
+                                {
+                                    return None;
+                                }
+                                let width =
+                                    self.page_context?.image_codec_width_points(&image, frame)?;
+                                crate::renderer::image_resolver::print_resampled_bitmap_window(
+                                    &image,
+                                    width,
+                                    self.print_png_rgb555,
+                                )
                             })
                             .or_else(|| {
                                 if self.profile != RenderProfile::Print
@@ -982,6 +1045,7 @@ impl LayerBuilder {
                                 frame,
                                 self.layout_dpi,
                                 !device_effect,
+                                picture_shadow.is_some(),
                             ));
                         vec![PaintOp::image(frame, image, resolved)]
                     }
@@ -1012,7 +1076,8 @@ impl LayerBuilder {
         };
 
         if let Some(ops) = own_ops {
-            let own_bounds = ops.first().map_or(node.bbox, PaintOp::bounds);
+            let own_bounds =
+                image_band_bounds.unwrap_or_else(|| ops.first().map_or(node.bbox, PaintOp::bounds));
             let mut own_leaf =
                 LayerNode::leaf(own_bounds, Some(node.id), ops).with_layer(node.layer);
             own_leaf = super::metafile_picture::lower(own_leaf);
@@ -1025,6 +1090,12 @@ impl LayerBuilder {
                     ClipKind::PrintBitmapFill,
                 )
                 .with_layer(node.layer);
+            }
+            if let Some(shadow) = picture_shadow {
+                picture_effects
+                    .get_or_insert_with(Default::default)
+                    .behind
+                    .insert(0, shadow);
             }
             if let Some(effects) = picture_effects.filter(|e| !e.is_empty()) {
                 let leaf = |ops: Vec<PaintOp>| {

@@ -17,6 +17,7 @@ mod stored_float_rows;
 mod stored_nested_host;
 mod stored_opening_row_frame;
 mod stored_row_grid;
+mod stored_rowspan_frame;
 mod stored_table_source;
 pub(crate) use column_ole::column_ole_placement;
 pub(crate) use stored_float_rows::{owns_embedded_float_bands, stored_float_row_span_hu};
@@ -469,6 +470,9 @@ pub(crate) fn stored_complete_row_frame_heights(table: &Table) -> Option<Vec<i32
 
     if let Some(rows) = stored_captioned_picture_row_heights(table) {
         return Some(rows.into());
+    }
+    if table.cells.iter().any(|cell| cell.row_span > 1) {
+        return stored_rowspan_frame::closed_row_heights(table);
     }
     let row_count = usize::from(table.row_count);
     if row_count < 2 || table.common.height > i32::MAX as u32 {
@@ -7934,7 +7938,7 @@ impl ParagraphFloatPlacement {
         table_height: f64,
         dpi: f64,
     ) -> Option<Self> {
-        if !matches!(para.controls.as_slice(), [Control::Table(_)])
+        if !Self::empty_offset_host_controls(para)
             || para
                 .text
                 .chars()
@@ -7944,6 +7948,28 @@ impl ParagraphFloatPlacement {
             return None;
         }
         Self::from_stored_host_at(para, table, control_index, text_origin, table_height, dpi)
+    }
+
+    /// 빈 호스트가 가진 제어가 표 하나와 **저장 글줄 안에 머무는 것**뿐인가.
+    ///
+    /// 단·구역 정의는 흐름에 자리가 없고, 글자처럼 취급하는 개체는 저장 글줄 높이에 이미
+    /// 들어 있다. 그 글줄이 표 위에서 끝나는지는 `from_stored_host_at` 이
+    /// (`stored_host_lines_are_valid`) 따로 확인한다. 떠 있는 개체가 하나 더 있으면 그
+    /// 개체의 띠는 이 프레임이 모르므로 받지 않는다 (#8506: 결재 표지 칸 문단
+    /// `[단 정의][제목 표][빈 TAC 그림]`).
+    fn empty_offset_host_controls(para: &Paragraph) -> bool {
+        let mut tables = 0usize;
+        para.controls.iter().all(|control| match control {
+            Control::Table(_) => {
+                tables += 1;
+                tables == 1
+            }
+            Control::SectionDef(_) | Control::ColumnDef(_) => true,
+            Control::Shape(_) | Control::Picture(_) | Control::Equation(_) => {
+                control.is_treat_as_char_object()
+            }
+            _ => false,
+        }) && tables == 1
     }
 
     /// 앞뒤 저장 줄이 같게 닫는 빈 호스트의 실제 줄 상자다.
@@ -10640,6 +10666,34 @@ fn native_folded_empty_rowbreak_host_advance_hu(
     table: &Table,
     next: &Paragraph,
 ) -> Option<i32> {
+    rowbreak_empty_host_line_advance_hu(native_hwp5_layout, para, table, next, true)
+}
+
+/// 여러 쪽으로 나뉜 빈 host RowBreak 표가 **끝난 뒤** 흐름에 남는 host 줄 전진량.
+///
+/// 한글은 나뉜 자리차지 표의 마지막 조각 아래에 host 문단의 줄 상자(`lh + ls`)를 두고
+/// 다음 문단을 그 뒤에 잇는다. 저장 사다리 `next.vpos - host.vpos == lh + ls`
+/// (#2808 판별자)가 그 줄이 실제 흐름이라는 직접 증거다. #2439 의 양수 오프셋·개체 없는
+/// 다음 문단 조건은 표 **앞쪽** 원점·fit 계약(오프셋 가산)의 모양이라, 끝 조각 뒤 계상에는
+/// 요구하지 않는다(#687: 오프셋 0, 다음 문단에 글앞으로 TAC 도형 — 한컴 4쪽에서
+/// 「향후 계획」이 표 끝 + 2252HU). 사다리가 표 높이를 품은 물리 사다리는 등식이 깨져
+/// 그대로 배제된다.
+pub(crate) fn split_rowbreak_empty_host_terminal_line_advance_hu(
+    native_hwp5_layout: bool,
+    para: &Paragraph,
+    table: &Table,
+    next_para: Option<&Paragraph>,
+) -> Option<i32> {
+    rowbreak_empty_host_line_advance_hu(native_hwp5_layout, para, table, next_para?, false)
+}
+
+fn rowbreak_empty_host_line_advance_hu(
+    native_hwp5_layout: bool,
+    para: &Paragraph,
+    table: &Table,
+    next: &Paragraph,
+    leading_offset_contract: bool,
+) -> Option<i32> {
     let has_non_whitespace_text = |paragraph: &Paragraph| {
         paragraph
             .text
@@ -10652,7 +10706,7 @@ fn native_folded_empty_rowbreak_host_advance_hu(
         || has_non_whitespace_text(para)
         || !matches!(table.common.vert_rel_to, VertRelTo::Para)
         || !matches!(table.layout_page_break(), TablePageBreak::RowBreak)
-        || signed_hwpunit(table.common.vertical_offset) <= 0
+        || (leading_offset_contract && signed_hwpunit(table.common.vertical_offset) <= 0)
         || para
             .controls
             .iter()
@@ -11881,6 +11935,38 @@ pub(crate) fn para_offset_consumed_by_page_break(
 pub(crate) fn stored_cell_content_extent_hu(paragraphs: &[Paragraph]) -> Option<i32> {
     let last = paragraphs.last()?.line_segs.last()?;
     last.vertical_pos.checked_add(last.line_height)
+}
+
+/// 첫 줄을 수용한 가로 칸의 같은 줄 사다리가 선언한 칸 끝을 넘어가는지 확인한다.
+/// 선언 프레임을 저장 이후의 줄 추가에도 그대로 사용할 수 있는지 판단하는 근거다.
+pub(crate) fn table_cell_lines_exceed_frame(table: &Table) -> bool {
+    table.cells.iter().any(|cell| {
+        let Ok(height) = i32::try_from(cell.height) else {
+            return false;
+        };
+        let Some(first) = cell.paragraphs.first().and_then(|p| p.line_segs.first()) else {
+            return false;
+        };
+        if cell.text_direction != 0
+            || first.vertical_pos < 0
+            || first.line_height <= 0
+            || first.vertical_pos.saturating_add(first.line_height) > height
+            || !stored_cell_content_extent_hu(&cell.paragraphs).is_some_and(|end| end > height)
+        {
+            return false;
+        }
+
+        // 쪽별로 0부터 다시 시작하는 줄의 끝은 칸 전체의 좌표가 아니다.
+        let mut previous = first.vertical_pos;
+        cell.paragraphs
+            .iter()
+            .flat_map(|p| &p.line_segs)
+            .all(|line| {
+                let continues = line.vertical_pos >= previous;
+                previous = line.vertical_pos;
+                continues
+            })
+    })
 }
 
 /// [#8756] 칸 문단의 자리차지 표가 자기 앵커 줄을 아래로 민 저장 형상(`stored_cell_picture_pushed_line_origin_hu`)
