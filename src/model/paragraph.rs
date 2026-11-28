@@ -1556,35 +1556,57 @@ impl Paragraph {
         true
     }
 
+    /// 직렬화 순서에서 이 갭의 필드 끝 뒤부터 차례 표시가 놓인다.
+    fn title_mark_gap_start(&self, char_idx: usize) -> u32 {
+        let gap_start = char_idx.checked_sub(1).map_or(0, |prev| {
+            let chars: Vec<char> = self.text.chars().collect();
+            let owned = matches!(chars[prev], ' ' | '\u{FFFC}')
+                && self
+                    .control_text_positions()
+                    .into_iter()
+                    .enumerate()
+                    .any(|(ci, at)| {
+                        at == prev && self.control_owns_char(ci, prev, &chars, &self.char_offsets)
+                    });
+            self.char_offsets[prev]
+                + if owned {
+                    CTRL_CHAR_CODE_UNITS
+                } else {
+                    Self::char_stream_len(chars[prev])
+                }
+        });
+        let field_ends = self
+            .orphan_field_ends
+            .iter()
+            .filter(|end| end.char_idx == char_idx && end.begin_ctrl_id != 0)
+            .count()
+            + self
+                .field_ranges
+                .iter()
+                .filter(|range| range.start_char_idx < char_idx && range.end_char_idx == char_idx)
+                .count();
+        gap_start + field_ends as u32 * CTRL_CHAR_CODE_UNITS
+    }
+
     /// 제목 차례 표시를 넣는다. 글자와 개체의 논리적 위치와 저장 줄은 그대로 둔다.
     pub(crate) fn insert_title_mark(&mut self, char_idx: usize, ignore: bool) -> bool {
         let mark = TitleMark { char_idx, ignore };
         if self.title_marks.contains(&mark) {
             return false;
         }
-        // 직렬화 순서에서 이 갭의 고아 필드 끝과 기존 차례 표시 뒤에 새 표시가 온다.
-        let gap_start = char_idx.checked_sub(1).map_or(0, |prev| {
-            self.char_offsets[prev] + self.text.chars().nth(prev).map_or(1, Self::char_stream_len)
-        });
-        let slots_before = self
-            .orphan_field_ends
+        let index = self.title_marks.partition_point(|m| m.char_idx <= char_idx);
+        let marks_before = self.title_marks[..index]
             .iter()
-            .filter(|end| end.char_idx == char_idx && end.begin_ctrl_id != 0)
-            .count()
-            + self
-                .title_marks
-                .iter()
-                .filter(|existing| existing.char_idx == char_idx)
-                .count();
-        let insert_pos = gap_start + slots_before as u32 * CTRL_CHAR_CODE_UNITS;
+            .rev()
+            .take_while(|m| m.char_idx == char_idx)
+            .count();
+        let insert_pos =
+            self.title_mark_gap_start(char_idx) + marks_before as u32 * CTRL_CHAR_CODE_UNITS;
         for offset in &mut self.char_offsets[char_idx..] {
             *offset += CTRL_CHAR_CODE_UNITS;
         }
         self.shift_position_metadata_for_stream_insertion(insert_pos, CTRL_CHAR_CODE_UNITS);
-        self.title_marks.insert(
-            self.title_marks.partition_point(|m| m.char_idx <= char_idx),
-            mark,
-        );
+        self.title_marks.insert(index, mark);
         self.char_count += CTRL_CHAR_CODE_UNITS;
         self.control_mask |= 1u32 << 0x0008;
         self.has_para_text = true;

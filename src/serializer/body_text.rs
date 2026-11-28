@@ -1160,9 +1160,21 @@ fn try_serialize_para_text_with_slots<S: crate::storage::Storage>(
             prev_end += 8;
         }
 
+        // ① 여기서 **끝나는** 필드의 FIELD_END — 이 자리의 무엇보다 먼저 닫는다.
+        //    (그래야 같은 자리에서 시작하는 다음 필드의 BEGIN 과 뒤엉키지 않는다)
+        //    아래 자리표시자 판정보다도 앞서야 한다. 필드 바로 뒤의 자동번호 공백은 이 끝
+        //    슬롯을 지나야 `offset == prev_end` 가 되므로, 늦게 내면 공백을 리터럴로 쓰고
+        //    자동번호를 문단 끝에 덧붙여 다시 열 때 공백이 하나 남는다(#7528).
+        if let Some(markers) = field_ends.get(&i) {
+            for &marker in markers {
+                trace_field_end(marker, prev_end, &mut ends);
+                try_push_field_end_ctrl(&mut code_units, marker, storage)?;
+                prev_end += 8;
+            }
+        }
+
         // 제목 차례 표시 — CTRL_HEADER 없는 인라인 컨트롤이라 여기서 직접 낸다.
-        // 이 자리의 다른 컨트롤보다 먼저 놓는다: 8유닛만 채우면 되므로 순서는 축에
-        // 영향을 주지 않고, 실측 대다수(2,237 중 1,879)가 문단 선두다.
+        // 같은 자리에 끝나는 필드보다 뒤, 새로 시작하는 컨트롤보다 앞에 놓는다.
         for m in para.title_marks.iter().filter(|m| m.char_idx == i) {
             try_push_extended_ctrl(
                 &mut code_units,
@@ -1175,19 +1187,6 @@ fn try_serialize_para_text_with_slots<S: crate::storage::Storage>(
                 storage,
             )?;
             prev_end += 8;
-        }
-
-        // ① 여기서 **끝나는** 필드의 FIELD_END — 이 자리의 무엇보다 먼저 닫는다.
-        //    (그래야 같은 자리에서 시작하는 다음 필드의 BEGIN 과 뒤엉키지 않는다)
-        //    아래 자리표시자 판정보다도 앞서야 한다. 필드 바로 뒤의 자동번호 공백은 이 끝
-        //    슬롯을 지나야 `offset == prev_end` 가 되므로, 늦게 내면 공백을 리터럴로 쓰고
-        //    자동번호를 문단 끝에 덧붙여 다시 열 때 공백이 하나 남는다(#7528).
-        if let Some(markers) = field_ends.get(&i) {
-            for &marker in markers {
-                trace_field_end(marker, prev_end, &mut ends);
-                try_push_field_end_ctrl(&mut code_units, marker, storage)?;
-                prev_end += 8;
-            }
         }
 
         // [Task #1050] AutoNumber placeholder 검출:

@@ -100,6 +100,75 @@ fn title_marks_roundtrip_without_moving_text_or_bookmark() {
 }
 
 #[test]
+fn title_marks_keep_their_place_next_to_number_slots_and_field_ends() {
+    use rhwp::model::control::AutoNumberType;
+    use rhwp::model::paragraph::RangeTag;
+
+    let mut doc = lines(&["A🌟Z", "A🌟Z"]);
+    doc.insert_auto_number_at(0, 0, 2, AutoNumberType::Page)
+        .unwrap();
+    let start = doc.document().sections[0].paragraphs[0].char_offsets[2];
+    let tag = RangeTag {
+        start: start + 2,
+        end: start + 4,
+        tag: 0x0200_ffff,
+    };
+    doc.document_mut().sections[0].paragraphs[0]
+        .range_tags
+        .push(tag.clone());
+    assert!(doc.insert_title_mark_native(0, 0, 3, false).unwrap());
+    assert_eq!(
+        doc.document().sections[0].paragraphs[0].range_tags[0].start,
+        start + 2
+    );
+    assert!(doc.insert_title_mark_native(0, 0, 2, false).unwrap());
+
+    let (_, end) = doc
+        .insert_field_by_path(
+            0,
+            1,
+            &[],
+            2,
+            Field {
+                field_type: FieldType::Date,
+                ctrl_id: rhwp::parser::tags::FIELD_DATE,
+                field_id: 17,
+                ..Field::default()
+            },
+            "X",
+        )
+        .unwrap();
+    let end_start = doc.document().sections[0].paragraphs[1].char_offsets[end - 1] + 1;
+    doc.document_mut().sections[0].paragraphs[1]
+        .range_tags
+        .push(RangeTag {
+            start: end_start + 2,
+            end: end_start + 4,
+            ..tag
+        });
+    assert!(doc.insert_title_mark_native(0, 1, end, false).unwrap());
+    assert_eq!(
+        doc.document().sections[0].paragraphs[1].range_tags[0].start,
+        end_start + 2
+    );
+
+    for bytes in [
+        doc.export_hwp_native().unwrap(),
+        doc.export_hwpx_native().unwrap(),
+    ] {
+        let reopened = DocumentCore::from_bytes(&bytes).unwrap();
+        let codes = reopened.control_codes_native(&["제목 차례".to_string()]);
+        assert_eq!(
+            codes
+                .iter()
+                .map(|code| (code.para, code.offset))
+                .collect::<Vec<_>>(),
+            [(0, 2), (0, 3), (1, end)],
+        );
+    }
+}
+
+#[test]
 fn mail_merge_keeps_boundary_typing_and_uses_the_field_kind() {
     let mut doc = lines(&["", "실제 메모 자리"]);
     let name = "MEMO/항목";

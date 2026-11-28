@@ -1345,10 +1345,15 @@ pub(crate) struct InlineCursor<'a> {
 }
 
 impl InlineCursor<'_> {
+    /// 자동 번호 등으로 방출한 자리표까지 센 문단 모델의 글자 번호.
+    fn source_char_idx(&self) -> usize {
+        self.char_idx + self.nb_space_skipped_source_scalars
+    }
+
     /// 다음에 방출할 글자의 글자 스타일 번호.
     fn char_style_ahead(&self) -> Option<u32> {
         self.char_styles
-            .get(self.char_idx + self.nb_space_skipped_source_scalars)
+            .get(self.source_char_idx())
             .copied()
             .flatten()
     }
@@ -1404,7 +1409,7 @@ impl InlineCursor<'_> {
             self.markpen_idx += 1;
         }
         while let Some(m) = self.title_marks.get(self.mark_idx) {
-            if m.char_idx > self.char_idx {
+            if m.char_idx > self.source_char_idx() {
                 break;
             }
             flush_buf_with_storage(t_xml, buf, storage)?;
@@ -1432,7 +1437,7 @@ impl InlineCursor<'_> {
     fn has_pending_prev_owned_mark(&self) -> bool {
         self.title_marks
             .get(self.mark_idx)
-            .is_some_and(|m| m.char_idx == self.char_idx)
+            .is_some_and(|m| m.char_idx == self.source_char_idx())
             && self
                 .mark_owned_by_prev
                 .get(self.mark_idx)
@@ -2798,7 +2803,10 @@ where
         // 끝으로 밀린다. 현재 위치가 슬롯의 시작이고 소비할 control이 있을 때만
         // 표시 문자를 그 control의 HWPX 표현으로 직접 바꾼다. 실제 리터럴 U+FFFC나
         // 위치가 불명확한 합성 IR은 기존 텍스트 경로를 유지한다.
-        if c == '\u{fffc}' && slot_idx < slots.len() && char_pos == expected_utf16_pos {
+        if c == '\u{fffc}'
+            && slot_idx < slots.len()
+            && char_pos == expected_utf16_pos.saturating_add(title_gap_units)
+        {
             flush_text_fragment_with_storage(
                 &mut splitter.content,
                 &mut text_buf,
@@ -2806,7 +2814,9 @@ where
                 &mut cursor,
                 storage,
             )?;
-            splitter.cut_before_with_storage(splitter.ir_pos(expected_utf16_pos), storage)?;
+            flush_title_marks_before_placeholder(&mut splitter, &mut cursor, char_pos, storage)?;
+            expected_utf16_pos = char_pos;
+            splitter.cut_before_with_storage(splitter.ir_pos(char_pos), storage)?;
             markpens.flush_with_storage(
                 splitter.ir_pos(expected_utf16_pos),
                 &mut splitter,
@@ -2867,7 +2877,7 @@ where
         // placeholder 판별: 일반 공백과 구분하기 위해 직후 offset 의 +8 jump 를 본다
         // (마지막 문자면 jump 가 char_offsets 에 없으므로 placeholder 로 간주).
         let is_autonum_placeholder = c == ' '
-            && char_pos == expected_utf16_pos
+            && char_pos == expected_utf16_pos.saturating_add(title_gap_units)
             && para
                 .char_offsets
                 .get(idx + 1)
@@ -2885,7 +2895,9 @@ where
                 &mut cursor,
                 storage,
             )?;
-            splitter.cut_before_with_storage(splitter.ir_pos(expected_utf16_pos), storage)?;
+            flush_title_marks_before_placeholder(&mut splitter, &mut cursor, char_pos, storage)?;
+            expected_utf16_pos = char_pos;
+            splitter.cut_before_with_storage(splitter.ir_pos(char_pos), storage)?;
             markpens.flush_with_storage(
                 splitter.ir_pos(expected_utf16_pos),
                 &mut splitter,
@@ -3316,7 +3328,7 @@ fn flush_text_fragment_before_cut_with_storage<S: crate::storage::Storage>(
 where
     S::Error: std::fmt::Display,
 {
-    let idx = cursor.char_idx + text_buf.chars().count();
+    let idx = cursor.source_char_idx() + text_buf.chars().count();
     let pending = cursor.title_marks[cursor.mark_idx..]
         .iter()
         .take_while(|m| m.char_idx == idx)
@@ -3370,18 +3382,56 @@ fn flush_trailing_title_marks(
 fn flush_trailing_title_marks_with_storage<S: crate::storage::Storage>(
     splitter: &mut RunSplitter,
     cursor: &mut InlineCursor<'_>,
-    mut pos: u32,
+    pos: u32,
     storage: &S,
 ) -> Result<u32, SerializeError>
 where
     S::Error: std::fmt::Display,
 {
-    while cursor.mark_idx < cursor.title_marks.len() {
+    let end = cursor.title_marks.len();
+    flush_title_marks_until(splitter, cursor, pos, end, storage)
+}
+
+fn flush_title_marks_before_placeholder<S: crate::storage::Storage>(
+    splitter: &mut RunSplitter,
+    cursor: &mut InlineCursor<'_>,
+    char_pos: u32,
+    storage: &S,
+) -> Result<(), SerializeError>
+where
+    S::Error: std::fmt::Display,
+{
+    let count = cursor.title_marks[cursor.mark_idx..]
+        .iter()
+        .take_while(|mark| mark.char_idx == cursor.source_char_idx())
+        .count();
+    let end = cursor.mark_idx + count;
+    flush_title_marks_until(
+        splitter,
+        cursor,
+        char_pos.saturating_sub(count as u32 * 8),
+        end,
+        storage,
+    )?;
+    Ok(())
+}
+
+fn flush_title_marks_until<S: crate::storage::Storage>(
+    splitter: &mut RunSplitter,
+    cursor: &mut InlineCursor<'_>,
+    mut pos: u32,
+    mark_end: usize,
+    storage: &S,
+) -> Result<u32, SerializeError>
+where
+    S::Error: std::fmt::Display,
+{
+    while cursor.mark_idx < mark_end {
         splitter.cut_before_with_storage(pos, storage)?;
         let mut t_xml = storage.string("<hp:t>").map_err(xml_error)?;
         let mut buf = String::new();
         cursor.flush_markpen_at_fragment_end_with_storage(&mut t_xml, &mut buf, storage)?;
-        while let Some(m) = cursor.title_marks.get(cursor.mark_idx) {
+        while let Some(m) = cursor.title_marks[..mark_end].get(cursor.mark_idx) {
             if splitter.needs_cut(pos) {
                 break;
             }
